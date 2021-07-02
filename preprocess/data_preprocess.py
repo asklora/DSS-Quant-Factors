@@ -188,7 +188,12 @@ def count_sample_number(tri):
     exit(0)
 
 def combine_stock_factor_data():        #### Change to combine by report_date
+    ''' This part do the following:
+        1. import all data from DB refer to other functions
+        2. combined stock_return, worldscope, ibes, macroeconomic tables
+        3. Calculate all factor used referring to ratio
 
+    '''
     # tri = calc_stock_return()
     tri = pd.read_csv('data_tri_final.csv')
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
