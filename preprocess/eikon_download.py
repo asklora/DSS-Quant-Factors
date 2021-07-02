@@ -17,14 +17,14 @@ if __name__ == '__main__':
 
     # tickers=['AAPL.O']
     df_list = []
-    step = 1
+    step = 39
     params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'M'}
 
     for i in np.arange(0, len(tickers),step):
         ticker = tickers[i:(i + step)]
         print(i, ticker)
         try:
-            df, err = ek.get_data(tickers, fields=['TR.MarketCapLocalCurn(Curn=Native,Scale=6)','TR.MarketCapLocalCurn.date'], parameters=params)
+            df, err = ek.get_data(ticker, fields=['TR.MarketCapLocalCurn(Curn=Native,Scale=6)','TR.MarketCapLocalCurn.date'], parameters=params)
         except:
             print('ERROR: ', ticker)
             continue
