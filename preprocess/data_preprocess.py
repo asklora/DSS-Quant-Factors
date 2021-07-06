@@ -27,17 +27,7 @@ def FillAllDay(result):
 
     return result
 
-def get_close_vol(multiplier, lookback=365, days_in_year=256):
-    ''' Calculate close to close volatility '''
-
-    returns = multiplier
-    log_returns = np.log(returns)
-    log_returns_sq = np.square(log_returns)
-    var =    np.mean(log_returns_sq)
-    result = np.sqrt(var * days_in_year)
-    return result
-
-def get_rogers_satchell(tri, lookback=365, days_in_year=256):
+def get_rogers_satchell(tri, lookback=90, days_in_year=256):
     ''' Calculate roger satchell volatility '''
 
     open_data, high_data, low_data, close_data = tri['open'].values, tri['high'].values, tri['low'].values, tri['close'].values
@@ -190,33 +180,48 @@ def count_sample_number(tri):
 def combine_stock_factor_data():        #### Change to combine by report_date
     ''' This part do the following:
         1. import all data from DB refer to other functions
-        2. combined stock_return, worldscope, ibes, macroeconomic tables
-        3. Calculate all factor used referring to ratio
+        2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
-    '''
+    # 1. Stock return/volatility/volume(?)
     # tri = calc_stock_return()
     tri = pd.read_csv('data_tri_final.csv')
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
+    # 2. Fundamental financial data - Worldscope
+    # 3. Consensus forecasts - I/B/E/S
+    # 4. Universe
     ws, ibes, universe, formula = download_clean_worldscope_ibes()
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
-    tri['icb_code'] = tri['icb_code'].astype(str).str[:6]
+    # 5. Local file for Market Cap (to be uploaded)
+    market_cap = pd.read_csv('mktcap.csv')
 
-    # Combine stock data + fundamental data from worldscope
+    # Use 6-digit ICB code in industry groups
+    universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
+
+    # Combine all data for table (1) - (5) above
     df = pd.merge(tri, ws, left_on=['ticker','trading_day'], right_on=['ticker', 'period_end'], how='outer')
-
-    df = df.merge(universe, on='ticker', how='left')
-    df = df.sort_values(by=['ticker','trading_day'])
+    df = df.merge(ibes, on=['ticker','trading_day'], how='outer')
+    df = df.merge(universe, on=['ticker'], how='outer')
+    df = df.merge(market_cap, on=['ticker','trading_day'], how='outer')
 
     # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
+    df = df.sort_values(by=['ticker','trading_day'])
     cols = df.select_dtypes('float').columns.to_list()
     df.update(df.groupby('ticker')[cols].fillna(method='ffill'))
 
+    df = resample_to_monthly(df, date_col='trading_day')  # Resample to monthly stock tri
+
+    return df
+
+
+def calc_factor_variables():
+    ''' Calculate all factor used referring to DB ratio table '''
     ##############################################Start Here
     # 1. Combine all df
     # 2. Calculate roic_num/denom/mcap
+    # +++ Calculate vol
     # 3. Calculate ratios refer to formula table (to be uploaded)
     # 4. adjust code to calculate return for multiple columns
 
