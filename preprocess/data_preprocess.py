@@ -7,7 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 ##########################################################################################
-############################ Calculate monthly stock return ##############################
+################# Calculate monthly stock return/volatility ##############################
 
 def FillAllDay(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
@@ -27,11 +27,15 @@ def FillAllDay(result):
 
     return result
 
-def get_rogers_satchell(tri, start=0, end=90, days_in_year=256):
-    ''' Calculate roger satchell volatility '''
+def get_rogers_satchell(tri, list_of_start_end=[[0,90]], days_in_year=256):
+    ''' Calculate roger satchell volatility:
+        daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
+        annualized = sqrt(daily*256)
+    '''
 
     open_data, high_data, low_data, close_data = tri['open'].values, tri['high'].values, tri['low'].values, tri['close'].values
 
+    # Calculate daily volatility
     hc_ratio = np.divide(high_data, close_data)
     log_hc_ratio = np.log(hc_ratio.astype(float))
     ho_ratio = np.divide(high_data, open_data)
@@ -43,50 +47,16 @@ def get_rogers_satchell(tri, start=0, end=90, days_in_year=256):
 
     input1 = np.multiply(log_hc_ratio, log_ho_ratio)
     input2 = np.multiply(log_lo_ratio, log_lc_ratio)
+    sum = np.add(input1, input2)
 
-    name_col = f'vol_{start}_{end}'
-    tri['sum'] = np.add(input1, input2)
-
-    tri[name_col] = np.add(input1, input2)
-
-    # def moving_average(x, n):
-    #     ''' calculate rolling average which skips NaN records '''
-    #     df = pd.DataFrame()
-    #
-    #     a = np.ma.masked_array(x,np.isnan(x))
-    #     df['a'] = a
-    #     ret = np.cumsum(a.filled(0))
-    #     df['cumsum'] = ret
-    #
-    #     ret[n:] = ret[n:] - ret[:-n]
-    #     counts = np.cumsum(~a.mask)
-    #     counts[n:] = counts[n:] - counts[:-n]
-    #     df['count'] = counts
-    #     ret[~a.mask] /= counts[~a.mask]
-    #     ret[a.mask] = np.nan
-    #     df.iloc[:1000].to_csv('val_debug.csv')
-    #     return ret
-    #
-    # rogers_satchell_var = moving_average(sum, end-start)
-    tri[name_col] = tri[name_col].rolling(end-start, min_periods=1).mean()
-    tri['rolling'] = tri[name_col]
-
-
-    tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x*days_in_year))
-    print(tri[name_col])
-
-    tri[name_col] = tri[name_col].shift(-start)
-    print(tri[name_col])
-
-    tri.loc[tri.groupby('ticker').head(end-1).index, name_col] = np.nan  # y-1 ~ y0
-    print(tri[name_col])
-
-
-    #### forward fill volatility
-
-
-
-    tri.iloc[:10000].to_csv('tri_debug.csv', index=False)
+    # Calculate annualize volatility
+    for l in list_of_start_end:
+        start, end = l[0], l[1]
+        name_col = f'vol_{start}_{end}'
+        tri[name_col] = pd.Series(sum).rolling(end-start, min_periods=1).mean()
+        tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x*days_in_year))
+        tri[name_col] = tri[name_col].shift(start)
+        tri.loc[tri.groupby('ticker').head(end-1).index, name_col] = np.nan  # y-1 ~ y0
 
     return tri
 
@@ -113,12 +83,13 @@ def calc_stock_return():
 
     tri = FillAllDay(tri)      # Add NaN record of tri for weekends
 
-    # Calculate RS volatility with 365 days lookback period (before ffill)
-    # tri = get_rogers_satchell(tri, start=0, end=90)
-    tri = get_rogers_satchell(tri, start=30, end=182)
+    # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
+    list_of_start_end = [[0,90],[30,182]]
+    tri = get_rogers_satchell(tri, list_of_start_end)
+    tri = tri.drop(['open','high','low'], axis=1)
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
-    cols = ['tri', 'close', 'vol']
+    cols = ['tri', 'close']+[f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
     tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
@@ -146,7 +117,7 @@ def calc_stock_return():
 ################################## Calculate factors #####################################
 
 def download_clean_macros():
-    ''' download macros data from DB and preprocess: convert some to yoy format'''
+    ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     with global_vals.engine.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
@@ -157,12 +128,12 @@ def download_clean_macros():
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
-    macros_col = macros.select_dtypes('float').columns[macros.mean(axis=0) > 100]     # all numeric columns
-    yoy_col = macros_col[macros.mean(axis=0) > 100]     # convert YoY
+    yoy_col = macros.select_dtypes('float').columns[macros.mean(axis=0) > 100]     # convert YoY
+    num_col = macros.select_dtypes('float').columns.to_list()   # all numeric columns
 
     macros[yoy_col] = (macros[yoy_col]/macros[yoy_col].shift(4)).sub(1)     # convert yoy_col to YoY
 
-    return macros.drop(['period_end'], axis=1), macros_col
+    return macros.drop(['period_end'], axis=1), num_col
 
 def download_clean_worldscope_ibes():
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
@@ -170,7 +141,7 @@ def download_clean_worldscope_ibes():
     with global_vals.engine.connect() as conn:
         ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)   # quarterly records
         ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)           # ibes_data
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.stock_data_table}", conn)
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn)
     global_vals.engine.dispose()
 
     def drop_dup(df):
@@ -214,9 +185,9 @@ def combine_stock_factor_data():        #### Change to combine by report_date
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume(?)
-    tri, stock_col = calc_stock_return()
-    # tri = pd.read_csv('data_tri_final.csv')
-    # tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    # tri, stock_col = calc_stock_return()
+    tri = pd.read_csv('data_tri_final.csv')
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
@@ -227,6 +198,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     market_cap = pd.read_csv('mktcap.csv')
+    market_cap['trading_day'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y')
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
@@ -244,6 +216,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
     # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
     df = df.sort_values(by=['ticker','trading_day'])
     cols = df.select_dtypes('float').columns.to_list()
+    print(cols)
     df.update(df.groupby('ticker')[cols].fillna(method='ffill'))
 
     df = resample_to_monthly(df, date_col='trading_day')  # Resample to monthly stock tri
@@ -255,10 +228,11 @@ def combine_stock_factor_data():        #### Change to combine by report_date
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    df = combine_stock_factor_data()
+    # df = combine_stock_factor_data()
     # df, stock_col, macros_col = combine_stock_factor_data()
 
-    df.iloc[:100000].to_csv('all_data.csv')
+    # df.iloc[:100000].to_csv('all_data.csv')
+    df = pd.read_csv('all_data.csv')
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)   # ratio calculation used
@@ -272,49 +246,60 @@ def calc_factor_variables():
         x = i.split(' ')
         for n in np.arange(len(x)):
             if x[n] == '+':
-                temp += df[n+1].values
+                temp += df[x[n+1]].values
             elif x[n] == '-':
-                temp -= df[n+1].values
+                temp -= df[x[n+1]].values
             else:
-                temp = df[x].values
+                temp = df[x[n]].values
         df[i] = temp
 
     # a) Keep original values
-    keep_col_dict = formula.loc[formula['field_denom'].isnull(), ['name', 'field_num']].set_index('name').transpose().to_dict('records')
-    df.rename(columns=keep_col_dict)
+    new_name = formula.loc[formula['field_denom'].isnull(), 'name'].to_list()
+    old_name = formula.loc[formula['field_denom'].isnull(), 'field_num'].to_list()
+    df[new_name] = df[old_name]
 
     # b) Time series ratios (Calculate 1m change first)
-    ts_col = formula.loc[formula['field_denom']==formula['field_num'],'name']
-    ts_col_new_name = [x+'_1m' for x in ts_col]
-    df[ts_col_new_name] = df[ts_col] / df[ts_col].shift(1) - 1
-    df.loc[df.groupby('ticker').head(1).index, ts_col_new_name] = np.nan
+    for r in formula.loc[formula['field_num']==formula['field_denom'],['name','field_denom']].to_dict(orient='records'):  # minus calculation for ratios
+        if r['name'][-2:]=='yr':
+            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(12) - 1
+            df.loc[df.groupby('ticker').head(12).index, r['name']] = np.nan
+        elif r['name'][-1]=='q':
+            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(3) - 1
+            df.loc[df.groupby('ticker').head(3).index, r['name']] = np.nan
 
     # c) Divide ratios
-    for r in formula.loc[(formula['field_num']!=formula['field_denom'])&(formula['field_denom'].notnull)].to_dict(orient='records'):  # minus calculation for ratios
-        df[r['name']] = df[r['field_num']]/df[r['field_demon']]
+    for r in formula.dropna(how='any',axis=0).loc[(formula['field_num']!=formula['field_denom'])].to_dict(orient='records'):  # minus calculation for ratios
+        df[r['name']] = df[r['field_num']]/df[r['field_denom']]
 
     df.iloc[:10000,:].to_csv('all ratio debug.csv')
 
-    factor_list = formula.loc[formula['factors'],'name'].to_list()
+    # factor_list = formula.loc[formula['factors'],'name'].to_list()
+    factor_list = formula['name'].to_list()
 
     def calc_monthly_premium_within_group(g):
         ''' calculate factor premium with avg(top group monthly return) - avg(bottom group monthly return) '''
 
-        if len(g) > 65: # If group sample size is large
-            prc = [0, 0.2, 0.8, 1]
-        elif len(g) < 10: # If group sample size is small
-            return np.nan
-        else:
-            prc = [0, 0.3, 0.7, 1]
+        def select_prc(l):
+            if l > 65: # If group sample size is large
+                return [0, 0.2, 0.8, 1]
+            elif l < 4: # If group sample size is small
+                return np.nan
+            else:
+                return [0, 0.3, 0.7, 1]
 
         premium = {}
-        for f in factor_list():
-            g[f + '_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
-            premium[f] = g.loc[g[f'_cut'] == 0, 'stock_return_y'].mean() - \
-                         g.loc[g['earning_yield_cut'] == 2, 'stock_return_y'].mean()
+        for f in factor_list:
+            prc = select_prc(g[f].notnull().sum())
+            try:
+                g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
+                premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
+            except:
+                print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
+                continue
         print(premium)
         return premium
 
+    results = df.groupby(['icb_code']).apply(calc_monthly_premium_within_group)
 
     results = df.groupby(['trading_day','icb_code']).apply(calc_monthly_premium_within_group)
     print(results)
