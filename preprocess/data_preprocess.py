@@ -293,6 +293,7 @@ def calc_factor_variables():
             try:
                 g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
                 premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
+                # test2
             except:
                 try:
                     prc_0 =
