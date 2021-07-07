@@ -296,6 +296,7 @@ def calc_factor_variables():
             except:
                 try:
                     prc_0 =
+                # test
                 print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
                 continue
         print(premium)
