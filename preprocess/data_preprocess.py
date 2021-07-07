@@ -294,6 +294,8 @@ def calc_factor_variables():
                 g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
                 premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
             except:
+                try:
+                    prc_0 =
                 print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
                 continue
         print(premium)
