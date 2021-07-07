@@ -228,8 +228,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    # df = combine_stock_factor_data()
-    # df, stock_col, macros_col = combine_stock_factor_data()
+    df, stock_col, macros_col = combine_stock_factor_data()
 
     # df.iloc[:100000].to_csv('all_data.csv')
     df = pd.read_csv('all_data.csv')
@@ -273,45 +272,7 @@ def calc_factor_variables():
 
     df.iloc[:10000,:].to_csv('all ratio debug.csv')
 
-    # factor_list = formula.loc[formula['factors'],'name'].to_list()
-    factor_list = formula['name'].to_list()
-
-    def calc_monthly_premium_within_group(g):
-        ''' calculate factor premium with avg(top group monthly return) - avg(bottom group monthly return) '''
-
-        def select_prc(l):
-            if l > 65: # If group sample size is large
-                return [0, 0.2, 0.8, 1]
-            elif l < 4: # If group sample size is small
-                return np.nan
-            else:
-                return [0, 0.3, 0.7, 1]
-
-        premium = {}
-        for f in factor_list:
-            prc = select_prc(g[f].notnull().sum())
-            try:
-                g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
-                premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
-            except:
-                try:
-                    prc_0 = g[f].count(0)/g[f].notnull().sum()+0.01
-                    g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc_0, 1-prc_0, 1], retbins=False, labels=False)
-                    premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean() - g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
-                except:
-                    print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
-                    continue #Update
-        print(premium)
-        return premium
-
-    results = df.groupby(['icb_code']).apply(calc_monthly_premium_within_group)
-
-    results = df.groupby(['trading_day','icb_code']).apply(calc_monthly_premium_within_group)
-    print(results)
-
-    # num_col = stock_col + macros_col + []
-
-    return df
+    return df, stock_col, macros_col, formula
 
 if __name__ == "__main__":
     # calc_stock_return()
