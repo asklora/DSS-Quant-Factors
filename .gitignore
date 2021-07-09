@@ -1,0 +1,6 @@
+*.csv
+*.pyc
+nb/
+*.json
+*.ipynb
+Pipfile*
