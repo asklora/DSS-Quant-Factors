@@ -71,7 +71,6 @@ def get_tri(engine, save=True):
     with engine.connect() as conn:
         query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close
         FROM {global_vals.stock_data_table}
-        WHERE EXTRACT(DAY FROM trading_day) >= 28
         """)
         tri = pd.read_sql(query, con=conn)
         if save:
