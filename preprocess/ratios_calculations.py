@@ -13,7 +13,7 @@ def FillAllDay(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
 
     # Construct indexes for all day between first/last day * all ticker used
-    df = result[["ticker", "trading_day"]]
+    df = result[["ticker", "trading_day"]].copy()
     df.trading_day = pd.to_datetime(df['trading_day'])
     result.trading_day = pd.to_datetime(result['trading_day'])
     df = df.sort_values(by=['trading_day'], ascending=True)
@@ -66,10 +66,34 @@ def resample_to_monthly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return():
-    ''' Calcualte monthly stock return '''
 
-    tri = pd.read_csv('data_tri.csv')
+def get_tri(engine, save=True):
+    with engine.connect() as conn:
+        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close
+        FROM {global_vals.stock_data_table}
+        WHERE EXTRACT(DAY FROM trading_day) >= 28
+        """)
+        tri = pd.read_sql(query, con=conn)
+        if save:
+            tri.to_csv('data_tri.csv', index=False)
+    engine.dispose()
+    return tri
+
+
+def calc_stock_return(use_cached=False, save=True):
+    ''' Calcualte monthly stock return '''
+    
+    engine = global_vals.engine
+
+    if use_cached:
+        try:
+            tri = pd.read_csv('data_tri.csv')
+        except Exception as e:
+            print(e)
+            print("Trying to query from DB...")
+            tri = get_tri(engine, save=save)
+    else:
+        tri = get_tri(engine, save=save)
 
     # Get tri for all ticker in universe from Database
     # engine = global_vals.engine
@@ -128,10 +152,10 @@ def download_clean_macros():
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
-    yoy_col = macros.select_dtypes('float').columns[macros.mean(axis=0) > 100]     # convert YoY
+    yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]     # convert YoY
     num_col = macros.select_dtypes('float').columns.to_list()   # all numeric columns
 
-    macros[yoy_col] = (macros[yoy_col]/macros[yoy_col].shift(4)).sub(1)     # convert yoy_col to YoY
+    macros[yoy_col] = (macros[yoy_col]/macros[yoy_col].shift(12)).sub(1)     # convert yoy_col to YoY
 
     return macros.drop(['period_end'], axis=1), num_col
 
@@ -149,7 +173,7 @@ def download_clean_worldscope_ibes():
 
         df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
         df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
-        return df.drop('count', 1)
+        return df.drop('count', axis=1)
 
     ws = drop_dup(ws)       # drop duplicate and retain the most complete record
 
@@ -187,6 +211,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
     # 1. Stock return/volatility/volume(?)
     # tri, stock_col = calc_stock_return()
     tri = pd.read_csv('data_tri_final.csv')
+    stocks_col = tri.select_dtypes("float").columns
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
     # 2. Fundamental financial data - from Worldscope
@@ -223,7 +248,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
 
     return df
 
-    return df, stock_col, macros_col
+    return df, stocks_col, macros_col
 
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
