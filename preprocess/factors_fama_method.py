@@ -7,7 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 
-def calc_monthly_premium_within_group(g):
+def calc_monthly_premium_within_group(g, factor_list):
     ''' calculate factor premium with avg(top group monthly return) - avg(bottom group monthly return) '''
 
     def select_prc(l):
@@ -28,7 +28,7 @@ def calc_monthly_premium_within_group(g):
             prc_0 = g[f].to_list().count(0) / g[f].notnull().sum() + 1e-8
             prc = [0, prc_0, 1 - prc_0, 1]
         elif bins[1] == bins[2] == 0:
-
+            pass
         try:
             g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
         except:
@@ -49,9 +49,9 @@ def calc_premium_all():
     factor_list = formula.loc[formula['factors'], 'name'].to_list()
     # factor_list = formula['name'].to_list()
 
-    results = df.groupby(['icb_code']).apply(calc_monthly_premium_within_group)
+    results = df.groupby(['icb_code']).apply(lambda x: calc_monthly_premium_within_group(x, factor_list))
 
-    results = df.groupby(['trading_day', 'icb_code']).apply(calc_monthly_premium_within_group)
+    results = df.groupby(['trading_day', 'icb_code']).apply(lambda x: calc_monthly_premium_within_group(x, factor_list))
     print(results)
 
 if __name__=="__main__":
