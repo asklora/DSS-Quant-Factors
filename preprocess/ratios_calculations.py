@@ -326,14 +326,18 @@ def calc_factor_variables():
     add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i])]
 
     for i in add_minus_fields:
-        x = i.split(' ')
-        for n in np.arange(len(x)):
+        x = [op.strip() for op in i.split()]
+        if x[0] in "+-": raise Exception("Invalid formula")
+        temp = df[x[0]].copy()
+        n = 1
+        while n < len(x):
             if x[n] == '+':
-                temp += df[x[n + 1]].values
+                temp += df[x[n+1]]
             elif x[n] == '-':
-                temp -= df[x[n + 1]].values
+                temp -= df[x[n+1]]
             else:
-                temp = df[x[n]].values
+                raise Exception(f"Unexpected operand/operator: {x[n]}")
+            n += 2
         df[i] = temp
 
     # a) Keep original values
