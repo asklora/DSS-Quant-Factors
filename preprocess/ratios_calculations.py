@@ -5,7 +5,7 @@ import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd
+from pandas.tseries.offsets import MonthEnd, QuarterEnd
 
 
 ##########################################################################################
@@ -296,9 +296,10 @@ def combine_stock_factor_data():  #### Change to combine by report_date
     df.update(adjust_close(df))
 
     # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
+    df['quarter_end'] = df['period_end'] + QuarterEnd(1)
     cols = df.select_dtypes('float').columns.to_list()
     print(cols)
-    df.update(df.groupby('ticker')[cols].fillna(method='ffill'))
+    df.update(df.groupby(['ticker','quarter_end'])[cols].fillna(method='ffill'))
 
     df = resample_to_monthly(df, date_col='period_end')     # Resample to monthly stock tri
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
