@@ -5,6 +5,7 @@ import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from pandas.tseries.offsets import MonthEnd
 
 ##########################################################################################
 ################# Calculate monthly stock return/volatility ##############################
@@ -212,6 +213,7 @@ def combine_stock_factor_data():        #### Change to combine by report_date
     tri = pd.read_csv('data_tri_final.csv')
     stocks_col = tri.select_dtypes("float").columns
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    tri["period_end"] = tri["trading_day"]
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
@@ -219,40 +221,41 @@ def combine_stock_factor_data():        #### Change to combine by report_date
     ws, ibes, universe = download_clean_worldscope_ibes()
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
+    ibes["period_end"] = ibes['trading_day'] + MonthEnd(1)
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     market_cap = pd.read_csv('mktcap.csv')
     market_cap['trading_day'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y')
+    market_cap["period_end"] = market_cap['trading_day'] + MonthEnd(1)
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
+    macros["period_end"] = macros['trading_day'] + MonthEnd(1)
 
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
-    df = pd.merge(tri, ws, left_on=['ticker','trading_day'], right_on=['ticker', 'period_end'], how='outer')
-    df = df.merge(ibes, on=['ticker','trading_day'], how='outer')
+    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
+    df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker','period_end'], how='outer')
     df = df.merge(universe, on=['ticker'], how='outer')
-    df = df.merge(market_cap, on=['ticker','trading_day'], how='outer')
-    df = df.merge(macros, on=['trading_day'], how='outer')
+    df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker','period_end'], how='outer')
+    df = df.merge(macros.drop("trading_day", axis=1), on=['period_end'], how='outer')
 
     # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
-    df = df.sort_values(by=['ticker','trading_day'])
+    df = df.sort_values(by=['ticker','period_end'])
     cols = df.select_dtypes('float').columns.to_list()
     print(cols)
     df.update(df.groupby('ticker')[cols].fillna(method='ffill'))
 
-    df = resample_to_monthly(df, date_col='trading_day')  # Resample to monthly stock tri
-
-    return df
+    df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
 
     return df, stocks_col, macros_col
 
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    df, stock_col, macros_col = combine_stock_factor_data()
+    df, stocks_col, macros_col = combine_stock_factor_data()
 
     # df.iloc[:100000].to_csv('all_data.csv')
     df = pd.read_csv('all_data.csv')
@@ -294,12 +297,21 @@ def calc_factor_variables():
     for r in formula.dropna(how='any',axis=0).loc[(formula['field_num']!=formula['field_denom'])].to_dict(orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']]/df[r['field_denom']]
 
-    df.iloc[:10000,:].to_csv('all ratio debug.csv')
+    # df.iloc[:10000,:].to_csv('all ratio debug.csv')
+    debug_filter = ~df["ticker"].str.startswith(".")
+    debug_filter &= df["currency_code"].notnull()
+    tmp = df[debug_filter].copy()
+    tmp_ticker_grouped = tmp[["currency_code", "ticker"]].drop_duplicates().groupby("currency_code")["ticker"]
+    min_num_tickers = tmp_ticker_grouped.count().min()
+    target_tickers = tmp_ticker_grouped.sample(min(min_num_tickers, 20), replace=False).tolist()
+    tmp = tmp[tmp["ticker"].isin(target_tickers)]
+    tmp.to_csv('all ratio debug.csv')
 
-    return df, stock_col, macros_col, formula
+    return df, stocks_col, macros_col, formula
 
 if __name__ == "__main__":
     # calc_stock_return()
+    # download_clean_macros()
     # df = combine_stock_factor_data()
     # print(df.describe())
     calc_factor_variables()
