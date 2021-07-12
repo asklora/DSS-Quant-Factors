@@ -265,11 +265,11 @@ def combine_stock_factor_data():  #### Change to combine by report_date
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     market_cap = pd.read_csv('mktcap.csv')
-    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y')
+    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y') + MonthEnd(0)
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
-    macros["period_end"] = macros['trading_day'] + MonthEnd(1)
+    macros["period_end"] = macros['trading_day'] + MonthEnd(0)
 
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
@@ -285,11 +285,7 @@ def combine_stock_factor_data():  #### Change to combine by report_date
     def adjust_close(df):
         ''' using market cap to adjust close price for stock split, ...'''
 
-        df = df[['ticker','period_end','market_cap','close']]
-        df['month'] = df['period_end'].dt.month
-        df.update(df.groupby(['ticker','month'])[['market_cap', 'close']].fillna(method='ffill'))
-        df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
-
+        df = df[['ticker','period_end','market_cap','close']].dropna(how='any')
         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
         df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
         df['close_adj'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
