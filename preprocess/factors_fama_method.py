@@ -55,3 +55,4 @@ def calc_premium_all():
     print(results)
 
 if __name__=="__main__":
+    calc_premium_all()
