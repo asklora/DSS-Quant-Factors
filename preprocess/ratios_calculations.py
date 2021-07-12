@@ -297,10 +297,15 @@ def combine_stock_factor_data():  #### Change to combine by report_date
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    df, stocks_col, macros_col = combine_stock_factor_data()
+    # df, stocks_col, macros_col = combine_stock_factor_data()
 
-    # df.iloc[:100000].to_csv('all_data.csv')
+    # df.iloc[:100000].to_csv('all_data.csv') # for debug
+    # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+    # pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
+
     df = pd.read_csv('all_data.csv')
+    stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
+    macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
