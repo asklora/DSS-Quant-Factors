@@ -254,21 +254,18 @@ def combine_stock_factor_data():  #### Change to combine by report_date
     # tri, stock_col = calc_stock_return()
     tri = pd.read_csv('data_tri_final.csv')
     stocks_col = tri.select_dtypes("float").columns
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    tri["period_end"] = tri["trading_day"]
+    tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
     ws, ibes, universe = download_clean_worldscope_ibes()
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
-    ibes["period_end"] = ibes['trading_day'] + MonthEnd(1)
+    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     market_cap = pd.read_csv('mktcap.csv')
-    market_cap['trading_day'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y')
-    market_cap["period_end"] = market_cap['trading_day'] + MonthEnd(1)
+    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y')
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
@@ -280,32 +277,51 @@ def combine_stock_factor_data():  #### Change to combine by report_date
     # Combine all data for table (1) - (6) above
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
     df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
-    df = df.merge(universe, on=['ticker'], how='outer')
     df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
     df = df.merge(macros.drop("trading_day", axis=1), on=['period_end'], how='outer')
 
-    # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
     df = df.sort_values(by=['ticker', 'period_end'])
+
+    def adjust_close(df):
+        ''' using market cap to adjust close price for stock split, ...'''
+
+        df = df[['ticker','period_end','market_cap','close']]
+        df['month'] = df['period_end'].dt.month
+        df.update(df.groupby(['ticker','month'])[['market_cap', 'close']].fillna(method='ffill'))
+        df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
+
+        df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
+        df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
+        df['close_adj'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
+        df[['ticker', 'period_end', 'market_cap_latest', 'market_cap', 'close', 'close_adj']].loc[
+            df['ticker'] == 'AAPL.O'].to_csv('close_debug.csv')
+        exit(0)
+        df['close_adj'] = df['close_adj'].fillna(df['close'])
+        return df
+
+    df = adjust_close(df)
+
+    # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
     cols = df.select_dtypes('float').columns.to_list()
     print(cols)
     df.update(df.groupby('ticker')[cols].fillna(method='ffill'))
 
-    df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
+    df = resample_to_monthly(df, date_col='period_end')     # Resample to monthly stock tri
+    df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
     return df, stocks_col, macros_col
 
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    # df, stocks_col, macros_col = combine_stock_factor_data()
+    df, stocks_col, macros_col = combine_stock_factor_data()
 
-    # df.iloc[:100000].to_csv('all_data.csv') # for debug
-    # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
-    # pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
-
-    df = pd.read_csv('all_data.csv')
-    stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
-    macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
+    df.to_csv('all_data.csv') # for debug
+    pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+    pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
+    # df = pd.read_csv('all_data.csv')
+    # stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
+    # macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used

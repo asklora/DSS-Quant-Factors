@@ -9,13 +9,14 @@ if __name__ == '__main__':
         universe = pd.read_sql(f"SELECT ticker FROM {global_vals.stock_data_table}", conn)
         tickers = list(set(universe['ticker'].to_list()))
     global_vals.engine.dispose()
+    # tickers = pd.read_csv('non_ticker.csv')['0'].to_list()
 
     print(tickers)
     # exit(1)
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
-    # tickers=['AAPL.O']
+    # tickers=['A']
     df_list = []
     step = 39
     params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'M'}
@@ -24,14 +25,13 @@ if __name__ == '__main__':
         ticker = tickers[i:(i + step)]
         print(i, ticker)
         try:
-            df, err = ek.get_data(ticker, fields=['TR.MarketCapLocalCurn(Curn=Native,Scale=6)','TR.MarketCapLocalCurn.date'], parameters=params)
+            df, err = ek.get_data(ticker, fields=['TR.STOCKPRICE(Curn=Native)','TR.STOCKPRICE.date'], parameters=params)
         except:
             print('ERROR: ', ticker)
             continue
-        if err is None:
-            df_list.append(df)
-            print(pd.concat(df_list, axis=0))
+        df_list.append(df)
+        print(pd.concat(df_list, axis=0))
         print(err)
     ddf = pd.concat(df_list, axis=0)
-    ddf.to_csv('mktcap.csv')
+    ddf.to_csv('stock_price.csv')
 

@@ -25,18 +25,16 @@ def calc_monthly_premium_within_group(g, factor_list):
         if bins.isnull().sum() > 0:
             continue
         elif bins[0] == bins[1] == 0:
-            prc_0 = g[f].to_list().count(0) / g[f].notnull().sum() + 1e-8
-            prc = [0, prc_0, 1 - prc_0, 1]
+            prc = g[f].to_list().count(0) / g[f].notnull().sum() + 1e-8
+            g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
         elif bins[1] == bins[2] == 0:
-            pass
-        try:
-            g[f'{f}_cut'] = pd.qcut(g[f], q=prc, retbins=False, labels=False)
-        except:
-            try:
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc_0, 1 - prc_0, 1], retbins=False, labels=False)
-            except:
-                print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
-                continue  # Update
+            g[f'{f}_cut'] = pd.cut(g[f], [g[f].min(),0,0,g[f].max()], retbins=False, labels=False)
+        elif bins[2] == bins[3] == 0:
+            prc = g[f].to_list().count(0) / g[f].notnull().sum() + 1e-8
+            g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1-prc, prc, 1], retbins=False, labels=False)
+        else:
+            print(f'ERROR on {f}, available value {g[f].notnull().sum()}/{len(g)}')
+            continue  # Update
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean() - g.loc[
             g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
