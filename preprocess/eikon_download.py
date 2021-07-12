@@ -35,4 +35,3 @@ if __name__ == '__main__':
     ddf = pd.concat(df_list, axis=0)
     ddf.to_csv('mktcap.csv')
 
-
