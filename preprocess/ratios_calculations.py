@@ -282,20 +282,18 @@ def combine_stock_factor_data():  #### Change to combine by report_date
 
     df = df.sort_values(by=['ticker', 'period_end'])
 
+    # Update close price to adjusted value
     def adjust_close(df):
         ''' using market cap to adjust close price for stock split, ...'''
 
         df = df[['ticker','period_end','market_cap','close']].dropna(how='any')
         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
         df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
-        df['close_adj'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
-        df[['ticker', 'period_end', 'market_cap_latest', 'market_cap', 'close', 'close_adj']].loc[
-            df['ticker'] == 'AAPL.O'].to_csv('close_debug.csv')
-        exit(0)
-        df['close_adj'] = df['close_adj'].fillna(df['close'])
-        return df
+        df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
 
-    df = adjust_close(df)
+        return df[['ticker','period_end','close']]
+
+    df.update(adjust_close(df))
 
     # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
     cols = df.select_dtypes('float').columns.to_list()
@@ -310,14 +308,14 @@ def combine_stock_factor_data():  #### Change to combine by report_date
 def calc_factor_variables():
     ''' Calculate all factor used referring to DB ratio table '''
 
-    df, stocks_col, macros_col = combine_stock_factor_data()
-
-    df.to_csv('all_data.csv') # for debug
-    pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
-    pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
-    # df = pd.read_csv('all_data.csv')
-    # stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
-    # macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
+    # df, stocks_col, macros_col = combine_stock_factor_data()
+    #
+    # df.to_csv('all_data.csv') # for debug
+    # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+    # pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
+    df = pd.read_csv('all_data.csv')
+    stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
+    macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
