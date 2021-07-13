@@ -23,6 +23,9 @@ def calc_group_premium_fama(name, g, factor_list):
         else:               # otherwise -> using long/short top/bottom 30%
             prc_list = [0, 0.3, 0.7, 1]
 
+        bins = g[f].quantile(prc_list).to_list()
+        bins[0] -= 1e-8
+
         bins = g[f].quantile(prc_list).fillna(np.inf).to_list()
         bin_edges_is_dup = (np.diff(bins) == 0)
         try:
@@ -59,7 +62,9 @@ def calc_premium_all():
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
     df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
-                                                                sample_interval='monthly', use_cached=False, save=True)
+                                                              sample_interval='monthly', use_cached=True, save=True)
+
+    df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
     df = df.dropna(subset=['stock_return_y'])       # remove records without next month return -> not used to calculate factor premium
 

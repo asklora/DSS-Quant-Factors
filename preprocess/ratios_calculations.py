@@ -106,7 +106,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
-            print(f'################## Download stock data from {global_vals.stock_data_table} ######################')
+            print(f'########################### Download stock data from {global_vals.stock_data_table} #############################')
             tri = get_tri(engine, save=save)
     else:
         print(f'#################################################################################################')
@@ -376,7 +376,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     global_vals.engine.dispose()
 
     print(f'#################################################################################################')
-    print(f'################## Calculate all factors in {global_vals.formula_factors_table} ######################')
+    print(f'##################### Calculate all factors in {global_vals.formula_factors_table} #########################')
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -404,6 +404,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     df[new_name] = df[old_name]
 
     # b) Time series ratios (Calculate 1m change first)
+    print(f'------------------------> Calculate time-series ratio ')
     for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
             orient='records'):  # minus calculation for ratios
         if r['name'][-2:] == 'yr':
@@ -414,6 +415,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             df.loc[df.groupby('ticker').head(3).index, r['name']] = np.nan
 
     # c) Divide ratios
+    print(f'------------------------> Calculate dividing ratios ')
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]

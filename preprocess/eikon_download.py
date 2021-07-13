@@ -16,15 +16,15 @@ if __name__ == '__main__':
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
-    tickers=['AAPL.O']
+    tickers=['9999.HK']
     df_list = []
     step = 39
     params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'FQ'}
 
-    params = {'SDate': '2021-06-30', 'Period': 'LTM', 'Scales':'6'}
+    params = {'SDate': '2019-12-31', 'Scales':'6'}
 
     fields=[
-            'TR.F.RetainedEarnTot',
+            'TR.PCRetEarnTot',
             'TR.F.AdExpn',
             'TR.F.SGA',
             'TR.F.PPENetTot',
@@ -41,7 +41,7 @@ if __name__ == '__main__':
             'TR.F.PrefStockRedeemConvert'
             'TR.F.IncTaxDef',
     ]
-
+    #65391137000
     # display(df)
 
     for i in np.arange(0, len(tickers),step):
