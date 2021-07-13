@@ -13,7 +13,7 @@ from scipy.stats import skew
 
 def get_tri(engine, save=True):
     with engine.connect() as conn:
-        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close
+        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume 
         FROM {global_vals.stock_data_table}
         """)
         tri = pd.read_sql(query, con=conn)
@@ -78,9 +78,7 @@ def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
     tri["tri_1d"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)
-
-    # Calculate annualize volatility
-    tri['skew'] = tri["tri_1d"].rolling(365, min_periods=1).apply(skew)
+    tri['skew'] = tri["tri_1d"].rolling(365, min_periods=1).skew()
     tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
 
     return tri
@@ -123,9 +121,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
-
-    tri = get_skew(tri)
-    exit(0)
+    tri = get_skew(tri)    # Calculate past 1 year skewness
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
     list_of_start_end = [[0, 30], [30, 90], [90, 182]]
