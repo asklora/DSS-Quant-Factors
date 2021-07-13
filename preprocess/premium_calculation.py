@@ -56,7 +56,8 @@ def calc_group_premium_msci():
 def calc_premium_all():
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
-    df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly')
+    df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
+                                                                sample_interval='monthly', use_cached=False, save=True)
 
     df = df.dropna(subset=['stock_return_y'])       # remove records without next month return -> not used to calculate factor premium
 
@@ -64,6 +65,7 @@ def calc_premium_all():
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # Calculate premium for currency partition
+    print(f'################## Calculate factor premium - currency partition ######################')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'currency_code']):
@@ -77,6 +79,7 @@ def calc_premium_all():
     results_df.to_csv('factor_premium_curr.csv')
 
     # Calculate premium for industry partition
+    print(f'################## Calculate factor premium - industry partition ######################')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'icb_code']):
