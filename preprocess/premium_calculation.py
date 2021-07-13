@@ -16,7 +16,7 @@ def calc_group_premium_fama(name, g, factor_list):
     for f in factor_list:
         num_data = g[f].notnull().sum()    # count # of non-NaN value
 
-        if num_data < 10:   # If group sample size is too small -> factor = NaN
+        if num_data < 3:   # If group sample size is too small -> factor = NaN
             continue
         elif num_data > 65: # If group sample size is large -> using long/short top/bottom 20%
             prc_list = [0, 0.2, 0.8, 1]
@@ -46,7 +46,7 @@ def calc_group_premium_fama(name, g, factor_list):
         # print(g.loc[g[f'{f}_cut']==0, 'stock_return_y'])
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
-        return premium, g.filter(['ticker','period_end']+cut_col)
+    return premium, g.filter(['ticker','period_end']+cut_col)
 
 def calc_group_premium_msci():
     '''  calculate factor premium = inverse of factor value * returns '''
@@ -60,8 +60,8 @@ def calc_premium_all():
 
     df = df.dropna(subset=['stock_return_y'])       # remove records without next month return -> not used to calculate factor premium
 
-    factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
-    # factor_list = formula['name'].to_list()                           # factor = all variabales
+    # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
+    factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # Calculate premium for currency partition
     member_g_list = []

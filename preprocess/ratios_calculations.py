@@ -64,7 +64,6 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
     return tri
 
-
 def resample_to_monthly(df, date_col):
     ''' Resample to monthly stock tri '''
     monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()), freq='M')
