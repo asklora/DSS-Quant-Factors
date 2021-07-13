@@ -31,24 +31,23 @@ def calc_group_premium_fama(name, g, factor_list):
         try:
             if bin_edges_is_dup.sum() > 1:    # in case like bins = [0,0,0,..] -> premium = np.nan
                 continue
-            elif bin_edges_is_dup[0]:   # e.g. [0,0,3,8] -> premium = np.nan
+            elif bin_edges_is_dup[0]:   # e.g. [0,0,3,8] -> use 0 as "L", equal % of data from the top as "H"
                 prc = g[f].to_list().count(0) / num_data + 1e-8
                 prc = (prc if prc < .5 else 1. - prc)
                 g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
-            elif bin_edges_is_dup[1]:
+            elif bin_edges_is_dup[1]:   # e.g. [-1,0,0,8] -> <0 as "L", >0 as "H"
                 bins = pd.IntervalIndex.from_tuples([(g[f].min(), 0), (0, 0), (0, g[f].max())])
                 g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
-            elif bin_edges_is_dup[2]:
+            elif bin_edges_is_dup[2]:   # e.g. [-2,-1,0,0] -> use 0 as "H", equal % of data from the bottom as "L"
                 prc = g[f].to_list().count(0) / num_data + 1e-8
                 prc = (prc if prc < .5 else 1. - prc)
                 g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
-            else:
+            else:                       # others using 20% / 30%
                 g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
         except Exception as e:
             print(name, f, e)
             continue
 
-        # print(g.loc[g[f'{f}_cut']==0, 'stock_return_y'])
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)

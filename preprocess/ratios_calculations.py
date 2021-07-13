@@ -420,7 +420,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
-    df.to_csv('all ratio debug.csv')
+    # df.to_csv('all ratio debug.csv')
     # debug_filter = ~df["ticker"].str.startswith(".")
     # debug_filter &= df["currency_code"].notnull()
     # tmp = df[debug_filter].copy()
