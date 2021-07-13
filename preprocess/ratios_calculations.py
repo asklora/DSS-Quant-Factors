@@ -110,14 +110,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True
     else:
         tri = get_tri(engine, save=save)
 
-    # Get tri for all ticker in universe from Database
-    # engine = global_vals.engine
-    # with engine.connect() as conn:
-    #     query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, day_status FROM {global_vals.stock_data_table}")
-    #     tri = pd.read_sql(query, con=conn)
-    #     tri.to_csv('data_tri.csv', index=False)
-    # engine.dispose()
-
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
@@ -155,9 +147,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True
     tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(12)
 
     tri["stock_return_y"] = (tri["tri_1ma"] / tri["tri"]) - 1
-    tri["stock_return_r10"] = (tri["tri"] / tri["tri_1mb"]) - 1
-    tri["stock_return_r62"] = (tri["tri_1mb"] / tri["tri_6mb"]) - 1
-    tri["stock_return_r127"] = (tri["tri_6mb"] / tri["tri_12mb"]) - 1
+    tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
+    tri["stock_return_r6_2"] = (tri["tri_1mb"] / tri["tri_6mb"]) - 1
+    tri["stock_return_r12_7"] = (tri["tri_6mb"] / tri["tri_12mb"]) - 1
 
     tri = tri.dropna(subset=['stock_return_y'])
     tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
@@ -274,10 +266,10 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method):
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume(?)
-    # tri, stocks_col = calc_stock_return(price_sample, sample_interval)
-    tri = pd.read_csv('data_tri_final.csv')
-    stocks_col = tri.select_dtypes("float").columns
-    tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    tri, stocks_col = calc_stock_return(price_sample, sample_interval)
+    # tri = pd.read_csv('data_tri_final.csv')
+    # stocks_col = tri.select_dtypes("float").columns
+    # tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
