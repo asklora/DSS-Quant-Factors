@@ -342,13 +342,13 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     df, stocks_col, macros_col = combine_stock_factor_data(price_sample, sample_interval, fill_method)
-    #
-    # df.to_csv('all_data.csv') # for debug
-    # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
-    # pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
-    df = pd.read_csv('all_data.csv')
-    stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
-    macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
+
+    df.to_csv('all_data.csv') # for debug
+    pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+    pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
+    # df = pd.read_csv('all_data.csv')
+    # stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
+    # macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
@@ -393,7 +393,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
-    # df.iloc[:10000,:].to_csv('all ratio debug.csv')
+    df.iloc[:10000,:].to_csv('all ratio debug.csv')
     # debug_filter = ~df["ticker"].str.startswith(".")
     # debug_filter &= df["currency_code"].notnull()
     # tmp = df[debug_filter].copy()
@@ -408,7 +408,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_stock_return(price_sample='last_week_avg', sample_interval='month')
+    # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
     # download_clean_macros()
     # df = combine_stock_factor_data()
     # print(df.describe())

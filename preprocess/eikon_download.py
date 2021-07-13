@@ -16,22 +16,46 @@ if __name__ == '__main__':
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
-    # tickers=['A']
+    tickers=['AAPL.O']
     df_list = []
     step = 39
-    params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'M'}
+    params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'FQ'}
+
+    params = {'SDate': '2021-06-30', 'Period': 'LTM', 'Scales':'6'}
+
+    fields=[
+            'TR.F.RetainedEarnTot',
+            'TR.F.AdExpn',
+            'TR.F.SGA',
+            'TR.F.PPENetTot',
+            'TR.F.ComShrTrezTot',
+            'TR.F.SaleOfTangIntangFixedAssetsGL',
+            'TR.F.TradeAcctPbleTot',
+            'TR.F.IncTax',
+            'TR.F.DebtLTTot',
+            'TR.F.PrefStockRedeemTot',
+            'TR.F.RentalExpn',
+            'TR.F.RcvblTot',
+            'TR.F.IncTaxDef',
+            'TR.F.TotPensExpn',
+            'TR.F.PrefStockRedeemConvert'
+            'TR.F.IncTaxDef',
+    ]
+
+    # display(df)
 
     for i in np.arange(0, len(tickers),step):
         ticker = tickers[i:(i + step)]
         print(i, ticker)
         try:
-            df, err = ek.get_data(ticker, fields=['TR.STOCKPRICE(Curn=Native)','TR.STOCKPRICE.date'], parameters=params)
-        except:
-            print('ERROR: ', ticker)
+            df, err = ek.get_data(ticker, fields=fields) #, parameters=params)
+        except Exception as e:
+            print(ticker, e)
             continue
         df_list.append(df)
         print(pd.concat(df_list, axis=0))
         print(err)
-    ddf = pd.concat(df_list, axis=0)
+    ddf = pd.concat(df_list, axis=0).transpose()
+    print(ddf)
     ddf.to_csv('stock_price.csv')
 
