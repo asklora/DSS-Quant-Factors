@@ -392,8 +392,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         df[i] = temp
 
     # a) Keep original values
-    new_name = formula.loc[formula['field_denom'].isnull(), 'name'].to_list()
-    old_name = formula.loc[formula['field_denom'].isnull(), 'field_num'].to_list()
+    keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
+    new_name = formula.loc[keep_original_mask, 'name'].to_list()
+    old_name = formula.loc[keep_original_mask, 'field_num'].to_list()
     df[new_name] = df[old_name]
 
     # b) Time series ratios (Calculate 1m change first)
