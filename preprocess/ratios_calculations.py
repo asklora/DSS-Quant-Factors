@@ -266,7 +266,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method):
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume(?)
-    # tri, stock_col = calc_stock_return(price_sample, sample_interval)
+    # tri, stocks_col = calc_stock_return(price_sample, sample_interval)
     tri = pd.read_csv('data_tri_final.csv')
     stocks_col = tri.select_dtypes("float").columns
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
@@ -333,7 +333,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method):
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month'):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    # df, stocks_col, macros_col = combine_stock_factor_data(price_sample, fill_method, sample_interval)
+    df, stocks_col, macros_col = combine_stock_factor_data(price_sample, sample_interval, fill_method)
     #
     # df.to_csv('all_data.csv') # for debug
     # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
@@ -404,4 +404,4 @@ if __name__ == "__main__":
     # download_clean_macros()
     # df = combine_stock_factor_data()
     # print(df.describe())
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month')
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly')
