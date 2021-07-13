@@ -105,9 +105,11 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             tri = pd.read_csv('data_tri.csv')
         except Exception as e:
             print(e)
+            print(f'#################################################################################################')
             print(f'################## Download stock data from {global_vals.stock_data_table} ######################')
             tri = get_tri(engine, save=save)
     else:
+        print(f'#################################################################################################')
         print(f'################## Download stock data from {global_vals.stock_data_table} ######################')
         tri = get_tri(engine, save=save)
 
@@ -171,6 +173,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
+    print(f'#################################################################################################')
     print(f'################## Download macro data from {global_vals.macro_data_table} ######################')
 
     with global_vals.engine.connect() as conn:
@@ -223,8 +226,10 @@ def download_clean_worldscope_ibes():
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
     with global_vals.engine.connect() as conn:
+        print(f'#################################################################################################')
         print(f'################## Download worldscope data from {global_vals.worldscope_quarter_summary_table} ######################')
         ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)  # quarterly records
+        print(f'#################################################################################################')
         print(f'################## Download ibes data from {global_vals.ibes_data_table} ######################')
         ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)  # ibes_data
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
@@ -370,6 +375,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
     global_vals.engine.dispose()
 
+    print(f'#################################################################################################')
     print(f'################## Calculate all factors in {global_vals.formula_factors_table} ######################')
 
     # Prepare for field requires add/minus
@@ -432,4 +438,4 @@ if __name__ == "__main__":
     # df = combine_stock_factor_data()
     # print(df.describe())
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True)
+                          use_cached=True, save=True)
