@@ -30,7 +30,7 @@ def FillAllDay(result):
     return result
 
 
-def get_rogers_satchell(tri, list_of_start_end=[[0, 90]], days_in_year=256):
+def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
     ''' Calculate roger satchell volatility:
         daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
         annualized = sqrt(daily*256)
@@ -71,6 +71,11 @@ def resample_to_monthly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
+def resample_to_biweekly(df, date_col):
+    ''' Resample to monthly stock tri '''
+    monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='2W')
+    df = df.loc[df[date_col].isin(monthly)]
+    return df
 
 def get_tri(engine, save=True):
     with engine.connect() as conn:
@@ -84,7 +89,7 @@ def get_tri(engine, save=True):
     return tri
 
 
-def calc_stock_return(use_cached=False, save=True):
+def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True):
     ''' Calcualte monthly stock return '''
 
     engine = global_vals.engine
@@ -112,15 +117,29 @@ def calc_stock_return(use_cached=False, save=True):
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-    list_of_start_end = [[0, 90], [30, 182]]
+    list_of_start_end = [[0, 30], [30, 90], [90, 182]]
     tri = get_rogers_satchell(tri, list_of_start_end)
     tri = tri.drop(['open', 'high', 'low'], axis=1)
+
+    # resample tri using last week average as the proxy for monthly tri
+    if price_sample == 'last_week_avg':
+        tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
+        tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
+    elif price_sample == 'last_day':
+        pass
+    else:
+        raise ValueError("Invalid price_sample method. Expecting 'last_week_avg' or 'last_day' got ", price_sample)
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
-    tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
+    if sample_interval == 'monthly':
+        tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
+    elif sample_interval == 'biweekly':
+        tri = resample_to_biweekly(tri, date_col='trading_day')  # Resample to bi-weekly stock tri
+    else:
+        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
     tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-1)
@@ -140,7 +159,6 @@ def calc_stock_return(use_cached=False, save=True):
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
 
     return tri, stock_col
-
 
 ##########################################################################################
 ################################## Calculate factors #####################################
@@ -230,7 +248,6 @@ def download_clean_worldscope_ibes():
 
     return ws, ibes, universe
 
-
 def count_sample_number(tri):
     ''' count number of samples for each period & each indstry / currency
         -> Select to use 6-digit code = on average 37 samples '''
@@ -244,14 +261,13 @@ def count_sample_number(tri):
     print(c1.mean().mean())
     exit(0)
 
-
-def combine_stock_factor_data():  #### Change to combine by report_date
+def combine_stock_factor_data(price_sample, sample_interval, fill_method):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume(?)
-    # tri, stock_col = calc_stock_return()
+    # tri, stock_col = calc_stock_return(price_sample, sample_interval)
     tri = pd.read_csv('data_tri_final.csv')
     stocks_col = tri.select_dtypes("float").columns
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
@@ -295,21 +311,30 @@ def combine_stock_factor_data():  #### Change to combine by report_date
 
     df.update(adjust_close(df))
 
-    # Forward fill for fundamental data (e.g. Quarterly June -> Monthly July/Aug)
-    df['quarter_end'] = df['period_end'] + QuarterEnd(1)
+    # Forward fill for fundamental data
     cols = df.select_dtypes('float').columns.to_list()
-    print(cols)
-    df.update(df.groupby(['ticker','quarter_end'])[cols].fillna(method='ffill'))
+    if fill_method == 'fill_all':           # e.g. Quarterly June -> Monthly July/Aug
+        df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
+    elif fill_method == 'fill_monthly':     # e.g. only 1 June -> 30 June
+        df.update(df.groupby(['ticker', 'period_end'])[cols].fillna(method='ffill'))
+    else:
+        raise ValueError("Invalid fill_method. Expecting 'fill_all' or 'fill_monthly' got ", fill_method)
 
-    df = resample_to_monthly(df, date_col='period_end')     # Resample to monthly stock tri
+    if sample_interval == 'monthly':
+        df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
+    elif sample_interval == 'biweekly':
+        df = resample_to_biweekly(df, date_col='period_end')  # Resample to monthly stock tri
+    else:
+        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
+
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
     return df, stocks_col, macros_col
 
-def calc_factor_variables():
+def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month'):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    # df, stocks_col, macros_col = combine_stock_factor_data()
+    # df, stocks_col, macros_col = combine_stock_factor_data(price_sample, fill_method, sample_interval)
     #
     # df.to_csv('all_data.csv') # for debug
     # pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
@@ -362,21 +387,22 @@ def calc_factor_variables():
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
     # df.iloc[:10000,:].to_csv('all ratio debug.csv')
-    debug_filter = ~df["ticker"].str.startswith(".")
-    debug_filter &= df["currency_code"].notnull()
-    tmp = df[debug_filter].copy()
-    tmp_ticker_grouped = tmp[["currency_code", "ticker"]].drop_duplicates().groupby("currency_code")["ticker"]
-    min_num_tickers = tmp_ticker_grouped.count().min()
-    target_tickers = tmp_ticker_grouped.sample(min(min_num_tickers, 20), replace=False).tolist()
-    tmp = tmp[tmp["ticker"].isin(target_tickers)]
-    tmp.to_csv('all ratio debug.csv')
+    # debug_filter = ~df["ticker"].str.startswith(".")
+    # debug_filter &= df["currency_code"].notnull()
+    # tmp = df[debug_filter].copy()
+    # tmp_ticker_grouped = tmp[["currency_code", "ticker"]].drop_duplicates().groupby("currency_code")["ticker"]
+    # min_num_tickers = tmp_ticker_grouped.count().min()
+    # target_tickers = tmp_ticker_grouped.sample(min(min_num_tickers, 20), replace=False).tolist()
+    # tmp = tmp[tmp["ticker"].isin(target_tickers)]
+    # tmp.to_csv('all ratio debug.csv')
 
     return df, stocks_col, macros_col, formula
 
 
 if __name__ == "__main__":
-    # calc_stock_return()
+
+    # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
     # download_clean_macros()
     # df = combine_stock_factor_data()
     # print(df.describe())
-    calc_factor_variables()
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month')
