@@ -6,10 +6,21 @@ import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-
+from scipy.stats import skew
 
 ##########################################################################################
 ################# Calculate monthly stock return/volatility ##############################
+
+def get_tri(engine, save=True):
+    with engine.connect() as conn:
+        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close
+        FROM {global_vals.stock_data_table}
+        """)
+        tri = pd.read_sql(query, con=conn)
+        if save:
+            tri.to_csv('data_tri.csv', index=False)
+    engine.dispose()
+    return tri
 
 def FillAllDay(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
@@ -28,7 +39,6 @@ def FillAllDay(result):
     result = df.merge(result, how="left", on=["ticker", "trading_day"])
 
     return result
-
 
 def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
     ''' Calculate roger satchell volatility:
@@ -64,6 +74,17 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
     return tri
 
+def get_skew(tri):
+    ''' Calculate past 1yr daily return skewness '''
+
+    tri["tri_1d"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)
+
+    # Calculate annualize volatility
+    tri['skew'] = tri["tri_1d"].rolling(365, min_periods=1).apply(skew)
+    tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
+
+    return tri
+
 def resample_to_monthly(df, date_col):
     ''' Resample to monthly stock tri '''
     monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()), freq='M')
@@ -75,18 +96,6 @@ def resample_to_biweekly(df, date_col):
     monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='2W')
     df = df.loc[df[date_col].isin(monthly)]
     return df
-
-def get_tri(engine, save=True):
-    with engine.connect() as conn:
-        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close
-        FROM {global_vals.stock_data_table}
-        """)
-        tri = pd.read_sql(query, con=conn)
-        if save:
-            tri.to_csv('data_tri.csv', index=False)
-    engine.dispose()
-    return tri
-
 
 def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True):
     ''' Calcualte monthly stock return '''
@@ -114,6 +123,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached=False, save=True
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
+
+    tri = get_skew(tri)
+    exit(0)
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
     list_of_start_end = [[0, 30], [30, 90], [90, 182]]
@@ -400,7 +412,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
+    calc_stock_return(price_sample='last_week_avg', sample_interval='month')
     # download_clean_macros()
     # df = combine_stock_factor_data()
     # print(df.describe())
