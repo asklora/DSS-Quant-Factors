@@ -23,22 +23,24 @@ def calc_group_premium_fama(name, g, factor_list):
         else:               # otherwise -> using long/short top/bottom 30%
             prc_list = [0, 0.3, 0.7, 1]
 
-        bins = g[f].quantile(prc_list).to_list()
-
+        bins = g[f].quantile(prc_list).fillna(np.inf).to_list()
+        bin_edges_is_dup = (np.diff(bins) == 0)
         try:
-            if (np.isnan(bins[0])) or bins.count(0) > 2:    # in case like bins = [0,0,0,..] -> premium = np.nan
+            if bin_edges_is_dup.sum() > 1:    # in case like bins = [0,0,0,..] -> premium = np.nan
                 continue
-            elif bins[0] == bins[1] == 0:   # e.g. [0,0,3,8] -> premium = np.nan
+            elif bin_edges_is_dup[0]:   # e.g. [0,0,3,8] -> premium = np.nan
                 prc = g[f].to_list().count(0) / num_data + 1e-8
+                prc = (prc if prc < .5 else 1. - prc)
                 g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
-            elif bins[1] == bins[2] == 0:
+            elif bin_edges_is_dup[1]:
                 bins = pd.IntervalIndex.from_tuples([(g[f].min(), 0), (0, 0), (0, g[f].max())])
-                g[f'{f}_cut'] = pd.cut(g[f], bins, retbins=False, labels=False)
-            elif bins[2] == bins[3] == 0:
+                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
+            elif bin_edges_is_dup[2]:
                 prc = g[f].to_list().count(0) / num_data + 1e-8
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1 - prc, prc, 1], retbins=False, labels=False)
+                prc = (prc if prc < .5 else 1. - prc)
+                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
             else:
-                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, retbins=False, labels=False)
+                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
         except Exception as e:
             print(name, f, e)
             continue
