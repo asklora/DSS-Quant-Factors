@@ -65,7 +65,7 @@ def calc_premium_all():
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # Calculate premium for currency partition
-    print(f'################## Calculate factor premium - currency partition ######################')
+    print(f'################## Calculate factor premium - Currency Partition ######################')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'currency_code']):
@@ -79,7 +79,7 @@ def calc_premium_all():
     results_df.to_csv('factor_premium_curr.csv')
 
     # Calculate premium for industry partition
-    print(f'################## Calculate factor premium - industry partition ######################')
+    print(f'################## Calculate factor premium - Industry Partition ######################')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'icb_code']):
