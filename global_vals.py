@@ -1,10 +1,11 @@
 from sqlalchemy import create_engine
 
 db_url_droid = "postgres://postgres:ml2021#LORA@droid-v2-prod-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # currently using
+db_clair_local = 'postgresql://localhost:5432/postgres'
 
 # TABLE names - results
-
-
+membership_table = "ai_factor_membership"
+factor_premium_table = "ai_factor_factor_premium"
 
 # TABLE names - preprocess data
 dl_value_universe_table = "universe"
@@ -12,6 +13,8 @@ worldscope_quarter_summary_table = "data_worldscope_summary_test"
 ibes_data_table = "data_ibes_monthly"
 macro_data_table = "data_macro_monthly"
 stock_data_table = "master_ohlcvtr"
+eikon_mktcap_table = "data_factor_eikon_mktcap"
+eikon_other_table = "data_factor_eikon_others"
 
 # TABLE names - preprocess formula
 formula_factors_table = "ai_factor_formula_ratios"

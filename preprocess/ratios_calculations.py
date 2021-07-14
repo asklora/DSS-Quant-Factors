@@ -106,28 +106,28 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
-            print(f'########################### Download stock data from {global_vals.stock_data_table} #############################')
+            print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
             tri = get_tri(engine, save=save)
     else:
         print(f'#################################################################################################')
-        print(f'################## Download stock data from {global_vals.stock_data_table} ######################')
+        print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
         tri = get_tri(engine, save=save)
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
 
-    print(f'------------------------> Calculate skewness ')
+    print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-    print(f'------------------------> Calculate RS volatility ')
+    print(f'      ------------------------> Calculate RS volatility ')
     list_of_start_end = [[0, 30], [30, 90], [90, 182]]
     tri = get_rogers_satchell(tri, list_of_start_end)
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
     # resample tri using last week average as the proxy for monthly tri
-    print(f'------------------------> Stock price using {price_sample} ')
+    print(f'      ------------------------> Stock price using {price_sample} ')
     if price_sample == 'last_week_avg':
         tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
         tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
@@ -140,7 +140,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     cols = ['tri', 'close'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
-    print(f'------------------------> Sample interval using {sample_interval} ')
+    print(f'      ------------------------> Sample interval using {sample_interval} ')
     if sample_interval == 'monthly':
         tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
     elif sample_interval == 'biweekly':
@@ -149,7 +149,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
-    print(f'------------------------> Calculate stock returns ')
+    print(f'      ------------------------> Calculate stock returns ')
     tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-1)
     tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(1)
     tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(6)
@@ -174,7 +174,7 @@ def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
-    print(f'################## Download macro data from {global_vals.macro_data_table} ######################')
+    print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
 
     with global_vals.engine.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
@@ -192,7 +192,7 @@ def download_clean_macros():
 def update_period_end(ws):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
 
-    print(f'------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
+    print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
     with global_vals.engine.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
@@ -227,10 +227,9 @@ def download_clean_worldscope_ibes():
 
     with global_vals.engine.connect() as conn:
         print(f'#################################################################################################')
-        print(f'################## Download worldscope data from {global_vals.worldscope_quarter_summary_table} ######################')
+        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
         ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)  # quarterly records
-        print(f'#################################################################################################')
-        print(f'################## Download ibes data from {global_vals.ibes_data_table} ######################')
+        print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
         ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)  # ibes_data
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
                                conn)
@@ -239,7 +238,7 @@ def download_clean_worldscope_ibes():
     def drop_dup(df):
         ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-        print(f'------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+        print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
 
         df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
         df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
@@ -250,7 +249,7 @@ def download_clean_worldscope_ibes():
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        print(f'------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
+        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
 
         ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
         ws['fn_18308'] = ws['fn_18308'].fillna(
@@ -301,8 +300,15 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
+<<<<<<< HEAD
     market_cap = pd.read_csv('mktcap.csv', low_memory=False)
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y') + MonthEnd(0)
+=======
+    with global_vals.engine.connect() as conn:
+        market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
+    global_vals.engine.dispose()
+    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
+>>>>>>> cdd844ca52870272fe2b7109a4ea6b42aad60e87
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
@@ -312,7 +318,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
-    print(f'------------------------> Merge all dataframes ')
+    print(f'      ------------------------> Merge all dataframes ')
 
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
     df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
@@ -325,7 +331,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     def adjust_close(df):
         ''' using market cap to adjust close price for stock split, ...'''
 
-        print(f'------------------------> Adjust closing price with market cap ')
+        print(f'      ------------------------> Adjust closing price with market cap ')
 
         df = df[['ticker','period_end','market_cap','close']].dropna(how='any')
         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
@@ -376,7 +382,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     global_vals.engine.dispose()
 
     print(f'#################################################################################################')
-    print(f'##################### Calculate all factors in {global_vals.formula_factors_table} #########################')
+    print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -404,7 +410,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     df[new_name] = df[old_name]
 
     # b) Time series ratios (Calculate 1m change first)
-    print(f'------------------------> Calculate time-series ratio ')
+    print(f'      ------------------------> Calculate time-series ratio ')
     for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
             orient='records'):  # minus calculation for ratios
         if r['name'][-2:] == 'yr':
@@ -415,7 +421,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             df.loc[df.groupby('ticker').head(3).index, r['name']] = np.nan
 
     # c) Divide ratios
-    print(f'------------------------> Calculate dividing ratios ')
+    print(f'      ------------------------> Calculate dividing ratios ')
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]

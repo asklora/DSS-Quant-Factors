@@ -64,42 +64,56 @@ def calc_premium_all():
     df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
                                                               sample_interval='monthly', use_cached=True, save=True)
 
+    df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
-
-    df = df.dropna(subset=['stock_return_y'])       # remove records without next month return -> not used to calculate factor premium
 
     # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # Calculate premium for currency partition
-    print(f'################## Calculate factor premium - Currency Partition ######################')
+    print(f'#################################################################################################')
+    print(f'      ------------------------> Calculate factor premium - Currency Partition')
     member_g_list = []
     results = {}
     target_cols = factor_list + ['ticker', 'period_end', 'currency_code', 'stock_return_y']
     for name, g in df[target_cols].groupby(['period_end', 'currency_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+        member_g['group'] = name[1]
         member_g_list.append(member_g)
 
     member_df = pd.concat(member_g_list, axis=0)
     results_df = pd.DataFrame(results).transpose()
+    results_df.columns = ['period_end','group'] + results_df.columns.to_list()[2:]
 
-    member_df.to_csv('membership_curr.csv', index=False)            # Change to upload to DB
-    results_df.to_csv('factor_premium_curr.csv')
+    # member_df.to_csv('membership_curr.csv', index=False)
+    # results_df.to_csv('factor_premium_curr.csv')
 
     # Calculate premium for industry partition
-    print(f'################## Calculate factor premium - Industry Partition ######################')
+    print(f'      ------------------------> Calculate factor premium - Industry Partition')
     member_g_list = []
     results = {}
     target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
     for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+        member_g['group'] = name[1]
         member_g_list.append(member_g)
 
-    member_df = pd.concat(member_g_list, axis=0)
-    results_df = pd.DataFrame(results).transpose()
+    member_df_1 = pd.concat(member_g_list, axis=0)
+    results_df_1 = pd.DataFrame(results).transpose()
+    results_df_1.columns = ['period_end','group'] + results_df_1.columns.to_list()[2:]
 
-    member_df.to_csv('membership_ind.csv', index=False)
-    results_df.to_csv('factor_premium_ind.csv')
+    final_member_df = pd.concat([member_df, member_df_1], axis=0)
+    final_results_df = pd.concat([results_df, results_df_1], axis=0)
+
+    final_member_df.to_csv('membership.csv', index=False)
+    final_results_df.to_csv('factor_premium.csv')
+
+    with global_vals.engine.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
+        final_member_df.to_sql(global_vals.membership_table, **extra)
+        final_results_df.to_sql(global_vals.factor_premium_table, **extra)
+    global_vals.engine.dispose()
+
 
 if __name__=="__main__":
     calc_premium_all()
