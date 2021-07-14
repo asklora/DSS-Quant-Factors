@@ -69,6 +69,8 @@ def calc_premium_all():
     # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
+    # factor_list = ['earnings_yield']
+
     # Calculate premium for currency partition
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate factor premium - Currency Partition')
@@ -80,7 +82,8 @@ def calc_premium_all():
         member_g_list.append(member_g)
 
     member_df = pd.concat(member_g_list, axis=0)
-    results_df = pd.DataFrame(results).transpose()
+    results_df = pd.DataFrame(results).transpose().reset_index(drop=False)
+
     results_df.columns = ['period_end','group'] + results_df.columns.to_list()[2:]
 
     # member_df.to_csv('membership_curr.csv', index=False)
@@ -92,11 +95,11 @@ def calc_premium_all():
     results = {}
     for name, g in df.groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
-        member_g['group'] = name[1]
+        member_g['group'] = int(name[1])
         member_g_list.append(member_g)
 
     member_df_1 = pd.concat(member_g_list, axis=0)
-    results_df_1 = pd.DataFrame(results).transpose()
+    results_df_1 = pd.DataFrame(results).transpose().reset_index(drop=False)
     results_df_1.columns = ['period_end','group'] + results_df_1.columns.to_list()[2:]
 
     final_member_df = pd.concat([member_df, member_df_1], axis=0)
@@ -106,11 +109,23 @@ def calc_premium_all():
     final_results_df.to_csv('factor_premium.csv')
 
     with global_vals.engine.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_member_df.to_sql(global_vals.membership_table, **extra)
         final_results_df.to_sql(global_vals.factor_premium_table, **extra)
     global_vals.engine.dispose()
 
+def write_local_csv_to_db():
+
+    final_member_df = pd.read_csv('membership.csv', low_memory=False)
+    # final_results_df = pd.read_csv('factor_premium.csv').iloc[:,1:]
+
+    with global_vals.engine.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
+        # final_results_df.to_sql(global_vals.factor_premium_table, **extra)
+        final_member_df.to_sql(global_vals.membership_table, **extra)
+    global_vals.engine.dispose()
+
 
 if __name__=="__main__":
-    calc_premium_all()
+    # calc_premium_all()
+    write_local_csv_to_db()
