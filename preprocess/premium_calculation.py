@@ -13,12 +13,11 @@ def calc_group_premium_fama(name, g, factor_list):
     cut_col = [x + '_cut' for x in factor_list]
 
     premium = {}
-    for f in factor_list:
-        num_data = g[f].notnull().sum()    # count # of non-NaN value
-
-        if num_data < 3:   # If group sample size is too small -> factor = NaN
+    num_data = g[factor_list].notnull().sum(axis=0)
+    for factor_id, f in enumerate(factor_list):
+        if num_data[factor_id] < 3:   # If group sample size is too small -> factor = NaN
             continue
-        elif num_data > 65: # If group sample size is large -> using long/short top/bottom 20%
+        elif num_data[factor_id] > 65: # If group sample size is large -> using long/short top/bottom 20%
             prc_list = [0, 0.2, 0.8, 1]
         else:               # otherwise -> using long/short top/bottom 30%
             prc_list = [0, 0.3, 0.7, 1]
@@ -26,22 +25,24 @@ def calc_group_premium_fama(name, g, factor_list):
         bins = g[f].quantile(prc_list).to_list()
         bins[0] -= 1e-8
 
-        bins = g[f].quantile(prc_list).fillna(np.inf).to_list()
+        isinf_mask = np.isinf(g[f])
+        if isinf_mask.any():
+            g.loc[isinf_mask, f] = np.nan_to_num(g.loc[isinf_mask, f])
+
+        bins = g[f].quantile(prc_list).tolist()
         bin_edges_is_dup = (np.diff(bins) == 0)
         try:
             if bin_edges_is_dup.sum() > 1:    # in case like bins = [0,0,0,..] -> premium = np.nan
                 continue
             elif bin_edges_is_dup[0]:   # e.g. [0,0,3,8] -> use 0 as "L", equal % of data from the top as "H"
-                prc = g[f].to_list().count(0) / num_data + 1e-8
-                prc = (prc if prc < .5 else 1. - prc)
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
+                prc = g[f].to_list().count(bins[0]) / num_data[factor_id] + 1e-8
+                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=[0, 2])
             elif bin_edges_is_dup[1]:   # e.g. [-1,0,0,8] -> <0 as "L", >0 as "H"
                 bins = pd.IntervalIndex.from_tuples([(g[f].min(), 0), (0, 0), (0, g[f].max())])
                 g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
             elif bin_edges_is_dup[2]:   # e.g. [-2,-1,0,0] -> use 0 as "H", equal % of data from the bottom as "L"
-                prc = g[f].to_list().count(0) / num_data + 1e-8
-                prc = (prc if prc < .5 else 1. - prc)
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=False)
+                prc = g[f].to_list().count(bins[-1]) / num_data[factor_id] + 1e-8
+                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1 - prc, prc, 1], retbins=False, labels=[0, 2])
             else:                       # others using 20% / 30%
                 g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=False)
         except Exception as e:
@@ -76,7 +77,8 @@ def calc_premium_all():
     print(f'      ------------------------> Calculate factor premium - Currency Partition')
     member_g_list = []
     results = {}
-    for name, g in df.groupby(['period_end', 'currency_code']):
+    target_cols = factor_list + ['ticker', 'period_end', 'currency_code', 'stock_return_y']
+    for name, g in df[target_cols].groupby(['period_end', 'currency_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
         member_g['group'] = name[1]
         member_g_list.append(member_g)
@@ -93,7 +95,8 @@ def calc_premium_all():
     print(f'      ------------------------> Calculate factor premium - Industry Partition')
     member_g_list = []
     results = {}
-    for name, g in df.groupby(['period_end', 'icb_code']):
+    target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
+    for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
         member_g['group'] = int(name[1])
         member_g_list.append(member_g)
