@@ -99,13 +99,16 @@ def calc_premium_all():
     results_df_1 = pd.DataFrame(results).transpose()
     results_df_1.columns = ['period_end','group'] + results_df_1.columns.to_list()[2:]
 
-    # member_df.to_csv('membership_ind.csv', index=False)
-    # results_df.to_csv('factor_premium_ind.csv')
+    final_member_df = pd.concat([member_df, member_df_1], axis=0)
+    final_results_df = pd.concat([results_df, results_df_1], axis=0)
+
+    final_member_df.to_csv('membership.csv', index=False)
+    final_results_df.to_csv('factor_premium.csv')
 
     with global_vals.engine.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
-        pd.concat([member_df, member_df_1], axis=0).to_sql(global_vals.membership_table, **extra)
-        pd.concat([results_df, results_df_1], axis=0).to_sql(global_vals.factor_premium_table, **extra)
+        final_member_df.to_sql(global_vals.membership_table, **extra)
+        final_results_df.to_sql(global_vals.factor_premium_table, **extra)
     global_vals.engine.dispose()
 
 
