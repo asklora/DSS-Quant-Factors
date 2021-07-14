@@ -106,11 +106,11 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
-            print(f'########################### Download stock data from {global_vals.stock_data_table} #############################')
+            print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
             tri = get_tri(engine, save=save)
     else:
         print(f'#################################################################################################')
-        print(f'################## Download stock data from {global_vals.stock_data_table} ######################')
+        print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
         tri = get_tri(engine, save=save)
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
@@ -174,7 +174,7 @@ def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
-    print(f'################## Download macro data from {global_vals.macro_data_table} ######################')
+    print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
 
     with global_vals.engine.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
@@ -227,10 +227,9 @@ def download_clean_worldscope_ibes():
 
     with global_vals.engine.connect() as conn:
         print(f'#################################################################################################')
-        print(f'################## Download worldscope data from {global_vals.worldscope_quarter_summary_table} ######################')
+        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
         ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)  # quarterly records
-        print(f'#################################################################################################')
-        print(f'################## Download ibes data from {global_vals.ibes_data_table} ######################')
+        print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
         ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)  # ibes_data
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
                                conn)
@@ -304,7 +303,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     with global_vals.engine.connect() as conn:
         market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
     global_vals.engine.dispose()
-    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y') + MonthEnd(0)
+    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
 
     # 6. Macroeconomic variables - from Datastream
     macros, macros_col = download_clean_macros()
@@ -378,7 +377,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     global_vals.engine.dispose()
 
     print(f'#################################################################################################')
-    print(f'##################### Calculate all factors in {global_vals.formula_factors_table} #########################')
+    print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()

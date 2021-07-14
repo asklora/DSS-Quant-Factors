@@ -63,15 +63,15 @@ def calc_premium_all():
     df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
                                                               sample_interval='monthly', use_cached=True, save=True)
 
+    df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
-
-    df = df.dropna(subset=['stock_return_y'])       # remove records without next month return -> not used to calculate factor premium
 
     # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # Calculate premium for currency partition
-    print(f'################## Calculate factor premium - Currency Partition ######################')
+    print(f'#################################################################################################')
+    print(f'      ------------------------> Calculate factor premium - Currency Partition')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'currency_code']):
@@ -87,7 +87,7 @@ def calc_premium_all():
     # results_df.to_csv('factor_premium_curr.csv')
 
     # Calculate premium for industry partition
-    print(f'################## Calculate factor premium - Industry Partition ######################')
+    print(f'      ------------------------> Calculate factor premium - Industry Partition')
     member_g_list = []
     results = {}
     for name, g in df.groupby(['period_end', 'icb_code']):
