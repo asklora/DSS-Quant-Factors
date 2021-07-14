@@ -366,11 +366,12 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
                           use_cached=False, save=True):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    if use_cached:
-        df = pd.read_csv('all_data.csv', low_memory=False)
-        stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
-        macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
-    else:
+    # if use_cached:
+    #     df = pd.read_csv('all_data.csv', low_memory=False)
+    #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+    #     macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
+    # else:
+    if 1==1:
         df, stocks_col, macros_col = combine_stock_factor_data(price_sample, sample_interval, fill_method, use_cached, save)
         if save:
             df.to_csv('all_data.csv') # for debug

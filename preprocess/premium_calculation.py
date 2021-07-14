@@ -67,6 +67,11 @@ def calc_premium_all():
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
+    # print(set(df['icb_code'].to_list()))
+    # print(set(df['currency_code'].to_list()))
+    # df = df.drop_duplicates(['ticker','period_end'])
+    # print(df.shape)
+
     # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
@@ -98,7 +103,7 @@ def calc_premium_all():
     target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
     for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
-        member_g['group'] = int(name[1])
+        member_g['group'] = name[1]
         member_g_list.append(member_g)
 
     member_df_1 = pd.concat(member_g_list, axis=0)
@@ -120,11 +125,11 @@ def calc_premium_all():
 def write_local_csv_to_db():
 
     final_member_df = pd.read_csv('membership.csv', low_memory=False)
-    # final_results_df = pd.read_csv('factor_premium.csv').iloc[:,1:]
+    final_results_df = pd.read_csv('factor_premium.csv').iloc[:,1:]
 
     with global_vals.engine.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
-        # final_results_df.to_sql(global_vals.factor_premium_table, **extra)
+        final_results_df.to_sql(global_vals.factor_premium_table, **extra)
         final_member_df.to_sql(global_vals.membership_table, **extra)
     global_vals.engine.dispose()
 
