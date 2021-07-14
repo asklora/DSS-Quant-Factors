@@ -75,7 +75,8 @@ def calc_premium_all():
     print(f'################## Calculate factor premium - Currency Partition ######################')
     member_g_list = []
     results = {}
-    for name, g in df.groupby(['period_end', 'currency_code']):
+    target_cols = factor_list + ['ticker', 'period_end', 'currency_code', 'stock_return_y']
+    for name, g in df[target_cols].groupby(['period_end', 'currency_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
         member_g_list.append(member_g)
 
@@ -89,7 +90,8 @@ def calc_premium_all():
     print(f'################## Calculate factor premium - Industry Partition ######################')
     member_g_list = []
     results = {}
-    for name, g in df.groupby(['period_end', 'icb_code']):
+    target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
+    for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
         member_g_list.append(member_g)
 
