@@ -102,7 +102,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     if use_cached:
         try:
-            tri = pd.read_csv('data_tri.csv')
+            tri = pd.read_csv('data_tri.csv', low_memory=False)
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
@@ -284,7 +284,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
 
     # 1. Stock return/volatility/volume(?)
     if use_cached:
-        tri = pd.read_csv('data_tri_final.csv')
+        tri = pd.read_csv('data_tri_final.csv', low_memory=False)
         stocks_col = tri.select_dtypes("float").columns
     else:
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
@@ -301,7 +301,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
-    market_cap = pd.read_csv('mktcap.csv')
+    market_cap = pd.read_csv('mktcap.csv', low_memory=False)
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y') + MonthEnd(0)
 
     # 6. Macroeconomic variables - from Datastream
@@ -361,9 +361,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     if use_cached:
-        df = pd.read_csv('all_data.csv')
-        stocks_col = pd.read_csv('stocks_col.csv').iloc[:,0].to_list()
-        macros_col = pd.read_csv('macros_col.csv').iloc[:,0].to_list()
+        df = pd.read_csv('all_data.csv', low_memory=False)
+        stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+        macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
     else:
         df, stocks_col, macros_col = combine_stock_factor_data(price_sample, sample_interval, fill_method, use_cached, save)
         if save:
