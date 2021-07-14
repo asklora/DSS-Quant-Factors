@@ -14,12 +14,12 @@ def download_from_eikon():
     global_vals.engine.dispose()
 
     save_name = 'eikon_others.csv'
-    # tickers = check_eikon_full_ticker(save_name)
+    tickers = check_eikon_full_ticker(save_name)
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
     df_list = []
-    step = 39
+    step = 3
     # params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Frq': 'M', 'Scale':'6'}  # params for Market Cap
 
     params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Period':'LTM', 'Frq': 'FQ', 'Scale':'6'}      # params for fundemantals
@@ -62,6 +62,8 @@ def download_from_eikon():
             # exit(1)
 
     ddf = pd.concat(df_list, axis=0)
+    ddf.to_csv('eikon_new_downloads.csv')
+
     print(ddf)
 
     if os.path.isfile(save_name):
@@ -82,7 +84,7 @@ def check_eikon_full_ticker(csv_name):
 
     miss_list = tickers-set(csv_ticker)
     print(len(miss_list), miss_list)
-    if len(miss_list):
+    if len(miss_list)<3:
         exit(1)
 
     return list(miss_list)

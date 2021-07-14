@@ -198,7 +198,11 @@ def update_period_end(ws):
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
     global_vals.engine.dispose()
 
+    test = ws.loc[ws['period_end'] == ws['period_end'].max()]
+
+
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
+
     ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end
 
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
@@ -219,6 +223,7 @@ def update_period_end(ws):
     # Update report_date with the updated period_end
     ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'])
     ws['report_date'] = ws['report_date'].mask(ws['report_date']<ws['period_end'], np.nan)
+    ws = ws.loc[ws[global_vals.date_column]<dt.datetime.today()]
 
     return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end'], axis=1)
 
@@ -438,6 +443,8 @@ if __name__ == "__main__":
 
     # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
     # download_clean_macros()
+    download_clean_worldscope_ibes()
+    exit(1)
     # df = combine_stock_factor_data()
     # print(df.describe())
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',

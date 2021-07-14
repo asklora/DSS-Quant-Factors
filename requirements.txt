@@ -16,3 +16,4 @@ xgboost
 matplotlib
 mlens
 eikon
+seaborn
