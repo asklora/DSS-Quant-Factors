@@ -301,7 +301,9 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
     ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
-    market_cap = pd.read_csv('mktcap.csv')
+    with global_vals.engine.connect() as conn:
+        market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
+    global_vals.engine.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%m/%d/%Y') + MonthEnd(0)
 
     # 6. Macroeconomic variables - from Datastream

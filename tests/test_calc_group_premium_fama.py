@@ -10,6 +10,21 @@ from pandas.tseries.offsets import MonthEnd, QuarterEnd
 
 if __name__ == "__main__":
 
+    market_cap = pd.read_csv('mktcap.csv')
+    market_cap1 = pd.read_csv('mktcap_usd.csv')
+    market_cap1.columns = ['ticker','market_cap_usd', 'trading_day']
+    df = pd.merge(market_cap, market_cap1, on=['ticker', 'trading_day'])
+    # df.to_csv('mktcap_final.csv', index=False)
+
+    with global_vals.engine.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
+        df.to_sql('data_eikon_factor_mktcap', **extra)
+    global_vals.engine.dispose()
+
+    exit(1)
+
+
+
 
     mem_curr = pd.read_csv('membership_curr.csv')
     factor_curr = pd.read_csv('factor_premium_curr.csv')

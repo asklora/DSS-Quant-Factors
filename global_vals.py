@@ -13,7 +13,8 @@ worldscope_quarter_summary_table = "data_worldscope_summary_test"
 ibes_data_table = "data_ibes_monthly"
 macro_data_table = "data_macro_monthly"
 stock_data_table = "master_ohlcvtr"
-eikon_data_table = "data_eikon_ai_factor"
+eikon_mktcap_table = "data_factor_eikon_mktcap"
+eikon_other_table = "data_factor_eikon_others"
 
 # TABLE names - preprocess formula
 formula_factors_table = "ai_factor_formula_ratios"
