@@ -76,13 +76,15 @@ def calc_premium_all():
     results = {}
     for name, g in df.groupby(['period_end', 'currency_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+        member_g['group'] = name[1]
         member_g_list.append(member_g)
 
     member_df = pd.concat(member_g_list, axis=0)
     results_df = pd.DataFrame(results).transpose()
+    results_df.columns = ['period_end','group'] + results_df.columns.to_list()[2:]
 
-    member_df.to_csv('membership_curr.csv', index=False)            # Change to upload to DB
-    results_df.to_csv('factor_premium_curr.csv')
+    # member_df.to_csv('membership_curr.csv', index=False)
+    # results_df.to_csv('factor_premium_curr.csv')
 
     # Calculate premium for industry partition
     print(f'################## Calculate factor premium - Industry Partition ######################')
@@ -90,13 +92,22 @@ def calc_premium_all():
     results = {}
     for name, g in df.groupby(['period_end', 'icb_code']):
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+        member_g['group'] = name[1]
         member_g_list.append(member_g)
 
-    member_df = pd.concat(member_g_list, axis=0)
-    results_df = pd.DataFrame(results).transpose()
+    member_df_1 = pd.concat(member_g_list, axis=0)
+    results_df_1 = pd.DataFrame(results).transpose()
+    results_df_1.columns = ['period_end','group'] + results_df_1.columns.to_list()[2:]
 
-    member_df.to_csv('membership_ind.csv', index=False)
-    results_df.to_csv('factor_premium_ind.csv')
+    # member_df.to_csv('membership_ind.csv', index=False)
+    # results_df.to_csv('factor_premium_ind.csv')
+
+    with global_vals.engine.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
+        pd.concat([member_df, member_df_1], axis=0).to_sql(global_vals.membership_table, **extra)
+        pd.concat([results_df, results_df_1], axis=0).to_sql(global_vals.factor_premium_table, **extra)
+    global_vals.engine.dispose()
+
 
 if __name__=="__main__":
     calc_premium_all()
