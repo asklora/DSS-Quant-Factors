@@ -443,7 +443,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
+    # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly')
     # download_clean_macros()
     download_clean_worldscope_ibes()
     exit(1)
