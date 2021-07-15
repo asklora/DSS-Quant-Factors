@@ -281,7 +281,8 @@ def count_sample_number(tri):
     print(c1.mean().mean())
     exit(0)
 
-def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_cached, save):
+def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
+                              use_cached=False, save=True):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
@@ -362,12 +363,12 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
 
     return df, stocks_col, macros_col
 
-def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month',
+def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=False, save=True):
     ''' Calculate all factor used referring to DB ratio table '''
 
     # if use_cached:
-    #     df = pd.read_csv('all_data.csv', low_memory=False)
+    #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
     #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
     #     macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
     # else:
@@ -442,7 +443,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    # calc_stock_return(price_sample='last_week_avg', sample_interval='month')
+    # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly')
     # download_clean_macros()
     # download_clean_worldscope_ibes()
     # exit(1)
