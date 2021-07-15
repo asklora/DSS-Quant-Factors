@@ -138,6 +138,8 @@ def check_eikon_full_ticker(csv_name=None, ddf=None):
 
     return list(miss_list)
 
+def clean_db_eikon_others():
+    pass
 
 def combine_download_files():
     ''' combine eikon downloads in csv formats & upload to DB '''

@@ -277,6 +277,7 @@ def download_eikon_others():
         ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn)  # quarterly records
     global_vals.engine.dispose()
 
+    ek = ek.drop_duplicates()
     fields = list(set(ek['fields'].to_list()))
     ek = ek.pivot_table(index=['ticker','period_end'], columns=['fields'], values=['value'])
     ek.columns = ek.columns.droplevel(0)
@@ -409,11 +410,11 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
-    add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i])]
+    add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
 
     for i in add_minus_fields:
         x = [op.strip() for op in i.split()]
-        if x[0] in "+-": raise Exception("Invalid formula")
+        if x[0] in "*+-": raise Exception("Invalid formula")
         temp = df[x[0]].copy()
         n = 1
         while n < len(x):

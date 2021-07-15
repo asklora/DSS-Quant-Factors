@@ -55,19 +55,19 @@ def eda_correl():
     ''' test correlation of our factor '''
 
     cr = factors.corr()
-    cr.stack().to_csv('test_eda_corr.csv')
+    cr.stack().to_csv('eda/test_eda_corr.csv')
 
     sns.set(style="whitegrid", font_scale=0.5)
     ax = sns.heatmap(cr, cmap='PiYG', vmin=-1, vmax=1, label='small')
     plt.tight_layout()
-    plt.savefig('test_eda_corr.png', dpi=300)
+    plt.savefig('eda/test_eda_corr.png', dpi=300)
 
 def eda_vif():
     X = add_constant(factors)
     vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])], index=X.columns)
 
     print(vif)
-    vif.to_csv('test_eda_vif.csv')
+    vif.to_csv('eda/test_eda_vif.csv')
 
 def sharpe_ratio():
     ''' calculate the sharpe ratio '''
@@ -83,7 +83,7 @@ def sharpe_ratio():
         dic[name] = calc(g)
 
     print(dic)
-    pd.DataFrame(dic).to_csv('test_eda_sharpe.csv')
+    pd.DataFrame(dic).to_csv('eda/test_eda_sharpe.csv')
 
 def plot_trend():
 
@@ -107,7 +107,7 @@ def plot_trend():
         plt.legend(ncol=1)
         plt.tight_layout()
         plt.show()
-        # plt.savefig('test_eda_trend.png')
+        # plt.savefig('eda/test_eda_trend.png')
 
         exit(1)
 
