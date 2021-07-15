@@ -281,7 +281,8 @@ def count_sample_number(tri):
     print(c1.mean().mean())
     exit(0)
 
-def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_cached, save):
+def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
+                              use_cached=False, save=True):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
@@ -362,7 +363,7 @@ def combine_stock_factor_data(price_sample, sample_interval, fill_method, use_ca
 
     return df, stocks_col, macros_col
 
-def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='month',
+def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=False, save=True):
     ''' Calculate all factor used referring to DB ratio table '''
 
