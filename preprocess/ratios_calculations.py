@@ -368,7 +368,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     # if use_cached:
-    #     df = pd.read_csv('all_data.csv', low_memory=False)
+    #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
     #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
     #     macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
     # else:
