@@ -12,13 +12,14 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 
-# with global_vals.engine.connect() as conn:
-#     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
-# global_vals.engine.dispose()
-#
-# factors.to_csv('test_factor_premium.csv', index=False)
+with global_vals.engine.connect() as conn:
+    factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
+    formula = pd.read_sql(f'SELECT name, pillar FROM {global_vals.formula_factors_table}', conn)
+global_vals.engine.dispose()
 
-factors = pd.read_csv('factor_premium.csv')
+# factors.to_csv('eda/test_factor_premium.csv', index=False)
+
+# factors = pd.read_csv('factor_premium.csv')
 
 def correl_fama_website():
     ''' test correlation of our factor with monthly factor premiums posted on French website with Fama-French 5 factor model
@@ -54,8 +55,20 @@ def correl_fama_website():
 def eda_correl():
     ''' test correlation of our factor '''
 
-    cr = factors.corr()
-    cr.stack().to_csv('eda/test_eda_corr.csv')
+    global formula, factors
+
+    df = factors.iloc[:,2:].transpose().reset_index()
+
+    df = df.merge(formula, left_on=['index'], right_on=['name'])
+    df = df.sort_values(['pillar','name']).set_index(['pillar', 'name']).drop(['index'], axis=1).transpose()
+
+    cr = df.corr()
+    # cr_df = cr.stack()
+    # cr_df.name='corr'
+    # cr_df = cr_df.loc[cr_df!=1].drop_duplicates().reset_index()
+    # cr_df['corr_abs'] = cr_df['corr'].abs()
+    # cr_df = cr_df.sort_values(by=['corr_abs'], ascending=False)
+    # cr_df.to_csv('eda/test_eda_corr.csv', index=False)
 
     sns.set(style="whitegrid", font_scale=0.5)
     ax = sns.heatmap(cr, cmap='PiYG', vmin=-1, vmax=1, label='small')
@@ -63,7 +76,9 @@ def eda_correl():
     plt.savefig('eda/test_eda_corr.png', dpi=300)
 
 def eda_vif():
-    X = add_constant(factors)
+    ''' Calculate VIF -> no abnormal comes to our attention beyond correlations '''
+    df = factors.iloc[:,2:].replace([np.inf, -np.inf], np.nan).fillna(0)
+    X = add_constant(df)
     vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])], index=X.columns)
 
     print(vif)
@@ -82,14 +97,23 @@ def sharpe_ratio():
     for name, g in factors.groupby('group'):
         dic[name] = calc(g)
 
-    print(dic)
-    pd.DataFrame(dic).to_csv('eda/test_eda_sharpe.csv')
+    df = pd.DataFrame(dic)
+    df.to_csv('eda/test_eda_sharpe_by_group.csv')
+    df.iloc[:,1:].transpose().describe().transpose().to_csv('eda/test_eda_sharpe_by_group_des.csv')
+
+    dic = {}
+    dic['all'] = calc(factors)
+    for name, g in factors.groupby('period_end'):
+        dic[name] = calc(g)
+
+    df = pd.DataFrame(dic)
+    df.to_csv('eda/test_eda_sharpe_by_time.csv')
+    df.iloc[:,1:].transpose().describe().transpose().to_csv('eda/test_eda_sharpe_by_time_des.csv')
 
 def plot_trend():
 
     global factors
-
-    # fig = plt.figure(figsize=(12, 12), dpi=300)  # create figure for test & train boxplot
+    mean = list(factors.mean().abs().sort_values(ascending=False).index)
     #
     # font = {'size': 5}
     plt.rcParams["font.size"] = 5
@@ -99,7 +123,19 @@ def plot_trend():
     factors = factors.sort_values(by=['period_end','group'])
     factors['period_end'] = factors['period_end'].astype(str)
 
-    factors = factors.filter(['period_end','group','fwd_ey',''])
+    # by market
+    fig = plt.figure(figsize=(12, 20), dpi=300)  # create figure for test & train boxplot
+
+    df = factors.loc[factors['group'].str[-1]!='0']
+    for i in mean[:10]:
+        df_new = pd.pivot_table(df, index=['period_end'], columns=['group'], values=[i])
+        ax = df_new.plot.line(linewidth=1)
+        plt.legend(ncol=1)
+        plt.tight_layout()
+        plt.show()
+        exit(1)
+
+    # factors = factors.filter(['period_end','group','fwd_ey',''])
 
     for name, g in factors.groupby(['group']):
         g = g.set_index('period_end')
@@ -117,6 +153,7 @@ def plot_trend():
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_correl()
-    # eda_vif()
     # sharpe_ratio()
+    # eda_vif()
+
     plot_trend()
