@@ -373,7 +373,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     #     macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
     # else:
     if 1==1:
-        df, stocks_col, macros_col = combine_stock_factor_data(price_sample, sample_interval, fill_method, use_cached, save)
+        df, stocks_col, macros_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
         if save:
             df.to_csv('all_data.csv') # for debug
             pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
@@ -449,5 +449,5 @@ if __name__ == "__main__":
     # exit(1)
     # df = combine_stock_factor_data()
     # print(df.describe())
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='fill_monthly',
                           use_cached=True, save=True)

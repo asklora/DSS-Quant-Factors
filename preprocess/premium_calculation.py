@@ -39,8 +39,11 @@ def calc_group_premium_fama(name, g, factor_list):
                 prc = g[f].to_list().count(bins[0]) / num_data[factor_id] + 1e-8
                 g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=[0,1,2])
             elif bin_edges_is_dup[1]:   # e.g. [-1,0,0,8] -> <0 as "L", >0 as "H"
-                bins = pd.IntervalIndex.from_tuples([(g[f].min(), 0), (0, 0), (0, g[f].max())])
-                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=[0,1,2])
+                g[f'{f}_cut'] = g[f]
+                g[f'{f}_cut'] = g[f'{f}_cut'].mask(g[f]<0, -1)
+                g[f'{f}_cut'] = g[f'{f}_cut'].mask(g[f]>0, 1)
+                g[f'{f}_cut'] += 1
+                g[f'{f}_cut'] = g[f'{f}_cut'].astype(int)
             elif bin_edges_is_dup[2]:   # e.g. [-2,-1,0,0] -> use 0 as "H", equal % of data from the bottom as "L"
                 prc = g[f].to_list().count(bins[-1]) / num_data[factor_id] + 1e-8
                 g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1 - prc, prc, 1], retbins=False, labels=[0,1,2])
@@ -68,17 +71,17 @@ def calc_group_premium_msci():
 def calc_premium_all():
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
-    # df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
-    #                                                           sample_interval='monthly', use_cached=True, save=True)
-    #
-    # df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
-    # df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
+    df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
+                                                              sample_interval='monthly', use_cached=True, save=True)
+
+    df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
+    df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
+
     # df = df.iloc[:1000,:]
-    #
     # df.to_csv('premium_debug.csv', index=False)
 
-    df = pd.read_csv('premium_debug.csv')
-    factor_list = list(df.columns)[-24:]
+    # df = pd.read_csv('premium_debug.csv')
+    # factor_list = list(df.columns)[-24:]
 
     # print(set(df['icb_code'].to_list()))
     # print(set(df['currency_code'].to_list()))
@@ -86,7 +89,7 @@ def calc_premium_all():
     # print(df.shape)
 
     # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
-    # factor_list = formula['name'].to_list()                           # factor = all variabales
+    factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # factor_list = ['earnings_yield']
 
