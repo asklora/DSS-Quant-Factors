@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 
+db_url_prod = "postgres://postgres:ml2021#LORA@droid-v2-prod-instance.cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres"
 db_url_droid = "postgres://postgres:ml2021#LORA@droid-v2-prod-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # currently using
 db_clair_local = 'postgresql://localhost:5432/postgres'
 
@@ -26,4 +27,5 @@ icb_column = "icb_code"
 index_column = "currency_code"
 
 engine = create_engine(db_url_droid, max_overflow=-1, isolation_level="AUTOCOMMIT")          # production version
+engine_prod = create_engine(db_url_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")          # production version
 

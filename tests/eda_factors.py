@@ -12,9 +12,13 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 
-with global_vals.engine.connect() as conn:
-    factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
-global_vals.engine.dispose()
+# with global_vals.engine.connect() as conn:
+#     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
+# global_vals.engine.dispose()
+#
+# factors.to_csv('test_factor_premium.csv', index=False)
+
+factors = pd.read_csv('factor_premium.csv')
 
 def correl_fama_website():
     ''' test correlation of our factor with monthly factor premiums posted on French website with Fama-French 5 factor model
@@ -66,7 +70,7 @@ def eda_vif():
     vif.to_csv('test_eda_vif.csv')
 
 def sharpe_ratio():
-    ''' calculate the '''
+    ''' calculate the sharpe ratio '''
 
     def calc(f):
         ret = f.mean(axis=0)
@@ -85,12 +89,17 @@ def plot_trend():
 
     global factors
 
-    fig = plt.figure(figsize=(4, 12), dpi=300)  # create figure for test & train boxplot
-
-    font = {'size': 5}
-    plt.rc('font', **font)
+    # fig = plt.figure(figsize=(12, 12), dpi=300)  # create figure for test & train boxplot
+    #
+    # font = {'size': 5}
+    plt.rcParams["font.size"] = 5
+    plt.rcParams["figure.figsize"] = (20,2)
+    plt.rcParams["figure.dpi"] = 200
 
     factors = factors.sort_values(by=['period_end','group'])
+    factors['period_end'] = factors['period_end'].astype(str)
+
+    factors = factors.filter(['period_end','group','fwd_ey',''])
 
     for name, g in factors.groupby(['group']):
         g = g.set_index('period_end')

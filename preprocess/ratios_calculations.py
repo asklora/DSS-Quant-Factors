@@ -268,6 +268,25 @@ def download_clean_worldscope_ibes():
 
     return ws, ibes, universe
 
+def download_eikon_others():
+    ''' download new eikon data from DB and pivot '''
+
+    with global_vals.engine.connect() as conn:
+        print(f'#################################################################################################')
+        print(f'      ------------------------> Download eikon data from {global_vals.eikon_other_table}')
+        ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn)  # quarterly records
+    global_vals.engine.dispose()
+
+    fields = list(set(ek['fields'].to_list()))
+    ek = ek.pivot_table(index=['ticker','period_end'], columns=['fields'], values=['value'])
+    ek.columns = ek.columns.droplevel(0)
+    ek = ek.reset_index(drop=False)
+    ek['period_end'] = ek['period_end'] + MonthEnd(0)
+
+    ek[fields] = ek[fields]*1e3     # Eikon downloads in million -> worldscope in thousands
+
+    return ek
+
 def count_sample_number(tri):
     ''' count number of samples for each period & each indstry / currency
         -> Select to use 6-digit code = on average 37 samples '''
@@ -312,8 +331,11 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
 
     # 6. Macroeconomic variables - from Datastream
-    macros, macros_col = download_clean_macros()
-    macros["period_end"] = macros['trading_day'] + MonthEnd(0)
+    # macros, macros_col = download_clean_macros()
+    # macros["period_end"] = macros['trading_day'] + MonthEnd(0)
+
+    # 7. Fundamental variables - from Eikon
+    ek = download_eikon_others()
 
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
@@ -324,7 +346,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
     df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
     df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
-    df = df.merge(macros.drop("trading_day", axis=1), on=['period_end'], how='outer')
+    # df = df.merge(macros.drop("trading_day", axis=1), on=['period_end'], how='outer')
+    df = df.merge(ek, on=['ticker', 'period_end'], how='left')
 
     df = df.sort_values(by=['ticker', 'period_end'])
 
@@ -361,7 +384,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
-    return df, stocks_col, macros_col
+    return df, stocks_col
 
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=False, save=True):
@@ -370,14 +393,12 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # if use_cached:
     #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
     #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
-    #     macros_col = pd.read_csv('macros_col.csv', low_memory=False).iloc[:,0].to_list()
     # else:
     if 1==1:
-        df, stocks_col, macros_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
+        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
         if save:
             df.to_csv('all_data.csv') # for debug
             pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
-            pd.DataFrame(macros_col).to_csv('macros_col.csv', index=False)  # for debug
 
     with global_vals.engine.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
@@ -400,6 +421,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
                 temp += df[x[n+1]]
             elif x[n] == '-':
                 temp -= df[x[n+1]]
+            elif x[n] == '*':
+                temp *= df[x[n + 1]]
             else:
                 raise Exception(f"Unexpected operand/operator: {x[n]}")
             n += 2
@@ -438,7 +461,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # tmp = tmp[tmp["ticker"].isin(target_tickers)]
     # tmp.to_csv('all ratio debug.csv')
 
-    return df, stocks_col, macros_col, formula
+    return df, stocks_col, formula
 
 
 if __name__ == "__main__":
@@ -449,5 +472,6 @@ if __name__ == "__main__":
     # exit(1)
     # df = combine_stock_factor_data()
     # print(df.describe())
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='fill_monthly',
+    # download_eikon_others()
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True)
