@@ -445,8 +445,8 @@ if __name__ == "__main__":
 
     # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly')
     # download_clean_macros()
-    download_clean_worldscope_ibes()
-    exit(1)
+    # download_clean_worldscope_ibes()
+    # exit(1)
     # df = combine_stock_factor_data()
     # print(df.describe())
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
