@@ -11,6 +11,10 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
+import statsmodels.api as sm
+from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
+
 
 with global_vals.engine.connect() as conn:
     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
@@ -87,28 +91,34 @@ def eda_vif():
 def sharpe_ratio():
     ''' calculate the sharpe ratio '''
 
+    writer = pd.ExcelWriter(f'eda/sharpe_ratio.xlsx')  # create excel records
+    factors['period_end'] = pd.to_datetime(factors['period_end'])
+    col_list = list(factors.select_dtypes(float).columns)
+
+    factors['year'] = factors['period_end'].dt.year
+    factors['month'] = factors['period_end'].dt.month
+
     def calc(f):
         ret = f.mean(axis=0)
         sd = f.std(axis=0)
         return ret/sd
 
-    dic = {}
-    dic['all'] = calc(factors)
-    for name, g in factors.groupby('group'):
-        dic[name] = calc(g)
+    def calc_by_col(col):
+        dic = {}
+        dic['all'] = calc(factors)
+        for name, g in factors.groupby(col):
+            dic[name] = calc(g[col_list])
 
-    df = pd.DataFrame(dic)
-    df.to_csv('eda/test_eda_sharpe_by_group.csv')
-    df.iloc[:,1:].transpose().describe().transpose().to_csv('eda/test_eda_sharpe_by_group_des.csv')
+        df = pd.DataFrame(dic)
+        df['all_abs'] = df['all'].abs()
+        df = df.sort_values('all_abs', ascending=False)
+        df.to_excel(writer, col)
+        df.iloc[:,1:].transpose().describe().transpose().to_excel(writer, f'{col}_des')
 
-    dic = {}
-    dic['all'] = calc(factors)
-    for name, g in factors.groupby('period_end'):
-        dic[name] = calc(g)
-
-    df = pd.DataFrame(dic)
-    df.to_csv('eda/test_eda_sharpe_by_time.csv')
-    df.iloc[:,1:].transpose().describe().transpose().to_csv('eda/test_eda_sharpe_by_time_des.csv')
+    calc_by_col('group')
+    calc_by_col('year')
+    calc_by_col('month')
+    writer.save()
 
 def plot_trend():
 
@@ -147,13 +157,127 @@ def plot_trend():
 
         exit(1)
 
+def plot_autocorrel():
+    ''' plot the level of autocorrelation '''
 
+    global factors
 
+    df = factors.copy(1)
+    writer = pd.ExcelWriter(f'eda/auto_correlation.xlsx')  # create excel records
+
+    # ax = sm.graphics.tsa.plot_acf(df['epsq_1q'].values.squeeze(), lags=40)
+    # ax = pd.plotting.autocorrelation_plot(df['epsq_1q'].values)
+    # exit(1)
+
+    z95 = 1.959963984540054
+    z99 = 2.5758293035489004
+    n = 14
+    col_list = list(df.select_dtypes(float).columns)
+
+    def corr_results(df):
+        ac = {}
+        for col in col_list:
+            ac[col] = {}
+            ac[col]['N95'] = z95 / np.sqrt(df[col].notnull().sum())
+            for t in np.arange(1, n, 1):
+                ac[col][t] = df[col].autocorr(t)
+        results = pd.DataFrame(ac).transpose()
+        m = results < np.transpose([results['N95'].array] * n)
+        results = results.mask(m, np.nan)
+        return results
+
+    r = corr_results(df.loc[df['group'].str[-1]!='0'].groupby(['period_end']).mean())
+    r.to_excel(writer, 'curr_avg')
+
+    r = corr_results(df.loc[df['group'].str[-1]=='0'].groupby(['period_end']).mean())
+    r.to_excel(writer, 'ind_avg')
+
+    for name, g in df.groupby(['group']):
+        print(name)
+        r = corr_results(g)
+        r.to_excel(writer, name)
+
+    writer.save()
+
+    # plt.tight_layout()
+    # plt.show()
+
+def test_cluster(cluster_no=5):
+
+    aa = factors.copy(1).iloc[:,2:].values
+
+    # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
+    bb = np.nan_to_num(aa, -99.9)
+
+    clustering_model = KMeans(n_clusters=cluster_no).fit(bb)
+    clustering = clustering_model.predict(bb)
+    cluster_centers = np.zeros((cluster_no, bb.shape[-1]))
+
+    # Finding cluster centers for later inference.
+    for i in range(cluster_no):
+        cluster_centers[i, :] = np.mean(bb[clustering == i], axis=0)
+
+    clustering = np.reshape(clustering, (aa.shape[0], aa.shape[1]))
+    return clustering
+
+def test_if_persistent():
+
+    df = factors.copy(1)
+    col_list = list(df.select_dtypes(float).columns)
+    m = np.array([(df.iloc[:,2:].mean()<0).values]*df.shape[0])
+    df.iloc[:,2:] = df.iloc[:,2:].mask(m, -df.iloc[:,2:])
+
+    plt.figure(figsize=(16, 16))
+    g = df.groupby(['period_end']).mean().reset_index(drop=False)
+
+    # for name, g in df.groupby('group'):
+        # ax = fig.add_subplot(n, n, k)
+
+    g = g.fillna(0)
+    date_list = g['period_end'].to_list()
+    new_g = g.iloc[:,1:].transpose().values
+    new_g = np.cumprod(new_g + 1, axis=1)
+    ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).transpose()
+    print(ddf)
+    plt.plot(ddf, label=col_list)
+    plt.legend()
+    plt.show()
+    exit(1)
+
+def test_tsne():
+
+    global factors
+
+    df = factors.copy(1)
+    df = df.replace([np.inf, -np.inf], np.nan).fillna(-99.9)
+
+    df = df.loc[df['group'].str[-1]!='0']
+    df['group'] = df['group'].str[:2]
+
+    df["y"] = pd.qcut(df['market_cap_usd'], q=10, labels=False)
+    tsne_results = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300).fit_transform(df.iloc[:,2:].values)
+
+    df['tsne-2d-one'] = tsne_results[:, 0]
+    df['tsne-2d-two'] = tsne_results[:, 1]
+    plt.figure(figsize=(16, 10))
+    sns.scatterplot(
+        x="tsne-2d-one", y="tsne-2d-two",
+        hue="group",
+        # palette=sns.color_palette("hls", 10),
+        data=df,
+        legend="full",
+        alpha=0.3
+    )
+
+    plt.show()
 
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_correl()
     # sharpe_ratio()
     # eda_vif()
-
-    plot_trend()
+    # plot_autocorrel()
+    # plot_trend()
+    # test_cluster()
+    # test_tsne()
+    test_if_persistent()

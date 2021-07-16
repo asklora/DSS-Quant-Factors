@@ -113,6 +113,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
         tri = get_tri(engine, save=save)
 
+
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
     tri = FillAllDay(tri)  # Add NaN record of tri for weekends
@@ -197,9 +198,6 @@ def update_period_end(ws):
     with global_vals.engine.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
     global_vals.engine.dispose()
-
-    test = ws.loc[ws['period_end'] == ws['period_end'].max()]
-
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
@@ -292,9 +290,17 @@ def count_sample_number(tri):
     ''' count number of samples for each period & each indstry / currency
         -> Select to use 6-digit code = on average 37 samples '''
 
+    with global_vals.engine.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
+                               conn)
+    global_vals.engine.dispose()
+
+    tri = tri['icb_code']
+    tri = tri.merge(universe, on=['ticker'], how='left')
+
     c1 = tri.groupby(['trading_day', 'icb_code']).count()['stock_return_y'].unstack(level=1)
     print(c1.mean().mean())
-    c1.to_csv('c1.csv', index=False)
+    # c1.to_csv('c1.csv', index=False)
 
     c2 = tri.groupby(['trading_day', 'currency_code']).count()['stock_return_y'].unstack(level=1)
     pd.concat([c1, c2], axis=1).to_csv('number_of_ticker_per_ind_curr.csv')
@@ -466,8 +472,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 
 if __name__ == "__main__":
-
-    # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly')
+    tri = pd.read_csv('data_tri_final.csv')
+    count_sample_number(tri)
+    exit(0)
+    # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly', use_cached=True, save=False)
     # download_clean_macros()
     # download_clean_worldscope_ibes()
     # exit(1)
