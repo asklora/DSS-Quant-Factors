@@ -21,6 +21,8 @@ with global_vals.engine.connect() as conn:
     formula = pd.read_sql(f'SELECT name, pillar FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine.dispose()
 
+col_list = list(factors.select_dtypes(float).columns)
+
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
 
 # factors = pd.read_csv('factor_premium.csv')
@@ -202,7 +204,7 @@ def plot_autocorrel():
     # plt.tight_layout()
     # plt.show()
 
-def test_cluster(cluster_no=5):
+def test_kmean(cluster_no=5):
 
     aa = factors.copy(1).iloc[:,2:].values
 
@@ -237,12 +239,15 @@ def test_if_persistent():
     date_list = g['period_end'].to_list()
     new_g = g.iloc[:,1:].transpose().values
     new_g = np.cumprod(new_g + 1, axis=1)
-    ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).transpose()
+    ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
+    ddf.to_csv('eda/persistent.csv')
+    ddf = ddf.iloc[:10,:].transpose()
     print(ddf)
-    plt.plot(ddf, label=col_list)
-    plt.legend()
-    plt.show()
-    exit(1)
+    plt.plot(ddf, label=list(ddf.columns))
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
+    plt.tight_layout()
+    plt.savefig('eda/persistent.png')
+
 
 def test_tsne():
 
@@ -271,6 +276,99 @@ def test_tsne():
 
     plt.show()
 
+def check_smb():
+
+    # with global_vals.engine.connect() as conn:
+    #     mem = pd.read_sql(f"SELECT ticker, period_end, market_cap_usd_cut FROM {global_vals.membership_table} WHERE \"group\" not like '%0'", conn)
+    # global_vals.engine.dispose()
+    #
+    # df = pd.pivot_table(mem, columns=['period_end'], index=['ticker'], values=['market_cap_usd_cut'])
+    # df.to_csv('eda/check_smb_mem.csv')
+    #
+    # exit(1)
+    #
+    # from preprocess.ratios_calculations import resample_to_monthly, FillAllDay
+    #
+    # tri = pd.read_csv('data_tri.csv', low_memory=False, usecols=['ticker','trading_day','tri'])
+    # tri = FillAllDay(tri)
+    # tri.update(tri.groupby('ticker')['tri'].fillna(method='ffill'))
+    # tri.update(tri.groupby('ticker')['tri'].fillna(method='bfill'))
+    #
+    # tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
+    #
+    # print(tri.groupby(['ticker'])['tri'].first())
+    # print(tri.groupby(['ticker'])['tri'].last())
+    #
+    # df = pd.DataFrame()
+    # df['first'] = tri.groupby(['ticker'])['tri'].first().values
+    # df['last'] = tri.groupby(['ticker'])['tri'].last().values
+    # df['rate'] = df['last']/df['first']
+    # df['ticker'] = tri.groupby(['ticker'])['tri'].last().index
+    #
+    # with global_vals.engine.connect() as conn:
+    #     universe = pd.read_sql(f'SELECT ticker, currency_code FROM {global_vals.dl_value_universe_table}', conn)
+    # global_vals.engine.dispose()
+    #
+    # df = df.merge(universe, on=['ticker'], how='left')
+    #
+    # # df = tri.groupby(['ticker'])['tri'].first()/tri.groupby(['ticker'])['tri'].last()
+    # df.to_csv('eda/check_smb_from_tri.csv')
+    #
+    # exit(1)
+
+    ratio = pd.read_csv('all_data.csv', usecols=['period_end','currency_code','ticker','market_cap_usd','stock_return_y'])
+    ratio = ratio.sort_values(['market_cap_usd']).dropna(how='any')
+
+    premium = {}
+    for name, g in ratio.groupby(['period_end', 'currency_code']):
+        try:
+            premium[name] = {}
+            g[f'cut'] = pd.qcut(g['market_cap_usd'], q=[0, 0.2, 0.8, 1], retbins=False, labels=[0, 1, 2])
+            premium[name]['small'] = g.loc[g['cut'] == 0, 'stock_return_y'].mean()
+            premium[name]['small_comp'] = list(set(g.loc[g['cut'] == 0, 'ticker']))
+            premium[name]['mid'] = g.loc[g['cut'] == 1, 'stock_return_y'].mean()
+            premium[name]['mid_comp'] = list(set(g.loc[g['cut'] == 1, 'ticker']))
+            premium[name]['large'] = g.loc[g['cut'] == 2, 'stock_return_y'].mean()
+            premium[name]['large_comp'] = list(set(g.loc[g['cut'] == 2, 'ticker']))
+
+        except Exception as e:
+            print(name, e)
+
+    ddf = pd.DataFrame(premium)
+    ddf.transpose().to_csv('eda/check_smb_premium.csv')
+    exit(1)
+    # df = pd.pivot_table(ratio.loc[ratio['currency_code']=='USD'], index=['period_end'], columns=['ticker'], values=['market_cap_usd'])
+
+
+    ratio.loc[ratio['currency_code']=='USD'].dropna(how='any').to_csv('eda/check_smb_origin_usd.csv', index=False)
+    # df = pd.pivot_table(ratio.loc[ratio['currency_code']=='CNY'], index=['period_end'], columns=['ticker'], values=['market_cap_usd'])
+    ratio.loc[ratio['currency_code']=='CNY'].dropna(how='any').to_csv('eda/check_smb_origin_cny.csv', index=False)
+
+
+    exit(0)
+
+    df = factors.copy(1)
+    # df = df.loc[factors['group'].str[-1]!='0']
+    df = pd.pivot_table(df, index=['period_end'], columns=['group'], values=['vol_30_90'])
+
+    arr = -df.values
+    df_prod = np.cumprod(arr + 1, axis=0)
+    ddf = pd.DataFrame(df_prod, index=df.index, columns=df.columns)
+    ddf.to_csv('eda/check_vol_prod.csv')
+    exit(0)
+
+    plt.hist(df, label=list(df.columns))
+    plt.legend(bbox_to_anchor=(0.7,1), loc='upper left', fontsize='xx-small')
+    plt.show()
+
+    # df.to_csv('eda/check_smb.csv')
+
+def average_absolute_mean():
+    df = factors[col_list].abs().mean()
+    df.to_csv('eda/average_absolute_mean.csv')
+    print(df)
+
+
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_correl()
@@ -278,6 +376,11 @@ if __name__ == "__main__":
     # eda_vif()
     # plot_autocorrel()
     # plot_trend()
-    # test_cluster()
+
+    # test_if_persistent()
+    # check_smb()
+    # average_absolute_mean()
+
+    ## Clustering
+    test_kmean()
     # test_tsne()
-    test_if_persistent()

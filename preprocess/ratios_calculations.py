@@ -295,8 +295,8 @@ def count_sample_number(tri):
                                conn)
     global_vals.engine.dispose()
 
-    tri = tri['icb_code']
     tri = tri.merge(universe, on=['ticker'], how='left')
+    tri['icb_code'] = tri['icb_code'].astype(str).str[:6]
 
     c1 = tri.groupby(['trading_day', 'icb_code']).count()['stock_return_y'].unstack(level=1)
     print(c1.mean().mean())

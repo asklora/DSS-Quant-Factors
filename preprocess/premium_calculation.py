@@ -19,9 +19,9 @@ def calc_group_premium_fama(name, g, factor_list):
         if num_data[factor_id] < 3:   # If group sample size is too small -> factor = NaN
             continue
         elif num_data[factor_id] > 65: # If group sample size is large -> using long/short top/bottom 20%
-            prc_list = [0, 0.2, 0.8, 1]
+            prc_list = [0, 0.01, 0.2, 0.8, 0.99, 1]
         else:               # otherwise -> using long/short top/bottom 30%
-            prc_list = [0, 0.3, 0.7, 1]
+            prc_list = [0, 0.01, 0.3, 0.7, 0.99, 1]
 
         bins = g[f].quantile(prc_list).to_list()
         bins[0] -= 1e-8
@@ -37,7 +37,7 @@ def calc_group_premium_fama(name, g, factor_list):
                 continue
             elif bin_edges_is_dup[0]:   # e.g. [0,0,3,8] -> use 0 as "L", equal % of data from the top as "H"
                 prc = g[f].to_list().count(bins[0]) / num_data[factor_id] + 1e-8
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=[0,1,2])
+                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, prc, 1 - prc, 1], retbins=False, labels=[1,2,3])
             elif bin_edges_is_dup[1]:   # e.g. [-1,0,0,8] -> <0 as "L", >0 as "H"
                 g[f'{f}_cut'] = g[f]
                 g[f'{f}_cut'] = g[f'{f}_cut'].mask(g[f]<0, -1)
@@ -46,9 +46,9 @@ def calc_group_premium_fama(name, g, factor_list):
                 g[f'{f}_cut'] = g[f'{f}_cut'].astype(int)
             elif bin_edges_is_dup[2]:   # e.g. [-2,-1,0,0] -> use 0 as "H", equal % of data from the bottom as "L"
                 prc = g[f].to_list().count(bins[-1]) / num_data[factor_id] + 1e-8
-                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1 - prc, prc, 1], retbins=False, labels=[0,1,2])
+                g[f'{f}_cut'] = pd.qcut(g[f], q=[0, 1 - prc, prc, 1], retbins=False, labels=[1,2,3])
             else:                       # others using 20% / 30%
-                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=[0,1,2])
+                g[f'{f}_cut'] = pd.cut(g[f], bins=bins, include_lowest=True, retbins=False, labels=[0,1,2,3,4])
         except Exception as e:
             print(name, f, e)
             continue
@@ -59,7 +59,7 @@ def calc_group_premium_fama(name, g, factor_list):
                 print(s)
                 continue
 
-        premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
+        premium[f] = g.loc[g[f'{f}_cut'] == 1, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 3, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
 
