@@ -8,6 +8,17 @@ from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 
+def trim_outlier(df, prc=0):
+    ''' assign a max value for the 99% percentile to replace inf'''
+
+    df_nan = df.replace([np.inf, -np.inf], np.nan)
+    pmax = df_nan.quantile(q=(1 - prc), axis=0)
+    pmin = df_nan.quantile(q=prc, axis=0)
+    df = df.mask(df > pmax, pmax, axis=1)
+    df = df.mask(df < pmin, pmin, axis=1)
+
+    return df
+
 def calc_group_premium_fama(name, g, factor_list):
     ''' calculate factor premium with avg(top group monthly return) - avg(bottom group monthly return) '''
 
@@ -76,6 +87,7 @@ def calc_premium_all():
 
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
+    df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
 
     # df = df.iloc[:1000,:]
     # df.to_csv('premium_debug.csv', index=False)

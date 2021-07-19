@@ -225,9 +225,8 @@ def test_kmean(cluster_no=5):
 def test_if_persistent():
 
     df = factors.copy(1)
-    col_list = list(df.select_dtypes(float).columns)
-    m = np.array([(df.iloc[:,2:].mean()<0).values]*df.shape[0])
-    df.iloc[:,2:] = df.iloc[:,2:].mask(m, -df.iloc[:,2:])
+    m = np.array([(df[col_list].mean()<0).values]*df.shape[0])
+    df[col_list] = df[col_list].mask(m, -df[col_list])
 
     plt.figure(figsize=(16, 16))
     g = df.groupby(['period_end']).mean().reset_index(drop=False)
@@ -237,7 +236,7 @@ def test_if_persistent():
 
     g = g.fillna(0)
     date_list = g['period_end'].to_list()
-    new_g = g.iloc[:,1:].transpose().values
+    new_g = g[col_list].transpose().values
     new_g = np.cumprod(new_g + 1, axis=1)
     ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
     ddf.to_csv('eda/persistent.csv')
@@ -247,7 +246,6 @@ def test_if_persistent():
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
     plt.tight_layout()
     plt.savefig('eda/persistent.png')
-
 
 def test_tsne():
 
@@ -277,6 +275,16 @@ def test_tsne():
     plt.show()
 
 def check_smb():
+
+    df = pd.read_csv('data_tri_final.csv', usecols=['ticker','trading_day','stock_return_y'])
+    prc = 0.0
+    print(df['stock_return_y'].quantile([prc, 1-prc]))
+    print(df.describe())
+    # plt.hist(df['stock_return_y'], bins=1000)
+    # plt.xlim(-0.5, 0.5)
+    # plt.show()
+    # df.to_csv('eda/stock_return_y.csv')
+    exit(1)
 
     # with global_vals.engine.connect() as conn:
     #     mem = pd.read_sql(f"SELECT ticker, period_end, market_cap_usd_cut FROM {global_vals.membership_table} WHERE \"group\" not like '%0'", conn)
@@ -378,9 +386,10 @@ if __name__ == "__main__":
     # plot_trend()
 
     # test_if_persistent()
-    # check_smb()
     # average_absolute_mean()
 
+    check_smb()
+
     ## Clustering
-    test_kmean()
+    # test_kmean()
     # test_tsne()
