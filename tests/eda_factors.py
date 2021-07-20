@@ -13,8 +13,6 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 import statsmodels.api as sm
 from sklearn.manifold import TSNE
-from sklearn.cluster import KMeans
-
 
 with global_vals.engine.connect() as conn:
     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
@@ -204,24 +202,6 @@ def plot_autocorrel():
     # plt.tight_layout()
     # plt.show()
 
-def test_kmean(cluster_no=5):
-
-    aa = factors.copy(1).iloc[:,2:].values
-
-    # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
-    bb = np.nan_to_num(aa, -99.9)
-
-    clustering_model = KMeans(n_clusters=cluster_no).fit(bb)
-    clustering = clustering_model.predict(bb)
-    cluster_centers = np.zeros((cluster_no, bb.shape[-1]))
-
-    # Finding cluster centers for later inference.
-    for i in range(cluster_no):
-        cluster_centers[i, :] = np.mean(bb[clustering == i], axis=0)
-
-    clustering = np.reshape(clustering, (aa.shape[0], aa.shape[1]))
-    return clustering
-
 def test_if_persistent():
 
     df = factors.copy(1)
@@ -276,15 +256,15 @@ def test_tsne():
 
 def check_smb():
 
-    df = pd.read_csv('data_tri_final.csv', usecols=['ticker','trading_day','stock_return_y'])
-    prc = 0.0
-    print(df['stock_return_y'].quantile([prc, 1-prc]))
-    print(df.describe())
-    # plt.hist(df['stock_return_y'], bins=1000)
-    # plt.xlim(-0.5, 0.5)
-    # plt.show()
-    # df.to_csv('eda/stock_return_y.csv')
-    exit(1)
+    # df = pd.read_csv('data_tri_final.csv', usecols=['ticker','trading_day','stock_return_y'])
+    # prc = 0.0
+    # print(df['stock_return_y'].quantile([prc, 1-prc]))
+    # print(df.describe())
+    # # plt.hist(df['stock_return_y'], bins=1000)
+    # # plt.xlim(-0.5, 0.5)
+    # # plt.show()
+    # # df.to_csv('eda/stock_return_y.csv')
+    # exit(1)
 
     # with global_vals.engine.connect() as conn:
     #     mem = pd.read_sql(f"SELECT ticker, period_end, market_cap_usd_cut FROM {global_vals.membership_table} WHERE \"group\" not like '%0'", conn)
@@ -325,7 +305,7 @@ def check_smb():
     # exit(1)
 
     ratio = pd.read_csv('all_data.csv', usecols=['period_end','currency_code','ticker','market_cap_usd','stock_return_y'])
-    ratio = ratio.sort_values(['market_cap_usd']).dropna(how='any')
+    ratio = ratio.sort_values(['stock_return_y']).dropna(how='any')
 
     premium = {}
     for name, g in ratio.groupby(['period_end', 'currency_code']):
@@ -333,11 +313,19 @@ def check_smb():
             premium[name] = {}
             g[f'cut'] = pd.qcut(g['market_cap_usd'], q=[0, 0.2, 0.8, 1], retbins=False, labels=[0, 1, 2])
             premium[name]['small'] = g.loc[g['cut'] == 0, 'stock_return_y'].mean()
-            premium[name]['small_comp'] = list(set(g.loc[g['cut'] == 0, 'ticker']))
+            premium[name]['small_comp'] = g.loc[g['cut'] == 0, 'ticker'].to_list()
+            premium[name]['small_ret'] = g.loc[g['cut'] == 0, 'stock_return_y'].to_list()
+            # premium[name]['small_me'] = g.loc[g['cut'] == 0, 'market_cap_usd'].to_list()
+
             premium[name]['mid'] = g.loc[g['cut'] == 1, 'stock_return_y'].mean()
-            premium[name]['mid_comp'] = list(set(g.loc[g['cut'] == 1, 'ticker']))
+            premium[name]['mid_comp'] = g.loc[g['cut'] == 1, 'ticker'].to_list()
+            premium[name]['mid_ret'] = g.loc[g['cut'] == 1, 'stock_return_y'].to_list()
+            # premium[name]['mid_me'] = g.loc[g['cut'] == 1, 'market_cap_usd'].to_list()
+
             premium[name]['large'] = g.loc[g['cut'] == 2, 'stock_return_y'].mean()
-            premium[name]['large_comp'] = list(set(g.loc[g['cut'] == 2, 'ticker']))
+            premium[name]['large_comp'] = g.loc[g['cut'] == 2, 'ticker'].to_list()
+            premium[name]['large_ret'] = g.loc[g['cut'] == 2, 'stock_return_y'].to_list()
+            # premium[name]['large_me'] = g.loc[g['cut'] == 2, 'market_cap_usd'].to_list()
 
         except Exception as e:
             print(name, e)
@@ -376,20 +364,91 @@ def average_absolute_mean():
     df.to_csv('eda/average_absolute_mean.csv')
     print(df)
 
+def test_cluster():
+
+    from sklearn.cluster import KMeans, DBSCAN, OPTICS
+    from sklearn import metrics
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+    from sklearn import decomposition
+
+    aa = factors.copy(1)[col_list].values
+    cluster_no = 5
+    # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
+    bb = np.nan_to_num(aa, -99.9)
+    bb = StandardScaler().fit_transform(bb)
+
+    kmeans = KMeans(cluster_no).fit(bb)
+    centre = kmeans.cluster_centers_
+
+    # pd.DataFrame(centre.transpose(), index=col_list).to_csv('eda/cluster_kmean.csv')
+
+    # db = DBSCAN(eps=0.1, min_samples=4).fit(bb)
+
+    db = OPTICS(min_samples=4).fit(bb)
+
+    # centre = db.cluster_centers_
+    labels = db.labels_
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise_ = list(labels).count(-1)
+    from collections import Counter
+    print(Counter(labels))
+    print('Estimated number of clusters: %d' % n_clusters_)
+    print('Estimated number of noise points: %d' % n_noise_)
+    print("Silhoette Coefficient: %0.3f" % metrics.silhouette_score(bb, labels))
+    exit(1)
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(bb, labels))
+    print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
+    print("V-measure: %0.3f" % metrics.v_measure_score(labels_true, labels))
+    print("Adjusted Rand Index: %0.3f"
+          % metrics.adjusted_rand_score(labels_true, labels))
+    print("Adjusted Mutual Information: %0.3f"
+          % metrics.adjusted_mutual_info_score(labels_true, labels))
+    print("Silhouette Coefficient: %0.3f"
+          % metrics.silhouette_score(X, labels))
+
+    # dbscan = make_pipeline(StandardScaler(), DBSCAN).fit(bb)
+    # ppca = make_pipeline(StandardScaler(), decomposition.PCA).fit(bb)
+    print(bb)
+
+    # results = kmeans[-1].inertia_
+    # print(results)
+
+    clustering_metrics = [
+        metrics.homogeneity_score,
+        metrics.completeness_score,
+        metrics.v_measure_score,
+        metrics.adjusted_rand_score,
+        metrics.adjusted_mutual_info_score,
+    ]
+
+    kmeans = KMeans(n_clusters=5).fit(bb)
+    # dbscan = DBSCAN(eps=0.3).fit(bb)
+
+    clustering = kmeans.predict(bb)
+    cluster_centers = np.zeros((cluster_no, bb.shape[-1]))
+
+    # Finding cluster centers for later inference.
+    for i in range(cluster_no):
+        cluster_centers[i, :] = np.mean(bb[clustering == i], axis=0)
+
+    clustering = np.reshape(clustering, (aa.shape[0], aa.shape[1]))
+
+    return clustering
 
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_correl()
-    # sharpe_ratio()
     # eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
-    # test_if_persistent()
-    # average_absolute_mean()
+    sharpe_ratio()
+    test_if_persistent()
+    average_absolute_mean()
 
     check_smb()
 
     ## Clustering
-    # test_kmean()
+    test_cluster()
     # test_tsne()

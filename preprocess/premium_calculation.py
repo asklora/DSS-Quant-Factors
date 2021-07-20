@@ -161,7 +161,7 @@ def calc_premium_all():
     results_dtypes['group']=TEXT
 
     try:
-        with global_vals.engine.connect() as conn:
+        with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
             final_results_df.to_sql(global_vals.factor_premium_table, **extra, dtype=results_dtypes)
             print(f'      ------------------------> Finish writing factor premium table ')
@@ -177,7 +177,7 @@ def write_local_csv_to_db():
     final_member_df = pd.read_csv('membership.csv', low_memory=False)
     final_results_df = pd.read_csv('factor_premium.csv')
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_results_df.to_sql(global_vals.factor_premium_table, **extra)
         final_member_df.to_sql(global_vals.membership_table, **extra)

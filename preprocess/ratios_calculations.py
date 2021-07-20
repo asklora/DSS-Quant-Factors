@@ -171,25 +171,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 ##########################################################################################
 ################################## Calculate factors #####################################
 
-def download_clean_macros():
-    ''' download macros data from DB and preprocess: convert some to yoy format '''
-
-    print(f'#################################################################################################')
-    print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
-
-    with global_vals.engine.connect() as conn:
-        macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
-    global_vals.engine.dispose()
-
-    macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
-
-    yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
-    num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
-
-    macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
-
-    return macros.drop(['period_end'], axis=1), num_col
-
 def update_period_end(ws):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
 
@@ -269,7 +250,7 @@ def download_clean_worldscope_ibes():
 def download_eikon_others():
     ''' download new eikon data from DB and pivot '''
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download eikon data from {global_vals.eikon_other_table}')
         ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn)  # quarterly records
@@ -332,16 +313,12 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
     global_vals.engine.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
 
-    # 6. Macroeconomic variables - from Datastream
-    # macros, macros_col = download_clean_macros()
-    # macros["period_end"] = macros['trading_day'] + MonthEnd(0)
-
-    # 7. Fundamental variables - from Eikon
+    # 6. Fundamental variables - from Eikon
     ek = download_eikon_others()
 
     # Use 6-digit ICB code in industry groups
@@ -353,7 +330,6 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
     df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
     df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
-    # df = df.merge(macros.drop("trading_day", axis=1), on=['period_end'], how='outer')
     df = df.merge(ek, on=['ticker', 'period_end'], how='left')
 
     df = df.sort_values(by=['ticker', 'period_end'])
@@ -407,7 +383,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             df.to_csv('all_data.csv') # for debug
             pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
     global_vals.engine.dispose()
 
