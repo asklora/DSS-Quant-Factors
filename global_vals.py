@@ -6,10 +6,9 @@ db_clair_local = 'postgresql://localhost:5432/postgres'
 db_url_alibaba = "postgres://loratechai:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
 
 # TABLE names - results
-membership_table = "ai_factor_membership"
-factor_premium_table = "ai_factor_factor_premium"
-test_pred_results_table =
-test_score_results_table =
+membership_table = "factor_membership"
+test_pred_results_table = "factor_pred"
+test_score_results_table = "factor_score"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
@@ -22,9 +21,10 @@ eikon_other_table = "data_factor_eikon_others"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"
+factor_premium_table = "processed_factor_premium"
 
 # TABLE names - preprocess formula
-formula_factors_table = "ai_factor_formula_ratios"
+formula_factors_table = "factor_formula_ratios"
 
 # COLUMN names - preprocess
 ticker_column = "ticker"

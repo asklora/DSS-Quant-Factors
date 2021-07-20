@@ -80,7 +80,7 @@ def combine_data():
     index_ret = download_index_return()
     df = df.merge(index_ret, on=['period_end'], how='left')
 
-    return df.sort_values(by=['group', 'period_end'])
+    return df.sort_values(by=['group', 'period_end']), factors
 
 class load_data:
     ''' main function:
@@ -94,8 +94,7 @@ class load_data:
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.y_type = y_type
-        self.main = combine_data()    # combine all data
+        self.main, self.factor_list = combine_data()    # combine all data
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
