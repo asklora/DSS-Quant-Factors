@@ -19,7 +19,6 @@ eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
 
 # TABLE names - preprocessed data
-processed_stock_table = "processed_stock"
 processed_ratio_table = "processed_ratio"
 
 # TABLE names - preprocess formula
