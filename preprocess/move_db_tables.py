@@ -53,11 +53,18 @@ def move_general(table_name):
 
 if __name__ == "__main__":
 
-    dl_value_universe_table = "universe"
-    worldscope_quarter_summary_table = "data_worldscope_summary_test"
-    ibes_data_table = "data_ibes_monthly"
-    macro_data_table = "data_macro_monthly"
+    # dl_value_universe_table = "universe"
+    # worldscope_quarter_summary_table = "data_worldscope_summary_test"
+    # ibes_data_table = "data_ibes_monthly"
+    # macro_data_table = "data_macro_monthly"
 
-    for f in [dl_value_universe_table, worldscope_quarter_summary_table, ibes_data_table, macro_data_table]:
+    test_score_results_table = "ai_value_lgbm_score"  # table store all running information
+    test_pred_results_table = "ai_value_lgbm_pred"  # table store prediction for each ticker
+    test_pred_eval_table = "ai_value_lgbm_eval"  # table store prediction backtest evaluation
+    final_pred_results_table = "ai_value_lgbm_pred_final"  # table for consolidated pred after consolidation
+    final_eps_pred_results_table = "ai_value_lgbm_pred_final_eps"  # table with the best ratio pred -> EPS format
+    formula_ratios_table = "ai_value_formula_ratios"
+
+    for f in [test_score_results_table, test_pred_results_table, test_pred_eval_table, final_pred_results_table, final_eps_pred_results_table, formula_ratios_table]:
         move_general(f)
         print('finish moving ', f)

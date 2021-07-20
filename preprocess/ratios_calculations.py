@@ -78,7 +78,7 @@ def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
     tri["tri"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)       # update tri to 1d before (i.e. all stock ret up to 1d before)
-    tri['skew'] = tri["tri_1d"].rolling(365, min_periods=1).skew()
+    tri['skew'] = tri["tri"].rolling(365, min_periods=1).skew()
     tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
 
     return tri
@@ -335,9 +335,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
 
-    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='outer')
-    df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
-    df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='outer')
+    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
+    df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='left')
+    df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='left')
     df = df.merge(ek, on=['ticker', 'period_end'], how='left')
 
     df = df.sort_values(by=['ticker', 'period_end'])
@@ -445,10 +445,11 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     if save:
         with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-            ddf = df[['ticker','period_end']+formula['name'].to_list()]
+            ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
             ddf.to_sql(global_vals.processed_ratio_table, **extra)
             print(f'      ------------------------> Finish writing {global_vals.processed_ratio_table} table ')
         global_vals.engine.dispose()
+        # exit(0)
 
     # df.to_csv('all ratio debug.csv')
     # debug_filter = ~df["ticker"].str.startswith(".")
@@ -464,9 +465,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 
 if __name__ == "__main__":
-    tri = pd.read_csv('data_tri_final.csv')
-    count_sample_number(tri)
-    exit(0)
+    # tri = pd.read_csv('data_tri_final.csv')
+    # count_sample_number(tri)
+    # exit(0)
     # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly', use_cached=True, save=False)
     # download_clean_macros()
     # download_clean_worldscope_ibes()
