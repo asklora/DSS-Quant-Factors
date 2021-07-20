@@ -9,7 +9,7 @@ db_url_alibaba = "postgres://loratechai:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.
 membership_table = "ai_factor_membership"
 factor_premium_table = "ai_factor_factor_premium"
 
-# TABLE names - preprocess data
+# TABLE names - raw data
 dl_value_universe_table = "universe"
 worldscope_quarter_summary_table = "data_worldscope_summary_test"
 ibes_data_table = "data_ibes_monthly"
@@ -17,6 +17,10 @@ macro_data_table = "data_macro_monthly"
 stock_data_table = "master_ohlcvtr"
 eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
+
+# TABLE names - preprocessed data
+processed_stock_table = "processed_stock"
+processed_ratio_table = "processed_ratio"
 
 # TABLE names - preprocess formula
 formula_factors_table = "ai_factor_formula_ratios"

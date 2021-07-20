@@ -301,7 +301,11 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     else:
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
         if save:
-            tri.to_csv('data_tri_final.csv', index=False)
+            with global_vals.engine_ali.connect() as conn:
+                extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+                tri.to_sql(global_vals.processed_stock_table, **extra)
+                print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
+            global_vals.engine.dispose()
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
@@ -433,6 +437,14 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
+
+    if save:
+        with global_vals.engine_ali.connect() as conn:
+            extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+            ddf = df[['ticker','period_end']+formula['name'].to_list()]
+            ddf.to_sql(global_vals.processed_ratio_table, **extra)
+            print(f'      ------------------------> Finish writing {global_vals.processed_ratio_table} table ')
+        global_vals.engine.dispose()
 
     # df.to_csv('all ratio debug.csv')
     # debug_filter = ~df["ticker"].str.startswith(".")
