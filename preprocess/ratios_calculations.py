@@ -182,7 +182,7 @@ def update_period_end(ws):
 
     print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
     global_vals.engine.dispose()
 
@@ -215,7 +215,7 @@ def update_period_end(ws):
 def download_clean_worldscope_ibes():
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
         ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)  # quarterly records
@@ -277,7 +277,7 @@ def count_sample_number(tri):
     ''' count number of samples for each period & each indstry / currency
         -> Select to use 6-digit code = on average 37 samples '''
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
                                conn)
     global_vals.engine.dispose()
