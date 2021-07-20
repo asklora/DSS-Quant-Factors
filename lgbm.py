@@ -90,8 +90,8 @@ def eval_regressor(space):
 
     hpot['all_results'].append(sql_result.copy())
 
-    if result['mae_valid'] < hpot['best_mae']: # update best_mae to the lowest value for Hyperopt
-        hpot['best_mae'] = result['mae_valid']
+    if result['mae_valid'] < hpot['best_score']: # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = result['mae_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
 
     if sql_result['objective'] == 'regression_l2':
@@ -107,11 +107,11 @@ def eval_classifier(space):
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, evals_result = lgbm_train(space)
 
-    result = {'accuracy_train': accuracy_score(sample_set['train_yy'], Y_train_pred),
-              'accuracy_valid': accuracy_score(sample_set['valid_y'], Y_valid_pred)}
+    result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
+              'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred)}
 
     try:        # for backtesting -> calculate accuracy for testing set
-        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
+        test_df = pd.DataFrame({'actual':sample_set['test_y_final'], 'pred': Y_test_pred})
         test_df = test_df.dropna(how='any')
         result_test = {
             'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
@@ -127,8 +127,8 @@ def eval_classifier(space):
 
     hpot['all_results'].append(sql_result.copy())
 
-    if result['mae_valid'] < hpot['best_mae']: # update best_mae to the lowest value for Hyperopt
-        hpot['best_mae'] = result['mae_valid']
+    if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
 
     return 1 - result['accuracy_valid']
@@ -154,11 +154,11 @@ def to_list_importance(gbm):
 def HPOT(space, max_evals):
     ''' use hyperopt on each set '''
 
-    hpot['best_mae'] = 10000  # record best training (min mae_valid) in each hyperopt
     hpot['all_results'] = []
-
     trials = Trials()
+
     if sql_result['objective'] in ['regression_l1', 'regression_l2']:
+        hpot['best_score'] = 10000  # record best training (min mae_valid) in each hyperopt
         best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
@@ -168,6 +168,7 @@ def HPOT(space, max_evals):
         global_vals.engine.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
+        hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
