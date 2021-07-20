@@ -100,12 +100,12 @@ class load_data:
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        if group_name == 'ind':
+        if group_name == 'industry':
             self.group = self.main.loc[self.main['group'].str[-1]=='0']          # train on industry partition factors
-        elif group_name == 'curr':
+        elif group_name == 'currency':
             self.group = self.main.loc[self.main['group'].str[-1]!='0']          # train on currency partition factors
         else:
-            raise ValueError("Invalid group_name method. Expecting 'ind' or 'curr' got ", group_name)
+            raise ValueError("Invalid group_name method. Expecting 'industry' or 'currency' got ", group_name)
 
     def split_train_test(self, testing_period, ar_period, ma_period, y_type):
         ''' split training / testing set based on testing period '''
@@ -174,7 +174,7 @@ if __name__ == '__main__':
     # download_index_return()
     testing_period = dt.datetime(2019,7,31)
     y_type = 'earnings_yield'
-    group_code = 'ind'
+    group_code = 'industry'
 
     data = load_data()
     data.split_group(group_code)

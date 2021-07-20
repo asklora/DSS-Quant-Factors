@@ -8,6 +8,8 @@ db_url_alibaba = "postgres://loratechai:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.
 # TABLE names - results
 membership_table = "ai_factor_membership"
 factor_premium_table = "ai_factor_factor_premium"
+test_pred_results_table =
+test_score_results_table =
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

@@ -5,7 +5,7 @@ import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd, QuarterEnd
+from pandas.tseries.offsets import MonthEnd
 from scipy.stats import skew
 
 ##########################################################################################
