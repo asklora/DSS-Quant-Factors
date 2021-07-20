@@ -111,25 +111,28 @@ class load_data:
 
         # Calculate the time_series history for predicted Y
         for i in range(1, ar_period+1):
-            self.group[f"ar_{i}m"] = self.group.groupby(['group'])[y_type].shift(i)
+            ar_col = [f"ar_{x}_{i}m" for x in y_type]
+            self.group[ar_col] = self.group.groupby(['group'])[y_type].shift(i)
 
         # Calculate the moving average for predicted Y
-        self.group.loc[:, f"ma_{ma_period}m"] = self.group.groupby(['group'])[y_type].transform(lambda x: x.rolling(ma_period, min_periods=6).mean())
+        ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
+        self.group.loc[:, ma_col] = self.group.groupby(['group'])[y_type].transform(lambda x: x.rolling(ma_period, min_periods=6).mean())
 
         # Calculate the predicted Y
-        self.group.loc[:, "y"] = self.group.groupby(['group'])[y_type].shift(-1)
+        y_col = ["y_" + x for x in y_type]
+        self.group.loc[:, y_col] = self.group.groupby(['group'])[y_type].shift(-1).values
 
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
         self.train = self.group.loc[(start <= self.group['period_end']) &
                                      (self.group['period_end'] < testing_period)].reset_index(drop=True)
-        self.train = self.train.dropna(subset=["y"])      # remove training sample with NaN Y
+        self.train = self.train.dropna(subset=y_col)      # remove training sample with NaN Y
 
         self.test = self.group.loc[self.group['period_end'] == testing_period].reset_index(drop=True)
 
         def divide_set(df):
             ''' split x, y from main '''
-            return df.iloc[:, 2:-1].values, df["y"].values     # Assuming using all factors
+            return df.iloc[:, 2:-1].values, df[y_col].values     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'] = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'] = divide_set(self.test)
@@ -143,12 +146,17 @@ class load_data:
 
     def y_qcut(self, qcut_q=3):
         ''' convert qcut bins to median of each group '''
+        self.sample_set['train_y_final'] = np.zeros(self.sample_set['train_y'].shape)
+        self.sample_set['train_y_final'][:] = np.nan
+        self.sample_set['test_y_final'] = np.zeros(self.sample_set['test_y'].shape)
+        self.sample_set['test_y_final'][:] = np.nan
 
-        # cut original series into bins
-        self.sample_set['train_y_final'], cut_bins = pd.qcut(self.sample_set['train_y'], q=qcut_q, retbins=True, labels=False, duplicates='drop')
-        cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
-
-        self.sample_set['test_y_final'] = pd.cut(self.sample_set['test_y'], bins=cut_bins, labels=False)
+        for i in range(self.sample_set['train_y'].shape[1]):
+            # cut original series into bins
+            self.sample_set['train_y_final'][:,i], cut_bins = pd.qcut(self.sample_set['train_y'][:,i], q=qcut_q,
+                                                                      retbins=True, labels=False, duplicates='drop')
+            cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
+            self.sample_set['test_y_final'][:,i] = pd.cut(self.sample_set['test_y'][:,i], bins=cut_bins, labels=False)
 
     def split_valid(self, n_splits):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
@@ -172,7 +180,7 @@ class load_data:
 if __name__ == '__main__':
     # download_index_return()
     testing_period = dt.datetime(2019,7,31)
-    y_type = 'earnings_yield'
+    y_type = ['earnings_yield','market_cap_usd']
     group_code = 'industry'
 
     data = load_data()
