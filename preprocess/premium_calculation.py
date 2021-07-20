@@ -82,7 +82,7 @@ def calc_group_premium_msci():
 def calc_premium_all():
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
-    df, stocks_col, macros_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
+    df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
                                                               sample_interval='monthly', use_cached=True, save=True)
 
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium

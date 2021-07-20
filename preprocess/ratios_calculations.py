@@ -77,7 +77,7 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
-    tri["tri_1d"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)
+    tri["tri"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)       # update tri to 1d before (i.e. all stock ret up to 1d before)
     tri['skew'] = tri["tri_1d"].rolling(365, min_periods=1).skew()
     tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
 
@@ -165,6 +165,13 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
 
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
+
+    if save:
+        with global_vals.engine_ali.connect() as conn:
+            extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+            tri.drop(['close'], axis=1).to_sql(global_vals.processed_stock_table, **extra)
+            print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
+        global_vals.engine.dispose()
 
     return tri, stock_col
 
@@ -300,12 +307,6 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         stocks_col = tri.select_dtypes("float").columns
     else:
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
-        if save:
-            with global_vals.engine_ali.connect() as conn:
-                extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-                tri.to_sql(global_vals.processed_stock_table, **extra)
-                print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
-            global_vals.engine.dispose()
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
 
