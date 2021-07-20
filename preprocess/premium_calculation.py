@@ -82,9 +82,17 @@ def calc_group_premium_msci():
 def calc_premium_all():
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
-    df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
-                                                              sample_interval='monthly', use_cached=True, save=True)
+    # df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
+    #                                                 sample_interval='monthly', use_cached=True, save=True)
 
+    # Read stock_return / ratio table
+    with global_vals.engine_ali.connect() as conn:
+        stock = pd.read_sql(f"SELECT * FROM {global_vals.processed_stock_table}", conn)
+        ratio = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
+        formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
+    global_vals.engine.dispose()
+
+    df = pd.merge(ratio, stock, on=['ticker','period_end'], how='inner')
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
     df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
@@ -112,8 +120,10 @@ def calc_premium_all():
     results = {}
     target_cols = factor_list + ['ticker', 'period_end', 'currency_code', 'stock_return_y']
     for name, g in df[target_cols].groupby(['period_end', 'currency_code']):
+        results[name] = {}
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
         member_g['group'] = name[1]
+        results[name]['len'] = len(member_g)
         member_g_list.append(member_g)
 
     member_df = pd.concat(member_g_list, axis=0)
@@ -130,7 +140,9 @@ def calc_premium_all():
     results = {}
     target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
     for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
+        results[name] = {}
         results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+        results[name]['len'] = len(member_g)
         member_g['group'] = name[1]
         member_g_list.append(member_g)
 

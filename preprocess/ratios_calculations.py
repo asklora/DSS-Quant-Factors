@@ -172,7 +172,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             tri.drop(['close'], axis=1).to_sql(global_vals.processed_stock_table, **extra)
             print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
         global_vals.engine.dispose()
-
     return tri, stock_col
 
 ##########################################################################################
@@ -284,6 +283,8 @@ def count_sample_number(tri):
     global_vals.engine.dispose()
 
     tri = tri.merge(universe, on=['ticker'], how='left')
+    tri['icb_code'] = tri['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
+                                               '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
     tri['icb_code'] = tri['icb_code'].astype(str).str[:6]
 
     c1 = tri.groupby(['trading_day', 'icb_code']).count()['stock_return_y'].unstack(level=1)
@@ -291,7 +292,7 @@ def count_sample_number(tri):
     # c1.to_csv('c1.csv', index=False)
 
     c2 = tri.groupby(['trading_day', 'currency_code']).count()['stock_return_y'].unstack(level=1)
-    pd.concat([c1, c2], axis=1).to_csv('number_of_ticker_per_ind_curr.csv')
+    pd.concat([c1, c2], axis=1).to_csv('eda/number_of_ticker_per_ind_curr.csv')
     print(c1.mean().mean())
     exit(0)
 
@@ -328,6 +329,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
+    universe['icb_code'] = universe['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
+                                               '10102030':'101024','10102035':'101025'})   # split industry 101020 - software (100+ samples)
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')

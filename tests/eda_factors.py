@@ -438,8 +438,8 @@ def test_cluster():
 
 if __name__ == "__main__":
     # correl_fama_website()
-    # eda_correl()
-    # eda_vif()
+    eda_correl()
+    eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
