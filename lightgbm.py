@@ -7,7 +7,8 @@ from math import floor
 
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
+    recall_score, f1_score
 
 from hyperspace_lgbm import find_hyperspace
 from preprocess.load_data_lgbm import load_data
@@ -40,16 +41,28 @@ def lgbm_train(space):
                     feature_name=data.train.columns.to_list()[2:-1],
                     evals_result=evals_result)
 
-    Y_train_pred = gbm.predict(sample_set['train_xx'], num_iteration=gbm.best_iteration)    # prediction on all sets
-    Y_valid_pred = gbm.predict(sample_set['valid_x'], num_iteration=gbm.best_iteration)
-    Y_test_pred = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
+    # prediction on all sets if using regression
+    if sql_result['objective'] in ['regression_l1', 'regression_l2']:
+
+        Y_train_pred = gbm.predict(sample_set['train_xx'], num_iteration=gbm.best_iteration)
+        Y_valid_pred = gbm.predict(sample_set['valid_x'], num_iteration=gbm.best_iteration)
+        Y_test_pred = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
+
+    # prediction on all sets if using classification
+    elif sql_result['objective'] in ['multiclass']:
+        Y_train_pred_softmax = gbm.predict(sample_set['train_xx'], num_iteration=gbm.best_iteration)
+        Y_train_pred = [list(i).index(max(i)) for i in Y_train_pred_softmax]
+        Y_valid_pred_softmax = gbm.predict(sample_set['valid_x'], num_iteration=gbm.best_iteration)
+        Y_valid_pred = [list(i).index(max(i)) for i in Y_valid_pred_softmax]
+        Y_test_pred_softmax = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
+        Y_test_pred = [list(i).index(max(i)) for i in Y_test_pred_softmax]
 
     sql_result['feature_importance'] = to_list_importance(gbm)
 
     return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result
 
-def eval(space):
-    ''' train & evaluate LightGBM on given space by hyperopt trials '''
+def eval_regressor(space):
+    ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, evals_result = lgbm_train(space)
@@ -61,7 +74,7 @@ def eval(space):
               'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
               'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
 
-    try:
+    try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
         test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
         test_df = test_df.dropna(how='any')
         result_test = {
@@ -70,18 +83,12 @@ def eval(space):
             'r2_test': r2_score(test_df['actual'], test_df['pred'])}
         result['test_len'] = len(test_df)
         result.update(result_test)
-    except:
-        result_test = {
-            'mae_test': np.nan,
-            'mse_test': np.nan,
-            'r2_test': np.nan}
-        result['test_len'] = np.nan
-        result.update(result_test)
+    except: # for real_prediction -> no calculation
+        pass
 
     sql_result.update(result)  # update result of model
 
     hpot['all_results'].append(sql_result.copy())
-    print(f'===== records written to DB {global_vals.test_score_results_table} ===== ', sql_result)
 
     if result['mae_valid'] < hpot['best_mae']: # update best_mae to the lowest value for Hyperopt
         hpot['best_mae'] = result['mae_valid']
@@ -93,6 +100,38 @@ def eval(space):
         return result['mae_valid']
     else:
         NameError('Objective not evaluated!')
+
+def eval_classifier(space):
+    ''' train & evaluate LightGBM on given space by hyperopt trials with classification model '''
+
+    sql_result['finish_timing'] = dt.datetime.now()
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result = lgbm_train(space)
+
+    result = {'accuracy_train': accuracy_score(sample_set['train_yy'], Y_train_pred),
+              'accuracy_valid': accuracy_score(sample_set['valid_y'], Y_valid_pred)}
+
+    try:        # for backtesting -> calculate accuracy for testing set
+        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
+        test_df = test_df.dropna(how='any')
+        result_test = {
+            'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
+            'precision_test': precision_score(test_df['actual'], test_df['pred']),
+            'recall_test': recall_score(test_df['actual'], test_df['pred']),
+            'f1_test': f1_score(test_df['actual'], test_df['pred'])}
+        result['test_len'] = len(test_df)
+        result.update(result_test)
+    except:     # for real_prediction -> no calculation
+        pass
+
+    sql_result.update(result)  # update result of model
+
+    hpot['all_results'].append(sql_result.copy())
+
+    if result['mae_valid'] < hpot['best_mae']: # update best_mae to the lowest value for Hyperopt
+        hpot['best_mae'] = result['mae_valid']
+        hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+
+    return 1 - result['accuracy_valid']
 
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
@@ -119,21 +158,32 @@ def HPOT(space, max_evals):
     hpot['all_results'] = []
 
     trials = Trials()
-    best = fmin(fn=eval, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
-    print('===== best eval ===== ', best)
+    if sql_result['objective'] in ['regression_l1', 'regression_l2']:
+        best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-        extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-        hpot['best_stock_df'].to_sql(global_vals.test_pred_results_table, **extra)
-        pd.DataFrame(hpot['all_results']).to_sql(global_vals.test_score_results_table, **extra)
-    global_vals.engine.dispose()
+        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            hpot['best_stock_df'].to_sql(global_vals.lgbm_reg_pred_table, **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_reg_score_table, **extra)
+        global_vals.engine.dispose()
+
+    elif sql_result['objective'] in ['multiclass']:
+        best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+
+        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            hpot['best_stock_df'].to_sql(global_vals.lgbm_class_pred_table, **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_class_score_table, **extra)
+        global_vals.engine.dispose()
+
+    print('===== best eval ===== ', best)
 
 if __name__ == "__main__":
 
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='regression_l2')     # OPTIONS: regression_l1 / regression_l2
+    parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2
     parser.add_argument('--y_type', default='all')                  # OPTIONS: ibes_yoy / ibes_qoq / rev_yoy
     parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
@@ -145,17 +195,23 @@ if __name__ == "__main__":
 
     # --------------------------------- Define Variables ------------------------------------------
 
-    base_space = {'verbose': -1,
-                  'objective': args.objective,
-                  'num_threads': args.nthread}
-
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'{args.y_type}_{dt.datetime.now()}_' + 'testing'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
+    # update additional base_space for Hyperopt
+    base_space = {'verbose': -1,
+                  'objective': args.objective,
+                  'num_threads': args.nthread}
+
+    if sql_result['objective'] == 'multiclass':
+        base_space['num_class'] = sql_result['qcut_q']
+        base_space['metric'] = 'multi_error'
+
     last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
     backtest_period = 22
+
     # self-defined last testing date from Parser
     # if args.last_quarter != '':
     #     last_test_date = dt.datetime.strptime(args.last_quarter, "%Y%m%d")
