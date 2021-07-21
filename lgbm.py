@@ -238,11 +238,9 @@ if __name__ == "__main__":
         for testing_period in reversed(testing_period_list):
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
-            load_data_params = {'qcut_q': args.qcut_q,
-                                'y_type': y_type}
+            load_data_params = {'qcut_q': args.qcut_q, 'y_type': y_type}
 
-            if 1==1:
-            # try:
+            try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
                 cv_number = 1   # represent which cross-validation sets
@@ -268,9 +266,9 @@ if __name__ == "__main__":
                     print(group_code, testing_period, len(sample_set['train_yy_final']))
                     HPOT(space, max_evals=args.max_eval)   # start hyperopt
                     cv_number += 1
-            # except:
-            #     print('ERROR ON ', testing_period)
-            #     continue
+            except Exception as e:
+                print(testing_period, e)
+                continue
 
     # --------------------------------- Results Analysis ------------------------------------------
 

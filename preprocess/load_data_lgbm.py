@@ -158,22 +158,30 @@ class load_data:
             cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
             self.sample_set['test_y_final'][:,i] = pd.cut(self.sample_set['test_y'][:,i], bins=cut_bins, labels=False)
 
-    def split_valid(self, n_splits):
+    def split_valid(self, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
-        gkf = GroupShuffleSplit(n_splits=n_splits).split( self.sample_set['train_x'],
-                                                          self.sample_set['train_y_final'],
-                                                          groups=self.train['group'])
+        if valid_method == "cv":       # split validation set by cross-validation 5 split
+            gkf = GroupShuffleSplit(n_splits=n_splits).split( self.sample_set['train_x'],
+                                                              self.sample_set['train_y_final'],
+                                                              groups=self.train['group'])
+        elif valid_method == "chron":       # split validation set by chronological order
+            valid_period = testing_period - relativedelta(years=2)   # using last 2 year samples as valid set
+            test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
+            train_index = self.train.loc[self.train['period_end'] < valid_period].index.to_list()
+            gkf = [(train_index, test_index)]
+        else:
+            raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)
 
         return gkf
 
-    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_period=12, ma_period=12):
+    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_period=12, ma_period=12, valid_method='cv'):
         ''' work through cleansing process '''
 
         self.split_train_test(testing_period, ar_period, ma_period, y_type)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         self.y_qcut(qcut_q)                                           # qcut and median convert y array
-        gkf = self.split_valid(n_splits)                              # split for cross validation in groups
+        gkf = self.split_valid(n_splits, valid_method)                              # split for cross validation in groups
 
         return self.sample_set, gkf
 

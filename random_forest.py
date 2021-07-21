@@ -75,7 +75,7 @@ def eval(space):
 def HPOT(space, max_evals):
     ''' use hyperopt on each set '''
 
-    hpot['best_mae'] = 1  # record best training (min mae_valid) in each hyperopt
+    hpot['best_mae'] = 10000  # record best training (min mae_valid) in each hyperopt
     hpot['all_results'] = []
 
     trials = Trials()
@@ -108,9 +108,9 @@ def read_db_last(sql_result, results_table='results_randomforest'):
     ''' read last records on DB TABLE lightgbm_results for resume / trial_no counting '''
 
     try:
-        with engine.connect() as conn:
+        with engine_ali.connect() as conn:
             db_last = pd.read_sql("SELECT * FROM {} Order by finish_timing desc LIMIT 1".format(results_table), conn)
-        engine.dispose()
+        engine_ali.dispose()
 
         db_last_param = db_last[['icb_code', 'testing_period']].to_dict('index')[0]
         db_last_trial_hpot = int(db_last['trial_hpot'])
@@ -130,14 +130,8 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name_sql', required=True)
-    parser.add_argument('--sp_only', default=False, action='store_true')
-    parser.add_argument('--exclude_stock', default=False, action='store_true')
-    parser.add_argument('--resume', default=False, action='store_true')
-    parser.add_argument('--exclude_fwd', default=False, action='store_true')
     parser.add_argument('--tree_type', default='rf')
-    parser.add_argument('--sample_type', default='industry')
-    parser.add_argument('--sample_no', type=int, default=21)
+    parser.add_argument('--qcut_q', default=3, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -150,6 +144,8 @@ if __name__ == "__main__":
     # update additional base_space for Hyperopt
     base_space = {'verbose':0,
                   'objective': args.objective,
+                  'eval_metric': 'mae',
+                  'grow_policy': 'depthwise',
                   'num_threads': args.nthread}
 
     if sql_result['objective'] == 'multiclass':
@@ -159,86 +155,52 @@ if __name__ == "__main__":
     last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
     backtest_period = 22
 
-    # self-defined last testing date from Parser
-    # if args.last_quarter != '':
-    #     last_test_date = dt.datetime.strptime(args.last_quarter, "%Y%m%d")
-    # del sql_result['last_quarter']
-
     # create date list of all testing period
     testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
                          - relativedelta(days=1) for i in range(0, backtest_period+1)]
     print(f"===== test on sample sets {testing_period_list[-1].strftime('%Y-%m-%d')} to "
           f"{testing_period_list[0].strftime('%Y-%m-%d')} ({len(testing_period_list)}) =====")
 
-    base_space = {'verbosity': 0,
-                  'nthread': 12,
-                  'eval_metric': 'mae',
-                  'grow_policy':'depthwise'}
+    # --------------------------------- Model Training ------------------------------------------
 
-    # create dict storing values/df used in training
-    sql_result = {}  # data write to DB TABLE lightgbm_results
-    hpot = {}  # storing data cxe  best trials in each Hyperopt
-    resume = args.resume  # change to True if want to resume from the last running as on DB TABLE lightgbm_results
-    sample_no = args.sample_no  # number of training/testing period go over ( 25 = until 2019-3-31)
-
-    load_data_params = {'exclude_fwd': args.exclude_fwd,
-                        'use_median': True,
-                        'chron_valid': False,
-                        'y_type': 'ibes',
-                        'qcut_q': 10,
-                        'ibes_qcut_as_x': not (args.exclude_fwd),
-                        'exclude_stock': args.exclude_stock}
-
-    data = load_data(macro_monthly=True)  # load all data: create load_data.main = df for all samples - within data(CLASS)
-
-    x_type_map = {True: 'fwdepsqcut', False: 'ni'}  # True/False based on exclude_fwd
-    sql_result['x_type'] = x_type_map[args.exclude_fwd]
-    sql_result['name'] = 'rf {} -sample_type {} -x_type {}'.format(args.name_sql, args.sample_type, sql_result['x_type'])  # label experiment
-
-    # update load_data data
-    sql_result['qcut_q'] = load_data_params['qcut_q']  # number of Y classes
-    sql_result['y_type'] = load_data_params['y_type']
-
-    ''' start roll over testing period(25) / icb_code(16) / cross-validation sets(5) for hyperopt '''
-
-    db_last_param, sql_result = read_db_last(sql_result)  # update sql_result['trial_hpot'/'trial_lgbm'] & got params for resume (if True)
-
-    for icb_code in partitions:  # roll over industries (first 2 icb code)
-
-        data.split_industry(icb_code, combine_ind=True)
-        sql_result['icb_code'] = icb_code
-
-        for i in tqdm(range(sample_no)):  # roll over testing period
-            testing_period = period_1 + i * relativedelta(months=3)
+    data = load_data()  # load_data (class) STEP 1
+    for group_code in ['industry', 'currency']:
+        sql_result['group_code'] = group_code
+        data.split_group(group_code)  # load_data (class) STEP 2
+        # for f in data.factor_list:
+        y_type = ['earnings_yield']
+        print(y_type)
+        for testing_period in reversed(testing_period_list):
             sql_result['testing_period'] = testing_period
+            backtest = testing_period not in testing_period_list[0:4]
+            load_data_params = {'qcut_q': args.qcut_q, 'y_type': y_type}
 
-            # when setting resume = TRUE -> continue training from last records in DB results_lightgbm
-            if resume == True:
+            try:
+                sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
-                if {'icb_code': icb_code,
-                    'testing_period': pd.Timestamp(testing_period)} == db_last_param:  # if current loop = last records
-                    resume = False
-                    print('---------> Resume Training', icb_code, testing_period)
-                else:
-                    print('Not yet resume: params done', icb_code, testing_period)
-                    continue
+                cv_number = 1  # represent which cross-validation sets
+                for train_index, valid_index in cv:  # roll over 5 cross validation set
+                    sql_result['cv_number'] = cv_number
 
-            sample_set, cut_bins, cv, test_id, feature_names = data.split_all(testing_period, **load_data_params)
-            sql_result['exclude_fwd'] = load_data_params['exclude_fwd']
-            space = find_hyperspace(sql_result)
+                    sample_set['valid_x'] = sample_set['train_x'][valid_index]
+                    sample_set['train_xx'] = sample_set['train_x'][train_index]
+                    sample_set['valid_y'] = sample_set['train_y'][valid_index]
+                    sample_set['train_yy'] = sample_set['train_y'][train_index]
+                    sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+                    sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-            X_test = np.nan_to_num(sample_set['test_x'], nan=0)
-            Y_test = sample_set['test_y']
-            sql_result['number_features'] = X_test.shape[1]
+                    sample_set['valid_y_final'] = sample_set['valid_y_final'].flatten()
+                    sample_set['train_yy_final'] = sample_set['train_yy_final'].flatten()
+                    sample_set['test_y_final'] = sample_set['test_y_final'].flatten()
 
-            cv_number = 1
-            for train_index, test_index in cv:
-                sql_result['cv_number'] = cv_number
+                    sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+                    sql_result['valid_len'] = len(sample_set['valid_x'])
 
-                X_train = np.nan_to_num(sample_set['train_x'][train_index], nan=0)
-                Y_train = sample_set['train_y'][train_index]
-                X_valid = np.nan_to_num(sample_set['train_x'][test_index], nan=0)
-                Y_valid = sample_set['train_y'][test_index]
-
-                HPOT(space, max_evals=10)  # start hyperopt
-                cv_number += 1
+                    space = find_hyperspace(sql_result)
+                    space.update(base_space)
+                    print(group_code, testing_period, len(sample_set['train_yy_final']))
+                    HPOT(space, max_evals=args.max_eval)  # start hyperopt
+                    cv_number += 1
+            except Exception as e:
+                print(testing_period, e)
+                continue
