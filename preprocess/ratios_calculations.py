@@ -171,7 +171,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
             tri.drop(['close'], axis=1).to_sql(global_vals.processed_stock_table, **extra)
             print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
-        global_vals.engine.dispose()
+        global_vals.engine_ali.dispose()
     return tri, stock_col
 
 ##########################################################################################
@@ -184,7 +184,7 @@ def update_period_end(ws):
 
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
@@ -223,7 +223,7 @@ def download_clean_worldscope_ibes():
         ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)  # ibes_data
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
                                conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     def drop_dup(df):
         ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
@@ -260,7 +260,7 @@ def download_eikon_others():
         print(f'#################################################################################################')
         print(f'      ------------------------> Download eikon data from {global_vals.eikon_other_table}')
         ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn)  # quarterly records
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     ek = ek.drop_duplicates()
     fields = list(set(ek['fields'].to_list()))
@@ -280,7 +280,7 @@ def count_sample_number(tri):
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
                                conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     tri = tri.merge(universe, on=['ticker'], how='left')
     tri['icb_code'] = tri['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
@@ -321,7 +321,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     with global_vals.engine_ali.connect() as conn:
         market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
 
     # 6. Fundamental variables - from Eikon

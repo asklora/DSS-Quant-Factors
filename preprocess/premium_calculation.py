@@ -94,7 +94,7 @@ def calc_premium_all():
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
@@ -183,7 +183,7 @@ def calc_premium_all():
             print(f'      ------------------------> Finish writing factor premium table ')
             final_member_df.to_sql(global_vals.membership_table, **extra, dtype=mem_dtypes)
             print(f'      ------------------------> Finish writing factor membership table ')
-        global_vals.engine.dispose()
+        global_vals.engine_ali.dispose()
     except Exception as e:
         print(e)
         write_local_csv_to_db()
@@ -197,7 +197,7 @@ def write_local_csv_to_db():
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_results_df.to_sql(global_vals.factor_premium_table, **extra)
         final_member_df.to_sql(global_vals.membership_table, **extra)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
 
 if __name__=="__main__":

@@ -9,12 +9,11 @@ from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_
 from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from pandas.tseries.offsets import MonthEnd
 
-from load_data_lgbm import load_data
+from preprocess.load_data_lgbm import load_data
 from hyperspace_rf import find_hyperspace
-
-db_string = 'postgres://postgres:DLvalue123@hkpolyu.cgqhw7rofrpo.ap-northeast-2.rds.amazonaws.com:5432/postgres'
-engine = create_engine(db_string)
+import global_vals
 
 def lgbm_train(space):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -85,10 +84,10 @@ def HPOT(space, max_evals):
     print(best)
 
     # write stock_pred for the best hyperopt records to sql
-    with engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         hpot['best_stock_df'].to_sql('results_randomforest_stock', con=conn, index=False, if_exists='append', method='multi')
         pd.DataFrame(hpot['all_results']).to_sql('results_randomforest', con=conn, index=False, if_exists='append', method='multi')
-    engine.dispose()
+    global_vals.engine_ali.dispose()
 
     sql_result['trial_hpot'] += 1
 
@@ -128,6 +127,8 @@ def read_db_last(sql_result, results_table='results_randomforest'):
 
 if __name__ == "__main__":
 
+    # --------------------------------- Parser ------------------------------------------
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--name_sql', required=True)
     parser.add_argument('--sp_only', default=False, action='store_true')
@@ -139,18 +140,36 @@ if __name__ == "__main__":
     parser.add_argument('--sample_no', type=int, default=21)
     args = parser.parse_args()
 
-    # training / testing sets split par
-    if args.sample_type == 'industry':
-        partitions = [20, 30, 35, 40, 45, 51, 60, 65]
-    elif args.sample_type == 'sector':
-        partitions = [301010, 101020, 201030, 302020, 351020, 502060, 552010, 651010, 601010, 502050, 101010, 501010,
-                      201020, 502030, 401010, 999999]  # icb_code with > 1300 samples + rests in single big model (999999)
-    elif args.sample_type == 'entire':
-        partitions = [0, 1, 2]
-    else:
-        NameError('wrong sample_type')
+    # --------------------------------- Define Variables ------------------------------------------
 
-    period_1 = dt.datetime(2013, 3, 31)  # starting point for first testing set
+    # create dict storing values/df used in training
+    sql_result = vars(args)     # data write to DB TABLE lightgbm_results
+    sql_result['name_sql'] = f'{args.y_type}_{dt.datetime.now()}_' + 'testing'
+    hpot = {}                   # storing data for best trials in each Hyperopt
+
+    # update additional base_space for Hyperopt
+    base_space = {'verbose':0,
+                  'objective': args.objective,
+                  'num_threads': args.nthread}
+
+    if sql_result['objective'] == 'multiclass':
+        base_space['num_class'] = sql_result['qcut_q']
+        base_space['metric'] = 'multi_error'
+
+    last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
+    backtest_period = 22
+
+    # self-defined last testing date from Parser
+    # if args.last_quarter != '':
+    #     last_test_date = dt.datetime.strptime(args.last_quarter, "%Y%m%d")
+    # del sql_result['last_quarter']
+
+    # create date list of all testing period
+    testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
+                         - relativedelta(days=1) for i in range(0, backtest_period+1)]
+    print(f"===== test on sample sets {testing_period_list[-1].strftime('%Y-%m-%d')} to "
+          f"{testing_period_list[0].strftime('%Y-%m-%d')} ({len(testing_period_list)}) =====")
+
     base_space = {'verbosity': 0,
                   'nthread': 12,
                   'eval_metric': 'mae',

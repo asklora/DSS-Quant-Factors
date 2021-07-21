@@ -15,9 +15,9 @@ def download_clean_macros():
     print(f'#################################################################################################')
     print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
@@ -38,7 +38,7 @@ def download_index_return():
     with global_vals.engine_ali.connect() as conn:
         index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_r1_0, stock_return_r6_2, stock_return_r12_7 "
                                 f"FROM {global_vals.processed_ratio_table} WHERE ticker like '.%%'", conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     # index_to_curr = {'.TWII':'TWD',
     #                 '.N225':'JPY',
@@ -64,7 +64,7 @@ def combine_data():
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table} WHERE \"group\" IS NOT NULL', conn)
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     factors = formula.loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     df = df.filter(['group','period_end'] + factors)

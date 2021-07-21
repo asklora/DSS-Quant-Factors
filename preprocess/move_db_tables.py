@@ -49,7 +49,7 @@ def move_general(table_name):
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
         df.to_sql(table_name, **extra)
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":
 

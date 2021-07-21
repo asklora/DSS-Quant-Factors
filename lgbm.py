@@ -165,7 +165,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.lgbm_reg_pred_table, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_reg_score_table, **extra)
-        global_vals.engine.dispose()
+        global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
         hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
@@ -175,7 +175,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.lgbm_class_pred_table, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_class_score_table, **extra)
-        global_vals.engine.dispose()
+        global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
 
