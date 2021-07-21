@@ -132,7 +132,7 @@ class load_data:
 
         def divide_set(df):
             ''' split x, y from main '''
-            return df.iloc[:, 2:-1].values, df[y_col].values     # Assuming using all factors
+            return df.iloc[:, 2:-len(y_col)].values, df[y_col].values     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'] = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'] = divide_set(self.test)
