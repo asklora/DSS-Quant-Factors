@@ -66,7 +66,7 @@ def combine_data():
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
     global_vals.engine_ali.dispose()
 
-    factors = formula.loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
+    factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     df = df.filter(['group','period_end'] + factors)
     df['period_end'] = pd.to_datetime(df['period_end'])                 # convert to datetime
 

@@ -69,12 +69,6 @@ def calc_group_premium_fama(name, g, factor_list):
             print(name, f, e)
             continue
 
-        # s = list(set(g[f'{f}_cut'].dropna().to_list()))
-        # for i in s:
-        #     if i not in [0, 1, 2]:
-        #         print(s)
-        #         continue
-
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
@@ -99,22 +93,9 @@ def calc_premium_all():
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
-    # df = df.iloc[:1000,:]
-    # df.to_csv('premium_debug.csv', index=False)
-
-    # df = pd.read_csv('premium_debug.csv')
-    # factor_list = list(df.columns)[-24:]
-
-    # print(set(df['icb_code'].to_list()))
-    # print(set(df['currency_code'].to_list()))
-    # df = df.drop_duplicates(['ticker','period_end'])
-    # print(df.shape)
-
-    # factor_list = formula.loc[formula['factors'], 'name'].to_list()     # factor = factor variables
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
-
     # factor_list = ['earnings_yield']
 
     # Calculate premium for currency partition
@@ -198,7 +179,6 @@ def write_local_csv_to_db():
         final_results_df.to_sql(global_vals.factor_premium_table, **extra)
         final_member_df.to_sql(global_vals.membership_table, **extra)
     global_vals.engine_ali.dispose()
-
 
 if __name__=="__main__":
     calc_premium_all()
