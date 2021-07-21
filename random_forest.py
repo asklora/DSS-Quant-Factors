@@ -1,5 +1,5 @@
 import datetime as dt
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomForestClassifier, ExtraTreesClassifier
 import numpy as np
 import argparse
 import pandas as pd
@@ -10,120 +10,188 @@ from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
+    recall_score, f1_score
 
 from preprocess.load_data_lgbm import load_data
-from hyperspace_rf import find_hyperspace
 import global_vals
 
-def lgbm_train(space):
+space = {
+    'n_estimators': hp.choice('n_estimators', [50, 100, 200]),
+    'max_depth': hp.choice('max_depth', [4, 8, 12]),
+    'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
+    'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 50]),
+    'min_weight_fraction_leaf': 0.1,
+    'max_features': hp.choice('max_features',[0.3, 0.5, 0.8]),
+    'min_impurity_decrease': 0,
+    'max_samples': hp.choice('max_samples',[0.3, 0.6, 0.9]),
+    'n_jobs': -1,
+    'random_state': 666}
+
+def rf_train(space):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
     params = space.copy()
     for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
         params[k] = int(params[k])
-    print(params)
+    print('===== hyperspace =====', params)
+    sql_result.update(params)
 
     # params['n_jobs'] = 6
 
-    if args.tree_type == 'extra':
-        regr = ExtraTreesRegressor(criterion='mae', verbose=1, **params)
-    if args.tree_type == 'rf':
-        regr = RandomForestRegressor(criterion='mae', verbose=1, **params)
+    if args.objective in ['gini','entropy']:        # Classification problem
+        if args.tree_type == 'extra':
+            regr = ExtraTreesClassifier(criterion=args.objective, **params)
+        elif args.tree_type == 'rf':
+            regr = RandomForestClassifier(criterion=args.objective, **params)
+    elif args.objective in ['mse','mae']:           # Regression problem
+        if args.tree_type == 'extra':
+            regr = ExtraTreesRegressor(criterion=args.objective, **params)
+        elif args.tree_type == 'rf':
+            regr = RandomForestRegressor(criterion=args.objective, **params)
 
-    regr.fit(X_train, Y_train)
+    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'])
 
     # prediction on all sets
-    Y_train_pred = regr.predict(X_train)
-    Y_valid_pred = regr.predict(X_valid)
-    Y_test_pred = regr.predict(X_test)
+    Y_train_pred = regr.predict(sample_set['train_xx'])
+    Y_valid_pred = regr.predict(sample_set['valid_x'])
+    Y_test_pred = regr.predict(sample_set['test_x'])
+
+    sql_result['feature_importance'] = to_list_importance(regr)
 
     return Y_train_pred, Y_valid_pred, Y_test_pred
 
-def eval(space):
-    ''' train & evaluate LightGBM on given space by hyperopt trials '''
+def eval_regressor(space):
+    ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model
+    -------------------------------------------------
+    This part haven't been modified for multi-label questions purpose
+    '''
 
-    Y_train_pred, Y_valid_pred, Y_test_pred = lgbm_train(space)
-
-    result = {'mae_train': mean_absolute_error(Y_train, Y_train_pred),
-              'mae_valid': mean_absolute_error(Y_valid, Y_valid_pred),
-              'mae_test': mean_absolute_error(Y_test, Y_test_pred),
-              'mse_train': mean_squared_error(Y_train, Y_train_pred),
-              'mse_valid': mean_squared_error(Y_valid, Y_valid_pred),
-              'mse_test': mean_squared_error(Y_test, Y_test_pred),
-              'r2_train': r2_score(Y_train, Y_train_pred),
-              'r2_valid': r2_score(Y_valid, Y_valid_pred),
-              'r2_test': r2_score(Y_test, Y_test_pred),
-              'status': STATUS_OK}
-    print(result)
-
-    sql_result.update(space)  # update hyper-parameter used in model
-    sql_result.update(result)  # update result of model
     sql_result['finish_timing'] = dt.datetime.now()
+    Y_train_pred, Y_valid_pred, Y_test_pred = rf_train(space)
+
+    result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
+              'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
+              'mse_train': mean_squared_error(sample_set['train_yy'], Y_train_pred),
+              'mse_valid': mean_squared_error(sample_set['valid_y'], Y_valid_pred),
+              'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
+              'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
+
+    try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
+        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
+        test_df = test_df.dropna(how='any')
+        result_test = {
+            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
+            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
+            'r2_test': r2_score(test_df['actual'], test_df['pred'])}
+        result['test_len'] = len(test_df)
+        result.update(result_test)
+    except Exception as e:  # for real_prediction -> no calculation
+        print(e)
+        pass
+
+    sql_result.update(result)  # update result of model
 
     hpot['all_results'].append(sql_result.copy())
-    print('sql_result_before writing: ', sql_result)
 
-    if result['mae_valid'] < hpot['best_mae']:  # update best_mae to the lowest value for Hyperopt
-        hpot['best_mae'] = result['mae_valid']
+    if result['mae_valid'] < hpot['best_score']: # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = result['mae_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
-        hpot['best_trial'] = sql_result['trial_lgbm']
 
-    sql_result['trial_lgbm'] += 1
+    if sql_result['objective'] == 'mae':
+        return result['mse_valid']
+    elif sql_result['objective'] == 'mse':
+        return result['mae_valid']
+    else:
+        NameError('Objective not evaluated!')
 
-    return result['mae_valid']
+def eval_classifier(space):
+    ''' train & evaluate LightGBM on given space by hyperopt trials with classification model
+    -----------------------------------------------------------------------------------------
+    Modified for multi-label questions purpose with maximize average accuracy score
+    '''
 
-def HPOT(space, max_evals):
-    ''' use hyperopt on each set '''
+    sql_result['finish_timing'] = dt.datetime.now()
+    Y_train_pred, Y_valid_pred, Y_test_pred = rf_train(space)
 
-    hpot['best_mae'] = 10000  # record best training (min mae_valid) in each hyperopt
-    hpot['all_results'] = []
+    result = {}
+    for i in range(Y_test_pred.shape[1]):
 
-    trials = Trials()
+        result[i] = {'accuracy_train': accuracy_score(sample_set['train_yy_final'][i], Y_train_pred[i]),
+                  'accuracy_valid': accuracy_score(sample_set['valid_y_final'][i], Y_valid_pred[i])}
 
-    best = fmin(fn=eval, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
-    print(best)
+        try:        # for backtesting -> calculate accuracy for testing set
+            test_df = pd.DataFrame({'actual':sample_set['test_y_final'][i], 'pred': Y_test_pred[i]})
+            test_df = test_df.dropna(how='any')
+            result_test = {
+                'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
+                'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
+                'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
+                'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')}
+            result[i]['test_len'] = len(test_df)
+            result[i].update(result_test)
+        except Exception as e:     # for real_prediction -> no calculation
+            print(e)
+            pass
 
-    # write stock_pred for the best hyperopt records to sql
-    with global_vals.engine_ali.connect() as conn:
-        hpot['best_stock_df'].to_sql('results_randomforest_stock', con=conn, index=False, if_exists='append', method='multi')
-        pd.DataFrame(hpot['all_results']).to_sql('results_randomforest', con=conn, index=False, if_exists='append', method='multi')
-    global_vals.engine_ali.dispose()
+    result_comb = {k: i.tolist() for k, i in pd.DataFrame(result).transpose().to_dict(orient='series').items()}
 
-    sql_result['trial_hpot'] += 1
+    sql_result.update(result_comb)  # update result of model
 
+    hpot['all_results'].append(sql_result.copy())
+    print(np.mean(result_comb['accuracy_valid']))
+
+    if np.mean(result_comb['accuracy_valid']) > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = np.mean(result_comb['accuracy_valid'])
+        hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+
+    return 1 - np.mean(result_comb['accuracy_valid'])
 
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
-    df = pd.DataFrame()
-    df['identifier'] = test_id
-    df['pred'] = Y_test_pred
-    df['trial_lgbm'] = [sql_result['trial_lgbm']] * len(test_id)
-    df['name'] = [sql_result['name']] * len(test_id)
-    # print('stock-wise prediction: ', df)
-
+    df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
+    df = df.unstack().reset_index(drop=False)
+    df.columns = ['y_type', 'group', 'pred']
+    df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
-def read_db_last(sql_result, results_table='results_randomforest'):
-    ''' read last records on DB TABLE lightgbm_results for resume / trial_no counting '''
+def to_list_importance(rf):
+    ''' based on rf model -> records feature importance in DataFrame to be uploaded to DB '''
 
-    try:
-        with engine_ali.connect() as conn:
-            db_last = pd.read_sql("SELECT * FROM {} Order by finish_timing desc LIMIT 1".format(results_table), conn)
-        engine_ali.dispose()
+    df = pd.DataFrame()
+    df['name'] = data.train.columns.to_list()[2:-len(sql_result['y_type'])]     # column names
+    df['split'] = rf.feature_importances_
+    df['split'] = df['split'].rank(ascending=False)
+    return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list())
 
-        db_last_param = db_last[['icb_code', 'testing_period']].to_dict('index')[0]
-        db_last_trial_hpot = int(db_last['trial_hpot'])
-        db_last_trial_lgbm = int(db_last['trial_lgbm'])
+def HPOT(space, max_evals):
+    ''' use hyperopt on each set '''
 
-        sql_result['trial_hpot'] = db_last_trial_hpot + 1  # trial_hpot = # of Hyperopt performed (n trials each)
-        sql_result['trial_lgbm'] = db_last_trial_lgbm + 1  # trial_lgbm = # of Lightgbm performed
-        print('if resume from: ', db_last_param, '; sql last trial_lgbm: ', sql_result['trial_lgbm'])
-    except:
-        db_last_param = None
-        sql_result['trial_hpot'] = sql_result['trial_lgbm'] = 0
+    hpot['all_results'] = []
+    trials = Trials()
 
-    return db_last_param, sql_result
+    if sql_result['objective'] in ['mae', 'mse', 'friedman_mse']:
+        hpot['best_score'] = 10000  # record best training (min mae_valid) in each hyperopt
+        best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+
+        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_reg", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_reg", **extra)
+        global_vals.engine_ali.dispose()
+
+    elif sql_result['objective'] in ['gini','entropy']:
+        hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
+        best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+
+        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_class", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_class", **extra)
+        global_vals.engine_ali.dispose()
+
+    print('===== best eval ===== ', best)
 
 if __name__ == "__main__":
 
@@ -131,6 +199,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--tree_type', default='rf')
+    parser.add_argument('--objective', default='gini')
     parser.add_argument('--qcut_q', default=3, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
 
@@ -138,19 +207,8 @@ if __name__ == "__main__":
 
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{args.y_type}_{dt.datetime.now()}_' + 'testing'
+    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'testing'
     hpot = {}                   # storing data for best trials in each Hyperopt
-
-    # update additional base_space for Hyperopt
-    base_space = {'verbose':0,
-                  'objective': args.objective,
-                  'eval_metric': 'mae',
-                  'grow_policy': 'depthwise',
-                  'num_threads': args.nthread}
-
-    if sql_result['objective'] == 'multiclass':
-        base_space['num_class'] = sql_result['qcut_q']
-        base_space['metric'] = 'multi_error'
 
     last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
     backtest_period = 22
@@ -168,12 +226,12 @@ if __name__ == "__main__":
         sql_result['group_code'] = group_code
         data.split_group(group_code)  # load_data (class) STEP 2
         # for f in data.factor_list:
-        y_type = ['earnings_yield']
-        print(y_type)
+        sql_result['y_type'] = ['earnings_yield', 'market_cap_usd']
+        print(sql_result['y_type'])
         for testing_period in reversed(testing_period_list):
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
-            load_data_params = {'qcut_q': args.qcut_q, 'y_type': y_type}
+            load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type']}
 
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
@@ -189,17 +247,14 @@ if __name__ == "__main__":
                     sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
                     sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-                    sample_set['valid_y_final'] = sample_set['valid_y_final'].flatten()
-                    sample_set['train_yy_final'] = sample_set['train_yy_final'].flatten()
-                    sample_set['test_y_final'] = sample_set['test_y_final'].flatten()
-
                     sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
                     sql_result['valid_len'] = len(sample_set['valid_x'])
 
-                    space = find_hyperspace(sql_result)
-                    space.update(base_space)
+                    for k in ['valid_x','train_xx','test_x']:
+                        sample_set[k] = np.nan_to_num(sample_set[k], nan=-99.9)
+
                     print(group_code, testing_period, len(sample_set['train_yy_final']))
-                    HPOT(space, max_evals=args.max_eval)  # start hyperopt
+                    HPOT(space, max_evals=10)  # start hyperopt
                     cv_number += 1
             except Exception as e:
                 print(testing_period, e)
