@@ -7,10 +7,8 @@ db_url_alibaba = "postgres://loratechai:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.
 
 # TABLE names - results
 membership_table = "factor_membership"
-lgbm_reg_pred_table = "factor_lgbm_reg_pred"
-lgbm_reg_score_table = "factor_lgbm_reg_score"
-lgbm_class_pred_table = "factor_lgbm_class_pred"
-lgbm_class_score_table = "factor_lgbm_class_score"
+result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
+result_score_table = "factor_result_score"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

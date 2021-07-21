@@ -83,7 +83,8 @@ def eval_regressor(space):
             'r2_test': r2_score(test_df['actual'], test_df['pred'])}
         result['test_len'] = len(test_df)
         result.update(result_test)
-    except: # for real_prediction -> no calculation
+    except Exception as e:  # for real_prediction -> no calculation
+        print(e)
         pass
 
     sql_result.update(result)  # update result of model
@@ -115,12 +116,13 @@ def eval_classifier(space):
         test_df = test_df.dropna(how='any')
         result_test = {
             'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-            'precision_test': precision_score(test_df['actual'], test_df['pred']),
-            'recall_test': recall_score(test_df['actual'], test_df['pred']),
-            'f1_test': f1_score(test_df['actual'], test_df['pred'])}
+            'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
+            'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
+            'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')}
         result['test_len'] = len(test_df)
         result.update(result_test)
-    except:     # for real_prediction -> no calculation
+    except Exception as e:     # for real_prediction -> no calculation
+        print(e)
         pass
 
     sql_result.update(result)  # update result of model
@@ -163,8 +165,8 @@ def HPOT(space, max_evals):
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.lgbm_reg_pred_table, **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_reg_score_table, **extra)
+            hpot['best_stock_df'].to_sql(global_vals.lgbm_reg_pred_table+"_lgbm_reg", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_reg_score_table+"_lgbm_reg", **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
@@ -173,8 +175,8 @@ def HPOT(space, max_evals):
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.lgbm_class_pred_table, **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.lgbm_class_score_table, **extra)
+            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class", **extra)
         global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
@@ -231,40 +233,44 @@ if __name__ == "__main__":
         sql_result['group_code'] = group_code
         data.split_group(group_code)                                                # load_data (class) STEP 2
         # for f in data.factor_list:
-        for y_type in ['earnings_yield']:
-            print(y_type)
-            for testing_period in reversed(testing_period_list):
-                sql_result['testing_period'] = testing_period
-                backtest = testing_period not in testing_period_list[0:4]
-                load_data_params = {'qcut_q': args.qcut_q,
-                                    'y_type': y_type}
+        y_type = ['earnings_yield']
+        print(y_type)
+        for testing_period in reversed(testing_period_list):
+            sql_result['testing_period'] = testing_period
+            backtest = testing_period not in testing_period_list[0:4]
+            load_data_params = {'qcut_q': args.qcut_q,
+                                'y_type': y_type}
 
-                if 1==1:
-                # try:
-                    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+            if 1==1:
+            # try:
+                sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
-                    cv_number = 1   # represent which cross-validation sets
-                    for train_index, valid_index in cv:     # roll over 5 cross validation set
-                        sql_result['cv_number'] = cv_number
+                cv_number = 1   # represent which cross-validation sets
+                for train_index, valid_index in cv:     # roll over 5 cross validation set
+                    sql_result['cv_number'] = cv_number
 
-                        sample_set['valid_x'] = sample_set['train_x'][valid_index]
-                        sample_set['train_xx'] = sample_set['train_x'][train_index]
-                        sample_set['valid_y'] = sample_set['train_y'][valid_index]
-                        sample_set['train_yy'] = sample_set['train_y'][train_index]
-                        sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-                        sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+                    sample_set['valid_x'] = sample_set['train_x'][valid_index]
+                    sample_set['train_xx'] = sample_set['train_x'][train_index]
+                    sample_set['valid_y'] = sample_set['train_y'][valid_index]
+                    sample_set['train_yy'] = sample_set['train_y'][train_index]
+                    sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+                    sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-                        sql_result['train_len'] = len(sample_set['train_xx']) # record length of training/validation sets
-                        sql_result['valid_len'] = len(sample_set['valid_x'])
+                    sample_set['valid_y_final'] = sample_set['valid_y_final'].flatten()
+                    sample_set['train_yy_final'] = sample_set['train_yy_final'].flatten()
+                    sample_set['test_y_final'] = sample_set['test_y_final'].flatten()
 
-                        space = find_hyperspace(sql_result)
-                        space.update(base_space)
-                        print(group_code, testing_period, len(sample_set['train_yy_final']))
-                        HPOT(space, max_evals=args.max_eval)   # start hyperopt
-                        cv_number += 1
-                # except:
-                #     print('ERROR ON ', testing_period)
-                #     continue
+                    sql_result['train_len'] = len(sample_set['train_xx']) # record length of training/validation sets
+                    sql_result['valid_len'] = len(sample_set['valid_x'])
+
+                    space = find_hyperspace(sql_result)
+                    space.update(base_space)
+                    print(group_code, testing_period, len(sample_set['train_yy_final']))
+                    HPOT(space, max_evals=args.max_eval)   # start hyperopt
+                    cv_number += 1
+            # except:
+            #     print('ERROR ON ', testing_period)
+            #     continue
 
     # --------------------------------- Results Analysis ------------------------------------------
 
