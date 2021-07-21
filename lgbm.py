@@ -11,7 +11,7 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, a
     recall_score, f1_score
 
 from hyperspace_lgbm import find_hyperspace
-from preprocess.load_data_lgbm import load_data
+from preprocess.load_data import load_data
 from pandas.tseries.offsets import MonthEnd
 
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best

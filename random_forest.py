@@ -13,7 +13,7 @@ from pandas.tseries.offsets import MonthEnd
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
     recall_score, f1_score
 
-from preprocess.load_data_lgbm import load_data
+from preprocess.load_data import load_data
 import global_vals
 
 space = {
