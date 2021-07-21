@@ -116,9 +116,10 @@ def eval_classifier(space):
         test_df = test_df.dropna(how='any')
         result_test = {
             'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-            'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
-            'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
-            'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')}
+            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
+            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
+            'r2_test': r2_score(test_df['actual'], test_df['pred']),
+        }
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
@@ -141,7 +142,7 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame()
     df['group'] = data.test['group'].to_list()
     df['pred'] = Y_test_pred
-    df['y_type'] = sql_result['y_type'][0]
+    df['y_type'] = sql_result['y_type']
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -159,7 +160,6 @@ def HPOT(space, max_evals):
 
     hpot['all_results'] = []
     trials = Trials()
-    sql_result['y_type'] = sql_result['y_type'][0]
 
     if sql_result['objective'] in ['regression_l1', 'regression_l2']:
         hpot['best_score'] = 10000  # record best training (min mae_valid) in each hyperopt
@@ -189,7 +189,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2
-    parser.add_argument('--y_type', default='all')                  # OPTIONS: ibes_yoy / ibes_qoq / rev_yoy
     parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
@@ -202,7 +201,7 @@ if __name__ == "__main__":
 
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{args.y_type}_{dt.datetime.now()}_' + 'testing'
+    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'testing'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
     # update additional base_space for Hyperopt
@@ -235,12 +234,12 @@ if __name__ == "__main__":
         sql_result['group_code'] = group_code
         data.split_group(group_code)                                                # load_data (class) STEP 2
         for f in data.factor_list:
-            sql_result['y_type'] = [f]
+            sql_result['y_type'] = f
             print(sql_result['y_type'])
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
                 backtest = testing_period not in testing_period_list[0:4]
-                load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type']}
+                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']]}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
