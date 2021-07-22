@@ -96,7 +96,7 @@ def calc_premium_all():
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
-    # factor_list = ['earnings_yield']
+    factor_list = ['earnings_1yr', 'epsq_1q']
 
     # Calculate premium for currency partition
     print(f'#################################################################################################')

@@ -88,39 +88,42 @@ class load_data:
         2. convert x with standardization, y with qcut '''
 
     def __init__(self):
-        ''' split train and testing set
-                    -> return dictionary contain (x, y, y without qcut) & cut_bins'''
+        ''' combine all possible data to be used '''
 
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
         self.main, self.factor_list = combine_data()    # combine all data
 
+        self.all_y_col = ["y_" + x for x in self.factor_list]    # calculate y for all factors
+        self.all_y_col = list(set(self.all_y_col) - {'y_epsq_1q','y_earnings_1yr'})
+        self.factor_list = list(set(self.factor_list) - {'epsq_1q','earnings_1yr'})
+        self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
+
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        if group_name == 'industry':
-            self.group = self.main.loc[self.main['group'].str[-1]=='0']          # train on industry partition factors
-        elif group_name == 'currency':
-            self.group = self.main.loc[self.main['group'].str[-1]!='0']          # train on currency partition factors
-        else:
-            raise ValueError("Invalid group_name method. Expecting 'industry' or 'currency' got ", group_name)
+        curr_list = ['TWD','JPY','KRW','GBP','HKD','SGD','EUR','CNY','USD']
 
-    def split_train_test(self, testing_period, ar_period, ma_period, y_type):
+        if group_name == 'currency':
+            self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
+        else:
+            self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
+
+    def split_train_test(self, testing_period, y_type, ar_period, ma_period):
         ''' split training / testing set based on testing period '''
 
         # Calculate the time_series history for predicted Y
-        for i in range(1, ar_period+1):
+        for i in range(1, ar_period + 1):
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
-            self.group[ar_col] = self.group.groupby(['group'])[y_type].shift(i)
+            self.main[ar_col] = self.main.groupby(['group'])[y_type].shift(i)
 
         # Calculate the moving average for predicted Y
         ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
-        self.group.loc[:, ma_col] = self.group.groupby(['group'])[y_type].transform(lambda x: x.rolling(ma_period, min_periods=6).mean())
+        self.main.loc[:, ma_col] = self.main.groupby(['group'])[y_type].transform(
+            lambda x: x.rolling(ma_period, min_periods=6).mean())
 
-        # Calculate the predicted Y
         y_col = ["y_" + x for x in y_type]
-        self.group.loc[:, y_col] = self.group.groupby(['group'])[y_type].shift(-1).values
 
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
@@ -130,9 +133,11 @@ class load_data:
 
         self.test = self.group.loc[self.group['period_end'] == testing_period].reset_index(drop=True)
 
+        self.y_qcut_all()
+
         def divide_set(df):
             ''' split x, y from main '''
-            return df.iloc[:, 2:-len(y_col)].values, df[y_col].values     # Assuming using all factors
+            return df.drop(self.all_y_col+['period_end','group'], axis=1).values, df[y_col].values     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'] = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'] = divide_set(self.test)
@@ -143,6 +148,20 @@ class load_data:
         scaler = StandardScaler().fit(self.sample_set['train_x'])
         self.sample_set['train_x'] = scaler.transform(self.sample_set['train_x'])
         self.sample_set['test_x'] = scaler.transform(self.sample_set['test_x'])
+
+    def y_qcut_all(self, qcut_q=3):
+        ''' convert qcut bins to median of each group '''
+
+        arr = self.train.filter(self.all_y_col).values
+        arr1 = arr.flatten()
+        arr2 = np.reshape(arr1, (len(self.train), len(self.all_y_col)), order='F')
+        print(arr == arr2)
+
+        # cut original series into bins
+        self.sample_set['train_y_final'][:,i], cut_bins = pd.qcut(self.sample_set['train_y'][:,i], q=qcut_q,
+                                                                  retbins=True, labels=False, duplicates='drop')
+        cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
+        self.sample_set['test_y_final'][:,i] = pd.cut(self.sample_set['test_y'][:,i], bins=cut_bins, labels=False)
 
     def y_qcut(self, qcut_q=3):
         ''' convert qcut bins to median of each group '''
@@ -178,7 +197,7 @@ class load_data:
     def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_period=12, ma_period=12, valid_method='cv'):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, ar_period, ma_period, y_type)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, ar_period, ma_period)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         self.y_qcut(qcut_q)                                           # qcut and median convert y array
         gkf = self.split_valid(n_splits, valid_method)                              # split for cross validation in groups

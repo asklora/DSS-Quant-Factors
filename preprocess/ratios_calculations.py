@@ -8,8 +8,7 @@ from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 from scipy.stats import skew
 
-##########################################################################################
-################# Calculate monthly stock return/volatility ##############################
+# ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
 def get_tri(engine, save=True):
     with engine.connect() as conn:
@@ -90,7 +89,7 @@ def resample_to_monthly(df, date_col):
     return df
 
 def resample_to_biweekly(df, date_col):
-    ''' Resample to monthly stock tri '''
+    ''' Resample to bi-weekly stock tri '''
     monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='2W')
     df = df.loc[df[date_col].isin(monthly)]
     return df
@@ -174,8 +173,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         global_vals.engine_ali.dispose()
     return tri, stock_col
 
-##########################################################################################
-################################## Calculate factors #####################################
+# -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
 def update_period_end(ws):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
@@ -203,7 +201,7 @@ def update_period_end(ws):
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
     # find period_end for each record (row)
-    ws[global_vals.date_column] = ws.apply(lambda x: x['last_year_end'] + pd.offsets.MonthEnd(x['frequency_number']*3), axis=1)
+    ws['period_end'] = ws.apply(lambda x: x['last_year_end'] + pd.offsets.MonthEnd(x['frequency_number']*3), axis=1)
 
     # Update report_date with the updated period_end
     ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'])
@@ -316,7 +314,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # 4. Universe
     ws, ibes, universe = download_clean_worldscope_ibes()
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
+    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d') + MonthEnd(0)
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     with global_vals.engine_ali.connect() as conn:

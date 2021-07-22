@@ -65,6 +65,6 @@ if __name__ == "__main__":
     final_eps_pred_results_table = "ai_value_lgbm_pred_final_eps"  # table with the best ratio pred -> EPS format
     formula_ratios_table = "ai_value_formula_ratios"
 
-    for f in [test_score_results_table, test_pred_results_table, test_pred_eval_table, final_pred_results_table, final_eps_pred_results_table, formula_ratios_table]:
+    for f in ['universe']:
         move_general(f)
         print('finish moving ', f)
