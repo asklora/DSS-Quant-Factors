@@ -9,7 +9,7 @@ db_url_alibaba = "postgres://loratechai:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.
 membership_table = "factor_membership"
 result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_result_score"
-feature_importance_table = "factor_feature_importance"
+feature_importance_table = "factor_result_importance"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

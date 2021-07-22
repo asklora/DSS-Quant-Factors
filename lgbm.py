@@ -134,7 +134,7 @@ def eval_classifier(space):
     if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
-        hpot['best_stock_feature'] = feature_importance_df
+        hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
     return 1 - result['accuracy_valid']
 
