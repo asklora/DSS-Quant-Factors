@@ -19,7 +19,7 @@ with global_vals.engine_ali.connect() as conn:
     formula = pd.read_sql(f'SELECT name, factors, pillar FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
-col_list = formula['name'].to_list()
+col_list = list(set(formula['name'].to_list()) - {'debt_issue_less_ps_to_rent'})
 factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
@@ -57,28 +57,34 @@ def correl_fama_website():
     # for i in np.arange(5):
     #     sub_df = df[['period_end', website_factor[i], our_factor[i]]].set_index('period_end')
 
+def eda_missing():
+    df = factors.isnull().sum()/factors.count()
+    df.sort_values(ascending=False).to_csv('eda/missing.csv')
+
 def eda_correl():
     ''' test correlation of our factor '''
 
     global formula, factors
 
-    df = factors.iloc[:,2:].transpose().reset_index()
+    df = factors[col_list].transpose().reset_index()
 
     df = df.merge(formula, left_on=['index'], right_on=['name'])
     df = df.sort_values(['pillar','name']).set_index(['pillar', 'name']).drop(['index'], axis=1).transpose()
+    df.columns = [x[0]+'-'+x[1] for x in df.columns.to_list()]
 
-    cr = df.corr()
-    # cr_df = cr.stack()
-    # cr_df.name='corr'
-    # cr_df = cr_df.loc[cr_df!=1].drop_duplicates().reset_index()
-    # cr_df['corr_abs'] = cr_df['corr'].abs()
-    # cr_df = cr_df.sort_values(by=['corr_abs'], ascending=False)
-    # cr_df.to_csv('eda/test_eda_corr.csv', index=False)
-
+    cr = df.astype(float).corr()
     sns.set(style="whitegrid", font_scale=0.5)
     ax = sns.heatmap(cr, cmap='PiYG', vmin=-1, vmax=1, label='small')
     plt.tight_layout()
     plt.savefig('eda/test_eda_corr.png', dpi=300)
+
+    cr_df = cr.stack(-1)
+    cr_df = cr_df.reset_index()
+    cr_df.columns=['f1','f2','corr']
+    cr_df = cr_df.loc[cr_df['corr']!=1].drop_duplicates(subset=['corr'])
+    cr_df['corr_abs'] = cr_df['corr'].abs()
+    cr_df = cr_df.sort_values(by=['corr_abs'], ascending=False)
+    cr_df.to_csv('eda/test_eda_corr.csv', index=False)
 
 def eda_vif():
     ''' Calculate VIF -> no abnormal comes to our attention beyond correlations '''
@@ -361,7 +367,8 @@ def check_smb():
     # df.to_csv('eda/check_smb.csv')
 
 def average_absolute_mean():
-    df = factors[col_list].abs().mean()
+    df = factors[col_list].abs().mean().sort_values(ascending=False)
+    df = pd.DataFrame({'abs':df, 'rank':list(range(len(df)))})
     df.to_csv('eda/average_absolute_mean.csv')
     print(df)
 
@@ -460,19 +467,20 @@ def dist_all():
     for i in range(667, len(patches)):
         patches[i].set_facecolor('g')
 
-    plt.show()
+    # plt.show()
     plt.savefig('eda/pdf_all_factor_cut.png')
 
 if __name__ == "__main__":
     # correl_fama_website()
-    # eda_correl()
-    # eda_vif()
+    eda_missing()
+    eda_correl()
+    eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
     # sharpe_ratio()
     # test_if_persistent()
-    # average_absolute_mean()
+    average_absolute_mean()
 
     # check_smb()
 
@@ -480,4 +488,4 @@ if __name__ == "__main__":
     # test_cluster()
     # test_tsne()
 
-    dist_all()
+    # dist_all()
