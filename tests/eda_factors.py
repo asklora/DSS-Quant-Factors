@@ -451,8 +451,17 @@ def dist_all():
 
     print(pd.Series(test).describe())
     print(min, max)
-    plt.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
-    plt.savefig('eda/pdf_all_factor.png')
+    N, bins, patches = plt.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
+
+    for i in range(0, 333):
+        patches[i].set_facecolor('g')
+    for i in range(333, 667):
+        patches[i].set_facecolor('r')
+    for i in range(667, len(patches)):
+        patches[i].set_facecolor('g')
+
+    plt.show()
+    plt.savefig('eda/pdf_all_factor_cut.png')
 
 if __name__ == "__main__":
     # correl_fama_website()

@@ -249,7 +249,7 @@ if __name__ == "__main__":
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']]}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-
+                    sql_result['cut_bins'] = data.cut_bins
                     cv_number = 1   # represent which cross-validation sets
                     for train_index, valid_index in cv:     # roll over 5 cross validation set
                         sql_result['cv_number'] = cv_number

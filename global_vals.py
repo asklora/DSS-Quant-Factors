@@ -23,6 +23,7 @@ eikon_other_table = "data_factor_eikon_others"
 processed_ratio_table = "processed_ratio"
 factor_premium_table = "processed_factor_premium"
 processed_group_ratio_table = "processed_group_ratio"
+processed_cutbins_table = "processed_cutbins"
 
 # TABLE names - preprocess formula
 formula_factors_table = "factor_formula_ratios"

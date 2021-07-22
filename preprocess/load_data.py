@@ -58,6 +58,21 @@ def download_index_return():
 
     return index_ret.filter(['period_end','.SPX','.HSI','.CSI300'])      # Currency only include USD/HKD/CNY indices
 
+def download_org_ratios(method='median', change=True):
+    ''' download the aggregated value of all original ratios by each group '''
+
+    with global_vals.engine_ali.connect() as conn:
+        df = pd.read_sql(f"SELECT * FROM {global_vals.processed_group_ratio_table} WHERE method = '{method}'", conn)
+    global_vals.engine_ali.dispose()
+    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')
+    field_col = df.columns.to_list()[2:-1]
+
+    if change:  # calculate the change of original ratio from T-1 -> T0
+        df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
+    df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
+
+    return df.iloc[:,:-1]
+
 def combine_data():
     ''' combine factor premiums with ratios '''
 
@@ -79,6 +94,10 @@ def combine_data():
     # Add index return variables
     index_ret = download_index_return()
     df = df.merge(index_ret, on=['period_end'], how='left')
+
+    # Add original ratios variables
+    org_df = download_org_ratios()
+    df = df.merge(org_df, on=['group', 'period_end'], how='left')
 
     return df.sort_values(by=['group', 'period_end']), factors
 
@@ -131,11 +150,19 @@ class load_data:
 
         self.test = self.group.loc[self.group['period_end'] == testing_period].reset_index(drop=True)
 
-        self.y_qcut_all()
+        self.y_qcut_all()   # qcut/cut for all factors to be predicted at the same time
 
         def divide_set(df):
             ''' split x, y from main '''
-            return df.drop(self.all_y_col+['period_end','group'], axis=1).values, df[y_col].values     # Assuming using all factors
+
+            def find_col(df, k):
+                l = df.columns.to_list()
+                return [x for x in l if k in x]
+
+            x_col = set(df.columns.to_list()) - set(find_col(df, "y_") + find_col(df, "org_") + ['period_end','group'])
+            x_col = list(x_col) + ["org_"+x for x in y_col]
+
+            return df[x_col].values, df[y_col].values     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'] = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'] = divide_set(self.test)
@@ -151,30 +178,27 @@ class load_data:
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         arr = self.train[self.all_y_col].values.flatten()       # Flatten all training factors to qcut all together
+        # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
 
         # cut original series into bins
-        arr, cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+        arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+        # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
         self.sample_set['train_y_final'] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
-        print(cut_bins)
+        print(self.cut_bins)
 
-        cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
-        self.sample_set['test_y_final'] = pd.cut(self.sample_set['test_y'], bins=cut_bins, labels=False)
+        # def count_i(df, l):
+        #     s = df.isnull().sum(axis=0)
+        #     n = df.count()
+        #     df = df.replace(l, np.nan)
+        #     return (df.isnull().sum(axis=0) - s)/n
+        # ddf = pd.DataFrame(self.sample_set['train_y_final'], columns=self.factor_list)
+        # c1 = count_i(ddf, [1,2,3])
+        # print(c1)
 
-
-
-    def y_qcut(self, qcut_q=3):
-        ''' convert qcut bins to median of each group '''
-        self.sample_set['train_y_final'] = np.zeros(self.sample_set['train_y'].shape)
-        self.sample_set['train_y_final'][:] = np.nan
-        self.sample_set['test_y_final'] = np.zeros(self.sample_set['test_y'].shape)
-        self.sample_set['test_y_final'][:] = np.nan
-
-        for i in range(self.sample_set['train_y'].shape[1]):
-            # cut original series into bins
-            self.sample_set['train_y_final'][:,i], cut_bins = pd.qcut(self.sample_set['train_y'][:,i], q=qcut_q,
-                                                                      retbins=True, labels=False, duplicates='drop')
-            cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
-            self.sample_set['test_y_final'][:,i] = pd.cut(self.sample_set['test_y'][:,i], bins=cut_bins, labels=False)
+        self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
+        arr_test = self.test[self.all_y_col].values.flatten()       # Flatten all testing factors to qcut all together
+        arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
+        self.sample_set['train_y_final'] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
 
     def split_valid(self, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
@@ -198,12 +222,12 @@ class load_data:
 
         self.split_train_test(testing_period, y_type, ar_period, ma_period)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
-        self.y_qcut(qcut_q)                                           # qcut and median convert y array
         gkf = self.split_valid(n_splits, valid_method)                              # split for cross validation in groups
 
         return self.sample_set, gkf
 
 if __name__ == '__main__':
+    # download_org_ratios('mean')
     # download_index_return()
     testing_period = dt.datetime(2019,7,31)
     y_type = ['earnings_yield','market_cap_usd']
