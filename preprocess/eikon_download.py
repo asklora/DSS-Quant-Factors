@@ -8,10 +8,10 @@ import os.path
 def download_from_eikon():
     ''' download fields from eikon '''
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f"SELECT ticker FROM {global_vals.stock_data_table}", conn)
         tickers = list(set(universe['ticker'].to_list()))
-    global_vals.engine.dispose()
+    global_vals.engine_eli.dispose()
 
     save_name = 'eikon_others.csv'
     tickers = check_eikon_full_ticker(save_name)
@@ -86,9 +86,9 @@ def download_from_eikon_others():
     params = {'SDate': '2000-01-01', 'EDate': '2021-07-01', 'Period':'LTM', 'Frq': 'FQ', 'Scale':'6'}      # params for fundemantals
     # field_name = ['TR.F.OthLiab']
     # field_name = ['TR.F.DebtLTSTIssuanceRetTotCF']
-    field_name = ['TR.F.PPEAccumDeprTot']
+    field_name = ['TR.EPSActReportDate']
 
-    tickers = check_eikon_full_ticker(csv_name='eikon_new_downloads.csv')
+    tickers = check_eikon_full_ticker(csv_name='eikon_new_downloads1.csv')
 
     while len(tickers) > 0:
         df_list = []
@@ -118,14 +118,60 @@ def download_from_eikon_others():
         tickers = check_eikon_full_ticker(ddf=ddf)
         step = round(step/2)
 
+def download_from_eikon_report_date():
+    ''' download fields from eikon '''
+
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
+        tickers = list(set(universe['ticker'].to_list()))
+    global_vals.engine_ali.dispose()
+    # pd.DataFrame(tickers).to_csv('tickers.csv')
+    # exit(1)
+
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+
+    step = 50
+    params = {'SDate': '2009-01-01', 'EDate': '2021-07-01', 'Period':'FY0', 'Frq': 'FQ', 'Scale':'6'}      # params for fundemantals
+    # field_name = ['TR.F.OthLiab']
+    # field_name = ['TR.F.DebtLTSTIssuanceRetTotCF']
+    field_name = ['TR.ExpectedReportDate']
+
+    tickers = check_eikon_full_ticker(csv_name='eikon_new_downloads1.csv')
+
+    # while len(tickers) > 0:
+    df_list = []
+    for f in field_name:
+        fields = [f, f + '.periodenddate']
+        for i in np.arange(0, len(tickers),step):
+            ticker = tickers[i:(i + step)]
+            print(i, ticker)
+            try:
+                df, err = ek.get_data(ticker, fields=fields, parameters=params)
+            except Exception as e:
+                print(ticker, e)
+                continue
+            df.columns = ['ticker', 'value', 'period_end']
+            df_list.append(df)
+            print(df)
+
+    ddf = pd.concat(df_list, axis=0).dropna(how='any')
+    ddf.drop_duplicates().to_csv('eikon_new_downloads2.csv')
+
+        # with global_vals.engine_ali.connect() as conn:
+        #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+        #     ddf.to_sql("data_factor_eikon_report_date", **extra)
+        # global_vals.engine_ali.dispose()
+        #
+        # tickers = check_eikon_full_ticker(ddf=ddf)
+        # step = round(step/2)
 
 def check_eikon_full_ticker(csv_name=None, ddf=None):
     ''' check if download csv file has all ticker in universe '''
 
     try:
-        csv_ticker = pd.read_csv(csv_name)['ticker'].to_list()
+        csv_ticker = pd.read_csv(csv_name).dropna(how='any')['ticker'].to_list()
     except:
-        csv_ticker = ddf['ticker'].to_list()
+        csv_ticker = ddf.dropna(how='any')['ticker'].to_list()
 
     with global_vals.engine.connect() as conn:
         tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
@@ -171,6 +217,6 @@ def combine_download_files():
 if __name__ == '__main__':
     # download_from_eikon()
     # combine_download_files()
-    # check_eikon_full_ticker('eikon_new_downloads.csv')
-    download_from_eikon_others()
-
+    # check_eikon_full_ticker('eikon_new_downloads1.csv')
+    # download_from_eikon_others()
+    download_from_eikon_report_date()

@@ -96,8 +96,6 @@ class load_data:
         self.main, self.factor_list = combine_data()    # combine all data
 
         self.all_y_col = ["y_" + x for x in self.factor_list]    # calculate y for all factors
-        self.all_y_col = list(set(self.all_y_col) - {'y_epsq_1q','y_earnings_1yr'})
-        self.factor_list = list(set(self.factor_list) - {'epsq_1q','earnings_1yr'})
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
 
     def split_group(self, group_name=None):
@@ -150,18 +148,19 @@ class load_data:
         self.sample_set['test_x'] = scaler.transform(self.sample_set['test_x'])
 
     def y_qcut_all(self, qcut_q=3):
-        ''' convert qcut bins to median of each group '''
+        ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
-        arr = self.train.filter(self.all_y_col).values
-        arr1 = arr.flatten()
-        arr2 = np.reshape(arr1, (len(self.train), len(self.all_y_col)), order='F')
-        print(arr == arr2)
+        arr = self.train[self.all_y_col].values.flatten()       # Flatten all training factors to qcut all together
 
         # cut original series into bins
-        self.sample_set['train_y_final'][:,i], cut_bins = pd.qcut(self.sample_set['train_y'][:,i], q=qcut_q,
-                                                                  retbins=True, labels=False, duplicates='drop')
+        arr, cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+        self.sample_set['train_y_final'] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+        print(cut_bins)
+
         cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
-        self.sample_set['test_y_final'][:,i] = pd.cut(self.sample_set['test_y'][:,i], bins=cut_bins, labels=False)
+        self.sample_set['test_y_final'] = pd.cut(self.sample_set['test_y'], bins=cut_bins, labels=False)
+
+
 
     def y_qcut(self, qcut_q=3):
         ''' convert qcut bins to median of each group '''

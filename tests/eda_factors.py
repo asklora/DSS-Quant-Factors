@@ -14,12 +14,13 @@ from statsmodels.tools.tools import add_constant
 import statsmodels.api as sm
 from sklearn.manifold import TSNE
 
-with global_vals.engine.connect() as conn:
+with global_vals.engine_ali.connect() as conn:
     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
-    formula = pd.read_sql(f'SELECT name, pillar FROM {global_vals.formula_factors_table}', conn)
-global_vals.engine.dispose()
+    formula = pd.read_sql(f'SELECT name, factors, pillar FROM {global_vals.formula_factors_table}', conn)
+global_vals.engine_ali.dispose()
 
-col_list = list(factors.select_dtypes(float).columns)
+col_list = formula['name'].to_list()
+factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
 
@@ -436,19 +437,38 @@ def test_cluster():
 
     return clustering
 
+def dist_all():
+    test = factors[factor_list].values.flatten()
+    test = test[~np.isnan(test)]
+    max = test.max()
+    min = test.min()
+
+    prc = 0.01
+
+    # test = np.abs(test)
+    min = np.quantile(test, prc)
+    max = np.quantile(test, 1-prc)
+
+    print(pd.Series(test).describe())
+    print(min, max)
+    plt.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
+    plt.savefig('eda/pdf_all_factor.png')
+
 if __name__ == "__main__":
     # correl_fama_website()
-    eda_correl()
-    eda_vif()
+    # eda_correl()
+    # eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
-    sharpe_ratio()
-    test_if_persistent()
-    average_absolute_mean()
+    # sharpe_ratio()
+    # test_if_persistent()
+    # average_absolute_mean()
 
-    check_smb()
+    # check_smb()
 
     ## Clustering
-    test_cluster()
+    # test_cluster()
     # test_tsne()
+
+    dist_all()

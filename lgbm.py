@@ -4,19 +4,17 @@ import argparse
 import pandas as pd
 import numpy as np
 from math import floor
-
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
-    recall_score, f1_score
-
-from hyperspace_lgbm import find_hyperspace
-from preprocess.load_data import load_data
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score
 from pandas.tseries.offsets import MonthEnd
-
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
 
+from preprocess.load_data import load_data
+from hyperspace_lgbm import find_hyperspace
 import global_vals
+
+# ------------------------------------------- Train LightGBM ----------------------------------------------------
 
 def lgbm_train(space):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -57,15 +55,17 @@ def lgbm_train(space):
         Y_test_pred_softmax = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
         Y_test_pred = [list(i).index(max(i)) for i in Y_test_pred_softmax]
 
-    sql_result['feature_importance'] = to_list_importance(gbm)
+    sql_result['feature_importance'], feature_importance_df = to_list_importance(gbm)
 
-    return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result
+    return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df
+
+# -------------------------------- Evaluate Results (Regression / Classification) -------------------------------------
 
 def eval_regressor(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result = lgbm_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
@@ -94,6 +94,7 @@ def eval_regressor(space):
     if result['mae_valid'] < hpot['best_score']: # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['mae_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+        hpot['best_stock_feature'] = feature_importance_df
 
     if sql_result['objective'] == 'regression_l2':
         return result['mse_valid']
@@ -106,7 +107,7 @@ def eval_classifier(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with classification model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result = lgbm_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
 
     result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
               'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred)}
@@ -133,8 +134,11 @@ def eval_classifier(space):
     if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+        hpot['best_stock_feature'] = feature_importance_df
 
     return 1 - result['accuracy_valid']
+
+# -------------------------------------- Organize / Visualize Results -------------------------------------------
 
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
@@ -142,6 +146,7 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame()
     df['group'] = data.test['group'].to_list()
     df['pred'] = Y_test_pred
+    df['actual'] = sample_set['test_y_final']
     df['y_type'] = sql_result['y_type']
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
@@ -153,7 +158,9 @@ def to_list_importance(gbm):
     df['name'] = data.train.columns.to_list()[2:-1]     # column names
     df['split'] = gbm.feature_importance(importance_type='split')
     df['split'] = df['split'].rank(ascending=False)
-    return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list())
+    return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list()), df
+
+# ----------------------------------- Hyperopt & Write Best Iteration to DB ----------------------------------------
 
 def HPOT(space, max_evals):
     ''' use hyperopt on each set '''
