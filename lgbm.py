@@ -36,7 +36,7 @@ def lgbm_train(space):
                     valid_names=['valid', 'train'],
                     num_boost_round=1000,
                     early_stopping_rounds=150,
-                    feature_name=data.train.columns.to_list()[2:-1],
+                    feature_name=data.x_col,
                     evals_result=evals_result)
 
     # prediction on all sets if using regression
@@ -155,7 +155,7 @@ def to_list_importance(gbm):
     ''' based on gbm model -> records feature importance in DataFrame to be uploaded to DB '''
 
     df = pd.DataFrame()
-    df['name'] = data.train.columns.to_list()[2:-1]     # column names
+    df['name'] = data.x_col     # column names
     df['split'] = gbm.feature_importance(importance_type='split')
     df['split'] = df['split'].rank(ascending=False)
     return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list()), df
@@ -245,11 +245,10 @@ if __name__ == "__main__":
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
-                backtest = testing_period not in testing_period_list[0:4]
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']]}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-                    sql_result['cut_bins'] = data.cut_bins
+                    sql_result['cut_bins'] = list(data.cut_bins)
                     cv_number = 1   # represent which cross-validation sets
                     for train_index, valid_index in cv:     # roll over 5 cross validation set
                         sql_result['cv_number'] = cv_number

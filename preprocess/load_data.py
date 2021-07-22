@@ -160,12 +160,12 @@ class load_data:
                 return [x for x in l if k in x]
 
             x_col = set(df.columns.to_list()) - set(find_col(df, "y_") + find_col(df, "org_") + ['period_end','group'])
-            x_col = list(x_col) + ["org_"+x for x in y_col]
+            x_col = list(x_col) + ["org_"+x for x in y_type]
+            y_col_cut = [x+'_cut' for x in y_col]
+            return df[x_col].values, df[y_col].values, df[y_col_cut].values, x_col     # Assuming using all factors
 
-            return df[x_col].values, df[y_col].values     # Assuming using all factors
-
-        self.sample_set['train_x'], self.sample_set['train_y'] = divide_set(self.train)
-        self.sample_set['test_x'], self.sample_set['test_y'] = divide_set(self.test)
+        self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
+        self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
 
     def standardize_x(self):
         ''' standardize x with train_x fit '''
@@ -177,13 +177,14 @@ class load_data:
     def y_qcut_all(self, qcut_q=3):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
+        cut_col = [x+"_cut" for x in self.all_y_col]
         arr = self.train[self.all_y_col].values.flatten()       # Flatten all training factors to qcut all together
         # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
 
         # cut original series into bins
         arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
         # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
-        self.sample_set['train_y_final'] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+        self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
         print(self.cut_bins)
 
         # def count_i(df, l):
@@ -198,7 +199,7 @@ class load_data:
         self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
         arr_test = self.test[self.all_y_col].values.flatten()       # Flatten all testing factors to qcut all together
         arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
-        self.sample_set['train_y_final'] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
+        self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
 
     def split_valid(self, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
