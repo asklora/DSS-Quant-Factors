@@ -85,6 +85,8 @@ def calc_premium_all():
     #                                                 sample_interval='monthly', use_cached=True, save=True)
 
     # Read stock_return / ratio table
+    print(f'#################################################################################################')
+    print(f'      ------------------------> Download ratio data from DB')
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
@@ -96,7 +98,6 @@ def calc_premium_all():
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
     # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
-    factor_list = ['earnings_1yr', 'epsq_1q']
 
     # Calculate premium for currency partition
     print(f'#################################################################################################')

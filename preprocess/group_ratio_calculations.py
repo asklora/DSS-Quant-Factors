@@ -9,6 +9,7 @@ from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from preprocess.premium_calculation import trim_outlier
 from functools import partial
+from pandas.tseries.offsets import MonthEnd
 
 def combine_like_premium(name, g, factor_list):
     ''' calculate combined average with avg(top group monthly, ratios) - avg(bottom group monthly, ratios) '''
@@ -92,7 +93,7 @@ def calc_group_ratio():
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
     factor_list = formula['name'].to_list()                           # factor = all variabales
 
-    for method in ['premium']:      # also for 'mean','median'
+    for method in ['mean','median','premium']:      # also for 'mean','median'
 
         # Calculate premium for currency partition
         print(f'#################################################################################################')
@@ -127,6 +128,7 @@ def calc_group_ratio():
         results_dtypes['group']=TEXT
         results_dtypes['method']=TEXT
 
+        final_results_df['period_end'] = final_results_df['period_end'] + MonthEnd(1)
         try:
             with global_vals.engine_ali.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}

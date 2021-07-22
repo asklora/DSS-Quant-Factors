@@ -236,13 +236,13 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data()                                                              # load_data (class) STEP 1
-    for group_code in ['industry', 'currency']:
-        sql_result['group_code'] = group_code
-        data.split_group(group_code)                                                # load_data (class) STEP 2
-        for f in data.factor_list:
-            sql_result['y_type'] = f
-            print(sql_result['y_type'])
+    data = load_data()                                                                  # load_data (class) STEP 1
+    for f in data.factor_list:
+        sql_result['y_type'] = f
+        print(sql_result['y_type'])
+        for group_code in ['industry', 'currency']:
+            sql_result['group_code'] = group_code
+            data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
                 backtest = testing_period not in testing_period_list[0:4]
