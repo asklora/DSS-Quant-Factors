@@ -158,6 +158,7 @@ def to_list_importance(gbm):
     df['name'] = data.x_col     # column names
     df['split'] = gbm.feature_importance(importance_type='split')
     df['split'] = df['split'].rank(ascending=False)
+    df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list()), df
 
 # ----------------------------------- Hyperopt & Write Best Iteration to DB ----------------------------------------
@@ -186,6 +187,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class", **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class", **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class", **extra)
         global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
