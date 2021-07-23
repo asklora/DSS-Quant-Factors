@@ -145,8 +145,8 @@ class load_data:
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
         self.train = self.group.loc[(start <= self.group['period_end']) &
-                                     (self.group['period_end'] < testing_period)].reset_index(drop=True)
-        self.train = self.train.dropna(subset=y_col)      # remove training sample with NaN Y
+                                     (self.group['period_end'] < testing_period)]
+        self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         self.test = self.group.loc[self.group['period_end'] == testing_period].reset_index(drop=True)
 
@@ -201,7 +201,7 @@ class load_data:
         arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
         self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
 
-    def split_valid(self, n_splits, valid_method):
+    def split_valid(self, testing_period, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
@@ -223,7 +223,7 @@ class load_data:
 
         self.split_train_test(testing_period, y_type, ar_period, ma_period)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
-        gkf = self.split_valid(n_splits, valid_method)                              # split for cross validation in groups
+        gkf = self.split_valid(testing_period, n_splits, valid_method)                              # split for cross validation in groups
 
         return self.sample_set, gkf
 
