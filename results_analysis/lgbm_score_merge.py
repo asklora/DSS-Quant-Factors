@@ -20,6 +20,7 @@ def download_stock_pred():
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
+    df = df.sort_values(['finish_timing'])
     df.to_csv(f'score/score_original_{iter_name}.csv', index=False)
 
     print('Finish running for factors ', len(set(df['y_type'])), set(df['y_type']))
@@ -32,7 +33,7 @@ def download_stock_pred():
     best_cv = best.groupby(['y_type','group_code','testing_period']).mean().reset_index()
     best_cv_time = best.groupby(['y_type','group_code']).mean().reset_index()
 
-    with pd.ExcelWriter(f'score/result_analysis_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'score/result_score_accuracy_{iter_name}.xlsx') as writer:
         # df.to_excel(writer, sheet_name='original', index=False)
         best.to_excel(writer, sheet_name='best', index=False)
         best_cv.to_excel(writer, sheet_name='best_avg(cv)', index=False)
