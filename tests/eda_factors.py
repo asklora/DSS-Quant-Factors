@@ -58,8 +58,10 @@ def correl_fama_website():
     #     sub_df = df[['period_end', website_factor[i], our_factor[i]]].set_index('period_end')
 
 def eda_missing():
-    df = factors.isnull().sum()/factors.count()
+    df = factors[col_list].isnull().sum()/len(factors)
     df.sort_values(ascending=False).to_csv('eda/missing.csv')
+    # plt.hist(df)
+    # plt.savefig('eda/missing.png')
 
 def eda_correl():
     ''' test correlation of our factor '''
@@ -88,12 +90,12 @@ def eda_correl():
 
 def eda_vif():
     ''' Calculate VIF -> no abnormal comes to our attention beyond correlations '''
-    df = factors.iloc[:,2:].replace([np.inf, -np.inf], np.nan).fillna(0)
+    df = factors[col_list].replace([np.inf, -np.inf], np.nan).fillna(0)
     X = add_constant(df)
     vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])], index=X.columns)
 
     print(vif)
-    vif.to_csv('eda/test_eda_vif.csv')
+    vif.sort_values(ascending=False).to_csv('eda/test_eda_vif.csv')
 
 def sharpe_ratio():
     ''' calculate the sharpe ratio '''
@@ -473,13 +475,13 @@ def dist_all():
 if __name__ == "__main__":
     # correl_fama_website()
     eda_missing()
-    eda_correl()
+    # eda_correl()
     eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
-    # sharpe_ratio()
-    # test_if_persistent()
+    sharpe_ratio()
+    test_if_persistent()
     average_absolute_mean()
 
     # check_smb()

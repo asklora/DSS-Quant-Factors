@@ -3,91 +3,122 @@ from matplotlib import pyplot as plt
 from sqlalchemy import text
 from dateutil.relativedelta import relativedelta
 
-from global_vals import engine, result_score_table
+from global_vals import engine_ali, result_score_table
 from hyperspace_lgbm import find_hyperspace
 
-class params_tuning:
+# find hyper-parameters used in hyperopt
+sql_result = {'objective': 'multiclass'}
+params = list(find_hyperspace(sql_result).keys())
 
-    def __init__(self, r_name):
-        ''' donwload results from results_lightgbm '''
+# params = ['num_leaves', 'min_data_in_leaf']
+matrix = 'accuracy'
 
-        self.r_name = r_name
-        
-        sql_result = {'objective':'multiclass'}
-        space = find_hyperspace(sql_result)                 
-        self.params = list(space.keys())             # find hyper-parameters used in hyperopt
+r_name = '2021-07-22 17:46:31.704325_testing'
+iter_name = r_name.split('_')[-1]
+y_type = 'market_cap_usd'
+
+def download_from_score():
+
+    with engine_ali.connect() as conn:
+        query = text(f"select * "
+                     f"FROM (SELECT DISTINCT *, max({matrix}_valid) OVER (partition by group_code, testing_period, "
+                     f"cv_number, y_type) as max_thing FROM {result_score_table}_lgbm_class WHERE name_sql = '{r_name}') t "
+                     f"where {matrix}_valid = max_thing")
+        results = pd.read_sql(query, con=conn)  # read records from DB
+    engine_ali.dispose()
+
+    results.to_csv(f'tuning_origin_{iter_name}.csv')
+
+    return results
+
+def calc_correl():
+    ''' calculated correlation between train/valid/test sets '''
+
+    results = download_from_score()
     
-        with engine.connect() as conn:
-            query = text("select * from (select DISTINCT *, min(mse_valid) over (partition by group_code, "
-                         "testing_period, cv_number) as min_thing from {} where name_sql in :name) t "
-                         "where mse_valid = min_thing".format(result_score_table))
-            query = query.bindparams(name=tuple(self.r_name))
-            self.results = pd.read_sql(query, con=conn)   # read records from DB
-        engine.dispose()
+    correls = {}
+    correls['train_valid'] = {}
+    correls['valid_test'] = {}
 
-        self.results.to_csv(f'params_tuning_origin_{self.r_name[0][:10]}.csv')
+    correls['train_valid']['all'] = results[f'{matrix}_train'].corr(results[f'{matrix}_valid'])
+    correls['valid_test']['all'] = results[f'{matrix}_valid'].corr(results[f'{matrix}_test'])
 
-        print(self.results['testing_period'].max())
+    for i in set(results['group_code']):
+        part = results.loc[results['group_code']==i]
+        correls['train_valid'][i] = part[f'{matrix}_train'].corr(part[f'{matrix}_valid'])
+        correls['valid_test'][i] = part[f'{matrix}_valid'].corr(part[f'{matrix}_test'])
 
-        last_valid_period = self.results['testing_period'].max() - relativedelta(years=1)
-        self.results = self.results.loc[self.results['testing_period']<=last_valid_period]
+    print(pd.DataFrame(correls))
+    pd.DataFrame(correls).to_csv(f'tuning_correl_{iter_name}.csv')
 
-        print('===== score results =====', self.results)
-
-    def calc_correl(self, matrix='mse'):
-        ''' calculated correlation between train/valid/test sets '''
+def calc_average():
+    ''' calculate mean of each variable in db '''
     
-        correls = {}
-        correls['train_valid'] = {}
-        correls['valid_test'] = {}
-    
-        correls['train_valid']['all'] = self.results[f'{matrix}_train'].corr(self.results[f'{matrix}_valid'])
-        correls['valid_test']['all'] = self.results[f'{matrix}_valid'].corr(self.results[f'{matrix}_test'])
+    results = download_from_score()
 
-        for i in set(self.results['group_code']):
-            part = self.results.loc[self.results['group_code']==i]
-            correls['train_valid'][i] = part[f'{matrix}_train'].corr(part[f'{matrix}_valid'])
-            correls['valid_test'][i] = part[f'{matrix}_valid'].corr(part[f'{matrix}_test'])
-    
-        print(pd.DataFrame(correls))
-        pd.DataFrame(correls).to_csv(f'params_tuning_correl_{self.r_name[0][:10]}.csv')
+    writer = pd.ExcelWriter(f'tuning_avg_test_{iter_name}.xlsx')    # create excel records
 
-    def calc_average(self, eval_matrix='mae', eval_sample='test'):
-        ''' calculate mean of each variable in db '''
-    
-        writer = pd.ExcelWriter(f'params_tuning_{eval_sample}_{self.r_name[0][:10]}.xlsx')    # create excel records
-    
-        for c in set(self.results['group_code']):
-            sub_df = self.results.loc[self.results['group_code']==c]
+    for c in set(results['group_code']):
+        sub_df = results.loc[results['group_code']==c]
 
-            df_list = []
-            for p in self.params:
-                try:    # calculate means of each subset
-                    des_df = sub_df.groupby(p).mean()[[f'{eval_matrix}_{eval_sample}',f'r2_{eval_sample}']].reset_index()
-                    des_df['len'] = sub_df.groupby(p).count().reset_index()[f'{eval_matrix}_{eval_sample}']
-                    des_df.columns = ['subset', f'{eval_matrix}_{eval_sample}', f'r2_{eval_sample}', 'len']
-                    des_df['params'] = p
-                    des_df = des_df.sort_values(by=[f'{eval_matrix}_{eval_sample}'], ascending=True)
-                    df_list.append((des_df))
-                except:
-                    continue
-            pd.concat(df_list, axis=0).to_excel(writer, f'{c}', index=False)
-    
-        writer.save()
+        df_list = []
+        for p in params:
+            try:    # calculate means of each subset
+                des_df = sub_df.groupby(p).mean()[[f'{matrix}_test',f'r2_test']].reset_index()
+                des_df['len'] = sub_df.groupby(p).count().reset_index()[f'{matrix}_test']
+                des_df.columns = ['subset', f'{matrix}_test', f'r2_test', 'len']
+                des_df['params'] = p
+                des_df = des_df.sort_values(by=[f'{matrix}_test'], ascending=True)
+                df_list.append((des_df))
+            except:
+                continue
+        pd.concat(df_list, axis=0).to_excel(writer, f'{c}', index=False)
 
-    def plot_scatter(self, eval_matrix='mae', eval_sample='test'):
-        ''' plot a scatter map of average results in DB '''
+    writer.save()
 
-        n = len(self.params)
-        ratio = f'{eval_matrix}_{eval_sample}'
+def plot_scatter_single_param():
+    ''' plot a scatter map of average results in DB '''
+
+    ratio = f'{matrix}_test'
+    df = download_from_score().drop_duplicates(['y_type', ratio])
+    all_y_type = list(set(df['y_type']))
+
+    for p in params:
+        k=1
+        fig = plt.figure(figsize=(2 * len(all_y_type), 10), dpi=120, constrained_layout=True)
+        for name, g in df.groupby('group_code'):
+            ax = fig.add_subplot(2, 1, k)
+            max_scores = pd.DataFrame(g.groupby(['y_type',p]).mean()[ratio], columns=[ratio])
+            max_scores.loc[:, 'len'] = g.groupby(['y_type',p]).count()[ratio].to_list()
+            ax.scatter([x[0] for x in max_scores.index], [x[1] for x in max_scores.index],
+                       c=max_scores[ratio], s=max_scores['len'] / len(g) * 30000, cmap='coolwarm')
+            for i in range(len(max_scores)):
+                ax.annotate(max_scores.iloc[i,-2].round(2), (max_scores.index[i][0], max_scores.index[i][1]), fontsize=15)
+            ax.set_ylabel(name, fontsize=20)
+            ax.tick_params(axis='both', which='major', labelsize=15)
+            k+=1
+
+        plt.suptitle(p, fontsize=20)
+        fig.savefig(f'tuning/tuning_plot_{iter_name}_[{p}].png')
+        plt.close()
+
+def plot_scatter():
+    ''' plot a scatter map of average results in DB '''
     
-        for name, g in self.results.groupby(['group_code']):
+    df = download_from_score()
+
+    n = len(params)
+    ratio = f'{matrix}_test'
+
+    for y in list(set(df['y_type'])):
+        results = df[y]
+        for name, g in results.groupby(['group_code']):
             print(name)
             fig = plt.figure(figsize=(4 * n, 4 * n), dpi=120)  # create figure for test & train boxplot
-    
+
             k = 1
-            for p1 in self.params:
-                for p2 in self.params:
+            for p1 in params:
+                for p2 in params:
                     ax = fig.add_subplot(n, n, k)
                     max_scores = pd.DataFrame(g.groupby([p1,p2]).mean()[ratio], columns=[ratio])
                     max_scores.loc[:, 'len'] = g.groupby([p1,p2]).count()[ratio].to_list()
@@ -96,18 +127,14 @@ class params_tuning:
                     ax.set_xlabel(p1)
                     ax.set_ylabel(p2)
                     k+=1
-    
+
             fig.tight_layout()
-            fig.savefig(f'params_tuning_plot_{eval_sample}_{self.r_name[0][:10]}_{name}.png')
+            fig.savefig(f'tuning_plot_test_{iter_name}_{name}.png')
             plt.close()
 
 if __name__ == "__main__":
 
-
-    r_name = ['rev_yoy_2021-07-09 09:23:27.029713']
-    m = 'mae'
-
-    pt = params_tuning(r_name=r_name)
-    pt.calc_correl(matrix=m)                                # check correlation
-    pt.calc_average(eval_matrix=m, eval_sample='test')
-    pt.plot_scatter(eval_matrix=m, eval_sample='test')
+    # calc_correl(matrix=m)                                # check correlation
+    # calc_average(matrix=m, eval_sample='test')
+    # plot_scatter()
+    plot_scatter_single_param()
