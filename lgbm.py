@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'testing'
+    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'indoverfit'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
     # update additional base_space for Hyperopt
@@ -242,12 +242,12 @@ if __name__ == "__main__":
     for f in data.factor_list:
         sql_result['y_type'] = f
         print(sql_result['y_type'])
-        for group_code in ['industry', 'currency']:
+        for group_code in ['industry']:
             sql_result['group_code'] = group_code
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
-                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']]}
+                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']], 'valid_method':'cv'}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     sql_result['cut_bins'] = list(data.cut_bins)
