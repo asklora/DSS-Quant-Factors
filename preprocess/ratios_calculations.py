@@ -256,6 +256,12 @@ def download_clean_worldscope_ibes():
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
     ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
 
+    # label period_end with month end of trading_day (update_date)
+    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
+    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d') + MonthEnd(0)
+
+    ibes = ibes.sort_values(['period_end','ticker']).drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
+
     return ws, ibes, universe
 
 def download_eikon_others():
@@ -305,6 +311,11 @@ def count_sample_number(tri):
     global_vals.engine_ali.dispose()
     exit(1)
 
+def check_duplicates(df, name=''):
+    df1 = df.drop_duplicates(subset=['period_end','ticker'])
+    if df.shape != df1.shape:
+        raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
+
 def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                               use_cached=False, save=True):
     ''' This part do the following:
@@ -313,19 +324,24 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     # 1. Stock return/volatility/volume(?)
     if use_cached:
-        tri = pd.read_csv('data_tri_final.csv', low_memory=False)
-        stocks_col = tri.select_dtypes("float").columns
+        try:
+            tri = pd.read_csv('data_tri_final.csv', low_memory=False)
+            stocks_col = tri.select_dtypes("float").columns
+        except Exception as e:
+            print(e)
+            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
     else:
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    check_duplicates(tri, 'tri')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
     ws, ibes, universe = download_clean_worldscope_ibes()
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d') + MonthEnd(0)
+    check_duplicates(ws, 'worldscope')
+    check_duplicates(ibes, 'ibes')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
     with global_vals.engine_ali.connect() as conn:
@@ -384,6 +400,11 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
+    if save:
+        df.to_csv('all_data.csv')  # for debug
+        pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+
+    check_duplicates(df, 'final')
     return df, stocks_col
 
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
@@ -391,13 +412,15 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     if use_cached:
-        df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
-        stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+        if 1==1:
+        # try:
+        #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
+        #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+        # except Exception as e:
+        #     print(e)
+            df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
     else:
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
-        if save:
-            df.to_csv('all_data.csv') # for debug
-            pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
@@ -450,10 +473,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
+    db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':
-        db_table_name = global_vals.processed_ratio_table + '_biweekly'
-    else:
-        db_table_name = global_vals.processed_ratio_table
+        db_table_name += '_biweekly'
 
     if save:
         with global_vals.engine_ali.connect() as conn:
@@ -483,4 +505,4 @@ if __name__ == "__main__":
     # exit(0)
 
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True)
+                          use_cached=True, save=True)
