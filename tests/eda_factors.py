@@ -474,15 +474,15 @@ def dist_all():
 
 if __name__ == "__main__":
     # correl_fama_website()
-    eda_missing()
+    # eda_missing()
     # eda_correl()
-    eda_vif()
+    # eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
-    sharpe_ratio()
-    test_if_persistent()
-    average_absolute_mean()
+    # sharpe_ratio()
+    # test_if_persistent()
+    # average_absolute_mean()
 
     # check_smb()
 
@@ -490,4 +490,4 @@ if __name__ == "__main__":
     # test_cluster()
     # test_tsne()
 
-    # dist_all()
+    dist_all()

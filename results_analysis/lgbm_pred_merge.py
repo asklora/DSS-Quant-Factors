@@ -80,7 +80,7 @@ def combine_mode_group(df):
     df = df.transpose()
 
     with global_vals.engine_ali.connect() as conn:
-        icb_name = pd.read_sql(f"SELECT DISTINCT icb_6 as group, name_6 as name FROM icb_code_explanation", conn)  # download training history
+        icb_name = pd.read_sql(f"SELECT DISTINCT code_6 as group, name_6 as name FROM icb_code_explanation", conn)  # download training history
         icb_count = pd.read_sql(f"SELECT \"group\", avg(num_ticker) as num_ticker FROM icb_code_count GROUP BY \"group\"", conn)  # download training history
     global_vals.engine_ali.dispose()
 
