@@ -78,24 +78,35 @@ def calc_group_premium_msci():
     exit(0)
     return 1
 
-def calc_premium_all():
+def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
     # df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
     #                                                 sample_interval='monthly', use_cached=True, save=True)
+    if use_biweekly_stock and stock_last_week_avg:
+        raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
 
     # Read stock_return / ratio table
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
     with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
+        if use_biweekly_stock:
+            print(f'      ------------------------> Use biweekly ratios')
+            df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_biweekly", conn)
+        else:
+            df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
+        if stock_last_week_avg:
+            print(f'      ------------------------> Replace stock return with last week average returns')
+            df_stock_avg = pd.read_sql(f"SELECT * FROM {global_vals.processed_stock_table}", conn)
+            df = df.merge(df_stock_avg, on=['ticker', 'period_end'], suffixes=['_org',''])
     global_vals.engine_ali.dispose()
 
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
-    factor_list = formula['name'].to_list()                           # factor = all variabales
+    # factor_list = formula['name'].to_list()                           # factor = all variabales
+    factor_list = ['ar_less_sga_to_int']
 
     # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
 
@@ -158,17 +169,23 @@ def calc_premium_all():
     results_dtypes['period_end'] = DATE
     results_dtypes['group']=TEXT
 
-    try:
-        with global_vals.engine_ali.connect() as conn:
-            extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
-            final_results_df.to_sql(global_vals.factor_premium_table, **extra, dtype=results_dtypes)
-            print(f'      ------------------------> Finish writing factor premium table ')
-            final_member_df.to_sql(global_vals.membership_table, **extra, dtype=mem_dtypes)
-            print(f'      ------------------------> Finish writing factor membership table ')
-        global_vals.engine_ali.dispose()
-    except Exception as e:
-        print(e)
-        write_local_csv_to_db()
+    if stock_last_week_avg:
+        factor_table = global_vals.factor_premium_table + '_weekavg'
+        member_table = global_vals.membership_table + '_weekavg'
+    elif use_biweekly_stock:
+        factor_table = global_vals.factor_premium_table + '_biweekly'
+        member_table = global_vals.membership_table + '_biweekly'
+    else:
+        factor_table = global_vals.factor_premium_table
+        member_table = global_vals.membership_table
+
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
+        final_results_df.to_sql(factor_table, **extra, dtype=results_dtypes)
+        print(f'      ------------------------> Finish writing factor premium table ')
+        final_member_df.to_sql(member_table, **extra, dtype=mem_dtypes)
+        print(f'      ------------------------> Finish writing factor membership table ')
+    global_vals.engine_ali.dispose()
 
 def write_local_csv_to_db():
 
@@ -182,5 +199,5 @@ def write_local_csv_to_db():
     global_vals.engine_ali.dispose()
 
 if __name__=="__main__":
-    calc_premium_all()
+    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
     # write_local_csv_to_db()

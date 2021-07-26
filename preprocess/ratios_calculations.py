@@ -165,12 +165,15 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
 
-    if save:
+    if price_sample == 'last_week_avg':
         with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-            tri.drop(['close'], axis=1).to_sql(global_vals.processed_stock_table, **extra)
+            df = tri.drop(['close'], axis=1)
+            df.columns = ['ticker', ' period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
+            df.to_sql(global_vals.processed_stock_table, **extra)
             print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
         global_vals.engine_ali.dispose()
+        exit(1)
     return tri, stock_col
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
@@ -383,11 +386,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
                           use_cached=False, save=True):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    # if use_cached:
-    #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
-    #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
-    # else:
-    if 1==1:
+    if use_cached:
+        df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
+        stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+    else:
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
         if save:
             df.to_csv('all_data.csv') # for debug
@@ -444,12 +446,17 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
+    if sample_interval == 'biweekly':
+        db_table_name = global_vals.processed_ratio_table + '_biweekly'
+    else:
+        db_table_name = global_vals.processed_ratio_table
+
     if save:
         with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
             ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
-            ddf.to_sql(global_vals.processed_ratio_table, **extra)
-            print(f'      ------------------------> Finish writing {global_vals.processed_ratio_table} table ')
+            ddf.to_sql(db_table_name, **extra)
+            print(f'      ------------------------> Finish writing {db_table_name} table ')
         global_vals.engine.dispose()
         # exit(0)
 
@@ -478,4 +485,4 @@ if __name__ == "__main__":
     # print(df.describe())
     # download_eikon_others()
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=True)
+                          use_cached=False, save=True)

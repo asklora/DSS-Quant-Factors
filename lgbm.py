@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'indoverfit'
+    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'laskweekavg'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
     # update additional base_space for Hyperopt
@@ -238,11 +238,11 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data()                                                                  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)                             # load_data (class) STEP 1
     for f in data.factor_list:
         sql_result['y_type'] = f
         print(sql_result['y_type'])
-        for group_code in ['industry']:
+        for group_code in ['industry', 'currency']:
             sql_result['group_code'] = group_code
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):

@@ -73,11 +73,21 @@ def download_org_ratios(method='median', change=True):
 
     return df.iloc[:,:-1]
 
-def combine_data():
+def combine_data(use_biweekly_stock, stock_last_week_avg):
     ''' combine factor premiums with ratios '''
 
+    if use_biweekly_stock and stock_last_week_avg:
+        raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
+
+    # Read sql from different tables
+    factor_table_name = global_vals.factor_premium_table
+    if use_biweekly_stock:
+        factor_table_name+='_biweeky'
+    elif stock_last_week_avg:
+        factor_table_name+='_weekavg'
+
     with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table} WHERE \"group\" IS NOT NULL', conn)
+        df = pd.read_sql(f'SELECT * FROM {factor_table_name} WHERE \"group\" IS NOT NULL', conn)
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
     global_vals.engine_ali.dispose()
 
@@ -106,13 +116,13 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    def __init__(self):
+    def __init__(self, use_biweekly_stock=False, stock_last_week_avg=False):
         ''' combine all possible data to be used '''
 
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.main, self.factor_list = combine_data()    # combine all data
+        self.main, self.factor_list = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
 
         self.all_y_col = ["y_" + x for x in self.factor_list]    # calculate y for all factors
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
@@ -234,7 +244,7 @@ if __name__ == '__main__':
     y_type = ['earnings_yield','market_cap_usd']
     group_code = 'industry'
 
-    data = load_data()
+    data = load_data(stock_last_week_avg=True)
     data.split_group(group_code)
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
 
