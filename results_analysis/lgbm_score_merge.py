@@ -9,6 +9,8 @@ import global_vals
 
 r_name = '2021-07-22 17:46:31.704325_testing'
 r_name = '2021-07-23 11:16:48.504709_chron_valid'
+r_name = '2021-07-23 18:31:15.995890_indoverfit'
+
 y_type = 'market_cap_usd'
 iter_name = r_name.split('_')[-1]
 
