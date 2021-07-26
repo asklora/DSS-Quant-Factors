@@ -7,6 +7,7 @@ import numpy as np
 import global_vals
 
 col_name = ['name_sql', 'group_code', 'testing_period', 'cv_number', 'y_type', 'finish_timing']
+# r_name = '2021-07-23 18:31:15.995890_indoverfit'
 r_name = '2021-07-22 17:46:31.704325_testing'
 iter_name = r_name.split('_')[-1]
 
@@ -60,8 +61,9 @@ def combine_mode_class(df):
         for name1, g1 in g.groupby(['pred']):
             result_dict[name][name1] = accuracy_score(g1['pred'], g1['actual'])
 
-    print(pd.DataFrame(result_dict))
-    return pd.DataFrame(result_dict)
+    df = pd.DataFrame(result_dict).transpose().reset_index()
+    df.columns = ['group_code', 'testing_period', 'y_type'] + df.columns.to_list()[3:]
+    return df
 
 def calc_pred_class():
     ''' Calculte the accuracy_score if combine CV by mean, median, mode '''
@@ -79,8 +81,9 @@ def calc_pred_class():
 
     with pd.ExcelWriter(f'score/result_pred_accuracy_{iter_name}.xlsx') as writer:
         r.to_excel(writer, sheet_name='original', index=False)
-        r.groupby(['group_code', 'testing_period']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
+        r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
         result_dict_012.to_excel(writer, sheet_name='mode_012', index=False)
+        result_dict_012.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":
     # df = pd.read_csv('y_conversion.csv')
