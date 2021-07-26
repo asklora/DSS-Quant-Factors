@@ -9,7 +9,7 @@ from sklearn.model_selection import GroupShuffleSplit
 
 import global_vals
 
-def download_clean_macros():
+def download_clean_macros(main_df, use_biweekly_stock=False):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
@@ -25,19 +25,33 @@ def download_clean_macros():
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
     macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
-    macros["period_end"] = macros['trading_day'] + MonthEnd(0)              # convert timestamp to monthend
+
+    if use_biweekly_stock:
+        df_date_list = df['period_end'].drop_duplicates().sort_values()
+        macros = macros.merge(df_date_list, on=['period_end']).sort_values(['period_end']).set_values(macros)
+        macros = macros.fillna(method='ffill')
+    else:
+        macros["period_end"] = macros['trading_day'] + MonthEnd(0)  # convert timestamp to monthend
 
     return macros.drop(['trading_day','data'], axis=1)
 
-def download_index_return():
+def download_index_return(use_biweekly_stock, stock_last_week_avg):
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Download index return data from {global_vals.processed_ratio_table}')
 
+    # read stock return from ratio calculation table
+    if use_biweekly_stock:
+        db_table_name = global_vals.processed_ratio_table + '_biweekly'
+    elif stock_last_week_avg:
+        db_table_name = global_vals.processed_stock_table
+    else:
+        db_table_name = global_vals.processed_ratio_table
+
     with global_vals.engine_ali.connect() as conn:
         index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_r1_0, stock_return_r6_2, stock_return_r12_7 "
-                                f"FROM {global_vals.processed_ratio_table} WHERE ticker like '.%%'", conn)
+                                f"FROM {db_table_name} WHERE ticker like '.%%'", conn)
     global_vals.engine_ali.dispose()
 
     # index_to_curr = {'.TWII':'TWD',
@@ -98,11 +112,11 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove
 
     # Add Macroeconomic variables - from Datastream
-    macros = download_clean_macros()
+    macros = download_clean_macros(df, use_biweekly_stock)
     df = df.merge(macros, on=['period_end'], how='left')
 
     # Add index return variables
-    index_ret = download_index_return()
+    index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
     df = df.merge(index_ret, on=['period_end'], how='left')
 
     # Add original ratios variables
