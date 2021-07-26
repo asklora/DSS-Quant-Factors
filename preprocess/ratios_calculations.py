@@ -353,9 +353,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     ek = download_eikon_others()
 
     # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
     universe['icb_code'] = universe['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
                                                '10102030':'101024','10102035':'101025'})   # split industry 101020 - software (100+ samples)
+    universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')

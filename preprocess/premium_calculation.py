@@ -169,15 +169,14 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
     results_dtypes['period_end'] = DATE
     results_dtypes['group']=TEXT
 
+    factor_table = global_vals.factor_premium_table
+    member_table = global_vals.membership_table
     if stock_last_week_avg:
-        factor_table = global_vals.factor_premium_table + '_weekavg'
-        member_table = global_vals.membership_table + '_weekavg'
+        factor_table += '_weekavg'
+        member_table += '_weekavg'
     elif use_biweekly_stock:
-        factor_table = global_vals.factor_premium_table + '_biweekly'
-        member_table = global_vals.membership_table + '_biweekly'
-    else:
-        factor_table = global_vals.factor_premium_table
-        member_table = global_vals.membership_table
+        factor_table += '_biweekly'
+        member_table += '_biweekly'
 
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
@@ -199,5 +198,5 @@ def write_local_csv_to_db():
     global_vals.engine_ali.dispose()
 
 if __name__=="__main__":
-    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=False)
+    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
     # write_local_csv_to_db()
