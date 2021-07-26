@@ -293,13 +293,17 @@ def count_sample_number(tri):
     tri['icb_code'] = tri['icb_code'].astype(str).str[:6]
 
     c1 = tri.groupby(['trading_day', 'icb_code']).count()['stock_return_y'].unstack(level=1)
-    print(c1.mean().mean())
     # c1.to_csv('c1.csv', index=False)
 
     c2 = tri.groupby(['trading_day', 'currency_code']).count()['stock_return_y'].unstack(level=1)
-    pd.concat([c1, c2], axis=1).to_csv('eda/number_of_ticker_per_ind_curr.csv')
-    print(c1.mean().mean())
-    exit(0)
+    df = pd.concat([c1, c2], axis=1).stack().reset_index()
+    df.columns = ['period_end', 'group', 'num_ticker']
+
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
+        df.to_sql('icb_code_count', **extra)
+    global_vals.engine_ali.dispose()
+    exit(1)
 
 def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                               use_cached=False, save=True):
@@ -477,12 +481,6 @@ if __name__ == "__main__":
     # tri = pd.read_csv('data_tri_final.csv')
     # count_sample_number(tri)
     # exit(0)
-    # calc_stock_return(price_sample='last_week_avg', sample_interval='monthly', use_cached=True, save=False)
-    # download_clean_macros()
-    # download_clean_worldscope_ibes()
-    # exit(1)
-    # df = combine_stock_factor_data()
-    # print(df.describe())
-    # download_eikon_others()
+
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=False, save=True)

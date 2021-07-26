@@ -7,8 +7,8 @@ import numpy as np
 import global_vals
 
 col_name = ['name_sql', 'group_code', 'testing_period', 'cv_number', 'y_type', 'finish_timing']
-# r_name = '2021-07-23 18:31:15.995890_indoverfit'
-r_name = '2021-07-22 17:46:31.704325_testing'
+r_name = '2021-07-23 18:31:15.995890_indoverfit'
+# r_name = '2021-07-22 17:46:31.704325_testing'
 iter_name = r_name.split('_')[-1]
 
 def download_stock_pred():
@@ -50,7 +50,7 @@ def combine_pred_class(df, agg_type):
     return result_dict
 
 def combine_mode_class(df):
-    ''' download stock / ibes data and convert to qcut_median '''
+    ''' calculate accuracy score when pred = 0 / 1 / 2 '''
 
     df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
     df = df.dropna(how='any')
@@ -65,12 +65,37 @@ def combine_mode_class(df):
     df.columns = ['group_code', 'testing_period', 'y_type'] + df.columns.to_list()[3:]
     return df
 
+def combine_mode_group(df):
+    ''' calculate accuracy score by each industry/currency group '''
+
+    df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+    df = df.dropna(how='any')
+
+    result_dict = {}
+    for name, g in df.groupby(['group_code', 'y_type', 'group']):
+        result_dict[name] = accuracy_score(g['pred'], g['actual'])
+
+    df = pd.DataFrame(result_dict, index=['0']).transpose().unstack().reset_index()
+    df.columns = ['group_code', 'y_type'] + [x[1] for x in df.columns.to_list()[2:]]
+    df = df.transpose()
+
+    with global_vals.engine_ali.connect() as conn:
+        icb_name = pd.read_sql(f"SELECT DISTINCT icb_6 as group, name_6 as name FROM icb_code_explanation", conn)  # download training history
+        icb_count = pd.read_sql(f"SELECT \"group\", avg(num_ticker) as num_ticker FROM icb_code_count GROUP BY \"group\"", conn)  # download training history
+    global_vals.engine_ali.dispose()
+
+    df = df.merge(icb_name, on=['group'])
+    df = df.merge(icb_count, on=['group'])
+
+    return df
+
 def calc_pred_class():
     ''' Calculte the accuracy_score if combine CV by mean, median, mode '''
 
     df = download_stock_pred()
     df[['pred','actual']] = df[['pred','actual']].astype(int)
-    result_dict_012 = combine_mode_class(df)
+    result_group = combine_mode_group(df)
+    result_class = combine_mode_class(df)
 
     results = {}
     for i in ['mean', 'median', 'mode']:
@@ -82,8 +107,9 @@ def calc_pred_class():
     with pd.ExcelWriter(f'score/result_pred_accuracy_{iter_name}.xlsx') as writer:
         r.to_excel(writer, sheet_name='original', index=False)
         r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
-        result_dict_012.to_excel(writer, sheet_name='mode_012', index=False)
-        result_dict_012.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
+        result_group.to_excel(writer, sheet_name='mode_group', index=False)
+        result_class.to_excel(writer, sheet_name='mode_012', index=False)
+        result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":
     # df = pd.read_csv('y_conversion.csv')
