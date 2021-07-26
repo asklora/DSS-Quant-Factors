@@ -105,11 +105,12 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
     global_vals.engine_ali.dispose()
 
+    # Research stage using 10 selected factor only
     factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
-    df = df.filter(['group','period_end'] + factors)
+    x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
     df['period_end'] = pd.to_datetime(df['period_end'])                 # convert to datetime
 
-    df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove
+    df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # Add Macroeconomic variables - from Datastream
     macros = download_clean_macros(df, use_biweekly_stock)
@@ -123,7 +124,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     org_df = download_org_ratios()
     df = df.merge(org_df, on=['group', 'period_end'], how='left')
 
-    return df.sort_values(by=['group', 'period_end']), factors
+    return df.sort_values(by=['group', 'period_end']), factors, x_col
 
 class load_data:
     ''' main function:
@@ -136,7 +137,7 @@ class load_data:
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.main, self.factor_list = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
+        self.main, self.factor_list, self.original_x_col = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
 
         self.all_y_col = ["y_" + x for x in self.factor_list]    # calculate y for all factors
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
@@ -154,37 +155,36 @@ class load_data:
     def split_train_test(self, testing_period, y_type, ar_period, ma_period):
         ''' split training / testing set based on testing period '''
 
+        current_x_col = []
+        current_group = self.group.copy(1)
+
         # Calculate the time_series history for predicted Y
         for i in range(1, ar_period + 1):
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
-            self.main[ar_col] = self.main.groupby(['group'])[y_type].shift(i)
+            current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
+            current_x_col.extend(ar_col)
 
         # Calculate the moving average for predicted Y
         ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
-        self.main.loc[:, ma_col] = self.main.groupby(['group'])[y_type].transform(
+        current_group.loc[:, ma_col] = current_group.groupby(['group'])[y_type].transform(
             lambda x: x.rolling(ma_period, min_periods=6).mean())
+        current_x_col.extend(ma_col)
 
         y_col = ["y_" + x for x in y_type]
 
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
-        self.train = self.group.loc[(start <= self.group['period_end']) &
-                                     (self.group['period_end'] < testing_period)]
+        self.train = current_group.loc[(start <= current_group['period_end']) &
+                                     (current_group['period_end'] < testing_period)]
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
-        self.test = self.group.loc[self.group['period_end'] == testing_period].reset_index(drop=True)
+        self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
         self.y_qcut_all()   # qcut/cut for all factors to be predicted at the same time
 
         def divide_set(df):
             ''' split x, y from main '''
-
-            def find_col(df, k):
-                l = df.columns.to_list()
-                return [x for x in l if k in x]
-
-            x_col = set(df.columns.to_list()) - set(find_col(df, "y_") + find_col(df, "org_") + ['period_end','group'])
-            x_col = list(x_col) + ["org_"+x for x in y_type]
+            x_col = self.original_x_col + current_x_col + ["org_"+x for x in y_type]
             y_col_cut = [x+'_cut' for x in y_col]
             return df[x_col].values, df[y_col].values, df[y_col_cut].values, x_col     # Assuming using all factors
 
@@ -209,16 +209,6 @@ class load_data:
         arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
         # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
         self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
-        print(self.cut_bins)
-
-        # def count_i(df, l):
-        #     s = df.isnull().sum(axis=0)
-        #     n = df.count()
-        #     df = df.replace(l, np.nan)
-        #     return (df.isnull().sum(axis=0) - s)/n
-        # ddf = pd.DataFrame(self.sample_set['train_y_final'], columns=self.factor_list)
-        # c1 = count_i(ddf, [1,2,3])
-        # print(c1)
 
         self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
         arr_test = self.test[self.all_y_col].values.flatten()       # Flatten all testing factors to qcut all together
