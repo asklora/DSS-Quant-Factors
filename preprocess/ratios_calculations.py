@@ -386,7 +386,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     check_duplicates(ek, 'ek')
 
     # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].astype(str).replace({'10102010':'101021','10102015':'101022','10102020':'101023',
+    universe['icb_code'] = universe['icb_code'].astype(int).astype(str).replace({'10102010':'101021','10102015':'101022','10102020':'101023',
                                                '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
