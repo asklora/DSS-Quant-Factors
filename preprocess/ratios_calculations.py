@@ -21,7 +21,7 @@ def get_tri(engine, save=True):
     engine.dispose()
     return tri
 
-def FillAllDay(result):
+def fill_all_day(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
 
     # Construct indexes for all day between first/last day * all ticker used
@@ -115,7 +115,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
 
-    tri = FillAllDay(tri)  # Add NaN record of tri for weekends
+    tri = fill_all_day(tri)  # Add NaN record of tri for weekends
 
     print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
@@ -217,6 +217,24 @@ def update_period_end(ws):
 
     return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end','report_date'], axis=1)
 
+def fill_all_given_date(result, ref):
+    ''' Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling '''
+
+    # Construct indexes for all date / ticker used in ref (reference dataframe)
+    result['trading_day'] = pd.to_datetime(result['trading_day'], format='%Y-%m-%d')
+    date_list = ref['period_end'].drop_duplicates().sort_values().values
+    indexes = pd.MultiIndex.from_product([ref['ticker'].unique(), date_list],
+                                         names=['ticker', 'trading_day']).to_frame(index=False, name=['ticker', 'trading_day'])
+
+    # Insert weekend/before first trading date to df
+    result = result.merge(indexes, on=['ticker', 'trading_day'], how='outer')
+    result = result.sort_values(by=['ticker', 'trading_day'], ascending=True).fillna(method='ffill')
+    result['period_end'] = result['trading_day']    # rename trading to period_end for later merge with other df
+    result = result.loc[result['period_end'].isin(date_list)].drop(['uid', 'trading_day'], axis=1)
+    result = result.sort_values(['period_end','ticker']).drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
+
+    return result
+
 def download_clean_worldscope_ibes():
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
@@ -258,9 +276,6 @@ def download_clean_worldscope_ibes():
 
     # label period_end with month end of trading_day (update_date)
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ibes['period_end'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d') + MonthEnd(0)
-
-    ibes = ibes.sort_values(['period_end','ticker']).drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
 
     return ws, ibes, universe
 
@@ -334,12 +349,13 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    check_duplicates(tri, 'tri')
+    # check_duplicates(tri, 'tri')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
     ws, ibes, universe = download_clean_worldscope_ibes()
+    ibes = fill_all_given_date(ibes, tri)
     check_duplicates(ws, 'worldscope')
     check_duplicates(ibes, 'ibes')
 
@@ -354,14 +370,14 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
-                                               '10102030':'101024','10102035':'101025'})   # split industry 101020 - software (100+ samples)
+                                               '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
 
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
-    df = df.merge(ibes.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='left')
+    df = df.merge(ibes, on=['ticker', 'period_end'], how='left')
     df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='left')
     df = df.merge(ek, on=['ticker', 'period_end'], how='left')
 
@@ -412,12 +428,12 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     if use_cached:
-        if 1==1:
-        # try:
-        #     df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
-        #     stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
-        # except Exception as e:
-        #     print(e)
+        # if 1==1:
+        try:
+            df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
+            stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+        except Exception as e:
+            print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
     else:
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
@@ -458,14 +474,21 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # b) Time series ratios (Calculate 1m change first)
     print(f'      ------------------------> Calculate time-series ratio ')
+    if sample_interval == 'monthly':
+        period_yr = 12
+        period_q = 3
+    elif sample_interval == 'biweekly':
+        period_yr = 24
+        period_q = 6
+
     for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
             orient='records'):  # minus calculation for ratios
         if r['name'][-2:] == 'yr':
-            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(12) - 1
-            df.loc[df.groupby('ticker').head(12).index, r['name']] = np.nan
+            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
+            df.loc[df.groupby('ticker').head(period_yr).index, r['name']] = np.nan
         elif r['name'][-1] == 'q':
-            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(3) - 1
-            df.loc[df.groupby('ticker').head(3).index, r['name']] = np.nan
+            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_q) - 1
+            df.loc[df.groupby('ticker').head(period_q).index, r['name']] = np.nan
 
     # c) Divide ratios
     print(f'      ------------------------> Calculate dividing ratios ')
@@ -504,5 +527,5 @@ if __name__ == "__main__":
     # count_sample_number(tri)
     # exit(0)
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
                           use_cached=True, save=True)

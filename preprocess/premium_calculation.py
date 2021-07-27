@@ -106,7 +106,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
     factor_list = formula['name'].to_list()                           # factor = all variabales
-    # factor_list = ['ar_less_sga_to_int']
+    # factor_list = ['book_to_price']
 
     # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
 
@@ -198,5 +198,5 @@ def write_local_csv_to_db():
     global_vals.engine_ali.dispose()
 
 if __name__=="__main__":
-    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
+    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
     # write_local_csv_to_db()

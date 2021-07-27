@@ -6,10 +6,10 @@ from pandas.tseries.offsets import MonthEnd
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupShuffleSplit
-
+from preprocess.premium_calculation import calc_premium_all
 import global_vals
 
-def download_clean_macros(main_df, use_biweekly_stock=False):
+def download_clean_macros(main_df, use_biweekly_stock):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
@@ -25,10 +25,11 @@ def download_clean_macros(main_df, use_biweekly_stock=False):
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
     macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
-
+    macros["period_end"] = pd.to_datetime(macros["trading_day"])
     if use_biweekly_stock:
-        df_date_list = df['period_end'].drop_duplicates().sort_values()
-        macros = macros.merge(df_date_list, on=['period_end']).sort_values(['period_end']).set_values(macros)
+        df_date_list = main_df['period_end'].drop_duplicates().sort_values()
+        macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']),
+                              on=['period_end'], how='outer').sort_values(['period_end'])
         macros = macros.fillna(method='ffill')
     else:
         macros["period_end"] = macros['trading_day'] + MonthEnd(0)  # convert timestamp to monthend
@@ -90,13 +91,15 @@ def download_org_ratios(method='median', change=True):
 def combine_data(use_biweekly_stock, stock_last_week_avg):
     ''' combine factor premiums with ratios '''
 
+    # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
+
     if use_biweekly_stock and stock_last_week_avg:
         raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
 
     # Read sql from different tables
     factor_table_name = global_vals.factor_premium_table
     if use_biweekly_stock:
-        factor_table_name+='_biweeky'
+        factor_table_name+='_biweekly'
     elif stock_last_week_avg:
         factor_table_name+='_weekavg'
 
@@ -108,16 +111,18 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     # Research stage using 10 selected factor only
     factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
-    df['period_end'] = pd.to_datetime(df['period_end'])                 # convert to datetime
+    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
 
     df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # Add Macroeconomic variables - from Datastream
     macros = download_clean_macros(df, use_biweekly_stock)
+    x_col.extend(macros.columns.to_list()[1:])              # add macros variables name to x_col
     df = df.merge(macros, on=['period_end'], how='left')
 
     # Add index return variables
     index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
+    x_col.extend(index_ret.columns.to_list()[1:])           # add index variables name to x_col
     df = df.merge(index_ret, on=['period_end'], how='left')
 
     # Add original ratios variables
@@ -162,13 +167,13 @@ class load_data:
         for i in range(1, ar_period + 1):
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
-            current_x_col.extend(ar_col)
+            current_x_col.extend(ar_col)    # add AR variables name to x_col
 
         # Calculate the moving average for predicted Y
         ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
         current_group.loc[:, ma_col] = current_group.groupby(['group'])[y_type].transform(
             lambda x: x.rolling(ma_period, min_periods=6).mean())
-        current_x_col.extend(ma_col)
+        current_x_col.extend(ma_col)        # add MA variables name to x_col
 
         y_col = ["y_" + x for x in y_type]
 
@@ -245,12 +250,13 @@ if __name__ == '__main__':
     # download_org_ratios('mean')
     # download_index_return()
     testing_period = dt.datetime(2019,7,31)
-    y_type = ['earnings_yield','market_cap_usd']
+    y_type = ['market_cap_usd']
     group_code = 'industry'
 
-    data = load_data(stock_last_week_avg=True)
+    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
     data.split_group(group_code)
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
+    print(data.x_col)
 
     for train_index, test_index in cv:
         print(len(train_index), len(test_index))
