@@ -155,7 +155,7 @@ def download_from_eikon_report_date():
             print(df)
 
     ddf = pd.concat(df_list, axis=0).dropna(how='any')
-    ddf.drop_duplicates().to_csv('eikon_new_downloads2.csv')
+    ddf.drop_duplicates().to_csv('eikon_new_downloads.csv')
 
         # with global_vals.engine_ali.connect() as conn:
         #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
@@ -213,10 +213,29 @@ def combine_download_files():
 
     exit(1)
 
+def download_from_eikon_vix():
+    ''' download fields from eikon '''
+
+    ticker = ['.VIX']
+    fields = ['TR.PriceClose', 'TR.PriceCloseDate']
+    params = {'SDate': '2009-01-01', 'EDate': '2021-07-01', 'Frq': 'M', 'Scale':'0'}      # params for fundemantals
+
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+
+    df, err = ek.get_data(ticker, fields=fields, parameters=params)
+
+    df.to_csv('eikon_new_downloads.csv')
+    print(df)
+
 
 if __name__ == '__main__':
     # download_from_eikon()
     # combine_download_files()
     # check_eikon_full_ticker('eikon_new_downloads1.csv')
     # download_from_eikon_others()
-    download_from_eikon_report_date()
+    # download_from_eikon_report_date()
+    # download_from_eikon_vix()
+    from pandas.tseries.offsets import MonthEnd
+    df = pd.read_csv('eikon_new_downloads.csv')
+    df['period_end'] = pd.to_datetime(df['period_end']) + MonthEnd(0)
+    df.to_csv('eikon_new_downloads.csv', index=False)

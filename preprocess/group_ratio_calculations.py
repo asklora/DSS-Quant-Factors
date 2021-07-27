@@ -7,7 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
-from preprocess.premium_calculation import trim_outlier
+from preprocess.premium_calculation import trim_outlier, get_premium_data
 from functools import partial
 from pandas.tseries.offsets import MonthEnd
 
@@ -80,20 +80,12 @@ def method_combine(method, name, g, factor_list):
     elif method == 'premium':
         return combine_like_premium(name=name, g=g, factor_list=factor_list)
 
-def calc_group_ratio():
+def calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False):
     ''' calculate combined group ratios for each currency_code / icb_code(6-digit) for each month '''
 
-    # Read stock_return / ratio table
-    with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
-        formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
-    global_vals.engine_ali.dispose()
+    df, factor_list = get_premium_data(use_biweekly_stock, stock_last_week_avg)
 
-    df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
-    df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
-    factor_list = formula['name'].to_list()                           # factor = all variabales
-
-    for method in ['mean','median','premium']:      # also for 'mean','median'
+    for method in ['median']:      # also for 'premium','median'
 
         # Calculate premium for currency partition
         print(f'#################################################################################################')
@@ -128,16 +120,26 @@ def calc_group_ratio():
         results_dtypes['group']=TEXT
         results_dtypes['method']=TEXT
 
-        final_results_df['period_end'] = final_results_df['period_end'] + MonthEnd(1)
+        final_results_df['period_end'] = final_results_df['period_end']
+
+        db_table = global_vals.processed_group_ratio_table
+        if stock_last_week_avg:
+            db_table += '_weekavg'
+        elif use_biweekly_stock:
+            db_table += '_biweekly'
+
         try:
             with global_vals.engine_ali.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
-                final_results_df.to_sql(global_vals.processed_group_ratio_table, **extra, dtype=results_dtypes)
-                print(f'      ------------------------> Finish writing factor premium table ')
+                final_results_df.to_sql(db_table, **extra, dtype=results_dtypes)
+                print(f'      ------------------------> Finish writing {db_table} table ')
             global_vals.engine_ali.dispose()
         except Exception as e:
             print(e)
 
 if __name__=="__main__":
-    calc_group_ratio()
+    calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False)
+    calc_group_ratio(use_biweekly_stock=True, stock_last_week_avg=False)
+    calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=True)
+
     # write_local_csv_to_db()

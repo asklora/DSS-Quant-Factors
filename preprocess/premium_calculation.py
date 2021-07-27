@@ -78,11 +78,13 @@ def calc_group_premium_msci():
     exit(0)
     return 1
 
-def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False):
-    ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
+def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False):
+    ''' calculate factor premium for different configurations:
+        1. monthly sample + using last day price
+        2. biweekly sample + using last day price
+        3. monthly sample + using average price of last week
+    '''
 
-    # df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
-    #                                                 sample_interval='monthly', use_cached=True, save=True)
     if use_biweekly_stock and stock_last_week_avg:
         raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
 
@@ -107,50 +109,43 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
     factor_list = formula['name'].to_list()                           # factor = all variabales
-    # factor_list = ['book_to_price']
 
-    # df = df.loc[(df['currency_code']=='USD')&(df['period_end']=='2020-10-31')]
+    return df, factor_list
 
-    # Calculate premium for currency partition
+def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False):
+    ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
+
+    df, factor_list = get_premium_data(use_biweekly_stock, stock_last_week_avg)
+
+    # Calculate premium for currency / industry partition
+    all_member_df = []      # record member_df *2 (cur + ind)
+    all_results_df = []     # record results_df *2
+
     print(f'#################################################################################################')
-    print(f'      ------------------------> Start calculate factor premium - Currency Partition')
-    member_g_list = []
-    results = {}
-    target_cols = factor_list + ['ticker', 'period_end', 'currency_code', 'stock_return_y']
-    for name, g in df[target_cols].groupby(['period_end', 'currency_code']):
-        results[name] = {}
-        results[name], member_g = calc_group_premium_fama(name, g, factor_list)
-        member_g['group'] = name[1]
-        results[name]['len'] = len(member_g)
-        member_g_list.append(member_g)
+    for i in ['currency_code', 'icb_code']:
+        print(f'      ------------------------> Start calculate factor premium - [{i}] Partition')
+        member_g_list = []
+        results = {}
+        target_cols = factor_list + ['ticker', 'period_end', i, 'stock_return_y']
+        for name, g in df[target_cols].groupby(['period_end', i]):
+            results[name] = {}
+            results[name], member_g = calc_group_premium_fama(name, g, factor_list)
+            member_g['group'] = name[1]
+            results[name]['len'] = len(member_g)
+            member_g_list.append(member_g)
 
-    member_df = pd.concat(member_g_list, axis=0)
-    results_df = pd.DataFrame(results).transpose().reset_index(drop=False)
+        member_df = pd.concat(member_g_list, axis=0)
+        results_df = pd.DataFrame(results).transpose().reset_index(drop=False)
+        results_df.columns = ['period_end', 'group'] + results_df.columns.to_list()[2:]
 
-    results_df.columns = ['period_end','group'] + results_df.columns.to_list()[2:]
+        member_df.append(member_df)
+        all_results_df.append(results_df)
 
-    # member_df.to_csv('membership_curr.csv', index=False)
-    # results_df.to_csv('factor_premium_curr.csv')
+    final_member_df = pd.concat(all_member_df, axis=0)
+    final_results_df = pd.concat(all_results_df, axis=0)
 
-    # Calculate premium for industry partition
-    print(f'      ------------------------> Start calculate factor premium - Industry Partition')
-    member_g_list = []
-    results = {}
-    target_cols = factor_list + ['ticker', 'period_end', 'icb_code', 'stock_return_y']
-    for name, g in df[target_cols].groupby(['period_end', 'icb_code']):
-        results[name] = {}
-        results[name], member_g = calc_group_premium_fama(name, g, factor_list)
-        results[name]['len'] = len(member_g)
-        member_g['group'] = name[1]
-        member_g_list.append(member_g)
-
-    member_df_1 = pd.concat(member_g_list, axis=0)
-    results_df_1 = pd.DataFrame(results).transpose().reset_index(drop=False)
-    results_df_1.columns = ['period_end','group'] + results_df_1.columns.to_list()[2:]
-
-    final_member_df = pd.concat([member_df, member_df_1], axis=0)
-    final_results_df = pd.concat([results_df, results_df_1], axis=0)
-
+    print(f'#################################################################################################')
+    # define dtypes for final_member_df & final_results_df when writing to DB
     mem_dtypes = {}
     for i in list(final_member_df.columns):
         mem_dtypes[i] = DOUBLE_PRECISION
@@ -164,6 +159,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     results_dtypes['period_end'] = DATE
     results_dtypes['group']=TEXT
 
+    # get name of DB TABLE based on config
     factor_table = global_vals.factor_premium_table
     member_table = global_vals.membership_table
     if stock_last_week_avg:
@@ -194,8 +190,7 @@ def write_local_csv_to_db():
     global_vals.engine_ali.dispose()
 
 if __name__=="__main__":
-    # calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
-    # calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=False)
+
     calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
 
     # write_local_csv_to_db()

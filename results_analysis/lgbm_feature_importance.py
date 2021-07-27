@@ -4,8 +4,8 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = '2021-07-22 17:46:31.704325_testing'
-iter_name = r_name.split('_')[-1]
+r_name = 'lastweekavg'
+iter_name = r_name#.split('_')[-1]
 
 def feature_importance():
     ''' donwload results from results_lightgbm '''
@@ -17,7 +17,10 @@ def feature_importance():
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
-    df['name'] = df['']
+    df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'org_' in x], 'org')
+    df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ma_' in x], 'ma')
+    df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ar_' in x],
+                                    [f"{x.split('_')[0]}_{x.split('_')[-1]}" for x in df['name'].to_list() if 'ar_' in x])
 
     df1 = df.groupby(['name', 'y_type'])['split'].mean().unstack()
     df1['avg'] = df1.mean(axis=1)

@@ -6,10 +6,11 @@ import numpy as np
 
 import global_vals
 
-col_name = ['name_sql', 'group_code', 'testing_period', 'cv_number', 'y_type', 'finish_timing']
-r_name = '2021-07-23 18:31:15.995890_indoverfit'
-# r_name = '2021-07-22 17:46:31.704325_testing'
-iter_name = r_name.split('_')[-1]
+# r_name = 'indoverfit'
+# r_name = 'testing'
+# r_name = 'laskweekavg'
+r_name = 'lastweekavg'
+iter_name = r_name
 
 def download_stock_pred():
     ''' download training history and training prediction from DB '''
@@ -75,9 +76,8 @@ def combine_mode_group(df):
     for name, g in df.groupby(['group_code', 'y_type', 'group']):
         result_dict[name] = accuracy_score(g['pred'], g['actual'])
 
-    df = pd.DataFrame(result_dict, index=['0']).transpose().unstack().reset_index()
-    df.columns = ['group_code', 'y_type'] + [x[1] for x in df.columns.to_list()[2:]]
-    df = df.transpose()
+    df = pd.DataFrame(result_dict, index=['0']).transpose().reset_index()
+    df.columns = ['group_code', 'y_type','group','accuracy']
 
     with global_vals.engine_ali.connect() as conn:
         icb_name = pd.read_sql(f"SELECT DISTINCT code_6 as group, name_6 as name FROM icb_code_explanation", conn)  # download training history

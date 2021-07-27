@@ -17,6 +17,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
 
     with global_vals.engine_ali.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
+        vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}', conn)
     global_vals.engine_ali.dispose()
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
@@ -25,14 +26,19 @@ def download_clean_macros(main_df, use_biweekly_stock):
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
     macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
+
+    # combine macros & vix data
     macros["period_end"] = pd.to_datetime(macros["trading_day"])
+
     if use_biweekly_stock:
         df_date_list = main_df['period_end'].drop_duplicates().sort_values()
-        macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']),
-                              on=['period_end'], how='outer').sort_values(['period_end'])
+        macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
+                              how='outer').sort_values(['period_end'])
         macros = macros.fillna(method='ffill')
     else:
-        macros["period_end"] = macros['trading_day'] + MonthEnd(0)  # convert timestamp to monthend
+        macros["period_end"] = macros['trading_day'] + MonthEnd(0)
+        vix["period_end"] = pd.to_datetime(vix["period_end"])
+        macros = macros.merge(vix, on=['period_end'], how='outer')
 
     return macros.drop(['trading_day','data'], axis=1)
 
@@ -55,35 +61,32 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
                                 f"FROM {db_table_name} WHERE ticker like '.%%'", conn)
     global_vals.engine_ali.dispose()
 
-    # index_to_curr = {'.TWII':'TWD',
-    #                 '.N225':'JPY',
-    #                 '.KS200':'KRW',
-    #                 '.FTSE':'GBP',
-    #                 '.HSI':'HKD',
-    #                 '.STI':'SGD',
-    #                 '.SXXGR':'EUR',
-    #                 '.CSI300':'CNY',
-    #                 '.SPX':'USD'}
-    # index_ret['ticker'] = index_ret['ticker'].replace(index_to_curr)
-
     stock_return_col = ['stock_return_r1_0', 'stock_return_r6_2', 'stock_return_r12_7']
     index_ret[stock_return_col] = index_ret[stock_return_col] + 1
     index_ret['return'] = np.prod(index_ret[stock_return_col].values, axis=1) - 1
     index_ret = pd.pivot_table(index_ret, columns=['ticker'], index=['period_end'], values='return').reset_index(drop=False)
+    index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
     return index_ret.filter(['period_end','.SPX','.HSI','.CSI300'])      # Currency only include USD/HKD/CNY indices
 
-def download_org_ratios(method='median', change=True):
+def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='mean', change=True):
     ''' download the aggregated value of all original ratios by each group '''
 
+    db_table = global_vals.processed_group_ratio_table
+    if stock_last_week_avg:
+        db_table += '_weekavg'
+    elif use_biweekly_stock:
+        db_table += '_biweekly'
+
     with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f"SELECT * FROM {global_vals.processed_group_ratio_table} WHERE method = '{method}'", conn)
+        df = pd.read_sql(f"SELECT * FROM {db_table} WHERE method = '{method}'", conn)
     global_vals.engine_ali.dispose()
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')
     field_col = df.columns.to_list()[2:-1]
 
     if change:  # calculate the change of original ratio from T-1 -> T0
         df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
+
     df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
 
     return df.iloc[:,:-1]
@@ -115,19 +118,27 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
 
     df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
-    # Add Macroeconomic variables - from Datastream
+    # 1. Add Macroeconomic variables - from Datastream
     macros = download_clean_macros(df, use_biweekly_stock)
     x_col.extend(macros.columns.to_list()[1:])              # add macros variables name to x_col
-    df = df.merge(macros, on=['period_end'], how='left')
 
-    # Add index return variables
+    # 2. Add index return variables
     index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
     x_col.extend(index_ret.columns.to_list()[1:])           # add index variables name to x_col
-    df = df.merge(index_ret, on=['period_end'], how='left')
 
-    # Add original ratios variables
-    org_df = download_org_ratios()
-    df = df.merge(org_df, on=['group', 'period_end'], how='left')
+    # 3. Add original ratios variables
+    org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
+
+    # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
+    # Therefore, we should also know other data (macro/index/group fundamental) as at T1
+    non_factor_inputs = macros.merge(index_ret, on=['period_end'], how='outer')
+    non_factor_inputs = org_df.merge(non_factor_inputs, on=['period_end'], how='outer')
+    if use_biweekly_stock:
+        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x-relativedelta(weeks=2))
+    else:
+        non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
+
+    df = df.merge(non_factor_inputs, on=['group', 'period_end'], how='left')
 
     return df.sort_values(by=['group', 'period_end']), factors, x_col
 
@@ -191,7 +202,7 @@ class load_data:
             ''' split x, y from main '''
             x_col = self.original_x_col + current_x_col + ["org_"+x for x in y_type]
             y_col_cut = [x+'_cut' for x in y_col]
-            return df[x_col].values, df[y_col].values, df[y_col_cut].values, x_col     # Assuming using all factors
+            return df.filter(x_col).values, df[y_col].values, df[y_col_cut].values, df.filter(x_col).columns.to_list()     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
@@ -253,7 +264,7 @@ if __name__ == '__main__':
     y_type = ['market_cap_usd']
     group_code = 'industry'
 
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
+    data = load_data(use_biweekly_stock=True, stock_last_week_avg=False)
     data.split_group(group_code)
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
     print(data.x_col)
