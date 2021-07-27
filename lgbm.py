@@ -208,6 +208,10 @@ if __name__ == "__main__":
 
     # --------------------------------- Define Variables ------------------------------------------
 
+    use_biweekly_stock = True
+
+
+
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = 'lastweekavg'
@@ -222,23 +226,24 @@ if __name__ == "__main__":
         base_space['num_class'] = sql_result['qcut_q']
         base_space['metric'] = 'multi_error'
 
-    last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
-    backtest_period = 22
-
-    # self-defined last testing date from Parser
-    # if args.last_quarter != '':
-    #     last_test_date = dt.datetime.strptime(args.last_quarter, "%Y%m%d")
-    # del sql_result['last_quarter']
-
     # create date list of all testing period
-    testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
-                         - relativedelta(days=1) for i in range(0, backtest_period+1)]
+    if use_biweekly_stock:
+        last_test_date = dt.datetime(2021,7,11)
+        backtest_period = 44
+        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
+                             - relativedelta(days=1) for i in range(0, backtest_period+1)]
+    else:
+        last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
+        backtest_period = 22
+        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
+                             - relativedelta(days=1) for i in range(0, backtest_period+1)]
+
     print(f"===== test on sample sets {testing_period_list[-1].strftime('%Y-%m-%d')} to "
           f"{testing_period_list[0].strftime('%Y-%m-%d')} ({len(testing_period_list)}) =====")
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)                             # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=False)                             # load_data (class) STEP 1
     print(f"===== test on y_type", len(data.factor_list), data.factor_list, "=====")
     for f in data.factor_list:
         sql_result['y_type'] = f
