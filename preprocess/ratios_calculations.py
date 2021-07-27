@@ -171,7 +171,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
             df = tri.drop(['close'], axis=1)
-            df.columns = ['ticker', ' period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
+            df.columns = ['ticker', 'period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
             df.to_sql(global_vals.processed_stock_table, **extra)
             print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
         global_vals.engine_ali.dispose()

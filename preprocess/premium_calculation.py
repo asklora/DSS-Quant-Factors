@@ -78,7 +78,7 @@ def calc_group_premium_msci():
     exit(0)
     return 1
 
-def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
+def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False):
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
     # df, stocks_col, formula = calc_factor_variables(price_sample='last_day', fill_method='fill_all',
@@ -151,12 +151,6 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
     final_member_df = pd.concat([member_df, member_df_1], axis=0)
     final_results_df = pd.concat([results_df, results_df_1], axis=0)
 
-    final_member_df.to_csv('membership.csv', index=False)
-    final_results_df.to_csv('factor_premium.csv', index=False)
-
-    final_member_df = pd.read_csv('membership.csv', low_memory=False)
-    final_results_df = pd.read_csv('factor_premium.csv')
-
     mem_dtypes = {}
     for i in list(final_member_df.columns):
         mem_dtypes[i] = DOUBLE_PRECISION
@@ -183,8 +177,9 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False):
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_results_df.to_sql(factor_table, **extra, dtype=results_dtypes)
         print(f'      ------------------------> Finish writing factor premium table ')
-        final_member_df.to_sql(member_table, **extra, dtype=mem_dtypes)
-        print(f'      ------------------------> Finish writing factor membership table ')
+        if save_membership:
+            final_member_df.to_sql(member_table, **extra, dtype=mem_dtypes)
+            print(f'      ------------------------> Finish writing factor membership table ')
     global_vals.engine_ali.dispose()
 
 def write_local_csv_to_db():
@@ -199,8 +194,8 @@ def write_local_csv_to_db():
     global_vals.engine_ali.dispose()
 
 if __name__=="__main__":
-    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
-    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=False)
+    # calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
+    # calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=False)
     calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
 
     # write_local_csv_to_db()
