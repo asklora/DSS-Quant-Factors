@@ -17,7 +17,7 @@ def get_tri(engine, save=True):
         """)
         tri = pd.read_sql(query, con=conn)
         if save:
-            tri.to_csv('data_tri.csv', index=False)
+            tri.to_csv('cache_tri.csv', index=False)
     engine.dispose()
     return tri
 
@@ -101,7 +101,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     if use_cached:
         try:
-            tri = pd.read_csv('data_tri.csv', low_memory=False)
+            tri = pd.read_csv('cache_tri.csv', low_memory=False)
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
@@ -114,7 +114,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
-
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
 
     print(f'      ------------------------> Calculate skewness ')
@@ -127,7 +126,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
     # resample tri using last week average as the proxy for monthly tri
-    print(f'      ------------------------> Stock price using {price_sample} ')
+    print(f'      ------------------------> Stock price using [{price_sample}] ')
     if price_sample == 'last_week_avg':
         tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
         tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
@@ -140,7 +139,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     cols = ['tri', 'close'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
-    print(f'      ------------------------> Sample interval using {sample_interval} ')
+    print(f'      ------------------------> Sample interval using [{sample_interval}] ')
     if sample_interval == 'monthly':
         tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
     elif sample_interval == 'biweekly':
@@ -160,10 +159,13 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     tri["stock_return_r6_2"] = (tri["tri_1mb"] / tri["tri_6mb"]) - 1
     tri["stock_return_r12_7"] = (tri["tri_6mb"] / tri["tri_12mb"]) - 1
 
-    tri = tri.dropna(subset=['stock_return_y'])
+    # tri = tri.dropna(subset=['stock_return_y'])         # dropna is ok because stock return data should be always available since IPO
     tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
 
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
+
+    if save:
+        tri.to_csv('cache_tri_ratio.csv', index=False)
 
     if price_sample == 'last_week_avg':
         with global_vals.engine_ali.connect() as conn:
@@ -221,21 +223,30 @@ def fill_all_given_date(result, ref):
     ''' Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling '''
 
     # Construct indexes for all date / ticker used in ref (reference dataframe)
-    result['trading_day'] = pd.to_datetime(result['trading_day'], format='%Y-%m-%d')
-    date_list = ref['period_end'].drop_duplicates().sort_values().values
-    indexes = pd.MultiIndex.from_product([ref['ticker'].unique(), date_list],
-                                         names=['ticker', 'trading_day']).to_frame(index=False, name=['ticker', 'trading_day'])
+    try:
+        result['period_end'] = result['trading_day']  # rename trading to period_end for later merge with other df
+        result = result.drop(['trading_day'], axis=1)
+    except Exception as e:
+        print("No need to convert column name 'trading_day' to 'period_end'", e)
+
+    result['period_end'] = pd.to_datetime(result['period_end'], format='%Y-%m-%d')
+    date_list = ref['trading_day'].unique()
+    ticker_list = ref['ticker'].unique()
+    indexes = pd.MultiIndex.from_product([ticker_list, date_list],
+                                         names=['ticker', 'period_end']).to_frame(index=False, name=['ticker', 'period_end'])
+    print(f"      ------------------------> Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
 
     # Insert weekend/before first trading date to df
-    result = result.merge(indexes, on=['ticker', 'trading_day'], how='outer')
-    result = result.sort_values(by=['ticker', 'trading_day'], ascending=True).fillna(method='ffill')
-    result['period_end'] = result['trading_day']    # rename trading to period_end for later merge with other df
-    result = result.loc[result['period_end'].isin(date_list)].drop(['uid', 'trading_day'], axis=1)
-    result = result.sort_values(['period_end','ticker']).drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
+    indexes['period_end'] = pd.to_datetime(indexes['period_end'])
+    result = result.merge(indexes, on=['ticker', 'period_end'], how='outer')
+    result = result.sort_values(by=['ticker', 'period_end'], ascending=True)
+    result.update(result.groupby(['ticker']).fillna(method='ffill'))        # fill forward for date
+    result = result.loc[(result['period_end'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
+    result = result.drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
 
     return result
 
-def download_clean_worldscope_ibes():
+def download_clean_worldscope_ibes(save):
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
     with global_vals.engine_ali.connect() as conn:
@@ -277,9 +288,14 @@ def download_clean_worldscope_ibes():
     # label period_end with month end of trading_day (update_date)
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
 
+    if save:
+        ws.to_csv('cache_ws.csv', index=False)
+        ibes.to_csv('cache_ibes.csv', index=False)
+        universe.to_csv('cache_universe.csv', index=False)
+
     return ws, ibes, universe
 
-def download_eikon_others():
+def download_eikon_others(save):
     ''' download new eikon data from DB and pivot '''
 
     with global_vals.engine_ali.connect() as conn:
@@ -297,34 +313,10 @@ def download_eikon_others():
 
     ek[fields] = ek[fields]*1e3     # Eikon downloads in million -> worldscope in thousands
 
+    if save:
+        ek.to_csv('cache_ek.csv', index=False)
+
     return ek
-
-def count_sample_number(tri):
-    ''' count number of samples for each period & each indstry / currency
-        -> Select to use 6-digit code = on average 37 samples '''
-
-    with global_vals.engine_ali.connect() as conn:
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
-                               conn)
-    global_vals.engine_ali.dispose()
-
-    tri = tri.merge(universe, on=['ticker'], how='left')
-    tri['icb_code'] = tri['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
-                                               '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
-    tri['icb_code'] = tri['icb_code'].astype(str).str[:6]
-
-    c1 = tri.groupby(['trading_day', 'icb_code']).count()['stock_return_y'].unstack(level=1)
-    # c1.to_csv('c1.csv', index=False)
-
-    c2 = tri.groupby(['trading_day', 'currency_code']).count()['stock_return_y'].unstack(level=1)
-    df = pd.concat([c1, c2], axis=1).stack().reset_index()
-    df.columns = ['period_end', 'group', 'num_ticker']
-
-    with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
-        df.to_sql('icb_code_count', **extra)
-    global_vals.engine_ali.dispose()
-    exit(1)
 
 def check_duplicates(df, name=''):
     df1 = df.drop_duplicates(subset=['period_end','ticker'])
@@ -340,7 +332,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # 1. Stock return/volatility/volume(?)
     if use_cached:
         try:
-            tri = pd.read_csv('data_tri_final.csv', low_memory=False)
+            tri = pd.read_csv('cache_tri_ratio.csv', low_memory=False)
             stocks_col = tri.select_dtypes("float").columns
         except Exception as e:
             print(e)
@@ -349,14 +341,27 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    # check_duplicates(tri, 'tri')
+    check_duplicates(tri, 'tri')
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
-    ws, ibes, universe = download_clean_worldscope_ibes()
+    if use_cached:
+        try:
+            ws = pd.read_csv('cache_ws.csv')
+            ibes = pd.read_csv('cache_ibes.csv')
+            universe = pd.read_csv('cache_universe.csv')
+        except Exception as e:
+            print(e)
+            ws, ibes, universe = download_clean_worldscope_ibes(save)
+    else:
+        ws, ibes, universe = download_clean_worldscope_ibes(save)
+
+    # align worldscope / ibes data with stock return date (monthly/biweekly)
+    ws = fill_all_given_date(ws, tri)
     ibes = fill_all_given_date(ibes, tri)
-    check_duplicates(ws, 'worldscope')
+
+    check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + period_end
     check_duplicates(ibes, 'ibes')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
@@ -364,12 +369,24 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
     global_vals.engine_ali.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
+    market_cap = fill_all_given_date(market_cap, tri)
+    check_duplicates(market_cap, 'market_cap')
 
     # 6. Fundamental variables - from Eikon
-    ek = download_eikon_others()
+    if use_cached:
+        try:
+            ek = pd.read_csv('cache_ek.csv')
+            ek['period_end'] = pd.to_datetime(ek['period_end'])
+        except Exception as e:
+            print(e)
+            ek = download_eikon_others(save)
+    else:
+        ek = download_eikon_others(save)
+    ek = fill_all_given_date(ek, tri)
+    check_duplicates(ek, 'ek')
 
     # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].replace({'10102010':'101021','10102015':'101022','10102020':'101023',
+    universe['icb_code'] = universe['icb_code'].astype(str).replace({'10102010':'101021','10102015':'101022','10102020':'101023',
                                                '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
@@ -378,7 +395,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
     df = df.merge(ibes, on=['ticker', 'period_end'], how='left')
-    df = df.merge(market_cap.drop("trading_day", axis=1), on=['ticker', 'period_end'], how='left')
+    df = df.merge(market_cap, on=['ticker', 'period_end'], how='left')
     df = df.merge(ek, on=['ticker', 'period_end'], how='left')
 
     df = df.sort_values(by=['ticker', 'period_end'])
@@ -417,8 +434,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
     if save:
-        df.to_csv('all_data.csv')  # for debug
-        pd.DataFrame(stocks_col).to_csv('stocks_col.csv', index=False)  # for debug
+        df.to_csv('cache_all_data.csv')  # for debug
+        pd.DataFrame(stocks_col).to_csv('cache_stocks_col.csv', index=False)  # for debug
 
     check_duplicates(df, 'final')
     return df, stocks_col
@@ -428,10 +445,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     ''' Calculate all factor used referring to DB ratio table '''
 
     if use_cached:
-        # if 1==1:
         try:
-            df = pd.read_csv('all_data.csv', low_memory=False, dtype={"icb_code": str})
-            stocks_col = pd.read_csv('stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+            df = pd.read_csv('cache_all_data.csv', low_memory=False, dtype={"icb_code": str})
+            stocks_col = pd.read_csv('cache_stocks_col.csv', low_memory=False).iloc[:,0].to_list()
         except Exception as e:
             print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
@@ -496,36 +512,25 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             orient='records'):  # minus calculation for ratios
         df[r['name']] = df[r['field_num']] / df[r['field_denom']]
 
+    # drop records with no stock_return_y & any ratios
+    df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
+
     db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':
         db_table_name += '_biweekly'
 
-    if save:
-        with global_vals.engine_ali.connect() as conn:
-            extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-            ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
-            ddf.to_sql(db_table_name, **extra)
-            print(f'      ------------------------> Finish writing {db_table_name} table ')
-        global_vals.engine.dispose()
-        # exit(0)
-
-    # df.to_csv('all ratio debug.csv')
-    # debug_filter = ~df["ticker"].str.startswith(".")
-    # debug_filter &= df["currency_code"].notnull()
-    # tmp = df[debug_filter].copy()
-    # tmp_ticker_grouped = tmp[["currency_code", "ticker"]].drop_duplicates().groupby("currency_code")["ticker"]
-    # min_num_tickers = tmp_ticker_grouped.count().min()
-    # target_tickers = tmp_ticker_grouped.sample(min(min_num_tickers, 20), replace=False).tolist()
-    # tmp = tmp[tmp["ticker"].isin(target_tickers)]
-    # tmp.to_csv('all ratio debug.csv')
+    # save calculated ratios to DB
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
+        ddf.to_sql(db_table_name, **extra)
+        print(f'      ------------------------> Finish writing {db_table_name} table ')
+    global_vals.engine.dispose()
 
     return df, stocks_col, formula
 
 
 if __name__ == "__main__":
-    # tri = pd.read_csv('data_tri_final.csv')
-    # count_sample_number(tri)
-    # exit(0)
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True)

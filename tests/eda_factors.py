@@ -286,7 +286,7 @@ def check_smb():
     #
     # from preprocess.ratios_calculations import resample_to_monthly, FillAllDay
     #
-    # tri = pd.read_csv('data_tri.csv', low_memory=False, usecols=['ticker','trading_day','tri'])
+    # tri = pd.read_csv('cache_tri.csv', low_memory=False, usecols=['ticker','trading_day','tri'])
     # tri = FillAllDay(tri)
     # tri.update(tri.groupby('ticker')['tri'].fillna(method='ffill'))
     # tri.update(tri.groupby('ticker')['tri'].fillna(method='bfill'))
