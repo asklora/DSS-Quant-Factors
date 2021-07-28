@@ -17,7 +17,7 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [50, 100, 200]),
+    'n_estimators': hp.choice('n_estimators', [100, 200]),
     'max_depth': hp.choice('max_depth', [4, 8, 12]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 50]),
@@ -57,9 +57,9 @@ def rf_train(space):
     Y_valid_pred = regr.predict(sample_set['valid_x'])
     Y_test_pred = regr.predict(sample_set['test_x'])
 
-    sql_result['feature_importance'] = to_list_importance(regr)
+    sql_result['feature_importance'], feature_importance_df = to_list_importance(regr)
 
-    return Y_train_pred, Y_valid_pred, Y_test_pred
+    return Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df
 
 def eval_regressor(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model
@@ -112,12 +112,11 @@ def eval_classifier(space):
     '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred = rf_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(space)
 
     result = {}
     for i in range(Y_test_pred.shape[1]):
-
-        result[i] = {'accuracy_train': accuracy_score(sample_set['train_yy_final'][i], Y_train_pred[i]),
+        result[sql_result['y_type'][i]] = {'accuracy_train': accuracy_score(sample_set['train_yy_final'][i], Y_train_pred[i]),
                   'accuracy_valid': accuracy_score(sample_set['valid_y_final'][i], Y_valid_pred[i])}
 
         try:        # for backtesting -> calculate accuracy for testing set
@@ -125,25 +124,27 @@ def eval_classifier(space):
             test_df = test_df.dropna(how='any')
             result_test = {
                 'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-                'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
-                'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
-                'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')}
-            result[i]['test_len'] = len(test_df)
-            result[i].update(result_test)
+                # 'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
+                # 'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
+                # 'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')
+            }
+            result[sql_result['y_type'][i]]['test_len'] = len(test_df)
+            result[sql_result['y_type'][i]].update(result_test)
         except Exception as e:     # for real_prediction -> no calculation
-            print(e)
+            print('ERROR on: ', e)
             pass
 
     result_comb = {k: i.tolist() for k, i in pd.DataFrame(result).transpose().to_dict(orient='series').items()}
 
     sql_result.update(result_comb)  # update result of model
+    sql_result['accuracy_valid_mean'] = np.mean(result_comb['accuracy_valid'])
 
     hpot['all_results'].append(sql_result.copy())
-    print(np.mean(result_comb['accuracy_valid']))
 
-    if np.mean(result_comb['accuracy_valid']) > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
-        hpot['best_score'] = np.mean(result_comb['accuracy_valid'])
+    if sql_result['accuracy_valid_mean'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = sql_result['accuracy_valid_mean']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+        hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
     return 1 - np.mean(result_comb['accuracy_valid'])
 
@@ -160,10 +161,10 @@ def to_list_importance(rf):
     ''' based on rf model -> records feature importance in DataFrame to be uploaded to DB '''
 
     df = pd.DataFrame()
-    df['name'] = data.train.columns.to_list()[2:-len(sql_result['y_type'])]     # column names
+    df['name'] = data.x_col     # column names
     df['split'] = rf.feature_importances_
-    df['split'] = df['split'].rank(ascending=False)
-    return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list())
+    df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
+    return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
 
 def HPOT(space, max_evals):
     ''' use hyperopt on each set '''
@@ -179,6 +180,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_reg", **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_reg", **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_rf_class", **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['gini','entropy']:
@@ -189,6 +191,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_class", **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_class", **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_rf_class", **extra)
         global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
@@ -202,36 +205,46 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='gini')
     parser.add_argument('--qcut_q', default=3, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
+    sql_result = vars(args)     # data write to DB TABLE lightgbm_results
+
+    # --------------------------------- Different Config ------------------------------------------
+
+    sql_result['name_sql'] = 'biweekly'
+    use_biweekly_stock = True
+    stock_last_week_avg = False
+    valid_method = 'cv'
 
     # --------------------------------- Define Variables ------------------------------------------
 
-    # create dict storing values/df used in training
-    sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{dt.datetime.now()}_' + 'testing'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
-    last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
-    backtest_period = 22
-
     # create date list of all testing period
-    testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
-                         - relativedelta(days=1) for i in range(0, backtest_period+1)]
-    print(f"===== test on sample sets {testing_period_list[-1].strftime('%Y-%m-%d')} to "
-          f"{testing_period_list[0].strftime('%Y-%m-%d')} ({len(testing_period_list)}) =====")
+    if use_biweekly_stock:
+        last_test_date = dt.datetime(2021,7,11)
+        backtest_period = 44
+        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
+                             - relativedelta(days=1) for i in range(0, backtest_period+1)]
+    else:
+        last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
+        backtest_period = 22
+        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
+                             - relativedelta(days=1) for i in range(0, backtest_period+1)]
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data()  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
+    y_type = data.factor_list       # random forest model predict all factor at the same time
+    print(f"===== test on y_type", len(y_type), y_type, "=====")
+
     for group_code in ['industry', 'currency']:
         sql_result['group_code'] = group_code
         data.split_group(group_code)  # load_data (class) STEP 2
-        # for f in data.factor_list:
-        sql_result['y_type'] = ['earnings_yield', 'market_cap_usd']
+        sql_result['y_type'] = y_type
         print(sql_result['y_type'])
         for testing_period in reversed(testing_period_list):
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
-            load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type']}
+            load_data_params = {'qcut_q': args.qcut_q, 'y_type': y_type, 'valid_method': valid_method}
 
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3

@@ -157,9 +157,8 @@ def to_list_importance(gbm):
     df = pd.DataFrame()
     df['name'] = data.x_col     # column names
     df['split'] = gbm.feature_importance(importance_type='split')
-    df['split'] = df['split'].rank(ascending=False)
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
-    return ','.join(df.sort_values(by=['split'], ascending=True)['name'].to_list()), df
+    return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
 
 # ----------------------------------- Hyperopt & Write Best Iteration to DB ----------------------------------------
 
@@ -248,11 +247,6 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-
-    df = data.main
-    s1 = df.max()
-    s2 = df.min()
-
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f

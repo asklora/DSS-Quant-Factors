@@ -69,11 +69,11 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     # index_ret = index_ret.reset_index()
     # index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
-    # Index using all index r1_0 & vol_30_90 for 6 market based on num of ticker
-    major_index = ['period_end','.SPX','.CSI300','.N225','.KS200','.SXXGR','.TWII']    # try include major market index first
+    # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
+    major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
-    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r1_0','vol_30_90']].unstack()
-    index_ret.columns = [f'{x[1]}_{x[0][0]}' for x in index_ret.columns.to_list()]
+    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r12_7','stock_return_r6_2', 'vol_30_90']].unstack()
+    index_ret.columns = [f'{x[1]}_{x[0][0]}{x[0][-1]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
@@ -96,7 +96,7 @@ def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='mean', 
 
     if change:  # calculate the change of original ratio from T-1 -> T0
         df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
-        df[field_col] = trim_outlier(df[field_col])
+        df[field_col] = df[field_col].apply(trim_outlier)
 
     df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
 
@@ -137,19 +137,20 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
     x_col.extend(index_ret.columns.to_list()[1:])           # add index variables name to x_col
 
-    # 3. Add original ratios variables
-    org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
+    # 3. (Removed) Add original ratios variables
+    # org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
 
     # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
     # Therefore, we should also know other data (macro/index/group fundamental) as at T1
     non_factor_inputs = macros.merge(index_ret, on=['period_end'], how='outer')
-    non_factor_inputs = org_df.merge(non_factor_inputs, on=['period_end'], how='outer')
+    # non_factor_inputs = org_df.merge(non_factor_inputs, on=['period_end'], how='outer')
     if use_biweekly_stock:
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x-relativedelta(weeks=2))
     else:
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
-    df = df.merge(non_factor_inputs, on=['group', 'period_end'], how='left')
+    # df = df.merge(non_factor_inputs, on=['group', 'period_end'], how='left')
+    df = df.merge(non_factor_inputs, on=['period_end'], how='left')
 
     print('      ------------------------> Factors: ', factors)
 
@@ -187,17 +188,17 @@ class load_data:
         current_x_col = []
         current_group = self.group.copy(1)
 
-        # Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
+        # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         for i in [1, 2, 12]:
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
 
-        # Calculate the moving average for predicted Y
-        ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
-        current_group.loc[:, ma_col] = current_group.groupby(['group'])[y_type].transform(
-            lambda x: x.rolling(ma_period, min_periods=6).mean())
-        current_x_col.extend(ma_col)        # add MA variables name to x_col
+        # 2. (Removed) Calculate the moving average for predicted Y
+        # ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
+        # current_group.loc[:, ma_col] = current_group.groupby(['group'])[y_type].transform(
+        #     lambda x: x.rolling(ma_period, min_periods=6).mean())
+        # current_x_col.extend(ma_col)        # add MA variables name to x_col
 
         y_col = ["y_" + x for x in y_type]
 
