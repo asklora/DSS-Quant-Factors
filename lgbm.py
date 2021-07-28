@@ -202,7 +202,7 @@ if __name__ == "__main__":
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
-    parser.add_argument('--nthread', default=12, type=int)          # for the best speed, set this to the number of real CPU cores
+    parser.add_argument('--nthread', default=6, type=int)          # for the best speed, set this to the number of real CPU cores
     args = parser.parse_args()
     print(args)
 
@@ -210,11 +210,9 @@ if __name__ == "__main__":
 
     use_biweekly_stock = True
 
-
-
     # create dict storing values/df used in training
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = 'lastweekavg'
+    sql_result['name_sql'] = 'biweekly'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
     # update additional base_space for Hyperopt

@@ -7,7 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from scipy.stats import skew
-import seaborn as sns
+# import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
@@ -16,6 +16,9 @@ from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
     factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
+    factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
+    factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
+
     formula = pd.read_sql(f'SELECT name, factors, pillar FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -447,30 +450,37 @@ def test_cluster():
     return clustering
 
 def dist_all():
-    test = factors[factor_list].values.flatten()
-    test = test[~np.isnan(test)]
-    max = test.max()
-    min = test.min()
 
-    prc = 0.01
+    fig = plt.figure(figsize=(6, 18), dpi=120,  constrained_layout=True)  # create figure for test & train boxplot
 
-    # test = np.abs(test)
-    min = np.quantile(test, prc)
-    max = np.quantile(test, 1-prc)
+    k=1
+    for df in [factors, factors_avg, factors_bi]:
+        ax = fig.add_subplot(3,1,k)
+        test = df[factor_list].values.flatten()
+        test = test[~np.isnan(test)]
+        max = test.max()
+        min = test.min()
 
-    print(pd.Series(test).describe())
-    print(min, max)
-    N, bins, patches = plt.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
+        prc = 0.01
+        # test = np.abs(test)
+        min = np.quantile(test, prc)
+        max = np.quantile(test, 1-prc)
 
-    for i in range(0, 333):
-        patches[i].set_facecolor('g')
-    for i in range(333, 667):
-        patches[i].set_facecolor('r')
-    for i in range(667, len(patches)):
-        patches[i].set_facecolor('g')
+        print(pd.Series(test).describe())
+        print(min, max)
+        N, bins, patches = ax.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
+
+        for i in range(0, 333):
+            patches[i].set_facecolor('g')
+        for i in range(333, 667):
+            patches[i].set_facecolor('r')
+        for i in range(667, len(patches)):
+            patches[i].set_facecolor('g')
+        k+=1
 
     # plt.show()
-    plt.savefig('eda/pdf_all_factor_cut.png')
+    plt.savefig(f'pdf_all_factor_cut.png')
+    plt.close()
 
 if __name__ == "__main__":
     # correl_fama_website()

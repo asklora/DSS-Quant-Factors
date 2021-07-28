@@ -62,12 +62,18 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     global_vals.engine_ali.dispose()
 
     stock_return_col = ['stock_return_r1_0', 'stock_return_r6_2', 'stock_return_r12_7']
-    index_ret[stock_return_col] = index_ret[stock_return_col] + 1
-    index_ret['return'] = np.prod(index_ret[stock_return_col].values, axis=1) - 1
-    index_ret = pd.pivot_table(index_ret, columns=['ticker'], index=['period_end'], values='return').reset_index(drop=False)
+    # index_ret[stock_return_col] = index_ret[stock_return_col] + 1
+    # index_ret['return'] = np.prod(index_ret[stock_return_col].values, axis=1) - 1
+    # index_ret = pd.pivot_table(index_ret, columns=['ticker'], index=['period_end'], values='return').reset_index(drop=False)
+
+    major_index = ['period_end','.SPX','.HSI','.CSI300']    # try include major market index first
+    index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
+    index_ret = index_ret.set_index(['period_end', 'ticker']).unstack()
+    index_ret.columns = [f'{x[1]}_{x[0][13:]}' for x in index_ret.columns.to_list()]
+    index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
-    return index_ret.filter(['period_end','.SPX','.HSI','.CSI300'])      # Currency only include USD/HKD/CNY indices
+    return index_ret
 
 def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='mean', change=True):
     ''' download the aggregated value of all original ratios by each group '''
@@ -175,7 +181,7 @@ class load_data:
         current_group = self.group.copy(1)
 
         # Calculate the time_series history for predicted Y
-        for i in range(1, ar_period + 1):
+        for i in [1, 2, 3, 5, 12, 24]:
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
@@ -264,7 +270,7 @@ if __name__ == '__main__':
     y_type = ['market_cap_usd']
     group_code = 'industry'
 
-    data = load_data(use_biweekly_stock=True, stock_last_week_avg=False)
+    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
     data.split_group(group_code)
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
     print(data.x_col)
