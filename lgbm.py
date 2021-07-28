@@ -205,14 +205,20 @@ if __name__ == "__main__":
     parser.add_argument('--nthread', default=6, type=int)          # for the best speed, set this to the number of real CPU cores
     args = parser.parse_args()
     print(args)
+    sql_result = vars(args)     # data write to DB TABLE lightgbm_results
+
+    # --------------------------------- Different Config ------------------------------------------
+
+    sql_result['name_sql'] = 'lastweek_newmacros'
+    use_biweekly_stock = False
+    stock_last_week_avg = True
+    # factors_to_test = data.factor_list
+    factors_to_test = ['tax_less_pension_to_accu_depre','stock_return_r6_2', 'ar_less_re_ti_advertising']
+    valid_method = 'cv'
 
     # --------------------------------- Define Variables ------------------------------------------
 
-    use_biweekly_stock = True
-
     # create dict storing values/df used in training
-    sql_result = vars(args)     # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = 'biweekly'
     hpot = {}                   # storing data for best trials in each Hyperopt
 
     # update additional base_space for Hyperopt
@@ -241,9 +247,9 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=False)                             # load_data (class) STEP 1
-    print(f"===== test on y_type", len(data.factor_list), data.factor_list, "=====")
-    for f in data.factor_list:
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)                             # load_data (class) STEP 1
+    print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
+    for f in factors_to_test:
         sql_result['y_type'] = f
         print(sql_result['y_type'])
         for group_code in ['industry', 'currency']:
@@ -251,7 +257,7 @@ if __name__ == "__main__":
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
-                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']], 'valid_method':'cv'}
+                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']], 'valid_method':valid_method}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     sql_result['cut_bins'] = list(data.cut_bins)

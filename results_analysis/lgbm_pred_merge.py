@@ -18,9 +18,12 @@ def download_stock_pred():
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.*, S.group_code, S.testing_period FROM {global_vals.result_pred_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL")
+                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history      
     global_vals.engine_ali.dispose()
+
+    # remove duplicate samples from running twice when testing
+    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number'], keep='last')
 
     # save counting label to csv
     count_i = {}

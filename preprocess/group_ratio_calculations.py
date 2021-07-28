@@ -128,6 +128,8 @@ def calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False):
         elif use_biweekly_stock:
             db_table += '_biweekly'
 
+        final_results_df = final_results_df.replace([np.inf, -np.inf], np.nan)
+
         try:
             with global_vals.engine_ali.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
