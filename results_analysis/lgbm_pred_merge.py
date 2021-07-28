@@ -10,6 +10,8 @@ import global_vals
 # r_name = 'testing'
 # r_name = 'laskweekavg'
 r_name = 'lastweekavg'
+r_name = 'lastweekavg_newmacros'
+# r_name = 'biweekly'
 iter_name = r_name
 
 def download_stock_pred():

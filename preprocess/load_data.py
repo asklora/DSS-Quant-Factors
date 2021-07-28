@@ -180,8 +180,8 @@ class load_data:
         current_x_col = []
         current_group = self.group.copy(1)
 
-        # Calculate the time_series history for predicted Y
-        for i in [1, 2, 3, 5, 12, 24]:
+        # Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
+        for i in [1, 2, 12]:
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
