@@ -9,6 +9,8 @@ from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from scipy.stats import skew
 # import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib import ticker
+
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 import statsmodels.api as sm
@@ -454,6 +456,7 @@ def dist_all():
     fig = plt.figure(figsize=(6, 18), dpi=120,  constrained_layout=True)  # create figure for test & train boxplot
 
     k=1
+    name = ['original','avg','bi']
     for df in [factors, factors_avg, factors_bi]:
         ax = fig.add_subplot(3,1,k)
         test = df[factor_list].values.flatten()
@@ -468,7 +471,7 @@ def dist_all():
 
         print(pd.Series(test).describe())
         print(min, max)
-        N, bins, patches = ax.hist(test, bins=1000, range=(min, max), density=True, stacked=True, cumulative=False)
+        N, bins, patches = ax.hist(test, bins=1000, range=(-0.05,0.05), weights=np.ones(len(test)) / len(test))
 
         for i in range(0, 333):
             patches[i].set_facecolor('g')
@@ -476,10 +479,14 @@ def dist_all():
             patches[i].set_facecolor('r')
         for i in range(667, len(patches)):
             patches[i].set_facecolor('g')
+
+        ax.yaxis.set_major_formatter(ticker.PercentFormatter(1))
+        plt.ylim((0,0.01))
+        ax.set_ylabel(name[k-1], fontsize=20)
         k+=1
 
     # plt.show()
-    plt.savefig(f'pdf_all_factor_cut.png')
+    plt.savefig(f'eda/pdf_all_factor_cut.png')
     plt.close()
 
 if __name__ == "__main__":
