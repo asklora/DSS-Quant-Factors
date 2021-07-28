@@ -57,19 +57,23 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
         db_table_name = global_vals.processed_ratio_table
 
     with global_vals.engine_ali.connect() as conn:
-        index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_r1_0, stock_return_r6_2, stock_return_r12_7 "
-                                f"FROM {db_table_name} WHERE ticker like '.%%'", conn)
+        index_ret = pd.read_sql(f"SELECT * FROM {db_table_name} WHERE ticker like '.%%'", conn)
     global_vals.engine_ali.dispose()
 
-    stock_return_col = ['stock_return_r1_0', 'stock_return_r6_2', 'stock_return_r12_7']
-    # index_ret[stock_return_col] = index_ret[stock_return_col] + 1
-    # index_ret['return'] = np.prod(index_ret[stock_return_col].values, axis=1) - 1
-    # index_ret = pd.pivot_table(index_ret, columns=['ticker'], index=['period_end'], values='return').reset_index(drop=False)
+    # Index using SPX/HSI/CSI300 returns
+    # stock_return_col = ['stock_return_r1_0', 'stock_return_r6_2', 'stock_return_r12_7']
+    # major_index = ['period_end','.SPX','.HSI','.CSI300']    # try include major market index first
+    # index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
+    # index_ret = index_ret.set_index(['period_end', 'ticker']).unstack()
+    # index_ret.columns = [f'{x[1]}_{x[0][13:]}' for x in index_ret.columns.to_list()]
+    # index_ret = index_ret.reset_index()
+    # index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
-    major_index = ['period_end','.SPX','.HSI','.CSI300']    # try include major market index first
+    # Index using all index r1_0 & vol_30_90 for 6 market based on num of ticker
+    major_index = ['period_end','.SPX','.CSI300','.N225','.KS200','.SXXGR','.TWII']    # try include major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
-    index_ret = index_ret.set_index(['period_end', 'ticker']).unstack()
-    index_ret.columns = [f'{x[1]}_{x[0][13:]}' for x in index_ret.columns.to_list()]
+    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r1_0','vol_30_90']].unstack()
+    index_ret.columns = [f'{x[1]}_{x[0][0]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
@@ -146,6 +150,8 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
     df = df.merge(non_factor_inputs, on=['group', 'period_end'], how='left')
+
+    print('      ------------------------> Factors: ', factors)
 
     return df.sort_values(by=['group', 'period_end']), factors, x_col
 
@@ -268,7 +274,7 @@ if __name__ == '__main__':
     # download_org_ratios('mean')
     # download_index_return()
     testing_period = dt.datetime(2019,7,31)
-    y_type = ['market_cap_usd']
+    y_type = ['vol_30_90', 'tax_less_pension_to_accu_depre', 'book_to_price', 'fwd_ey', 'stock_return_r6_2', 'gross_margin', 'market_cap_usd', 'cash_ratio']
     group_code = 'industry'
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
