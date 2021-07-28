@@ -6,7 +6,7 @@ from pandas.tseries.offsets import MonthEnd
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupShuffleSplit
-from preprocess.premium_calculation import calc_premium_all
+from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
 
 def download_clean_macros(main_df, use_biweekly_stock):
@@ -92,6 +92,7 @@ def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='mean', 
 
     if change:  # calculate the change of original ratio from T-1 -> T0
         df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
+        df[field_col] = trim_outlier(df[field_col])
 
     df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
 
