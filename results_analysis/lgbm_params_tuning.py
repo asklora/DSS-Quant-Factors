@@ -8,13 +8,13 @@ from global_vals import engine_ali, result_score_table
 from hyperspace_lgbm import find_hyperspace
 
 # find hyper-parameters used in hyperopt
-sql_result = {'objective': 'multiclass'}
+sql_result = {'objective': 'multiclass', 'group_code':'industry'}
 params = list(find_hyperspace(sql_result).keys())
 
 # params = ['num_leaves', 'min_data_in_leaf']
 matrix = 'accuracy'
 
-r_name = '2021-07-22 17:46:31.704325_testing'
+r_name = 'biweekly'
 iter_name = r_name.split('_')[-1]
 y_type = 'market_cap_usd'
 
@@ -57,7 +57,7 @@ def calc_average():
     
     results = download_from_score()
 
-    writer = pd.ExcelWriter(f'tuning_avg_test_{iter_name}.xlsx')    # create excel records
+    writer = pd.ExcelWriter(f'tuning/tuning_avg_test_{iter_name}.xlsx')    # create excel records
 
     for c in set(results['group_code']):
         sub_df = results.loc[results['group_code']==c]
@@ -130,12 +130,12 @@ def plot_scatter():
                     k+=1
 
             fig.tight_layout()
-            fig.savefig(f'tuning_plot_test_{iter_name}_{name}.png')
+            fig.savefig(f'tuning/tuning_plot_test_{iter_name}_{name}.png')
             plt.close()
 
 if __name__ == "__main__":
 
     # calc_correl(matrix=m)                                # check correlation
-    # calc_average(matrix=m, eval_sample='test')
+    calc_average()
     # plot_scatter()
-    plot_scatter_single_param()
+    # plot_scatter_single_param()

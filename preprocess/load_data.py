@@ -189,12 +189,14 @@ class load_data:
             self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
 
     def y_replace_median(self, arr, arr_cut):
+        ''' convert qcut results (e.g. 012) to the median of each group for regression '''
+
         df = pd.DataFrame(np.vstack((arr, arr_cut))).T   # concat original & qcut
         median = df.groupby([1]).median().sort_index()[0].to_list()     # find median of each group
-        self.sample_set['train_y_final'] = pd.DataFrame(train_y).replace(range(len(cut_bins)-1), median)[0].values
+        arr_cut_median = pd.DataFrame(arr_cut).replace(range(len(arr_cut.unique())-1), median)[0].values
+        return arr_cut_median
 
-
-    def y_qcut_all(self, qcut_q, defined_cut_bins):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         cut_col = [x + "_cut" for x in self.all_y_col]
@@ -203,21 +205,26 @@ class load_data:
 
         if defined_cut_bins == []:
             # cut original series into bins
-            arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+            arr_cut, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
             # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
-            self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
             self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
         else:
             # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
             self.cut_bins = defined_cut_bins
-            arr = pd.cut(arr, bins=self.cut_bins, labels=False)
-            self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+            arr_cut = pd.cut(arr, bins=self.cut_bins, labels=False)
+            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
 
         arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
-        arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
-        self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
+        arr_test_cut = pd.cut(arr_test, bins=self.cut_bins, labels=False)
+        self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
 
-    def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins):
+        if use_median:      # for regression -> remove noise by regression on median of each bins
+            self.train[cut_col] = self.y_replace_median(arr, arr_cut)
+            self.test[cut_col] = self.y_replace_median(arr_test, arr_test_cut)
+
+
+    def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median):
         ''' split training / testing set based on testing period '''
 
         current_x_col = []
@@ -246,7 +253,7 @@ class load_data:
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_qcut_all(qcut_q, defined_cut_bins)
+        self.y_qcut_all(qcut_q, defined_cut_bins, use_median)
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -282,10 +289,10 @@ class load_data:
         return gkf
 
     def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_list=[1,2,12], valid_method='cv',
-                  defined_cut_bins=[]):
+                  defined_cut_bins=[], use_median=False):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, qcut_q, ar_list, defined_cut_bins)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
 
@@ -302,7 +309,7 @@ if __name__ == '__main__':
 
     data.split_group(group_code)
 
-    sample_set, cv = data.split_all(testing_period, y_type=y_type)
+    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=True)
     print(data.x_col)
 
     for train_index, test_index in cv:
