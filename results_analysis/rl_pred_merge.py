@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score
 import datetime as dt
 import numpy as np
+from preprocess.load_data import load_data
 
 import global_vals
 
@@ -18,10 +19,10 @@ def download_stock_pred():
     ''' download training history and training prediction from DB '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_rf_class P "
+                     f"INNER JOIN {global_vals.result_score_table}_rf_class S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-        result_all = pd.read_sql(query, conn)       # download training history      
+        result_all = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
@@ -32,7 +33,7 @@ def download_stock_pred():
     count_i = {}
     for name,g in result_all.groupby(['group_code', 'testing_period', 'y_type']):
         count_i[name] = g['pred'].value_counts().to_dict()
-    pd.DataFrame(count_i).transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
+    pd.DataFrame(count_i).transpose().to_csv(f'score/rf_result_pred_count_{iter_name}.csv')
 
     return result_all
 
@@ -110,7 +111,7 @@ def calc_pred_class():
     r = pd.DataFrame(results).reset_index()
     r.columns = ['group_code', 'testing_period', 'y_type'] + ['mean', 'median', 'mode']
 
-    with pd.ExcelWriter(f'score/result_pred_accuracy_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'score/rf_result_pred_accuracy_{iter_name}.xlsx') as writer:
         r.to_excel(writer, sheet_name='original', index=False)
         r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
