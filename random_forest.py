@@ -17,11 +17,11 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [100, 200]),
+    'n_estimators': hp.choice('n_estimators', [100, 200, 400]),
     'max_depth': hp.choice('max_depth', [4, 8, 12]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 50]),
-    'min_weight_fraction_leaf': 0.1,
+    'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 0.1]),
     'max_features': hp.choice('max_features',[0.3, 0.5, 0.8]),
     'min_impurity_decrease': 0,
     'max_samples': hp.choice('max_samples',[0.3, 0.6, 0.9]),
@@ -154,7 +154,7 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
-    df['actual'] = sample_set['test_y_final'].unstack().values      # also write actual qcut to BD
+    df['actual'] = sample_set['test_y_final'].flatten()      # also write actual qcut to BD
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly'
+    sql_result['name_sql'] = '2'
     use_biweekly_stock = True
     stock_last_week_avg = False
     valid_method = 'cv'

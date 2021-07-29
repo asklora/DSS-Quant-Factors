@@ -182,14 +182,37 @@ class load_data:
         else:
             self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
 
-    def split_train_test(self, testing_period, y_type, ar_period, ma_period):
+    def y_qcut_all(self, qcut_q, defined_cut_bins):
+        ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
+
+        cut_col = [x + "_cut" for x in self.all_y_col]
+        arr = self.train[self.all_y_col].values.flatten()  # Flatten all training factors to qcut all together
+        # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
+
+        if defined_cut_bins == []:
+            # cut original series into bins
+            arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+            # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
+            self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+            self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
+        else:
+            # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
+            self.cut_bins = defined_cut_bins
+            arr = pd.cut(arr, bins=self.cut_bins, labels=False)
+            self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
+
+        arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
+        arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
+        self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
+
+    def split_train_test(self, testing_period, y_type, qcut_q, ar_list):
         ''' split training / testing set based on testing period '''
 
         current_x_col = []
         current_group = self.group.copy(1)
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
-        for i in [1, 2, 12]:
+        for i in ar_list:
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
@@ -210,7 +233,8 @@ class load_data:
 
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
-        self.y_qcut_all()   # qcut/cut for all factors to be predicted at the same time
+        # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
+        self.y_qcut_all(qcut_q, defined_cut_bins)
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -228,24 +252,7 @@ class load_data:
         self.sample_set['train_x'] = scaler.transform(self.sample_set['train_x'])
         self.sample_set['test_x'] = scaler.transform(self.sample_set['test_x'])
 
-    def y_qcut_all(self, qcut_q=3):
-        ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
-
-        cut_col = [x+"_cut" for x in self.all_y_col]
-        arr = self.train[self.all_y_col].values.flatten()       # Flatten all training factors to qcut all together
-        # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
-
-        # cut original series into bins
-        arr, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
-        # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
-        self.train[cut_col] = np.reshape(arr, (len(self.train), len(self.all_y_col)), order='C')
-
-        self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
-        arr_test = self.test[self.all_y_col].values.flatten()       # Flatten all testing factors to qcut all together
-        arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
-        self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
-
-    def split_valid(self, testing_period, n_splits, valid_method):
+   def split_valid(self, testing_period, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
@@ -262,10 +269,11 @@ class load_data:
 
         return gkf
 
-    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_period=12, ma_period=12, valid_method='cv'):
+    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_list=[1,2,12], valid_method='cv',
+                  defined_cut_bins=[]):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, ar_period, ma_period)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, qcut_q, ar_list, defined_cut_bins)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)                              # split for cross validation in groups
 

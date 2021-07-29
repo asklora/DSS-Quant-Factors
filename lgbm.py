@@ -211,9 +211,11 @@ if __name__ == "__main__":
     sql_result['name_sql'] = 'biweekly'
     use_biweekly_stock = True
     stock_last_week_avg = False
-    # factors_to_test = data.factor_list
-    factors_to_test = ['stock_return_r6_2']
+    factors_to_test = data.factor_list
+    # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
+    ar_list = [1, 2, 3, 5, 12]
+    # defined_cut_bins = []
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -256,7 +258,8 @@ if __name__ == "__main__":
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
-                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']], 'valid_method':valid_method}
+                load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
+                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     sql_result['cut_bins'] = list(data.cut_bins)
