@@ -6,7 +6,7 @@ import numpy as np
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score
 from pandas.tseries.offsets import MonthEnd
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
 
@@ -121,6 +121,8 @@ def eval_classifier(space):
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
+        ss =  roc_auc_score(test_df['actual'], test_df['pred'], average=None)
+        result['auc_test'] = roc_auc_score(test_df['actual'], test_df['pred'], average=None)
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation

@@ -150,8 +150,11 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
     # df = df.merge(non_factor_inputs, on=['group', 'period_end'], how='left')
-    df = df.merge(non_factor_inputs, on=['period_end'], how='left')
+    df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
 
+    # make up for all missing date in df
+    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['period_end'].unique()], names=['group', 'period_end']).to_frame().reset_index(drop=True)
+    df = pd.merge(df, indexes, on=['group', 'period_end'], how='right')
     print('      ------------------------> Factors: ', factors)
 
     return df.sort_values(by=['group', 'period_end']), factors, x_col
@@ -171,12 +174,7 @@ class load_data:
 
         # calculate y for all factors
         self.all_y_col = [x+"_y" for x in self.factor_list]
-        df_y = self.main[['period_end', 'group'] + self.factor_list]
-        if use_biweekly_stock:
-            df_y['period_end'] = pd.to_datetime(df_y['period_end']).apply(lambda x: x-2*relativedelta(weeks=2))
-        else:
-            df_y['period_end'] = pd.to_datetime(df_y['period_end']) + MonthEnd(-1)
-        self.main = self.main.merge(df_y, on=['period_end','group'], suffixes=('','_y'))
+        self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
@@ -231,16 +229,23 @@ class load_data:
         current_group = self.group.copy(1)
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
-        for i in ar_list:
+        for i in [1,2]:
             ar_col = [f"ar_{x}_{i}m" for x in y_type]
             current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
 
-        # 2. (Removed) Calculate the moving average for predicted Y
-        # ma_col = [f"ma_{x}_{ma_period}m" for x in y_type]
-        # current_group.loc[:, ma_col] = current_group.groupby(['group'])[y_type].transform(
-        #     lambda x: x.rolling(ma_period, min_periods=6).mean())
-        # current_x_col.extend(ma_col)        # add MA variables name to x_col
+        # 2. Calculate the moving average for predicted Y
+        ma_q_col = [f"ma_{x}_q" for x in y_type]
+        ma_y_col = [f"ma_{x}_y" for x in y_type]
+        current_group.loc[:, ma_q_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(3, min_periods=1).mean())       # moving average for 3m
+        current_group.loc[:, ma_y_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(12, min_periods=1).mean())      # moving average for 12m
+        for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
+            current_group.loc[:, [x+'i' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+        for i in [12]:          # include moving average of 12 - 23
+            current_group.loc[:, [x+'i' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
+
+        current_x_col.extend([x+'i' for x in ma_q_col])        # add MA variables name to x_col
+        current_x_col.extend([x+'i' for x in ma_y_col])        # add MA variables name to x_col
 
         y_col = [x+'_y' for x in y_type]
 
@@ -309,7 +314,7 @@ if __name__ == '__main__':
 
     data.split_group(group_code)
 
-    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=True)
+    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False)
     print(data.x_col)
 
     for train_index, test_index in cv:
