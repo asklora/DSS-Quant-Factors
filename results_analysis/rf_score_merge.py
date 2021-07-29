@@ -7,7 +7,7 @@ import numpy as np
 import ast
 import global_vals
 
-r_name = '2'
+r_name = 'lesstree'
 
 y_type = 'market_cap_usd'
 iter_name = r_name.split('_')[-1]

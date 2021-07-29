@@ -13,7 +13,7 @@ params = ['n_estimators','max_depth','min_samples_split','min_samples_leaf','max
 
 matrix = 'accuracy'
 
-r_name = 'biweekly'
+r_name = 'lesstree'
 iter_name = r_name.split('_')[-1]
 y_type = 'market_cap_usd'
 
@@ -54,7 +54,7 @@ def calc_average():
 
     results = download_from_score()
 
-    writer = pd.ExcelWriter(f'tuning_avg_test_{iter_name}.xlsx')  # create excel records
+    writer = pd.ExcelWriter(f'tuning/rf_tuning_avg_test_{iter_name}.xlsx')  # create excel records
 
     for c in set(results['group_code']):
         sub_df = results.loc[results['group_code'] == c]
@@ -62,11 +62,11 @@ def calc_average():
         df_list = []
         for p in params:
             try:  # calculate means of each subset
-                des_df = sub_df.groupby(p).mean()[[f'{matrix}_test', f'r2_test']].reset_index()
-                des_df['len'] = sub_df.groupby(p).count().reset_index()[f'{matrix}_test']
-                des_df.columns = ['subset', f'{matrix}_test', f'r2_test', 'len']
+                des_df = sub_df.groupby(p).mean()[[f'{matrix}_test_mean']].reset_index()
+                des_df['len'] = sub_df.groupby(p).count().reset_index()[f'{matrix}_test_mean']
+                des_df.columns = ['subset', f'{matrix}_test_mean', 'len']
                 des_df['params'] = p
-                des_df = des_df.sort_values(by=[f'{matrix}_test'], ascending=True)
+                des_df = des_df.sort_values(by=[f'{matrix}_test_mean'], ascending=True)
                 df_list.append((des_df))
             except:
                 continue
@@ -131,6 +131,6 @@ def plot_scatter():
 
 if __name__ == "__main__":
     # calc_correl(matrix=m)                                # check correlation
-    # calc_average(matrix=m, eval_sample='test')
-    plot_scatter()
+    calc_average()
+    # plot_scatter()
     # plot_scatter_single_param()
