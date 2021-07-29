@@ -188,6 +188,12 @@ class load_data:
         else:
             self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
 
+    def y_replace_median(self, arr, arr_cut):
+        df = pd.DataFrame(np.vstack((arr, arr_cut))).T   # concat original & qcut
+        median = df.groupby([1]).median().sort_index()[0].to_list()     # find median of each group
+        self.sample_set['train_y_final'] = pd.DataFrame(train_y).replace(range(len(cut_bins)-1), median)[0].values
+
+
     def y_qcut_all(self, qcut_q, defined_cut_bins):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 

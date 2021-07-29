@@ -532,5 +532,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
                           use_cached=True, save=True)
