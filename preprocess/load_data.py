@@ -205,7 +205,7 @@ class load_data:
         arr_test = pd.cut(arr_test, bins=self.cut_bins, labels=False)
         self.test[cut_col] = np.reshape(arr_test, (len(self.test), len(self.all_y_col)), order='C')
 
-    def split_train_test(self, testing_period, y_type, qcut_q, ar_list):
+    def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins):
         ''' split training / testing set based on testing period '''
 
         current_x_col = []
@@ -252,7 +252,7 @@ class load_data:
         self.sample_set['train_x'] = scaler.transform(self.sample_set['train_x'])
         self.sample_set['test_x'] = scaler.transform(self.sample_set['test_x'])
 
-   def split_valid(self, testing_period, n_splits, valid_method):
+    def split_valid(self, testing_period, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
@@ -287,6 +287,7 @@ if __name__ == '__main__':
     group_code = 'industry'
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
+
     data.split_group(group_code)
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
     print(data.x_col)
