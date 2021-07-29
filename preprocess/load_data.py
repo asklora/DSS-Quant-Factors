@@ -235,9 +235,6 @@ class load_data:
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_qcut_all(qcut_q, defined_cut_bins)
-        col = ['period_end','group','book_to_price','ar_book_to_price_1m','y_book_to_price','y_book_to_price_cut']
-        self.train[col].to_csv('check_biweek_qcut.csv', index=False)
-        exit(0)
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -278,7 +275,7 @@ class load_data:
 
         self.split_train_test(testing_period, y_type, qcut_q, ar_list, defined_cut_bins)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
-        gkf = self.split_valid(testing_period, n_splits, valid_method)                              # split for cross validation in groups
+        gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
 
         return self.sample_set, gkf
 

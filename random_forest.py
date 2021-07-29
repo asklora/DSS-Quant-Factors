@@ -17,7 +17,7 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [100, 200, 400]),
+    'n_estimators': hp.choice('n_estimators', [10, 50, 100]),
     'max_depth': hp.choice('max_depth', [4, 8, 12]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 50]),
@@ -210,10 +210,12 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = '2'
+    sql_result['name_sql'] = 'lesstree'
     use_biweekly_stock = True
     stock_last_week_avg = False
     valid_method = 'cv'
+    ar_list = [1, 2, 12]
+    defined_cut_bins = []
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -234,19 +236,18 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    y_type = data.factor_list       # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
     for group_code in ['industry', 'currency']:
         sql_result['group_code'] = group_code
         data.split_group(group_code)  # load_data (class) STEP 2
-        sql_result['y_type'] = y_type
         print(sql_result['y_type'])
         for testing_period in reversed(testing_period_list):
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
-            load_data_params = {'qcut_q': args.qcut_q, 'y_type': y_type, 'valid_method': valid_method}
-
+            load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
+                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                 sql_result['cut_bins'] = list(data.cut_bins)
