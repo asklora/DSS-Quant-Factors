@@ -138,7 +138,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         results_df = pd.DataFrame(results).transpose().reset_index(drop=False)
         results_df.columns = ['period_end', 'group'] + results_df.columns.to_list()[2:]
 
-        member_df.append(member_df)
+        all_member_df.append(member_df)
         all_results_df.append(results_df)
 
     final_member_df = pd.concat(all_member_df, axis=0)
@@ -191,6 +191,6 @@ def write_local_csv_to_db():
 
 if __name__=="__main__":
 
-    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
+    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
 
     # write_local_csv_to_db()
