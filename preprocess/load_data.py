@@ -235,6 +235,9 @@ class load_data:
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_qcut_all(qcut_q, defined_cut_bins)
+        col = ['period_end','group','book_to_price','ar_book_to_price_1m','y_book_to_price','y_book_to_price_cut']
+        self.train[col].to_csv('check_biweek_qcut.csv', index=False)
+        exit(0)
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -282,13 +285,14 @@ class load_data:
 if __name__ == '__main__':
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2019,7,31)
+    testing_period = dt.datetime(2021,1,24)
     y_type = ['vol_30_90', 'tax_less_pension_to_accu_depre', 'book_to_price', 'fwd_ey', 'stock_return_r6_2', 'gross_margin', 'market_cap_usd', 'cash_ratio']
     group_code = 'industry'
 
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
+    data = load_data(use_biweekly_stock=True, stock_last_week_avg=False)
 
     data.split_group(group_code)
+
     sample_set, cv = data.split_all(testing_period, y_type=y_type)
     print(data.x_col)
 

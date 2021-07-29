@@ -211,11 +211,10 @@ if __name__ == "__main__":
     sql_result['name_sql'] = 'biweekly'
     use_biweekly_stock = True
     stock_last_week_avg = False
-    factors_to_test = data.factor_list
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
     ar_list = [1, 2, 3, 5, 12]
-    # defined_cut_bins = []
+    defined_cut_bins = []
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -249,6 +248,7 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
+    factors_to_test = data.factor_list
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f

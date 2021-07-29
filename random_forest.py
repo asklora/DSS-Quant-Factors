@@ -154,7 +154,7 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
-    df['actual'] = sample_set['test_y_final'].flatten()      # also write actual qcut to BD
+    df['actual'] = sample_set['test_y_final'].flatten(order='F')       # also write actual qcut to BD
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -249,6 +249,7 @@ if __name__ == "__main__":
 
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+                sql_result['cut_bins'] = list(data.cut_bins)
 
                 cv_number = 1  # represent which cross-validation sets
                 for train_index, valid_index in cv:  # roll over 5 cross validation set

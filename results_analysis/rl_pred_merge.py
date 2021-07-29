@@ -7,12 +7,7 @@ from preprocess.load_data import load_data
 
 import global_vals
 
-# r_name = 'indoverfit'
-# r_name = 'testing'
-# r_name = 'laskweekavg'
-r_name = 'lastweekavg'
-# r_name = 'lastweekavg_newmacros'
-r_name = 'biweekly'
+r_name = '2'
 iter_name = r_name
 
 def download_stock_pred():
