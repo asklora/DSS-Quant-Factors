@@ -121,8 +121,8 @@ def eval_classifier(space):
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
-        ss = roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr')
-        result['auc_test'] = list(roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr'))
+        # ss = roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr')
+        # result['auc_test'] = list(roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr'))
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
