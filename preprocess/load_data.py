@@ -169,8 +169,14 @@ class load_data:
         self.group = pd.DataFrame()
         self.main, self.factor_list, self.original_x_col = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
 
-        self.all_y_col = ["y_" + x for x in self.factor_list]    # calculate y for all factors
-        self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
+        # calculate y for all factors
+        self.all_y_col = [x+"_y" for x in self.factor_list]
+        df_y = self.main[['period_end', 'group'] + self.factor_list]
+        if use_biweekly_stock:
+            df_y['period_end'] = pd.to_datetime(df_y['period_end']).apply(lambda x: x-2*relativedelta(weeks=2))
+        else:
+            df_y['period_end'] = pd.to_datetime(df_y['period_end']) + MonthEnd(-1)
+        self.main = self.main.merge(df_y, on=['period_end','group'], suffixes=('','_y'))
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
@@ -223,7 +229,7 @@ class load_data:
         #     lambda x: x.rolling(ma_period, min_periods=6).mean())
         # current_x_col.extend(ma_col)        # add MA variables name to x_col
 
-        y_col = ["y_" + x for x in y_type]
+        y_col = [x+'_y' for x in y_type]
 
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
