@@ -386,8 +386,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     check_duplicates(ek, 'ek')
 
     # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].astype(int).astype(str).replace({'10102010':'101021','10102015':'101022','10102020':'101023',
-                                               '10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
+    universe['icb_code'] = universe['icb_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
+        replace({'10102010':'101021','10102015':'101022','10102020':'101023','10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
+    print(universe['icb_code'].unique())
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
@@ -523,6 +524,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
+        print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
         print(f'      ------------------------> Finish writing {db_table_name} table ')
     global_vals.engine.dispose()
@@ -533,4 +535,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
 
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=True, save=True)
+                          use_cached=True, save=False)
