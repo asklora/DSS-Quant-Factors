@@ -121,8 +121,8 @@ def eval_classifier(space):
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
-        ss =  roc_auc_score(test_df['actual'], test_df['pred'], average=None)
-        result['auc_test'] = roc_auc_score(test_df['actual'], test_df['pred'], average=None)
+        ss = roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr')
+        result['auc_test'] = list(roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr'))
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly'
+    sql_result['name_sql'] = 'biweekly_new'
     use_biweekly_stock = True
     stock_last_week_avg = False
     # factors_to_test = ['stock_return_r6_2']
@@ -234,7 +234,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,7,11)
+        last_test_date = dt.datetime(2021,5,23)
         backtest_period = 44
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
