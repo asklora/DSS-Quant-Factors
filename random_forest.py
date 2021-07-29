@@ -154,6 +154,7 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
+    df['actual'] = sample_set['test_y_final'].unstack().values      # also write actual qcut to BD
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 

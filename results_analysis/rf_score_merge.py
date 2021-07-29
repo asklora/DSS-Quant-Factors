@@ -16,7 +16,7 @@ def download_stock_pred():
     ''' download training history from score table DB '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT * FROM {global_vals.result_score_table}_rf_class WHERE name_sql='{r_name}' ORDER BY finish_timing LIMIT 20")
+        query = text(f"SELECT * FROM {global_vals.result_score_table}_rf_class WHERE name_sql='{r_name}' ORDER BY finish_timing")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
@@ -42,8 +42,7 @@ def download_stock_pred():
     best_cv_time = best.groupby(['group_code']).mean().transpose()
 
     best_id = best_cv_time.index.to_frame().reset_index(drop=True)
-    x = pd.MultiIndex.from_arrays(best_id[0].str.split('/', expand=True).tranpose().values)
-    best_cv_time.index = pd.MultiIndex.from_arrays(best_id[0].str.split('/', expand=True).tranpose().values)
+    best_cv_time.index = pd.MultiIndex.from_arrays(best_id[0].str.split('/', expand=True).transpose().values)
     best_cv_time = best_cv_time.transpose().stack(0).reset_index()
 
     best_cv_time.to_excel(writer, sheet_name='best_avg_valid_mean', index=False)
@@ -51,14 +50,14 @@ def download_stock_pred():
     # 2. select results with best accuracy_valid for each y_type
     df_list = []
     for i in y_type_list:
-        best = df.loc[df.groupby(['group_code','testing_period','cv_number'])[(i,'valid')].transform(max)==df[(i,'valid')]]
-        best = best[['group_code', [(i,'train')], [(i,'valid')], [(i,'test')]]]
-        best_cv_time = best.groupby(['group_code']).mean()
-        best_cv_time.columns = ['train','valid','test']
+        best = df.loc[df.groupby(['group_code','testing_period','cv_number'])[(i+'/valid')].transform(max)==df[(i+'/valid')]]
+        best = best[['group_code', i+'/train', i+'/valid', i+'/test']]
+        best_cv_time = best.groupby(['group_code']).mean().reset_index()
+        best_cv_time.columns = ['group_code','train','valid','test']
+        best_cv_time['y_type'] = i
         df_list.append(best_cv_time)
 
-    x = pd.concat(df_list,axis=0)
-    pd.concat(df_list,axis=0).to_excel(writer, sheet_name='best_each_valid', index=False)
+    pd.concat(df_list,axis=0).filter(['group_code','y_type','train','valid','test']).to_excel(writer, sheet_name='best_each_valid', index=False)
     writer.save()
 
 if __name__ == "__main__":
