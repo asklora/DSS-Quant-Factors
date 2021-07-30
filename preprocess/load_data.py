@@ -186,12 +186,12 @@ class load_data:
         else:
             self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
 
-    def y_replace_median(self, arr, arr_cut):
+    def y_replace_median(self, qcut_q, arr, arr_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
 
         df = pd.DataFrame(np.vstack((arr, arr_cut))).T   # concat original & qcut
         median = df.groupby([1]).median().sort_index()[0].to_list()     # find median of each group
-        arr_cut_median = pd.DataFrame(arr_cut).replace(range(len(arr_cut.unique())-1), median)[0].values
+        arr_cut_median = pd.DataFrame(arr_cut).replace(range(qcut_q), median)[0].values
         return arr_cut_median
 
     def y_qcut_all(self, qcut_q, defined_cut_bins, use_median):
@@ -218,8 +218,8 @@ class load_data:
         self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
 
         if use_median:      # for regression -> remove noise by regression on median of each bins
-            self.train[cut_col] = self.y_replace_median(arr, arr_cut)
-            self.test[cut_col] = self.y_replace_median(arr_test, arr_test_cut)
+            self.train[cut_col] = self.y_replace_median(qcut_q, arr, arr_cut)
+            self.test[cut_col] = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
 
 
     def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median):
@@ -315,7 +315,7 @@ if __name__ == '__main__':
     data.split_group(group_code)
 
     for y in y_type:
-        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False)
+        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=True)
         print(data.cut_bins)
 
     print(data.x_col)

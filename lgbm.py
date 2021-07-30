@@ -203,7 +203,7 @@ if __name__ == "__main__":
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
-    parser.add_argument('--nthread', default=6, type=int)          # for the best speed, set this to the number of real CPU cores
+    parser.add_argument('--nthread', default=12, type=int)          # for the best speed, set this to the number of real CPU cores
     args = parser.parse_args()
     print(args)
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
@@ -218,6 +218,7 @@ if __name__ == "__main__":
     ar_list = [1, 2, 3, 5, 12]
     defined_cut_bins = []
     group_code_list = ['industry']
+    use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -262,7 +263,8 @@ if __name__ == "__main__":
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
-                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins}
+                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins,
+                                    'use_median':use_median}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     sql_result['cut_bins'] = list(data.cut_bins)
