@@ -237,14 +237,13 @@ class load_data:
         # 2. Calculate the moving average for predicted Y
         ma_q_col = [f"ma_{x}_q" for x in y_type]
         ma_y_col = [f"ma_{x}_y" for x in y_type]
-        current_group.loc[:, ma_q_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(3, min_periods=1).mean())       # moving average for 3m
-        current_group.loc[:, ma_y_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(12, min_periods=1).mean())      # moving average for 12m
+        current_group[ma_q_col] = current_group.groupby(['group'])[y_type].rolling(3, min_periods=1).mean().values      # moving average for 3m
+        current_group[ma_y_col] = current_group.groupby(['group'])[y_type].rolling(12, min_periods=1).mean().values      # moving average for 12m
         for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
-            current_group.loc[:, [f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+            current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
             current_x_col.extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
-
         for i in [12]:          # include moving average of 12 - 23
-            current_group.loc[:, [f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
+            current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             current_x_col.extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 
         y_col = ['y_'+x for x in y_type]

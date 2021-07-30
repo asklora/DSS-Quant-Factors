@@ -75,7 +75,6 @@ def calc_group_premium_fama(name, g, factor_list):
 
 def calc_group_premium_msci():
     '''  calculate factor premium = inverse of factor value * returns '''
-    exit(0)
     return 1
 
 def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False):

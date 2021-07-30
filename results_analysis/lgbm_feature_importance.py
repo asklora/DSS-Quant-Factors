@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'biweekly_new'
+r_name = 'biweekly_new1'
 iter_name = r_name#.split('_')[-1]
 
 def feature_importance():
@@ -18,7 +18,8 @@ def feature_importance():
     global_vals.engine_ali.dispose()
 
     df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'org_' in x], 'org')
-    df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ma_' in x], 'ma')
+    df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ma_' in x],
+                                    [f"{x[:2]}_{x[-2:]}" for x in df['name'].to_list() if 'ma_' in x])
     df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ar_' in x],
                                     [f"{x.split('_')[0]}_{x.split('_')[-1]}" for x in df['name'].to_list() if 'ar_' in x])
 
@@ -26,7 +27,7 @@ def feature_importance():
     df1['avg'] = df1.mean(axis=1)
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'importance_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'feature/importance_{iter_name}.xlsx') as writer:
         df1.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='y_type')
         df2.to_excel(writer, sheet_name='group_code')
 

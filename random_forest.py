@@ -17,10 +17,10 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [10, 50, 100]),
-    'max_depth': hp.choice('max_depth', [4, 8, 12]),
+    'n_estimators': hp.choice('n_estimators', [10, 50]),
+    'max_depth': hp.choice('max_depth', [8, 32, 64]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
-    'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 50]),
+    'min_samples_leaf': hp.choice('min_samples_leaf', [5, 50]),
     'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 0.1]),
     'max_features': hp.choice('max_features',[0.3, 0.5, 0.8]),
     'min_impurity_decrease': 0,
