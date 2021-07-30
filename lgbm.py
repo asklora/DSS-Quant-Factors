@@ -218,6 +218,7 @@ if __name__ == "__main__":
     ar_list = [1, 2, 3, 5, 12]      # deprecated
     defined_cut_bins = []
     group_code_list = ['industry', 'currency']
+    use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -262,7 +263,8 @@ if __name__ == "__main__":
             for testing_period in reversed(testing_period_list):
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
-                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins}
+                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins,
+                                    'use_median':use_median}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     sql_result['cut_bins'] = list(data.cut_bins)
