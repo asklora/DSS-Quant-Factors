@@ -148,7 +148,10 @@ def to_sql_prediction(Y_test_pred):
     df = pd.DataFrame()
     df['group'] = data.test['group'].to_list()
     df['pred'] = Y_test_pred
-    df['actual'] = sample_set['test_y_final']
+    if sql_result['objective'] in ['regression_l1', 'regression_l2']:       # for regression use original (before qcut/convert to median)
+        df['actual'] = sample_set['test_y']
+    elif sql_result['objective'] in ['multiclass']:         # for classification use after qcut
+        df['actual'] = sample_set['test_y_final']
     df['y_type'] = sql_result['y_type']
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
@@ -199,7 +202,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2
-    parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--qcut_q', default=5, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
@@ -218,7 +221,7 @@ if __name__ == "__main__":
     ar_list = [1, 2, 3, 5, 12]      # deprecated
     defined_cut_bins = []
     group_code_list = ['industry', 'currency']
-    use_median = False
+    use_median = True
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -279,6 +282,9 @@ if __name__ == "__main__":
                         sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
                         sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
+                        sample_set['train_yy'] = sample_set['train_yy'].flatten()
+                        sample_set['valid_y'] = sample_set['valid_y'].flatten()
+                        sample_set['test_y'] = sample_set['test_y'].flatten()
                         sample_set['valid_y_final'] = sample_set['valid_y_final'].flatten()
                         sample_set['train_yy_final'] = sample_set['train_yy_final'].flatten()
                         sample_set['test_y_final'] = sample_set['test_y_final'].flatten()

@@ -205,22 +205,21 @@ class load_data:
             # cut original series into bins
             arr_cut, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
             # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
-            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
             self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
         else:
             # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
             self.cut_bins = defined_cut_bins
             arr_cut = pd.cut(arr, bins=self.cut_bins, labels=False)
-            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
 
         arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
         arr_test_cut = pd.cut(arr_test, bins=self.cut_bins, labels=False)
-        self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
 
         if use_median:      # for regression -> remove noise by regression on median of each bins
-            self.train[cut_col] = self.y_replace_median(qcut_q, arr, arr_cut)
-            self.test[cut_col] = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
+            arr_cut = self.y_replace_median(qcut_q, arr, arr_cut)
+            arr_test_cut = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
 
+        self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
+        self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
 
     def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median):
         ''' split training / testing set based on testing period '''
