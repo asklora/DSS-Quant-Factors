@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lastweekavg_newmacros'
+r_name = 'biweekly_new'
 iter_name = r_name#.split('_')[-1]
 
 def feature_importance():
@@ -26,7 +26,7 @@ def feature_importance():
     df1['avg'] = df1.mean(axis=1)
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'feature/importance_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'importance_{iter_name}.xlsx') as writer:
         df1.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='y_type')
         df2.to_excel(writer, sheet_name='group_code')
 

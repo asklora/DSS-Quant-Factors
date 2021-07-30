@@ -173,7 +173,7 @@ class load_data:
         self.main, self.factor_list, self.original_x_col = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
 
         # calculate y for all factors
-        self.all_y_col = [x+"_y" for x in self.factor_list]
+        self.all_y_col = ["y_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
 
     def split_group(self, group_name=None):
@@ -240,25 +240,26 @@ class load_data:
         current_group.loc[:, ma_q_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(3, min_periods=1).mean())       # moving average for 3m
         current_group.loc[:, ma_y_col] = current_group.groupby(['group'])[y_type].transform(lambda x: x.rolling(12, min_periods=1).mean())      # moving average for 12m
         for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
-            current_group.loc[:, [x+'i' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+            current_group.loc[:, [f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+            current_x_col.extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
+
         for i in [12]:          # include moving average of 12 - 23
-            current_group.loc[:, [x+'i' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
+            current_group.loc[:, [f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
+            current_x_col.extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 
-        current_x_col.extend([x+'i' for x in ma_q_col])        # add MA variables name to x_col
-        current_x_col.extend([x+'i' for x in ma_y_col])        # add MA variables name to x_col
-
-        y_col = [x+'_y' for x in y_type]
+        y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
         start = testing_period - relativedelta(years=10)    # train df = 40 quarters
         self.train = current_group.loc[(start <= current_group['period_end']) &
                                      (current_group['period_end'] < testing_period)]
-        self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_qcut_all(qcut_q, defined_cut_bins, use_median)
+
+        self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -306,15 +307,18 @@ class load_data:
 if __name__ == '__main__':
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2021,1,24)
-    y_type = ['vol_30_90', 'tax_less_pension_to_accu_depre', 'book_to_price', 'fwd_ey', 'stock_return_r6_2', 'gross_margin', 'market_cap_usd', 'cash_ratio']
+    testing_period = dt.datetime(2021,5,23)
+    y_type = ['tax_less_pension_to_accu_depre', 'book_to_price', 'fwd_ey', 'stock_return_r6_2', 'gross_margin', 'market_cap_usd', 'cash_ratio']
     group_code = 'industry'
 
     data = load_data(use_biweekly_stock=True, stock_last_week_avg=False)
 
     data.split_group(group_code)
 
-    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False)
+    for y in y_type:
+        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False)
+        print(data.cut_bins)
+
     print(data.x_col)
 
     for train_index, test_index in cv:

@@ -210,13 +210,14 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly_new'
+    sql_result['name_sql'] = 'biweekly_new1'
     use_biweekly_stock = True
     stock_last_week_avg = False
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
     ar_list = [1, 2, 3, 5, 12]
     defined_cut_bins = []
+    group_code_list = ['industry']
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -255,7 +256,7 @@ if __name__ == "__main__":
     for f in factors_to_test:
         sql_result['y_type'] = f
         print(sql_result['y_type'])
-        for group_code in ['currency']: # industry
+        for group_code in group_code_list:
             sql_result['group_code'] = group_code
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in reversed(testing_period_list):
