@@ -203,21 +203,21 @@ if __name__ == "__main__":
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
-    parser.add_argument('--nthread', default=6, type=int)          # for the best speed, set this to the number of real CPU cores
+    parser.add_argument('--nthread', default=12, type=int)          # for the best speed, set this to the number of real CPU cores
     args = parser.parse_args()
     print(args)
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly_new1'
+    sql_result['name_sql'] = 'biweekly_ma'
     use_biweekly_stock = True
     stock_last_week_avg = False
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
-    ar_list = [1, 2, 3, 5, 12]
+    ar_list = [1, 2, 3, 5, 12]      # deprecated
     defined_cut_bins = []
-    group_code_list = ['industry']
+    group_code_list = ['industry', 'currency']
 
     # --------------------------------- Define Variables ------------------------------------------
 
