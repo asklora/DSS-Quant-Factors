@@ -1,6 +1,6 @@
 from sqlalchemy import text
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
 import numpy as np
 
@@ -12,7 +12,9 @@ import global_vals
 r_name = 'lastweekavg'
 # r_name = 'lastweekavg_newmacros'
 r_name = 'biweekly'
-r_name = 'biweekly_new1 '
+r_name = 'biweekly_new1'
+r_name = 'biweekly_ma'
+
 iter_name = r_name
 
 def download_stock_pred():
@@ -60,8 +62,8 @@ def combine_pred_class(df, agg_type):
 def combine_mode_class(df):
     ''' calculate accuracy score when pred = 0 / 1 / 2 '''
 
-    df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-    df = df.dropna(how='any')
+    # df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+    # df = df.dropna(how='any')
 
     result_dict = {}
     for name, g in df.groupby(['group_code', 'testing_period', 'y_type']):
@@ -73,11 +75,31 @@ def combine_mode_class(df):
     df.columns = ['group_code', 'testing_period', 'y_type'] + df.columns.to_list()[3:]
     return df
 
+def calc_confusion(results):
+    ''' calculate the confusion matrix for multi-class'''
+
+    # calculate the mode of each CV
+    # results = results.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+
+    lst = []
+    for name, df in results.groupby(['group_code', 'testing_period', 'y_type']):
+        labels = list(set(df['actual'].dropna().unique()))
+        x = multilabel_confusion_matrix(df['pred'], df['actual'], labels=labels)
+        x = pd.DataFrame(x.reshape((2*len(labels),2)), columns=['true','false'], index=[f'{int(x)}{y}' for x in labels for y in['N','P']])
+        # x = x.divide(x.sum(axis=1), axis=0)
+        x = (x/len(df)).reset_index()
+        x[['group_code', 'testing_period', 'y_type']] = name
+        lst.append(x)
+
+    confusion_df = pd.concat(lst).groupby(['y_type', 'group_code', 'index']).mean().reset_index()
+
+    return confusion_df
+
 def combine_mode_group(df):
     ''' calculate accuracy score by each industry/currency group '''
-
-    df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-    df = df.dropna(how='any')
+    #
+    # df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+    # df = df.dropna(how='any')
 
     result_dict = {}
     for name, g in df.groupby(['group_code', 'y_type', 'group']):
@@ -96,26 +118,47 @@ def combine_mode_group(df):
 
     return df
 
+def combine_mode_time(df):
+    ''' calculate accuracy score by each industry/currency group '''
+
+    result_dict = {}
+    for name, g in df.groupby(['group_code', 'y_type', 'testing_period']):
+        result_dict[name] = accuracy_score(g['pred'], g['actual'])
+
+    df = pd.DataFrame(result_dict, index=['0']).transpose().reset_index()
+    df.columns = ['group_code', 'y_type','testing_period','accuracy']
+
+    return df
+
 def calc_pred_class():
     ''' Calculte the accuracy_score if combine CV by mean, median, mode '''
 
     df = download_stock_pred()
     df[['pred','actual']] = df[['pred','actual']].astype(int)
+
+    df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+    df = df.dropna(how='any')
+
+    result_time = combine_mode_time(df)
+    confusion_df = calc_confusion(df)
     result_group = combine_mode_group(df)
     result_class = combine_mode_class(df)
 
-    results = {}
-    for i in ['mean', 'median', 'mode']:
-        results[i] = combine_pred_class(df, i)
+    # results = {}
+    # for i in ['mean', 'median', 'mode']:
+    #     results[i] = combine_pred_class(df, i)
 
-    r = pd.DataFrame(results).reset_index()
-    r.columns = ['group_code', 'testing_period', 'y_type'] + ['mean', 'median', 'mode']
+    # r = pd.DataFrame(results).reset_index()
+    # r.columns = ['group_code', 'testing_period', 'y_type'] + ['mean', 'median', 'mode']
 
     with pd.ExcelWriter(f'score/result_pred_accuracy_{iter_name}.xlsx') as writer:
-        r.to_excel(writer, sheet_name='original', index=False)
-        r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
+        # r.to_excel(writer, sheet_name='original', index=False)
+        # r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
+        result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
-        result_class.to_excel(writer, sheet_name='mode_012', index=False)
+        result_time.to_excel(writer, sheet_name='mode_time', index=False)
+        confusion_df.to_excel(writer, sheet_name='mode_confusion', index=False)
+        # result_class.to_excel(writer, sheet_name='mode_012', index=False)
         result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":

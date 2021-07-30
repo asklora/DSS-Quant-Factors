@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupShuffleSplit
 from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
+from scipy.fft import fft, fftfreq, rfft, rfftfreq
 
 def download_clean_macros(main_df, use_biweekly_stock):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
@@ -101,6 +102,30 @@ def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='mean', 
     df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
 
     return df.iloc[:,:-1]
+
+def fft_combine():
+    df,_,_ = combine_data(use_biweekly_stock=True, stock_last_week_avg=False)  # combine all data
+    y = df.loc[(df['group']=='101010'), ['period_end', 'book_to_price']]
+    y = y['book_to_price'].values
+    yf = fft(y)
+    from scipy.signal import blackman
+    import matplotlib.pyplot as plt
+
+    N = len(y)
+    T = 1/3
+
+    w = blackman(N)
+    ywf = fft(y * w)
+    # ryf = rfft(y)
+
+    xf = fftfreq(N, T)
+
+    plt.semilogy(xf[1:N // 2], 2.0 / N * np.abs(yf[1:N // 2]), '-b')
+    plt.semilogy(xf[1:N // 2], 2.0 / N * np.abs(ywf[1:N // 2]), '-r')
+    plt.legend(['FFT', 'FFT w. window'])
+    plt.grid()
+    plt.show()
+    exit(0)
 
 def combine_data(use_biweekly_stock, stock_last_week_avg):
     ''' combine factor premiums with ratios '''
@@ -303,6 +328,8 @@ class load_data:
         return self.sample_set, gkf
 
 if __name__ == '__main__':
+    fft_combine()
+    exit(1)
     # download_org_ratios('mean')
     # download_index_return()
     testing_period = dt.datetime(2021,5,23)
