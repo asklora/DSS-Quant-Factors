@@ -10,8 +10,8 @@ space_lgbm_reg = {
     'bagging_fraction': hp.quniform('bagging_fraction', 0.4, 0.8, 0.2),
     'bagging_freq': hp.quniform('bagging_freq', 2, 8, 2),
     'min_gain_to_split': 0,
-    'lambda_l1': hp.quniform('lambda_l1', 10, 40, 20),
-    'lambda_l2': hp.quniform('lambda_l2', 0, 40, 20),
+    'lambda_l1': hp.choice('lambda_l1', [0, 5, 20]),
+    'lambda_l2': hp.choice('lambda_l2', [0, 5, 20]),
     }
 
 space_lgbm_class = {}
@@ -47,7 +47,7 @@ space_lgbm_class['currency'] = {
 def find_hyperspace(sql_result):            # Later maybe add different Hyperspace for Industry / Currency
 
     if sql_result['objective'] in ['regression_l1', 'regression_l2']:
-        return space_lgbm_reg[sql_result['group_code']]
+        return space_lgbm_reg
     else:
         return space_lgbm_class[sql_result['group_code']]
 

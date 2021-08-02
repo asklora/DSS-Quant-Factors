@@ -12,8 +12,8 @@ import global_vals
 r_name = 'lastweekavg'
 # r_name = 'lastweekavg_newmacros'
 r_name = 'biweekly'
-r_name = 'biweekly_new1'
-r_name = 'biweekly_ma'
+r_name = 'biweekly_new'
+r_name = 'biweekly_qcut6'
 
 iter_name = r_name
 
@@ -140,9 +140,9 @@ def calc_pred_class():
     df = df.dropna(how='any')
 
     result_time = combine_mode_time(df)
-    confusion_df = calc_confusion(df)
+    # confusion_df = calc_confusion(df)
     result_group = combine_mode_group(df)
-    result_class = combine_mode_class(df)
+    # result_class = combine_mode_class(df)
 
     # results = {}
     # for i in ['mean', 'median', 'mode']:
@@ -157,9 +157,8 @@ def calc_pred_class():
         result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
         result_time.to_excel(writer, sheet_name='mode_time', index=False)
-        confusion_df.to_excel(writer, sheet_name='mode_confusion', index=False)
         # result_class.to_excel(writer, sheet_name='mode_012', index=False)
-        result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
+        # result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":
     # df = pd.read_csv('y_conversion.csv')

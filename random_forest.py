@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lesstree'
+    sql_result['name_sql'] = 'addma'
     use_biweekly_stock = True
     stock_last_week_avg = False
     valid_method = 'cv'
@@ -223,7 +223,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,7,11)
+        last_test_date = dt.datetime(2021,5,23)
         backtest_period = 44
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]

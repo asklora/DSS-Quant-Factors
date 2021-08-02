@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupShuffleSplit
 from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
-from scipy.fft import fft, fftfreq, rfft, rfftfreq
+# from scipy.fft import fft, fftfreq, rfft, rfftfreq
 
 def download_clean_macros(main_df, use_biweekly_stock):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
@@ -223,28 +223,34 @@ class load_data:
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         cut_col = [x + "_cut" for x in self.all_y_col]
-        arr = self.train[self.all_y_col].values.flatten()  # Flatten all training factors to qcut all together
-        # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
 
-        if defined_cut_bins == []:
-            # cut original series into bins
-            arr_cut, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
-            # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
-            self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
+        if qcut_q > 0:
+            arr = self.train[self.all_y_col].values.flatten()  # Flatten all training factors to qcut all together
+            # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
+
+            if defined_cut_bins == []:
+                # cut original series into bins
+                arr_cut, self.cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
+                # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
+                self.cut_bins[0], self.cut_bins[-1] = [-np.inf, np.inf]
+            else:
+                # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
+                self.cut_bins = defined_cut_bins
+                arr_cut = pd.cut(arr, bins=self.cut_bins, labels=False)
+
+            arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
+            arr_test_cut = pd.cut(arr_test, bins=self.cut_bins, labels=False)
+
+            if use_median:      # for regression -> remove noise by regression on median of each bins
+                arr_cut = self.y_replace_median(qcut_q, arr, arr_cut)
+                arr_test_cut = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
+
+            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
+            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
         else:
-            # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
-            self.cut_bins = defined_cut_bins
-            arr_cut = pd.cut(arr, bins=self.cut_bins, labels=False)
-
-        arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
-        arr_test_cut = pd.cut(arr_test, bins=self.cut_bins, labels=False)
-
-        if use_median:      # for regression -> remove noise by regression on median of each bins
-            arr_cut = self.y_replace_median(qcut_q, arr, arr_cut)
-            arr_test_cut = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
-
-        self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
-        self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
+            self.train[cut_col] = self.train[self.all_y_col]
+            self.test[cut_col] = self.test[self.all_y_col]
+            self.cut_bins = ''
 
     def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median):
         ''' split training / testing set based on testing period '''

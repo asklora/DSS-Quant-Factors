@@ -201,8 +201,8 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2
-    parser.add_argument('--qcut_q', default=5, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--objective', default='regression_l2')     # OPTIONS: regression_l1 / regression_l2
+    parser.add_argument('--qcut_q', default=0, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly_ma'
+    sql_result['name_sql'] = 'biweekly_org'
     use_biweekly_stock = True
     stock_last_week_avg = False
     # factors_to_test = ['stock_return_r6_2']
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     ar_list = [1, 2, 3, 5, 12]      # deprecated
     defined_cut_bins = []
     group_code_list = ['industry', 'currency']
-    use_median = True
+    use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
