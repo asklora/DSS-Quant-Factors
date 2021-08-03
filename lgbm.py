@@ -218,9 +218,8 @@ if __name__ == "__main__":
     stock_last_week_avg = False
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
-    ar_list = [1, 2, 3, 5, 12]      # deprecated
     defined_cut_bins = []
-    group_code_list = ['currency']
+    group_code_list = ['currency','industry']
     use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -240,7 +239,7 @@ if __name__ == "__main__":
     # create date list of all testing period
     if use_biweekly_stock:
         last_test_date = dt.datetime(2021,7,18)
-        backtest_period = 44
+        backtest_period = 100
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
     else:
@@ -256,7 +255,7 @@ if __name__ == "__main__":
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
     factors_to_test = data.factor_list
-    factors_to_test = ['stock_return_r6_2']
+    # factors_to_test = ['stock_return_r6_2']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
@@ -267,7 +266,7 @@ if __name__ == "__main__":
             for testing_period in testing_period_list:
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
-                                    'valid_method':valid_method, 'ar_list': ar_list, 'defined_cut_bins': defined_cut_bins,
+                                    'valid_method':valid_method, 'defined_cut_bins': defined_cut_bins,
                                     'use_median':use_median}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3

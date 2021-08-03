@@ -252,7 +252,7 @@ class load_data:
             self.test[cut_col] = self.test[self.all_y_col]
             self.cut_bins = ''
 
-    def split_train_test(self, testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median):
+    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median):
         ''' split training / testing set based on testing period '''
 
         current_x_col = []
@@ -279,9 +279,8 @@ class load_data:
         y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        start = testing_period - relativedelta(years=10)    # train df = 40 quarters
-        self.train = current_group.loc[(start <= current_group['period_end']) &
-                                     (current_group['period_end'] < testing_period)]
+        start = testing_period - relativedelta(years=8)    # train df = 40 quarters
+        self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
 
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
@@ -323,11 +322,11 @@ class load_data:
 
         return gkf
 
-    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, ar_list=[1,2,12], valid_method='cv',
+    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, valid_method='cv',
                   defined_cut_bins=[], use_median=False):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, qcut_q, ar_list, defined_cut_bins, use_median)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
 

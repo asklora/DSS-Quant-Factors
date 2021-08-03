@@ -77,7 +77,7 @@ def calc_group_premium_msci():
     '''  calculate factor premium = inverse of factor value * returns '''
     return 1
 
-def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False):
+def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update=False):
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
         2. biweekly sample + using last day price

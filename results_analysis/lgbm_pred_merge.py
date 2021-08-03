@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
 import numpy as np
+from dateutil.relativedelta import relativedelta
 
 import global_vals
 
@@ -25,7 +26,7 @@ def download_stock_pred(count_pred=True):
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL AND S.testing_period = '2021-07-04' ORDER BY S.finish_timing")
+                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing LIMIT 1000")
         result_all = pd.read_sql(query, conn)       # download training history      
     global_vals.engine_ali.dispose()
 
@@ -133,6 +134,33 @@ def combine_mode_time(df):
 
     return df
 
+def combine_performance(df):
+    ''' calculate accuracy score by each industry/currency group '''
+
+    factor = df['y_type'].unique()
+
+    with global_vals.engine_ali.connect() as conn:
+        actual_ret = pd.read_sql(f"SELECT \"group\", period_end, {','.join(factor)} "
+                                 f"FROM {global_vals.factor_premium_table}_biweekly", conn)  # download training history
+        index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_y FROM {global_vals.processed_ratio_table}_biweekly WHERE ticker like '.%%'", conn)
+    global_vals.engine_ali.dispose()
+
+    index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
+    index_ret = index_ret.set_index(['ticker', 'period_end']).unstack().transpose().reset_index().drop(['level_0'], axis=1)
+
+    actual_ret = actual_ret.set_index(['group', 'period_end']).stack().reset_index()
+    actual_ret.columns = ['group', 'testing_period','y_type','premium']
+    actual_ret['testing_period'] = actual_ret['testing_period'].apply(lambda x: x-relativedelta(weeks=2))
+
+    df = df.merge(actual_ret, on=['group', 'testing_period','y_type'], how='left')
+
+    r = pd.pivot_table(df, index=['group_code', 'y_type', 'testing_period'], columns=['pred'], values=['premium'], aggfunc='mean')
+    r.columns = [x[1] for x in r.columns.to_list()]
+    r = r.reset_index()
+    r = r.merge(index_ret, left_on=['testing_period'], right_on=['period_end'])
+
+    return r
+
 def calc_pred_class():
     ''' Calculte the accuracy_score if combine CV by mean, median, mode '''
 
@@ -142,6 +170,7 @@ def calc_pred_class():
     df = df.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
     df = df.dropna(how='any')
 
+    result_performance = combine_performance(df)
     result_time = combine_mode_time(df)
     confusion_df = calc_confusion(df)
     result_group = combine_mode_group(df)
@@ -161,7 +190,7 @@ def calc_pred_class():
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
         result_time.to_excel(writer, sheet_name='mode_time', index=False)
         confusion_df.to_excel(writer, sheet_name='confusion', index=False)
-        # result_class.to_excel(writer, sheet_name='mode_012', index=False)
+        result_performance.to_excel(writer, sheet_name='performance', index=False)
         result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":

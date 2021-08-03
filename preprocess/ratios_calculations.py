@@ -376,7 +376,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     with global_vals.engine_ali.connect() as conn:
         market_cap = pd.read_sql(f'SELECT * FROM {market_cap_table}', conn)
     global_vals.engine_ali.dispose()
-    market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
+    market_cap['period_end'] = pd.to_datetime(market_cap['period_end'], format='%Y-%m-%d')
     market_cap = fill_all_given_date(market_cap, tri)   # align to dates of stock_return
     check_duplicates(market_cap, 'market_cap')
 

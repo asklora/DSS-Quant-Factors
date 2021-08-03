@@ -16,7 +16,7 @@ def feature_importance():
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND S.testing_period = '2021-07-04' ")
+                     f"WHERE S.name_sql='{r_name}'")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
@@ -26,12 +26,17 @@ def feature_importance():
     df['name'] = df['name'].replace([x for x in df['name'].to_list() if 'ar_' in x],
                                     [f"{x.split('_')[0]}_{x.split('_')[-1]}" for x in df['name'].to_list() if 'ar_' in x])
 
-    df1 = df.groupby(['name', 'y_type'])['split'].mean().unstack()
+    df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
     df1['avg'] = df1.mean(axis=1)
+
+    df11 = df.loc[df['group_code']=='industry'].groupby(['name', 'y_type'])['split'].mean().unstack()
+    df11['avg'] = df11.mean(axis=1)
+
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'feature/importance_{iter_name}_recent.xlsx') as writer:
-        df1.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='y_type')
+    with pd.ExcelWriter(f'feature/importance_{iter_name}.xlsx') as writer:
+        df1.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='cur')
+        df11.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='ind')
         df2.to_excel(writer, sheet_name='group_code')
 
 if __name__ == "__main__":

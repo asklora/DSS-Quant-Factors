@@ -27,8 +27,8 @@ def download_stock_pred(r_name):
     return result_all
 
 def combine_stable():
-    df = download_stock_pred('test_stable9')
-    df1 = download_stock_pred('test_stable9_re')
+    df = download_stock_pred('biweekly_ma')
+    df1 = download_stock_pred('biweekly_ma_re')
     ddf = df.merge(df1, on=['group','y_type','testing_period'], suffixes=['_1','_2'])
 
     result_dict = {}
@@ -41,7 +41,7 @@ def combine_stable():
     r = pd.DataFrame(result_dict).transpose().reset_index()
     r.columns = ['group_code', 'testing_period', 'y_type'] + r.columns.to_list()[3:]
 
-    r.to_csv('compare_stable.csv', index=False)
+    r.to_csv('compare_stable_3.csv', index=False)
 
 
 if __name__ == "__main__":
