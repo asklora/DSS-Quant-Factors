@@ -6,7 +6,8 @@ import numpy as np
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve
+from sklearn.preprocessing import OneHotEncoder, LabelBinarizer
 from pandas.tseries.offsets import MonthEnd
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
 
@@ -34,7 +35,7 @@ def lgbm_train(space):
                     lgb_train,
                     valid_sets=[lgb_eval, lgb_train],
                     valid_names=['valid', 'train'],
-                    num_boost_round=1000,
+                    num_boost_round=10,
                     early_stopping_rounds=150,
                     feature_name=data.x_col,
                     evals_result=evals_result)
@@ -57,7 +58,7 @@ def lgbm_train(space):
 
     sql_result['feature_importance'], feature_importance_df = to_list_importance(gbm)
 
-    return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df
+    return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_softmax
 
 # -------------------------------- Evaluate Results (Regression / Classification) -------------------------------------
 
@@ -65,7 +66,7 @@ def eval_regressor(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_proba = lgbm_train(space)
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
@@ -107,7 +108,7 @@ def eval_classifier(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with classification model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_proba = lgbm_train(space)
 
     result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
               'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred)}
@@ -121,8 +122,9 @@ def eval_classifier(space):
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
-        # ss = roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr')
-        # result['auc_test'] = list(roc_auc_score(test_df['actual'], test_df['pred'], multi_class='ovr'))
+        test_true_arr = LabelBinarizer().fit(list(range(sql_result['qcut_q']))).transform(test_df['actual'])
+        Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
+        result['auc_test'] = roc_auc_score(test_true_arr, Y_test_pred_proba, multi_class='ovr')
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
@@ -135,19 +137,20 @@ def eval_classifier(space):
 
     if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['accuracy_valid']
-        hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+        hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
     return 1 - result['accuracy_valid']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
-def to_sql_prediction(Y_test_pred):
+def to_sql_prediction(Y_test_pred, Y_test_pred_proba):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
     df = pd.DataFrame()
     df['group'] = data.test['group'].to_list()
     df['pred'] = Y_test_pred
+    # df['proba'] = Y_test_pred_proba
     if sql_result['objective'] in ['regression_l1', 'regression_l2']:       # for regression use original (before qcut/convert to median)
         df['actual'] = sample_set['test_y']
     elif sql_result['objective'] in ['multiclass']:         # for classification use after qcut
@@ -239,7 +242,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,7,18)
+        last_test_date = dt.datetime(2021,7,11)
         backtest_period = 100
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]

@@ -15,7 +15,7 @@ def get_tri(engine, save=True, update=False):
         if update:
             trading_day_cutoff = (dt.datetime.today() - relativedelta(months=1)).strftime('%Y-%m-%d')
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
-                         f"FROM {global_vals.stock_data_table} WHERE ticker='{trading_day_cutoff}'")
+                         f"FROM {global_vals.stock_data_table} WHERE trading_day>'{trading_day_cutoff}'")
         else:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
         tri = pd.read_sql(query, con=conn)
