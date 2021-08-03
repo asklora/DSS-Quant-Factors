@@ -7,7 +7,7 @@ from preprocess.load_data import load_data
 
 import global_vals
 
-r_name = 'lesstree'
+r_name = 'addma'
 iter_name = r_name
 
 def download_stock_pred():

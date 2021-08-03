@@ -2,8 +2,10 @@ from sqlalchemy import text
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
+from dateutil.relativedelta import relativedelta
 import numpy as np
-
+from sklearn.preprocessing import RobustScaler, QuantileTransformer
+from preprocess.premium_calculation import trim_outlier
 import global_vals
 
 # r_name = 'indoverfit'
@@ -16,16 +18,21 @@ r_name = 'biweekly_new1'
 r_name = 'biweekly_ma'
 
 iter_name = r_name
+factor_list = ['book_to_price', 'cash_ratio', 'fwd_ey', 'gross_margin', 'market_cap_usd', 'tax_less_pension_to_accu_depre', 'vol_30_90']
 
 def download_stock_pred():
     ''' download training history and training prediction from DB '''
 
-    with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-        result_all = pd.read_sql(query, conn)       # download training history
-    global_vals.engine_ali.dispose()
+    try:
+        result_all = pd.read_csv('result_all.csv')
+    except Exception as e:
+        print(e)
+        with global_vals.engine_ali.connect() as conn:
+            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
+                         f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+                         f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+            result_all = pd.read_sql(query, conn)       # download training history
+        global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
     result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
@@ -37,14 +44,21 @@ def download_stock_pred():
 
     return result_all
 
-def select_best_group():
+def select_best_group(testing_period=None):
     ''' select group with historically high prediction accuracy '''
 
-    df = download_stock_pred()
+    try:
+        df = pd.read_csv('result_all_df.csv')
+    except:
+        df = download_stock_pred()
+        df.to_csv('result_all_df.csv', index=False)
+
 
     # test selection process based on last testing_period
-    testing_period = df['testing_period'].max()
-    df_selection = df.loc[df['testing_period'] < testing_period]
+    if testing_period == None:
+        testing_period = df['testing_period'].max()
+        df_selection = df.loc[df['testing_period'] < testing_period]
+        df_test = df.loc[df['testing_period'] >= testing_period]
 
     # # 1. Remove factor with majority proportion of prediction as 1
     # prc1 = {}
@@ -58,39 +72,148 @@ def select_best_group():
     for name, g in df_selection.groupby(['group_code', 'group', 'y_type']):
         group_acc[name] = accuracy_score(g['pred'], g['actual'])
     group_acc_df = pd.DataFrame(group_acc, index=['0']).transpose().reset_index()
-    group_acc_df.columns = ['group_code', 'y_type','group','accuracy']
+    group_acc_df.columns = ['group_code', 'group','y_type','accuracy']
 
     # 1. select factor used (accuracy high enough)
-    avg = group_acc_df.groupby(['y_type']).mean()
-    print(avg)
+    avg = group_acc_df.groupby(['y_type']).mean().reset_index()
+    factor = avg.loc[avg['accuracy']>0.5, 'y_type'].to_list()
+    print(factor)
 
+    # 2. select factor used (accuracy high enough)
+    avg_g = group_acc_df.groupby(['group']).mean().sort_values(by=['accuracy'], ascending=False).reset_index()
+    accu_group = avg_g.head(10)['group'].to_list()
+    accu_group_ind = [x for x in accu_group if len(x)==6]
+    accu_group_cur = [x for x in accu_group if len(x)==3]
 
-    # select top (2) countries for
-    for name, g in group_acc_df.groupby(['y_type']):
-        pass
+    # calculate historic accuracy with all sample prior to prediction period
+    # group_acc_test = {}
+    # for name, g in df_test.groupby(['group_code', 'group', 'y_type']):
+    #     group_acc_test[name] = accuracy_score(g['pred'], g['actual'])
+    # group_acc_test_df = pd.DataFrame(group_acc, index=['0']).transpose().reset_index()
+    # group_acc_test_df.columns = ['group_code', 'group','y_type','accuracy']
+    #
+    # group_acc_test_df = group_acc_test_df.merge(group_acc_df, on=['group_code', 'group', 'y_type'], suffixes=['','hist'])
+    # group_acc_test_df = group_acc_test_df.sort_values(by=['accuracy'])
+    #
+    # print(group_acc_test_df)
 
-    print(df)
+    return df.set_index(['group','testing_period','y_type'])['pred'].unstack().reset_index(), factor, accu_group_ind, accu_group_cur
 
-def combine_mode_group(df):
-    ''' calculate accuracy score by each industry/currency group '''
+def download_ratios():
+    ''' download ratios for all the stocks '''
 
-    result_dict = {}
-    for name, g in df.groupby(['group_code', 'y_type', 'group']):
-        result_dict[name] = accuracy_score(g['pred'], g['actual'])
+    pred_df, factor_list, accu_group_ind, accu_group_cur = select_best_group()
+    print(np.array([relativedelta(weeks=2)]*len(pred_df)))
+    pred_df['period_end'] = pd.to_datetime(pred_df['testing_period'])+np.array([relativedelta(weeks=2)]*len(pred_df))
+    pred_df = pred_df.drop(['testing_period'], axis=1)
+    pred_df[factor_list] = (pred_df[factor_list]- 1)
 
-    df = pd.DataFrame(result_dict, index=['0']).transpose().reset_index()
-    df.columns = ['group_code', 'y_type','group','accuracy']
+    try:
+        ratio = pd.read_csv('ratio.csv')
+    except Exception as e:
+        print(e)
+        with global_vals.engine_ali.connect() as conn:
+            ratio = pd.read_sql(f"SELECT ticker, period_end, icb_code, currency_code, stock_return_y, {','.join(factor_list)} "
+                                f"FROM {global_vals.processed_ratio_table}_biweekly WHERE EXTRACT(YEAR FROM period_end) > 2019", conn)
+        global_vals.engine_ali.dispose()
+        ratio.to_csv('ratio.csv', index=False)
 
-    with global_vals.engine_ali.connect() as conn:
-        icb_name = pd.read_sql(f"SELECT DISTINCT code_6 as group, name_6 as name FROM icb_code_explanation", conn)  # download training history
-        icb_count = pd.read_sql(f"SELECT \"group\", avg(num_ticker) as num_ticker FROM icb_code_count GROUP BY \"group\"", conn)  # download training history
-    global_vals.engine_ali.dispose()
+    ratio['icb_code'] = ratio['icb_code'].astype(str).str[:6]
+    # ratio = ratio.loc[(ratio['icb_code'].isin(accu_group_ind))&(ratio['currency_code'].isin(accu_group_cur))]
+    ratio[factor_list] = ratio[factor_list].replace([np.inf, -np.inf], np.nan)
 
-    df = df.merge(icb_name, on=['group'])
-    df = df.merge(icb_count, on=['group'])
+    ratio_tf = []
+    for name, g in ratio.groupby(['period_end','icb_code']):
+        g_rs = RobustScaler(unit_variance=True).fit_transform(g[factor_list])
+        # g[factor_list] = QuantileTransformer(n_quantiles=10).fit_transform(g[factor_list])
+        ratio_tf.append(g_rs)
+    ratio = ratio.sort_values(['period_end','icb_code'])
+    ratio[[x+'_ind' for x in factor_list]] = np.concatenate(ratio_tf, axis=0)
 
-    return df
+    ratio_tf = []
+    for name, g in ratio.groupby(['period_end','currency_code']):
+        g_rs = RobustScaler(unit_variance=True).fit_transform(g[factor_list])
+        # g[factor_list] = QuantileTransformer(n_quantiles=10).fit_transform(g[factor_list])
+        ratio_tf.append(g_rs)
+    ratio = ratio.sort_values(['period_end','currency_code'])
+    ratio[[x+'_cur' for x in factor_list]] = np.concatenate(ratio_tf, axis=0)
+
+    # ratio_tf = []
+    # for name, g in ratio.groupby(['period_end']):
+    #     g_rs = RobustScaler(unit_variance=True).fit_transform(g[factor_list])
+    #     # g[factor_list] = QuantileTransformer(n_quantiles=10).fit_transform(g[factor_list])
+    #     ratio_tf.append(g_rs)
+    # x = np.concatenate(ratio_tf, axis=0)
+    # ratio[factor_list] = np.concatenate(ratio_tf, axis=0)
+
+    des = ratio.describe()
+
+    ratio['period_end'] = pd.to_datetime(ratio['period_end'], format='%Y-%m-%d')
+    ratio['icb_code'] = ratio['icb_code'].astype(str).str[:6]
+    pred_df['period_end'] = pd.to_datetime(pred_df['period_end'], format='%Y-%m-%d')
+
+    ratio = ratio.merge(pred_df, left_on=['icb_code','period_end'], right_on=['group','period_end'], how='left', suffixes=['','_pred_ind'])
+    ratio = ratio.merge(pred_df, left_on=['currency_code','period_end'], right_on=['group','period_end'], how='left', suffixes=['','_pred_cur'])
+
+    ratio['ind_score'] = np.nanmean(ratio[[x+'_ind' for x in factor_list]].values * ratio[[x+'_pred_ind' for x in factor_list]].values, axis=1)
+    ratio['cur_score'] = np.nanmean(ratio[[x+'_cur' for x in factor_list]].values * ratio[[x+'_pred_cur' for x in factor_list]].values, axis=1)
+    # ratio['ind_score'] = np.nanmean(ratio[factor_list].values * ratio[[x+'_pred_ind' for x in factor_list]].values, axis=1)
+    # ratio['cur_score'] = np.nanmean(ratio[factor_list].values * ratio[[x+'_pred_cur' for x in factor_list]].values, axis=1)
+    ratio['score'] = ratio[['ind_score','cur_score']].mean(axis=1)
+
+    # ratio_tf['score_abs'] = ratio_tf['score'].abs()
+    # ratio_tf.sort_values(['score_abs'], ascending=False).head(100).to_csv('high_score.csv')
+    # exit(1)
+
+    ratio = ratio.sort_values(['period_end','score'], ascending=False)
+    score_df = ratio[['ticker','period_end','icb_code','currency_code','ind_score','cur_score','score','stock_return_y']]
+
+    def show_dist_plot(df):
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(6, 6), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
+
+        ax = fig.add_subplot(1, 1, 1)
+        test = df['score'].values.flatten()
+        test = test[~np.isnan(test)]
+
+        N, bins, patches = ax.hist(test, bins=1000, range=(-5, 5), weights=np.ones(len(test)) / len(test))
+
+        # plt.show()
+        plt.savefig(f'score_dist.png')
+
+    show_dist_plot(score_df)
+    print(score_df.describe())
+
+    score_corr = {}
+    cut10 = {}
+    top01_group={}
+    top01_group_score = {}
+    top01_group_count = {}
+    for name, g in score_df.groupby(['period_end']):
+        g['score_qcut'] = pd.qcut(g['score'], q=10, labels=False, duplicates='drop')
+        top01_group[name] = g.loc[g['score_qcut'].isin([0,1])].groupby(['icb_code','currency_code'])['stock_return_y'].mean()
+        top01_group_score[name] = g.loc[g['score_qcut'].isin([0,1])].groupby(['icb_code','currency_code'])['score'].mean()
+        top01_group_count[name] = g.loc[g['score_qcut'].isin([0,1])].groupby(['icb_code','currency_code'])['stock_return_y'].count()
+        cut10[name] = g.groupby(['score_qcut'])['stock_return_y'].mean()
+        score_corr[name] = {}
+        for name1, g1 in g.groupby(['currency_code']):
+            score_corr[name][name1] = g1['score'].corr(g1['stock_return_y'])
+
+    score_corr_df = pd.DataFrame(score_corr).transpose()
+    cut10_df = pd.DataFrame(cut10).transpose()
+
+    top01 = pd.DataFrame(pd.DataFrame(top01_group).mean(axis=1))
+    top01['count'] = pd.DataFrame(top01_group_count).mean(axis=1)
+    top01['score'] = pd.DataFrame(top01_group_score).mean(axis=1)
+    top01.columns = ['return','count','score']
+
+    with pd.ExcelWriter(f'selection_test_{iter_name}_top1.xlsx') as writer:
+        score_corr_df.to_excel(writer, sheet_name='corr')
+        cut10_df.to_excel(writer, sheet_name='cut10')
+        top01.reset_index().to_excel(writer, sheet_name='top01', index=False)
+
+    return ratio_tf
 
 if __name__ == "__main__":
+    download_ratios()
 
-    select_best_group()

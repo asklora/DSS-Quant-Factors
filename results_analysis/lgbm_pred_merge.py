@@ -13,11 +13,13 @@ r_name = 'lastweekavg'
 # r_name = 'lastweekavg_newmacros'
 r_name = 'biweekly'
 r_name = 'biweekly_new'
-r_name = 'biweekly_qcut6'
+r_name = 'biweekly_ma'
+# r_name = 'test_stable9_re'
+
 
 iter_name = r_name
 
-def download_stock_pred():
+def download_stock_pred(count_pred=True):
     ''' download training history and training prediction from DB '''
 
     with global_vals.engine_ali.connect() as conn:
@@ -32,10 +34,11 @@ def download_stock_pred():
     result_all = result_all.drop(['cv_number'], axis=1)
 
     # save counting label to csv
-    count_i = {}
-    for name,g in result_all.groupby(['group_code', 'testing_period', 'y_type']):
-        count_i[name] = g['pred'].value_counts().to_dict()
-    pd.DataFrame(count_i).transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
+    if count_pred:
+        count_i = {}
+        for name,g in result_all.groupby(['group_code', 'testing_period', 'y_type']):
+            count_i[name] = g['pred'].value_counts().to_dict()
+        pd.DataFrame(count_i).transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
 
     return result_all
 
@@ -85,7 +88,7 @@ def calc_confusion(results):
     for name, df in results.groupby(['group_code', 'testing_period', 'y_type']):
         labels = list(set(df['actual'].dropna().unique()))
         x = multilabel_confusion_matrix(df['pred'], df['actual'], labels=labels)
-        x = pd.DataFrame(x.reshape((2*len(labels),2)), columns=['true','false'], index=[f'{int(x)}{y}' for x in labels for y in['N','P']])
+        x = pd.DataFrame(x.reshape((2*len(labels),2)), columns=['Label-N','Label-P'], index=[f'{int(x)}{y}' for x in labels for y in['N','P']])
         # x = x.divide(x.sum(axis=1), axis=0)
         x = (x/len(df)).reset_index()
         x[['group_code', 'testing_period', 'y_type']] = name
@@ -113,8 +116,8 @@ def combine_mode_group(df):
         icb_count = pd.read_sql(f"SELECT \"group\", avg(num_ticker) as num_ticker FROM icb_code_count GROUP BY \"group\"", conn)  # download training history
     global_vals.engine_ali.dispose()
 
-    df = df.merge(icb_name, on=['group'])
-    df = df.merge(icb_count, on=['group'])
+    df = df.merge(icb_name, on=['group'], how='outer')
+    df = df.merge(icb_count, on=['group'], how='outer')
 
     return df
 
@@ -140,9 +143,9 @@ def calc_pred_class():
     df = df.dropna(how='any')
 
     result_time = combine_mode_time(df)
-    # confusion_df = calc_confusion(df)
+    confusion_df = calc_confusion(df)
     result_group = combine_mode_group(df)
-    # result_class = combine_mode_class(df)
+    result_class = combine_mode_class(df)
 
     # results = {}
     # for i in ['mean', 'median', 'mode']:
@@ -157,8 +160,9 @@ def calc_pred_class():
         result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
         result_time.to_excel(writer, sheet_name='mode_time', index=False)
+        confusion_df.to_excel(writer, sheet_name='confusion', index=False)
         # result_class.to_excel(writer, sheet_name='mode_012', index=False)
-        # result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
+        result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":
     # df = pd.read_csv('y_conversion.csv')

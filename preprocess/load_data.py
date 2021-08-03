@@ -152,7 +152,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
 
-    df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
+    # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
     macros = download_clean_macros(df, use_biweekly_stock)
