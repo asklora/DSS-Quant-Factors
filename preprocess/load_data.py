@@ -9,6 +9,8 @@ from sklearn.model_selection import GroupShuffleSplit
 from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
 # from scipy.fft import fft, fftfreq, rfft, rfftfreq
+from sqlalchemy import text
+
 
 def download_clean_macros(main_df, use_biweekly_stock):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
@@ -150,6 +152,32 @@ class load_data:
         else:
             self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
 
+        self.cross_factors = self.important_cross_factor(group_name)
+
+    def important_cross_factor(self, group_name):
+        ''' figure the top 3 most important cross factors '''
+
+        with global_vals.engine_ali.connect() as conn:
+            query = text(
+                f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
+                f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+                f"WHERE S.name_sql='biweekly_ma'")
+            df = pd.read_sql(query, conn)  # download training history
+            formula = pd.read_sql(f'SELECT name, rank, x_col FROM {global_vals.formula_factors_table}', conn)
+        global_vals.engine_ali.dispose()
+
+        # filter cross factors only
+        x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()
+        df = df.loc[df['name'].isin(x_col)]
+
+        # find the most important factor for industry / currency partition
+        df1 = df.loc[df['group_code'] == group_name].groupby(['name', 'y_type'])['split'].mean().unstack()
+        dic = {}
+        for col in df1.columns.to_list():
+            dic[col] = list(df1[col].sort_values(ascending=False).index)[:4]
+
+        return dic
+
     def y_replace_median(self, qcut_q, arr, arr_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
 
@@ -199,8 +227,9 @@ class load_data:
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         for i in [1,2]:
-            ar_col = [f"ar_{x}_{i}m" for x in y_type]
-            current_group[ar_col] = current_group.groupby(['group'])[y_type].shift(i)
+            ar_col_org = self.cross_factors[y_type[0]]          # this part not suitable for RF
+            ar_col = [f"ar_{x}_{i}m" for x in ar_col_org]
+            current_group[ar_col] = current_group.groupby(['group'])[ar_col_org].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y

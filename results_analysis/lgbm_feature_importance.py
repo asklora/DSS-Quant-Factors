@@ -40,4 +40,5 @@ def feature_importance():
         df2.to_excel(writer, sheet_name='group_code')
 
 if __name__ == "__main__":
+    feature_importance_for_train()
     feature_importance()
