@@ -10,7 +10,7 @@ space_lgbm_reg = {
     'bagging_fraction': hp.quniform('bagging_fraction', 0.4, 0.8, 0.2),
     'bagging_freq': hp.quniform('bagging_freq', 2, 8, 2),
     'min_gain_to_split': 0,
-    'lambda_l1': hp.choice('lambda_l1', [0, 5, 20]),
+    'lambda_l1': 0,
     'lambda_l2': hp.choice('lambda_l2', [0, 5, 20]),
     }
 

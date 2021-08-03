@@ -309,9 +309,9 @@ class load_data:
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
-            gkf = GroupShuffleSplit(n_splits=n_splits).split( self.sample_set['train_x'],
-                                                              self.sample_set['train_y_final'],
-                                                              groups=self.train['group'])
+            gkf = GroupShuffleSplit(n_splits=n_splits, random_state=666).split( self.sample_set['train_x'],
+                                                                              self.sample_set['train_y_final'],
+                                                                              groups=self.train['group'])
         elif valid_method == "chron":       # split validation set by chronological order
             valid_period = testing_period - relativedelta(years=2)   # using last 2 year samples as valid set
             test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
