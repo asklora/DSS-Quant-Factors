@@ -6,7 +6,7 @@ import global_vals
 
 r_name = 'biweekly_ma'
 
-r_name = 'test_stable9_re'
+# r_name = 'test_stable9_re'
 
 iter_name = r_name#.split('_')[-1]
 
@@ -16,7 +16,7 @@ def feature_importance():
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}'")
+                     f"WHERE S.name_sql='{r_name}' AND S.testing_period = '2021-07-04' ")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
@@ -30,7 +30,7 @@ def feature_importance():
     df1['avg'] = df1.mean(axis=1)
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'feature/importance_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'feature/importance_{iter_name}_recent.xlsx') as writer:
         df1.sort_values(by=['avg'], ascending=False).to_excel(writer, sheet_name='y_type')
         df2.to_excel(writer, sheet_name='group_code')
 

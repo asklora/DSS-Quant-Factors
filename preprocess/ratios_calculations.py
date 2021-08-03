@@ -10,11 +10,14 @@ from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(engine, save=True):
+def get_tri(engine, save=True, update=False):
     with engine.connect() as conn:
-        query = text(f"""SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume 
-        FROM {global_vals.stock_data_table}
-        """)
+        if update:
+            trading_day_cutoff = (dt.datetime.today() - relativedelta(months=1)).strftime('%Y-%m-%d')
+            query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
+                         f"FROM {global_vals.stock_data_table} WHERE ticker='{trading_day_cutoff}'")
+        else:
+            query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
         tri = pd.read_sql(query, con=conn)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
@@ -94,7 +97,7 @@ def resample_to_biweekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(price_sample, sample_interval, use_cached, save):
+def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     ''' Calcualte monthly stock return '''
 
     engine = global_vals.engine
@@ -110,7 +113,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     else:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
-        tri = get_tri(engine, save=save)
+        tri = get_tri(engine, save=save, update=update)
 
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
@@ -251,12 +254,13 @@ def download_clean_worldscope_ibes(save):
 
     with global_vals.engine_ali.connect() as conn:
         print(f'#################################################################################################')
+        query_ws = f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null'
+        query_ibes = f'SELECT * FROM {global_vals.ibes_data_table}'
         print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        ws = pd.read_sql(f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null', conn)  # quarterly records
+        ws = pd.read_sql(query_ws, conn)  # quarterly records
         print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
-        ibes = pd.read_sql(f'SELECT * FROM {global_vals.ibes_data_table}', conn)  # ibes_data
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}",
-                               conn)
+        ibes = pd.read_sql(query_ibes, conn)  # ibes_data
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn)
     global_vals.engine_ali.dispose()
 
     def drop_dup(df):
@@ -324,7 +328,7 @@ def check_duplicates(df, name=''):
         raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
 
 def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=True):
+                              use_cached=False, save=True, update=False):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
@@ -336,9 +340,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
             stocks_col = tri.select_dtypes("float").columns
         except Exception as e:
             print(e)
-            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
+            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save, update)
     else:
-        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
+        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save, update)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
@@ -365,11 +369,15 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     check_duplicates(ibes, 'ibes')
 
     # 5. Local file for Market Cap (to be uploaded) - from Eikon
+    market_cap_table = global_vals.eikon_mktcap_table
+    if sample_interval == 'biweekly':
+        market_cap_table += '_weekly'
+
     with global_vals.engine_ali.connect() as conn:
-        market_cap = pd.read_sql(f'SELECT * FROM {global_vals.eikon_mktcap_table}', conn)
+        market_cap = pd.read_sql(f'SELECT * FROM {market_cap_table}', conn)
     global_vals.engine_ali.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['trading_day'], format='%Y-%m-%d')
-    market_cap = fill_all_given_date(market_cap, tri)
+    market_cap = fill_all_given_date(market_cap, tri)   # align to dates of stock_return
     check_duplicates(market_cap, 'market_cap')
 
     # 6. Fundamental variables - from Eikon
@@ -442,8 +450,12 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     return df, stocks_col
 
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True):
+                          use_cached=False, save=True, update=True):
     ''' Calculate all factor used referring to DB ratio table '''
+
+    if update:  # update for the latest month (not using cachec & not save locally)
+        use_cached = False
+        save = False
 
     if use_cached:
         try:
@@ -453,7 +465,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
     else:
-        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
+        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save, update)
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
@@ -535,4 +547,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
 
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=True, save=False)
+                          use_cached=True, save=False, update=True)

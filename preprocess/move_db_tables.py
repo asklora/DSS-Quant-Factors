@@ -5,11 +5,11 @@ import global_vals
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 
 def move_factor_only_table():
-    membership_table = "ai_factor_membership"
-    factor_premium_table = "ai_factor_factor_premium"
-    eikon_mktcap_table = "data_factor_eikon_mktcap"
-    eikon_other_table = "data_factor_eikon_others"
-    formula_factors_table = "ai_factor_formula_ratios"
+    # membership_table = "ai_factor_membership"
+    # factor_premium_table = "ai_factor_factor_premium"
+    # eikon_mktcap_table = "data_factor_eikon_mktcap"
+    # eikon_other_table = "data_factor_eikon_others"
+    # formula_factors_table = "ai_factor_formula_ratios"
 
     with global_vals.engine.connect() as conn:
         final_member_df = pd.read_sql(f'SELECT * FROM {global_vals.membership_table}', conn)
@@ -54,17 +54,17 @@ def move_general(table_name):
 if __name__ == "__main__":
 
     # dl_value_universe_table = "universe"
-    # worldscope_quarter_summary_table = "data_worldscope_summary_test"
-    # ibes_data_table = "data_ibes_monthly"
-    # macro_data_table = "data_macro_monthly"
+    worldscope_quarter_summary_table = "data_worldscope_summary_test"
+    ibes_data_table = "data_ibes_monthly"
+    macro_data_table = "data_macro_monthly"
 
-    test_score_results_table = "ai_value_lgbm_score"  # table store all running information
-    test_pred_results_table = "ai_value_lgbm_pred"  # table store prediction for each ticker
-    test_pred_eval_table = "ai_value_lgbm_eval"  # table store prediction backtest evaluation
-    final_pred_results_table = "ai_value_lgbm_pred_final"  # table for consolidated pred after consolidation
-    final_eps_pred_results_table = "ai_value_lgbm_pred_final_eps"  # table with the best ratio pred -> EPS format
-    formula_ratios_table = "ai_value_formula_ratios"
+    # test_score_results_table = "ai_value_lgbm_score"  # table store all running information
+    # test_pred_results_table = "ai_value_lgbm_pred"  # table store prediction for each ticker
+    # test_pred_eval_table = "ai_value_lgbm_eval"  # table store prediction backtest evaluation
+    # final_pred_results_table = "ai_value_lgbm_pred_final"  # table for consolidated pred after consolidation
+    # final_eps_pred_results_table = "ai_value_lgbm_pred_final_eps"  # table with the best ratio pred -> EPS format
+    # formula_ratios_table = "ai_value_formula_ratios"
 
-    for f in ['universe']:
+    for f in [worldscope_quarter_summary_table, ibes_data_table, macro_data_table]:
         move_general(f)
         print('finish moving ', f)

@@ -165,25 +165,6 @@ def download_from_eikon_report_date():
         # tickers = check_eikon_full_ticker(ddf=ddf)
         # step = round(step/2)
 
-def check_eikon_full_ticker(csv_name=None, ddf=None):
-    ''' check if download csv file has all ticker in universe '''
-
-    try:
-        csv_ticker = pd.read_csv(csv_name).dropna(how='any')['ticker'].to_list()
-    except:
-        csv_ticker = ddf.dropna(how='any')['ticker'].to_list()
-
-    with global_vals.engine.connect() as conn:
-        tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
-    global_vals.engine.dispose()
-
-    miss_list = tickers-set(csv_ticker)
-    print(len(miss_list), miss_list)
-    if len(miss_list)<3:
-        exit(1)
-
-    return list(miss_list)
-
 def clean_db_eikon_others():
     pass
 
@@ -218,7 +199,7 @@ def download_from_eikon_vix():
 
     ticker = ['.VIX']
     fields = ['TR.PriceClose', 'TR.PriceCloseDate']
-    params = {'SDate': '2009-01-01', 'EDate': '2021-07-01', 'Frq': 'M', 'Scale':'0'}      # params for fundemantals
+    params = {'SDate': '2009-01-01', 'EDate': '2021-07-01', 'Period':'FY0', 'Frq': 'W', 'Scale':'0'}      # params for fundemantals
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
@@ -227,15 +208,77 @@ def download_from_eikon_vix():
     df.to_csv('eikon_new_downloads.csv')
     print(df)
 
+def download_from_eikon_mktcap():
+    ''' download fields from eikon '''
+
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
+        tickers = list(set(universe['ticker'].to_list()))
+    global_vals.engine_ali.dispose()
+
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+
+    params = {'SDate': '2009-07-30', 'EDate': '2021-07-31', 'Frq': 'W', 'Scale':'6'}      # params for fundemantals
+    field_name = ['TR.CompanyMarketCap(Curn=USD)','TR.CompanyMarketCap(Curn=Native)','TR.CompanyMarketCap.date']
+
+    tickers=['2943.HK']
+
+    step = 1
+    for i in np.arange(0, len(tickers),step):
+        ticker = tickers[i:(i + step)]
+        print(i, ticker)
+        try:
+            df, err = ek.get_data(ticker, fields=field_name, parameters=params)
+            df.columns = ['ticker', 'market_cap_usd', 'market_cap', 'period_end']
+            df['period_end'] = pd.to_datetime(df['period_end'].str[:10], format='%Y-%m-%d')
+            df = df.dropna(how='any')
+            print(df)
+        except Exception as e:
+            print(ticker, e)
+            continue
+
+        with global_vals.engine_ali.connect() as conn:
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            df.to_sql(global_vals.eikon_mktcap_table+'_weekly', **extra)
+        global_vals.engine_ali.dispose()
+
+def check_eikon_full_ticker(csv_name=None, ddf=None):
+    ''' check if download csv file has all ticker in universe '''
+
+    try:
+        csv_ticker = pd.read_csv(csv_name).dropna(how='any')['ticker'].to_list()
+    except:
+        csv_ticker = ddf.dropna(how='any')['ticker'].to_list()
+
+    with global_vals.engine.connect() as conn:
+        tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
+    global_vals.engine.dispose()
+
+    miss_list = tickers-set(csv_ticker)
+    print(len(miss_list), miss_list)
+    if len(miss_list)<3:
+        exit(1)
+
+    return list(miss_list)
 
 if __name__ == '__main__':
+
+    # with global_vals.engine_ali.connect() as conn:
+    #     df = pd.read_sql(f"SELECT ticker FROM {global_vals.eikon_mktcap_table}_weekly", conn)
+    # global_vals.engine_ali.dispose()
+    # check_eikon_full_ticker(ddf=df)
+    # exit(1)
+
+    # download_from_eikon_mktcap()
+
     # download_from_eikon()
     # combine_download_files()
     # check_eikon_full_ticker('eikon_new_downloads1.csv')
     # download_from_eikon_others()
     # download_from_eikon_report_date()
-    # download_from_eikon_vix()
-    from pandas.tseries.offsets import MonthEnd
-    df = pd.read_csv('eikon_new_downloads.csv')
-    df['period_end'] = pd.to_datetime(df['period_end']) + MonthEnd(0)
-    df.to_csv('eikon_new_downloads.csv', index=False)
+    download_from_eikon_vix()
+
+    # from pandas.tseries.offsets import MonthEnd
+    # df = pd.read_csv('eikon_new_downloads.csv')
+    # df['period_end'] = pd.to_datetime(df['period_end']) + MonthEnd(0)
+    # df.to_csv('eikon_new_downloads.csv', index=False)

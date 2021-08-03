@@ -17,7 +17,7 @@ r_name = 'biweekly_ma'
 # r_name = 'test_stable9_re'
 
 
-iter_name = r_name
+iter_name = r_name+'_recent'
 
 def download_stock_pred(count_pred=True):
     ''' download training history and training prediction from DB '''
@@ -25,7 +25,7 @@ def download_stock_pred(count_pred=True):
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL AND S.testing_period = '2021-07-04' ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history      
     global_vals.engine_ali.dispose()
 

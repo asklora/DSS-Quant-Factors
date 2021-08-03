@@ -111,10 +111,10 @@ def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False):
 
     return df, factor_list
 
-def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False):
+def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False):
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
-    df, factor_list = get_premium_data(use_biweekly_stock, stock_last_week_avg)
+    df, factor_list = get_premium_data(use_biweekly_stock, stock_last_week_avg, update=False)
 
     # Calculate premium for currency / industry partition
     all_member_df = []      # record member_df *2 (cur + ind)
