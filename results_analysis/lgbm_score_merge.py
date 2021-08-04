@@ -10,6 +10,7 @@ import global_vals
 r_name = '2021-07-22 17:46:31.704325_testing'
 r_name = '2021-07-23 11:16:48.504709_chron_valid'
 r_name = '2021-07-23 18:31:15.995890_indoverfit'
+r_name = 'biweekly_crossar'
 
 y_type = 'market_cap_usd'
 iter_name = r_name.split('_')[-1]
@@ -30,12 +31,12 @@ def download_stock_pred():
     print(f"Running time {df['finish_timing'].max() - df['finish_timing'].min()}. From {df['finish_timing'].min()} to {df['finish_timing'].max()}")
 
     best = df.loc[df.groupby(['y_type','group_code','testing_period','cv_number'])['accuracy_valid'].transform(max) == df['accuracy_valid']]
-    best = best[['y_type','group_code','testing_period','cv_number','accuracy_train','accuracy_valid','accuracy_test', 'train_len','valid_len','test_len']]
+    best = best[['y_type','group_code','testing_period','cv_number','accuracy_train','accuracy_valid','accuracy_test', 'auc_test', 'train_len','valid_len','test_len']]
 
     best_cv = best.groupby(['y_type','group_code','testing_period']).mean().reset_index()
     best_cv_time = best.groupby(['y_type','group_code']).mean().reset_index()
 
-    with pd.ExcelWriter(f'score/result_score_accuracy_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'score/result_score_auc_{iter_name}.xlsx') as writer:
         # df.to_excel(writer, sheet_name='original', index=False)
         best.to_excel(writer, sheet_name='best', index=False)
         best_cv.to_excel(writer, sheet_name='best_avg(cv)', index=False)
@@ -53,7 +54,7 @@ def plot_train_v_valid_test(y_type):
             df = pd.read_sql(query, conn)  # download training history
         global_vals.engine_ali.dispose()
         best = df.loc[df.groupby(['y_type', 'group_code', 'testing_period', 'cv_number'])['accuracy_valid'].transform(max) == df['accuracy_valid']]
-        best = best[['y_type', 'group_code', 'testing_period', 'cv_number', 'accuracy_train', 'accuracy_valid', 'accuracy_test', 'train_len', 'valid_len', 'test_len']]
+        best = best[['y_type', 'group_code', 'testing_period', 'cv_number', 'accuracy_train', 'accuracy_valid', 'accuracy_test', 'auc_test','train_len', 'valid_len', 'test_len']]
 
     subset_a = best[best['group_code']=='currency'].dropna()
     subset_b = best[best['group_code']=='industry'].dropna()
@@ -74,4 +75,4 @@ def plot_train_v_valid_test(y_type):
 
 if __name__ == "__main__":
     download_stock_pred()
-    plot_train_v_valid_test('market_cap_usd')
+    # plot_train_v_valid_test('market_cap_usd')

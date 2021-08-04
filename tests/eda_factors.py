@@ -17,10 +17,9 @@ import statsmodels.api as sm
 from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
-    factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
-    factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
+    # factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
+    # factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
     factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
-
     formula = pd.read_sql(f'SELECT name, factors, pillar FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -473,17 +472,44 @@ def dist_all():
         print(min, max)
         N, bins, patches = ax.hist(test, bins=1000, range=(-0.05,0.05), weights=np.ones(len(test)) / len(test))
 
-        for i in range(0, 333):
-            patches[i].set_facecolor('g')
-        for i in range(333, 667):
-            patches[i].set_facecolor('r')
-        for i in range(667, len(patches)):
-            patches[i].set_facecolor('g')
-
         ax.yaxis.set_major_formatter(ticker.PercentFormatter(1))
         plt.ylim((0,0.01))
         ax.set_ylabel(name[k-1], fontsize=20)
         k+=1
+
+    # plt.show()
+    plt.savefig(f'eda/pdf_all_factor_cut.png')
+    plt.close()
+
+def dist_all_train_test():
+
+    fig = plt.figure(figsize=(16, 16), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
+
+    first_testing = dt.date(2017,9,24)
+    factor_list = formula.loc[formula['factors'],'name'].to_list()
+
+    factors_bi['group_code'] = factors_bi['group'].str.apply(len)
+    factors_bi_train = factors_bi.loc[factors_bi['period_end']<first_testing]
+    factors_bi_test = factors_bi.loc[factors_bi['period_end']>=first_testing]
+
+    k=1
+    for df in [factors_bi_train, factors_bi_test]:
+        for name, g in df.groupby(['group_code']):
+            ax = fig.add_subplot(2,2,k)
+            test = g[factor_list].values.flatten()
+            test = test[~np.isnan(test)]
+
+            low = np.quantile(test, 1/3)
+            high = np.quantile(test, 2/3)
+
+            # print(pd.Series(test).describe())
+            print(low, high)
+            N, bins, patches = ax.hist(test, bins=1000, range=(-0.05,0.05), weights=np.ones(len(test)) / len(test))
+
+            ax.yaxis.set_major_formatter(ticker.PercentFormatter(1))
+            plt.ylim((0,0.01))
+            ax.set_ylabel(name[k-1], fontsize=20)
+            k+=1
 
     # plt.show()
     plt.savefig(f'eda/pdf_all_factor_cut.png')
@@ -507,4 +533,5 @@ if __name__ == "__main__":
     # test_cluster()
     # test_tsne()
 
-    dist_all()
+    # dist_all()
+    dist_all_train_test()

@@ -17,6 +17,8 @@ r_name = 'lastweekavg'
 r_name = 'biweekly'
 r_name = 'biweekly_new'
 r_name = 'biweekly_ma'
+r_name = 'biweekly_crossar'
+
 # r_name = 'test_stable9_re'
 
 iter_name = r_name
@@ -24,34 +26,40 @@ iter_name = r_name
 def download_stock_pred(count_pred=True):
     ''' download training history and training prediction from DB '''
 
-    with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing LIMIT 1000")
-        result_all = pd.read_sql(query, conn)       # download training history      
-    global_vals.engine_ali.dispose()
+    try:
+        result_all = pd.read_csv('result_all.csv')
+    except Exception as e:
+        print(e)
+        with global_vals.engine_ali.connect() as conn:
+            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
+                         f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+                         f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+            result_all = pd.read_sql(query, conn)       # download training history
+        global_vals.engine_ali.dispose()
+        print(result_all.shape)
 
-    # remove duplicate samples from running twice when testing
-    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
-    result_all = result_all.drop(['cv_number'], axis=1)
+        # remove duplicate samples from running twice when testing
+        result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
+        # result_all = result_all.drop(['cv_number'], axis=1)
 
-    # save counting label to csv
-    if count_pred:
-        count_i = {}
-        for name,g in result_all.groupby(['group_code', 'testing_period', 'y_type']):
-            count_i[name] = g['pred'].value_counts().to_dict()
-        pd.DataFrame(count_i).transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
+        # save counting label to csv
+        if count_pred:
+            count_i = pd.pivot_table(result_all, index=['cv_number','group'], columns=['group_code', 'testing_period', 'y_type'], values=['pred'])
+            count_i = count_i.apply(pd.value_counts)
+            count_i.transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
 
-    # convert pred/actual class to int & combine 5-CV with mode
-    result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
-    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-    result_all = result_all.dropna(how='any')
+        # convert pred/actual class to int & combine 5-CV with mode
+        result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
+        result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+        result_all = result_all.dropna(subset=['actual'])
+        result_all.to_csv('result_all.csv', index=False)
 
     # label period_end as the time where we assumed to train the model (try to incorporate all information before period_end)
-    result_all['period_end'] = result_all['testing_period'].apply(lambda x: x + relativedelta(weeks=2))
+    result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))
+    result_all = result_all.loc[result_all['period_end']<result_all['period_end'].max()] # remove last period no enough data to measure reliably
 
     # map the original premium to the prediction result
-    # result_all = add_org_premium(result_all)
+    result_all = add_org_premium(result_all)
 
     return result_all
 
@@ -94,7 +102,7 @@ def combine_mode_class(df):
     ''' calculate accuracy score when pred = 0 / 1 / 2 '''
 
     result_dict = {}
-    for name, g in df.groupby(['group_code', 'testing_period', 'y_type']):
+    for name, g in df.groupby(['group_code', 'period_end', 'y_type']):
         result_dict[name] = {}
         for name1, g1 in g.groupby(['pred']):
             result_dict[name][name1] = accuracy_score(g1['pred'], g1['actual'])
@@ -128,14 +136,16 @@ def combine_mode_time(df, time_plot=True):
     ''' calculate accuracy score by each industry/currency group '''
 
     result_dict = {}
-    for name, g in df.groupby(['group_code', 'y_type', 'testing_period']):
+    for name, g in df.groupby(['group_code', 'y_type', 'period_end']):
         result_dict[name] = accuracy_score(g['pred'], g['actual'])
 
     df = pd.DataFrame(result_dict, index=['0']).transpose().reset_index()
-    df.columns = ['group_code', 'y_type','testing_period','accuracy']
+    df.columns = ['group_code', 'y_type','period_end','accuracy']
 
     if time_plot:
-        df_plot = pd.pivot_table(df, index=['testing_period'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
+        df['period_end'] = pd.to_datetime(df['period_end'])
+        df_plot = pd.pivot_table(df, index=['period_end'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
+        fig = plt.figure(figsize=(12, 4), dpi=120, constrained_layout=True)
         plt.plot(df_plot)
         plt.savefig(f'score/result_pred_accu_time_{iter_name}.png')
 
@@ -145,7 +155,7 @@ def calc_confusion(results):
     ''' calculate the confusion matrix for multi-class'''
 
     lst = []
-    for name, df in results.groupby(['group_code', 'testing_period', 'y_type']):
+    for name, df in results.groupby(['group_code', 'period_end', 'y_type']):
         labels = list(set(df['actual'].dropna().unique()))
         x = multilabel_confusion_matrix(df['pred'], df['actual'], labels=labels)
         x = pd.DataFrame(x.reshape((2*len(labels),2)), columns=['Label-N','Label-P'], index=[f'{int(x)}{y}' for x in labels for y in['N','P']])
@@ -162,17 +172,40 @@ def calc_auc(results):
     ''' plot ROC curve and calculate AUC '''
 
     result_dict = {}
-    for name, df in results.groupby(['group_code', 'testing_period', 'y_type']):
+    for name, df in results.groupby(['group_code', 'period_end', 'y_type']):
         fpr, tpr, thresholds = roc_curve(df['actual'], df['pred'], pos_label=2)
         result_dict[name] = roc_auc_score(df['actual'], df['pred'])
 
 
-def calc_performance(df, compare_with_index=False):
+def calc_performance(df, compare_with_index=False, plot_performance=True):
     ''' calculate accuracy score by each industry/currency group '''
 
-    r = pd.pivot_table(df, index=['group_code', 'y_type', 'testing_period'], columns=['pred'], values=['premium'], aggfunc='mean')
+    r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=['pred'], values=['premium'], aggfunc='mean')
     r.columns = [x[1] for x in r.columns.to_list()]
     r = r.reset_index()
+
+    if plot_performance:
+        for name, g in r.groupby(['group_code']):
+            print(g)
+        # m = np.array([(df[col_list].mean() < 0).values] * df.shape[0])
+        # df[col_list] = df[col_list].mask(m, -df[col_list])
+        #
+        # plt.figure(figsize=(16, 16))
+        # g = df.groupby(['period_end']).mean().reset_index(drop=False)
+        # # for name, g in df.groupby('group'):
+        # # ax = fig.add_subplot(n, n, k)
+        # g = g.fillna(0)
+        # date_list = g['period_end'].to_list()
+        # new_g = g[col_list].transpose().values
+        # new_g = np.cumprod(new_g + 1, axis=1)
+        # ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
+        # ddf.to_csv('eda/persistent.csv')
+        # ddf = ddf.iloc[:10, :].transpose()
+        # print(ddf)
+        # plt.plot(ddf, label=list(ddf.columns))
+        # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
+        # plt.tight_layout()
+        # plt.savefig('eda/persistent.png')
 
     if compare_with_index:
         with global_vals.engine_ali.connect() as conn:
@@ -180,7 +213,7 @@ def calc_performance(df, compare_with_index=False):
         global_vals.engine_ali.dispose()
         index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
         index_ret = index_ret.set_index(['ticker', 'period_end']).unstack().transpose().reset_index().drop(['level_0'], axis=1)
-        r = r.merge(index_ret, left_on=['testing_period'], right_on=['period_end'])
+        r = r.merge(index_ret, on=['period_end'])
 
     return r
 
@@ -189,7 +222,7 @@ def calc_pred_class():
 
     df = download_stock_pred()
 
-    calc_auc(df)
+    # calc_auc(df)
     result_performance = calc_performance(df)
     result_time = combine_mode_time(df)
     confusion_df = calc_confusion(df)
