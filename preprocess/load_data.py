@@ -227,7 +227,10 @@ class load_data:
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         for i in [1,2]:
-            ar_col_org = self.cross_factors[y_type[0]]          # this part not suitable for RF
+            if len(y_type) == 1:
+                ar_col_org = self.cross_factors[y_type[0]]        # for LGBM: add AR for top 4 factors based on importance
+            else:
+                ar_col_org = y_type            # for RF: add AR for all y_type predicted at the same time
             ar_col = [f"ar_{x}_{i}m" for x in ar_col_org]
             current_group[ar_col] = current_group.groupby(['group'])[ar_col_org].shift(i)
             current_x_col.extend(ar_col)    # add AR variables name to x_col
@@ -237,9 +240,10 @@ class load_data:
         ma_y_col = [f"ma_{x}_y" for x in y_type]
         current_group[ma_q_col] = current_group.groupby(['group'])[y_type].rolling(3, min_periods=1).mean().values      # moving average for 3m
         current_group[ma_y_col] = current_group.groupby(['group'])[y_type].rolling(12, min_periods=1).mean().values      # moving average for 12m
-        for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
-            current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
-            current_x_col.extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
+        if len(y_type) == 1:        # not for RF -> avoid too many inputs
+            for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
+                current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+                current_x_col.extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
         for i in [12]:          # include moving average of 12 - 23
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             current_x_col.extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col

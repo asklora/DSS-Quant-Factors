@@ -17,7 +17,7 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [10, 50]),
+    'n_estimators': hp.choice('n_estimators', [15, 50, 150]),
     'max_depth': hp.choice('max_depth', [8, 32, 64]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [5, 50]),
@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'addma'
+    sql_result['name_sql'] = 'biweekly_rerun'
     use_biweekly_stock = True
     stock_last_week_avg = False
     valid_method = 'cv'
@@ -223,9 +223,9 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,5,23)
-        backtest_period = 44
-        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
+        last_test_date = dt.datetime(2021,7,11)
+        backtest_period = 50
+        testing_period_list=[last_test_date+relativedelta(days=1) - 2*i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
     else:
         last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
