@@ -6,6 +6,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, a
 import datetime as dt
 import numpy as np
 from dateutil.relativedelta import relativedelta
+import matplotlib.dates as mdates
 
 import global_vals
 
@@ -177,43 +178,60 @@ def calc_auc(results):
         result_dict[name] = roc_auc_score(df['actual'], df['pred'])
 
 
-def calc_performance(df, compare_with_index=False, plot_performance=True):
+def calc_performance(df, compare_with_index=True, plot_performance=True):
     ''' calculate accuracy score by each industry/currency group '''
 
     r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=['pred'], values=['premium'], aggfunc='mean')
     r.columns = [x[1] for x in r.columns.to_list()]
+    r['ret'] = r.iloc[:,2] - r.iloc[:,0]
     r = r.reset_index()
 
-    if plot_performance:
-        for name, g in r.groupby(['group_code']):
-            print(g)
-        # m = np.array([(df[col_list].mean() < 0).values] * df.shape[0])
-        # df[col_list] = df[col_list].mask(m, -df[col_list])
-        #
-        # plt.figure(figsize=(16, 16))
-        # g = df.groupby(['period_end']).mean().reset_index(drop=False)
-        # # for name, g in df.groupby('group'):
-        # # ax = fig.add_subplot(n, n, k)
-        # g = g.fillna(0)
-        # date_list = g['period_end'].to_list()
-        # new_g = g[col_list].transpose().values
-        # new_g = np.cumprod(new_g + 1, axis=1)
-        # ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
-        # ddf.to_csv('eda/persistent.csv')
-        # ddf = ddf.iloc[:10, :].transpose()
-        # print(ddf)
-        # plt.plot(ddf, label=list(ddf.columns))
-        # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
-        # plt.tight_layout()
-        # plt.savefig('eda/persistent.png')
+    r = r.loc[r['period_end']<r['period_end'].max()]
+    r = r.loc[r['y_type']!='market_cap_usd']
+    r['year'] = r['period_end'].dt.year
+    col_list = list(r['y_type'].unique())
+
+    fig = plt.figure(figsize=(28,8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
 
     if compare_with_index:
         with global_vals.engine_ali.connect() as conn:
             index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_y FROM {global_vals.processed_ratio_table}_biweekly WHERE ticker like '.%%'",conn)
         global_vals.engine_ali.dispose()
         index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
-        index_ret = index_ret.set_index(['ticker', 'period_end']).unstack().transpose().reset_index().drop(['level_0'], axis=1)
-        r = r.merge(index_ret, on=['period_end'])
+        index_ret.columns = ['y_type','period_end','ret']
+        r = pd.concat([r, index_ret], axis=0)
+
+    if plot_performance:
+        k=1
+        for name, g in r.groupby(['group_code','year']):
+            ax = fig.add_subplot(2,5,k)
+
+            # add index benchmark
+            g = pd.concat([g, index_ret.loc[index_ret['y_type'].isin(['.SPX','.CSI300'])]], axis=0)
+            g['year'] = g['period_end'].dt.year     # fill in year
+
+            g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['ret'], aggfunc='mean')
+            g.columns = [x[1] for x in g.columns.to_list()]
+            g = g.dropna(subset=col_list, how='all')
+            g = g.fillna(0)
+
+            g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
+
+            ax.plot(g, label=g.columns.to_list())        # plot cumulative return for the year
+            myFmt = mdates.DateFormatter('%m')
+            ax.xaxis.set_major_formatter(myFmt)
+            plt.ylim((0.8,1.8))
+            plt.xlim([dt.date(int(name[1]), 1, 1), dt.date(int(name[1]), 12, 31)])
+
+            if k in [1, 6]:
+                ax.set_ylabel(name[0], fontsize=20)
+            if k > 5:
+                ax.set_xlabel(int(name[1]), fontsize=20)
+            if k == 1:
+                plt.legend(loc='upper left', fontsize='x-large')
+            k+=1
+
+        plt.savefig(f'score/performance_{iter_name}.png')
 
     return r
 

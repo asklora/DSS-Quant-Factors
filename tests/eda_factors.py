@@ -488,11 +488,12 @@ def dist_all_train_test():
     first_testing = dt.date(2017,9,24)
     factor_list = formula.loc[formula['factors'],'name'].to_list()
 
-    factors_bi['group_code'] = factors_bi['group'].str.apply(len)
+    factors_bi['group_code'] = factors_bi['group'].str.len()
     factors_bi_train = factors_bi.loc[factors_bi['period_end']<first_testing]
     factors_bi_test = factors_bi.loc[factors_bi['period_end']>=first_testing]
 
     k=1
+    labels = ['train-currency','train-industry','test-currency','test-industry']
     for df in [factors_bi_train, factors_bi_test]:
         for name, g in df.groupby(['group_code']):
             ax = fig.add_subplot(2,2,k)
@@ -506,13 +507,18 @@ def dist_all_train_test():
             print(low, high)
             N, bins, patches = ax.hist(test, bins=1000, range=(-0.05,0.05), weights=np.ones(len(test)) / len(test))
 
+            for i in range(0, 1000):
+                if (bins[i]>low) and (bins[i+1]<high):
+                    patches[i].set_facecolor('g')
+                else:
+                    patches[i].set_facecolor('r')
+
             ax.yaxis.set_major_formatter(ticker.PercentFormatter(1))
             plt.ylim((0,0.01))
-            ax.set_ylabel(name[k-1], fontsize=20)
+            ax.set_xlabel(labels[k-1], fontsize=20)
             k+=1
 
-    # plt.show()
-    plt.savefig(f'eda/pdf_all_factor_cut.png')
+    plt.savefig(f'dist_all_train_test.png')
     plt.close()
 
 if __name__ == "__main__":

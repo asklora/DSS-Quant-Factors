@@ -79,8 +79,8 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
-    tri["tri"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)       # update tri to 1d before (i.e. all stock ret up to 1d before)
-    tri['skew'] = tri["tri"].rolling(365, min_periods=1).skew()
+    tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)       # update tri to 1d before (i.e. all stock ret up to 1d before)
+    tri['skew'] = tri["skew"].rolling(365, min_periods=1).skew()
     tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
 
     return tri
@@ -153,9 +153,14 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # Calculate monthly return (Y) + R6,2 + R12,7
     print(f'      ------------------------> Calculate stock returns ')
     tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-1)
-    tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(1)
-    tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(6)
-    tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(12)
+    if sample_interval == 'monthly':
+        tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(1)
+        tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(6)
+        tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(12)
+    elif sample_interval == 'biweekly':
+        tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(2)
+        tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(12)
+        tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(24)
 
     tri["stock_return_y"] = (tri["tri_1ma"] / tri["tri"]) - 1
     tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
@@ -547,4 +552,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
 
     calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=True, save=False, update=True)
+                          use_cached=False, save=False, update=False)
