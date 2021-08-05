@@ -14,7 +14,7 @@ params = list(find_hyperspace(sql_result).keys())
 # params = ['num_leaves', 'min_data_in_leaf']
 matrix = 'accuracy'
 
-r_name = 'biweekly'
+r_name = 'biweekly_rerun'
 iter_name = r_name.split('_')[-1]
 y_type = 'market_cap_usd'
 
@@ -135,7 +135,7 @@ def plot_scatter():
 
 if __name__ == "__main__":
 
-    # calc_correl(matrix=m)                                # check correlation
+    calc_correl()                                # check correlation
     calc_average()
     # plot_scatter()
-    # plot_scatter_single_param()
+    plot_scatter_single_param()

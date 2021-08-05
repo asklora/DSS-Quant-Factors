@@ -189,6 +189,6 @@ def write_local_csv_to_db():
 
 if __name__=="__main__":
 
-    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
+    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
 
     # write_local_csv_to_db()

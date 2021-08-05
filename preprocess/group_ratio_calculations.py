@@ -140,8 +140,8 @@ def calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False):
             print(e)
 
 if __name__=="__main__":
-    calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False)
-    calc_group_ratio(use_biweekly_stock=True, stock_last_week_avg=False)
+    # calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=False)
+    # calc_group_ratio(use_biweekly_stock=True, stock_last_week_avg=False)
     calc_group_ratio(use_biweekly_stock=False, stock_last_week_avg=True)
 
     # write_local_csv_to_db()

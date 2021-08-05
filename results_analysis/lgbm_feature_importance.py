@@ -81,7 +81,7 @@ def feature_importance():
 
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'feature/importance_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'feature/lgbm_importance_{iter_name}.xlsx') as writer:
         df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
         df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
         df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)

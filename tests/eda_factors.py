@@ -23,7 +23,8 @@ with global_vals.engine_ali.connect() as conn:
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
-col_list = list(set(formula.loc[formula['x_col'],'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
+x_list = list(set(formula.loc[formula['x_col'],'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
+col_list = list(set(formula['name'].to_list())- {'volume'})
 factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
@@ -231,13 +232,13 @@ def test_if_persistent():
     new_g = g[col_list].transpose().values
     new_g = np.cumprod(new_g + 1, axis=1)
     ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
-    ddf.to_csv('eda/persistent.csv')
+    ddf.to_csv('eda/performance.csv')
     ddf = ddf.iloc[:10,:].transpose()
     print(ddf)
     plt.plot(ddf, label=list(ddf.columns))
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
     plt.tight_layout()
-    plt.savefig('eda/persistent.png')
+    plt.savefig('eda/performance.png')
 
 def test_tsne():
 
@@ -529,7 +530,7 @@ if __name__ == "__main__":
     # plot_trend()
 
     # sharpe_ratio()
-    # test_if_persistent()
+    test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
@@ -539,4 +540,4 @@ if __name__ == "__main__":
     # test_tsne()
 
     # dist_all()
-    dist_all_train_test()
+    # dist_all_train_test()

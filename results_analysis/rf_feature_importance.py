@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = '2'
+r_name = 'biweekly_rerun'
 iter_name = r_name#.split('_')[-1]
 
 def feature_importance():

@@ -139,7 +139,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         raise ValueError("Invalid price_sample method. Expecting 'last_week_avg' or 'last_day' got ", price_sample)
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
-    cols = ['tri', 'close'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
+    cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
     print(f'      ------------------------> Sample interval using [{sample_interval}] ')
@@ -337,7 +337,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
-    # 1. Stock return/volatility/volume(?)
+    # 1. Stock return/volatility/volume
     if use_cached:
         try:
             tri = pd.read_csv('cache_tri_ratio.csv', low_memory=False)
@@ -552,5 +552,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='biweekly',
                           use_cached=True, save=False, update=False)

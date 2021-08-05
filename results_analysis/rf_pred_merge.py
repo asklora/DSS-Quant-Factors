@@ -7,7 +7,7 @@ from preprocess.load_data import load_data
 
 import global_vals
 
-r_name = 'addma'
+r_name = 'biweekly_rerun'
 iter_name = r_name
 
 def download_stock_pred():

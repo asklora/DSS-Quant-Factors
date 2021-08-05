@@ -10,51 +10,50 @@ import matplotlib.dates as mdates
 
 import global_vals
 
-# r_name = 'indoverfit'
-# r_name = 'testing'
-# r_name = 'laskweekavg'
-r_name = 'lastweekavg'
-# r_name = 'lastweekavg_newmacros'
-r_name = 'biweekly'
-r_name = 'biweekly_new'
-r_name = 'biweekly_ma'
-r_name = 'biweekly_crossar'
+restart = True
+model = 'lgbm'
 r_name = 'biweekly_rerun'
-
-# r_name = 'test_stable9_re'
 
 iter_name = r_name
 
 def download_stock_pred(count_pred=True):
     ''' download training history and training prediction from DB '''
 
-    # try:
-    #     result_all = pd.read_csv('result_all.csv')
-    # except Exception as e:
-    #     print(e)
-    with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-        result_all = pd.read_sql(query, conn)       # download training history
-    global_vals.engine_ali.dispose()
-    print(result_all.shape)
+    try:
+        if restart:
+            raise Exception('------------> Restart')
+        result_all = pd.read_csv('cache_result_all.csv')
+    except Exception as e:
+        print(e)
+        with global_vals.engine_ali.connect() as conn:
+            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_{model}_class P "
+                         f"INNER JOIN {global_vals.result_score_table}_{model}_class S ON S.finish_timing = P.finish_timing "
+                         f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+            result_all = pd.read_sql(query, conn)       # download training history
+        global_vals.engine_ali.dispose()
+        print(result_all.shape)
 
-    # remove duplicate samples from running twice when testing
-    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
-    # result_all = result_all.drop(['cv_number'], axis=1)
+        # remove duplicate samples from running twice when testing
+        result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
+        # result_all = result_all.drop(['cv_number'], axis=1)
 
-    # save counting label to csv
-    if count_pred:
-        count_i = pd.pivot_table(result_all, index=['cv_number','group'], columns=['group_code', 'testing_period', 'y_type'], values=['pred'])
-        count_i = count_i.apply(pd.value_counts)
-        count_i.transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
+        # save counting label to csv
+        if count_pred:
+            count_i = pd.pivot_table(result_all, index=['cv_number','group'], columns=['group_code', 'testing_period', 'y_type'], values=['pred'])
+            count_i = count_i.apply(pd.value_counts).transpose()
+            count_i = count_i.apply(lambda x: x/count_i.sum(1).values).reset_index()
+            with pd.ExcelWriter(f'score/{model}_pred_count_{iter_name}.xlsx') as writer:
+                count_i.to_excel(writer, sheet_name='count', index=False)
+                count_i['year'] = count_i['testing_period'].dt.year
+                count_i.groupby(['year']).mean().to_excel(writer, sheet_name='year')
+                count_i.groupby(['y_type']).mean().to_excel(writer, sheet_name='factor')
+            print('----------------------> ')
 
-    # convert pred/actual class to int & combine 5-CV with mode
-    result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
-    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-    result_all = result_all.dropna(subset=['actual'])
-        # result_all.to_csv('result_all.csv', index=False)
+        # convert pred/actual class to int & combine 5-CV with mode
+        result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
+        result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+        result_all = result_all.dropna(subset=['actual'])
+        result_all.to_csv('cache_result_all.csv', index=False)
 
     # label period_end as the time where we assumed to train the model (try to incorporate all information before period_end)
     result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))
@@ -145,11 +144,16 @@ def combine_mode_time(df, time_plot=True):
     df.columns = ['group_code', 'y_type','period_end','accuracy']
 
     if time_plot:
-        df['period_end'] = pd.to_datetime(df['period_end'])
-        df_plot = pd.pivot_table(df, index=['period_end'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
-        fig = plt.figure(figsize=(12, 4), dpi=120, constrained_layout=True)
-        plt.plot(df_plot)
-        plt.savefig(f'score/result_pred_accu_time_{iter_name}.png')
+        fig = plt.figure(figsize=(12, 8), dpi=120, constrained_layout=True)
+        k=1
+        for name, g in df.groupby(['group_code']):
+            ax = fig.add_subplot(2,1,k)
+            g['period_end'] = pd.to_datetime(g['period_end'])
+            df_plot = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
+            ax.plot(df_plot)
+            plt.ylim((0,1))
+            k+=1
+        plt.savefig(f'score/{model}_pred_accu_time_{iter_name}.png')
 
     return df
 
@@ -170,25 +174,16 @@ def calc_confusion(results):
 
     return confusion_df
 
-def calc_auc(results):
-    ''' plot ROC curve and calculate AUC '''
-
-    result_dict = {}
-    for name, df in results.groupby(['group_code', 'period_end', 'y_type']):
-        fpr, tpr, thresholds = roc_curve(df['actual'], df['pred'], pos_label=2)
-        result_dict[name] = roc_auc_score(df['actual'], df['pred'])
-
-
 def calc_performance(df, compare_with_index=True, plot_performance=True):
     ''' calculate accuracy score by each industry/currency group '''
 
     r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=['pred'], values=['premium'], aggfunc='mean')
     r.columns = [x[1] for x in r.columns.to_list()]
-    r['ret'] = r.iloc[:,2] - r.iloc[:,0]
+    r['ret'] = r.iloc[:,2].fillna(0) - r.iloc[:,0].fillna(0)
     r = r.reset_index()
 
-    r = r.loc[r['period_end']<r['period_end'].max()]
-    r = r.loc[r['y_type']!='market_cap_usd']
+    # r = r.loc[r['period_end']<r['period_end'].max()]
+    # r = r.loc[r['y_type']!='market_cap_usd']
     r['year'] = r['period_end'].dt.year
     col_list = list(r['y_type'].unique())
 
@@ -232,7 +227,7 @@ def calc_performance(df, compare_with_index=True, plot_performance=True):
                 plt.legend(loc='upper left', fontsize='x-large')
             k+=1
 
-        plt.savefig(f'score/performance_{iter_name}.png')
+        plt.savefig(f'score/{model}_performance_{iter_name}.png')
 
     return r
 
@@ -255,12 +250,16 @@ def calc_pred_class():
     # r = pd.DataFrame(results).reset_index()
     # r.columns = ['group_code', 'testing_period', 'y_type'] + ['mean', 'median', 'mode']
 
-    with pd.ExcelWriter(f'score/result_pred_accuracy_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'score/{model}_pred_accuracy_{iter_name}.xlsx') as writer:
         # r.to_excel(writer, sheet_name='original', index=False)
         # r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
         result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
+        pd.pivot_table(result_group, index=['group'], columns=['y_type'], values='accuracy').to_excel(writer, sheet_name='mode_group_pivot')
+
         result_time.to_excel(writer, sheet_name='mode_time', index=False)
+        pd.pivot_table(result_time, index=['period_end'], columns=['y_type'], values='accuracy').to_excel(writer, sheet_name='mode_time_pivot')
+
         confusion_df.to_excel(writer, sheet_name='confusion', index=False)
         result_performance.to_excel(writer, sheet_name='performance', index=False)
         result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
