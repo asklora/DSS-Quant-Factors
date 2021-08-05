@@ -19,6 +19,7 @@ r_name = 'biweekly'
 r_name = 'biweekly_new'
 r_name = 'biweekly_ma'
 r_name = 'biweekly_crossar'
+r_name = 'biweekly_rerun'
 
 # r_name = 'test_stable9_re'
 
@@ -27,33 +28,33 @@ iter_name = r_name
 def download_stock_pred(count_pred=True):
     ''' download training history and training prediction from DB '''
 
-    try:
-        result_all = pd.read_csv('result_all.csv')
-    except Exception as e:
-        print(e)
-        with global_vals.engine_ali.connect() as conn:
-            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                         f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                         f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-            result_all = pd.read_sql(query, conn)       # download training history
-        global_vals.engine_ali.dispose()
-        print(result_all.shape)
+    # try:
+    #     result_all = pd.read_csv('result_all.csv')
+    # except Exception as e:
+    #     print(e)
+    with global_vals.engine_ali.connect() as conn:
+        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
+                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+                     f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+        result_all = pd.read_sql(query, conn)       # download training history
+    global_vals.engine_ali.dispose()
+    print(result_all.shape)
 
-        # remove duplicate samples from running twice when testing
-        result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
-        # result_all = result_all.drop(['cv_number'], axis=1)
+    # remove duplicate samples from running twice when testing
+    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
+    # result_all = result_all.drop(['cv_number'], axis=1)
 
-        # save counting label to csv
-        if count_pred:
-            count_i = pd.pivot_table(result_all, index=['cv_number','group'], columns=['group_code', 'testing_period', 'y_type'], values=['pred'])
-            count_i = count_i.apply(pd.value_counts)
-            count_i.transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
+    # save counting label to csv
+    if count_pred:
+        count_i = pd.pivot_table(result_all, index=['cv_number','group'], columns=['group_code', 'testing_period', 'y_type'], values=['pred'])
+        count_i = count_i.apply(pd.value_counts)
+        count_i.transpose().to_csv(f'score/result_pred_count_{iter_name}.csv')
 
-        # convert pred/actual class to int & combine 5-CV with mode
-        result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
-        result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-        result_all = result_all.dropna(subset=['actual'])
-        result_all.to_csv('result_all.csv', index=False)
+    # convert pred/actual class to int & combine 5-CV with mode
+    result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
+    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
+    result_all = result_all.dropna(subset=['actual'])
+        # result_all.to_csv('result_all.csv', index=False)
 
     # label period_end as the time where we assumed to train the model (try to incorporate all information before period_end)
     result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))

@@ -5,6 +5,7 @@ from sqlalchemy import text
 import global_vals
 
 r_name = 'biweekly_crossar'
+r_name = 'biweekly_rerun'
 
 # r_name = 'test_stable9_re'
 
@@ -12,13 +13,16 @@ iter_name = r_name#.split('_')[-1]
 
 def name_mapping(df):
 
-
     for col in df.columns.to_list():
-        df.loc[f'ar_0m', col] = df.loc[col, col]
-        df.loc[col, col] = np.nan
-        for i in [1, 2]:
-            df.loc[f'ar_{i}m', col] = df.loc[f'ar_{col}_{i}m', col]
-            df.loc[f'ar_{col}_{i}m', col] = np.nan
+        try:
+            df.loc[f'ar_0m', col] = df.loc[col, col]
+            df.loc[col, col] = np.nan
+            for i in [1, 2]:
+                df.loc[f'ar_{i}m', col] = df.loc[f'ar_{col}_{i}m', col]
+                df.loc[f'ar_{col}_{i}m', col] = np.nan
+        except Exception as e:
+            print(e)
+            continue
 
     df = df.reset_index()
 

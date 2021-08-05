@@ -175,15 +175,14 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     if save:
         tri.to_csv('cache_tri_ratio.csv', index=False)
 
-    if price_sample == 'last_week_avg':
-        with global_vals.engine_ali.connect() as conn:
-            extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-            df = tri.drop(['close'], axis=1)
-            df.columns = ['ticker', 'period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
-            df.to_sql(global_vals.processed_stock_table, **extra)
-            print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
-        global_vals.engine_ali.dispose()
-        exit(1)
+    # if price_sample == 'last_week_avg':
+    #     with global_vals.engine_ali.connect() as conn:
+    #         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+    #         df = tri.drop(['close'], axis=1)
+    #         df.columns = ['ticker', 'period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
+    #         df.to_sql(global_vals.processed_stock_table, **extra)
+    #         print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
+    #     global_vals.engine_ali.dispose()
     return tri, stock_col
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
@@ -536,6 +535,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':
         db_table_name += '_biweekly'
+    elif price_sample == 'last_week_avg':
+        db_table_name += '_lastweekavg'
 
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
@@ -551,5 +552,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=False, save=False, update=False)
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+                          use_cached=True, save=False, update=False)

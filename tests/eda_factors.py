@@ -7,7 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from scipy.stats import skew
-# import seaborn as sns
+import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
@@ -19,11 +19,11 @@ from sklearn.manifold import TSNE
 with global_vals.engine_ali.connect() as conn:
     # factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
     # factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
-    factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
-    formula = pd.read_sql(f'SELECT name, factors, pillar FROM {global_vals.formula_factors_table}', conn)
+    factors = factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
+    formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
-col_list = list(set(formula['name'].to_list()) - {'debt_issue_less_ps_to_rent'})
+col_list = list(set(formula.loc[formula['x_col'],'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
 factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
@@ -62,7 +62,7 @@ def correl_fama_website():
     #     sub_df = df[['period_end', website_factor[i], our_factor[i]]].set_index('period_end')
 
 def eda_missing():
-    df = factors[col_list].isnull().sum()/len(factors)
+    df = factors.filter(col_list).isnull().sum()/len(factors)
     df.sort_values(ascending=False).to_csv('eda/missing.csv')
     # plt.hist(df)
     # plt.savefig('eda/missing.png')
@@ -74,7 +74,7 @@ def eda_correl():
 
     df = factors[col_list].transpose().reset_index()
 
-    df = df.merge(formula, left_on=['index'], right_on=['name'])
+    df = df.merge(formula[['pillar', 'name']], left_on=['index'], right_on=['name'])
     df = df.sort_values(['pillar','name']).set_index(['pillar', 'name']).drop(['index'], axis=1).transpose()
     df.columns = [x[0]+'-'+x[1] for x in df.columns.to_list()]
 
@@ -168,7 +168,6 @@ def plot_trend():
         plt.show()
         # plt.savefig('eda/test_eda_trend.png')
 
-        exit(1)
 
 def plot_autocorrel():
     ''' plot the level of autocorrelation '''
@@ -456,7 +455,7 @@ def dist_all():
 
     k=1
     name = ['original','avg','bi']
-    for df in [factors, factors_avg, factors_bi]:
+    for df in [factors_bi]:
         ax = fig.add_subplot(3,1,k)
         test = df[factor_list].values.flatten()
         test = test[~np.isnan(test)]
@@ -505,7 +504,7 @@ def dist_all_train_test():
 
             # print(pd.Series(test).describe())
             print(low, high)
-            N, bins, patches = ax.hist(test, bins=1000, range=(-0.05,0.05), weights=np.ones(len(test)) / len(test))
+            N, bins, patches = ax.hist(test, bins=1000, range=(-0.1,0.1), weights=np.ones(len(test)) / len(test))
 
             for i in range(0, 1000):
                 if (bins[i]>low) and (bins[i+1]<high):
@@ -514,7 +513,7 @@ def dist_all_train_test():
                     patches[i].set_facecolor('r')
 
             ax.yaxis.set_major_formatter(ticker.PercentFormatter(1))
-            plt.ylim((0,0.01))
+            plt.ylim((0,0.005))
             ax.set_xlabel(labels[k-1], fontsize=20)
             k+=1
 
