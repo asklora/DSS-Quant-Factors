@@ -94,14 +94,13 @@ def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update
         if use_biweekly_stock:
             print(f'      ------------------------> Use biweekly ratios')
             df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_biweekly", conn)
+        elif stock_last_week_avg:
+            print(f'      ------------------------> Replace stock return with last week average returns')
+            df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_weekavg", conn)
         else:
             df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
-        if stock_last_week_avg:
-            print(f'      ------------------------> Replace stock return with last week average returns')
-            df_stock_avg = pd.read_sql(f"SELECT * FROM {global_vals.processed_stock_table}", conn)
-            df['period_end'] = pd.to_datetime(df['period_end'])
-            df = df.merge(df_stock_avg, on=['ticker', 'period_end'], suffixes=['_org',''])
+
     global_vals.engine_ali.dispose()
 
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
@@ -190,6 +189,6 @@ def write_local_csv_to_db():
 
 if __name__=="__main__":
 
-    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
+    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
 
     # write_local_csv_to_db()

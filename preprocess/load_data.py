@@ -55,7 +55,7 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     if use_biweekly_stock:
         db_table_name = global_vals.processed_ratio_table + '_biweekly'
     elif stock_last_week_avg:
-        db_table_name = global_vals.processed_stock_table
+        db_table_name = global_vals.processed_ratio_table + '_weekavg'
     else:
         db_table_name = global_vals.processed_ratio_table
 

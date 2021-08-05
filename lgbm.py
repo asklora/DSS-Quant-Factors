@@ -35,7 +35,7 @@ def lgbm_train(space):
                     lgb_train,
                     valid_sets=[lgb_eval, lgb_train],
                     valid_names=['valid', 'train'],
-                    num_boost_round=10,
+                    num_boost_round=1000,
                     early_stopping_rounds=150,
                     feature_name=data.x_col,
                     evals_result=evals_result)
@@ -217,9 +217,9 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly_lesstrain'
-    use_biweekly_stock = True
-    stock_last_week_avg = False
+    sql_result['name_sql'] = 'lastweekavg_rerun'
+    use_biweekly_stock = False
+    stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
     defined_cut_bins = []
@@ -242,9 +242,9 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,7,11)
-        backtest_period = 100
-        testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(weeks=2)
+        last_test_date = dt.datetime(2021,6,27)
+        backtest_period = 50
+        testing_period_list=[last_test_date+relativedelta(days=1) - 2*i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
     else:
         last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
