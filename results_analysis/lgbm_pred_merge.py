@@ -12,9 +12,9 @@ from pandas.tseries.offsets import MonthEnd
 import global_vals
 
 restart = True
-model = 'lgbm'
-period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_morecross'
+model = 'rf'
+period = 'biweekly' # biweekly / weekavg
+r_name = 'biweekly_rerun'
 
 iter_name = r_name
 

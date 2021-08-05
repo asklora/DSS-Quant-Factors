@@ -86,7 +86,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     if use_biweekly_stock:
         factor_table_name+='_biweekly'
     elif stock_last_week_avg:
-        factor_table_name+='_weekavg'
+        factor_table_name+='_weekavg4'
 
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql(f'SELECT * FROM {factor_table_name} WHERE \"group\" IS NOT NULL', conn)
@@ -178,6 +178,14 @@ class load_data:
 
         return dic
 
+    def corr_cross_factor(self, df, y_type):
+        ''' figure the top 3 most important cross factors '''
+
+        df = df[self.original_x_col].corr()[y_type]
+        dic = {y_type:list(df.sort_values(ascending=False).index)[:10]}
+        print('Correlation ', dic)
+        return dic
+
     def y_replace_median(self, qcut_q, arr, arr_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
 
@@ -224,11 +232,15 @@ class load_data:
 
         current_x_col = []
         current_group = self.group.copy(1)
+        start = testing_period - relativedelta(years=8)    # train df = 40 quarters
+
+        corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
+        self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         for i in [1,2]:
             if len(y_type) == 1:
-                ar_col_org = list(set(y_type[0] + self.cross_factors[y_type[0]]))        # for LGBM: add AR for top 4 factors based on importance
+                ar_col_org = self.cross_factors[y_type[0]]        # for LGBM: add AR for top 4 factors based on importance
             else:
                 ar_col_org = y_type            # for RF: add AR for all y_type predicted at the same time
             ar_col = [f"ar_{x}_{i}m" for x in ar_col_org]
@@ -251,9 +263,7 @@ class load_data:
         y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        start = testing_period - relativedelta(years=8)    # train df = 40 quarters
         self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time

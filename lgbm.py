@@ -140,7 +140,7 @@ def eval_classifier(space):
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - result['accuracy_valid']
+    return 1 - result['auc_test']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
@@ -217,13 +217,13 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_rerun'
+    sql_result['name_sql'] = 'lastweekavg_icb4_auc'
     use_biweekly_stock = False
     stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'cv'
     defined_cut_bins = []
-    group_code_list = ['industry', 'currency']
+    group_code_list = ['industry']
     use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
     else:
         last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
-        backtest_period = 22
+        backtest_period = 46
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
 

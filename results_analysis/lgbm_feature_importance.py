@@ -68,6 +68,9 @@ def feature_importance():
     global_vals.engine_ali.dispose()
     # df.to_csv('f_importance.csv', index=False)
 
+    df['max'] = df.groupby(['group_code','testing_period','name', 'y_type'])['split'].transform('max')
+    df['split'] = df['split']/df['max']
+
     df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
     # df1['avg'] = df1.mean(axis=1)
     df1 = name_mapping(df1)
