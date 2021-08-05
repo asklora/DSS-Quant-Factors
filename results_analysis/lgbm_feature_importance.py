@@ -4,10 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'biweekly_crossar'
-r_name = 'biweekly_rerun'
-
-# r_name = 'test_stable9_re'
+r_name = 'lastweekavg_morecross'
 
 iter_name = r_name#.split('_')[-1]
 

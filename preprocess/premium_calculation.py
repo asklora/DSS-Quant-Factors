@@ -8,6 +8,8 @@ from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 
+icb_num = 4
+
 def trim_outlier(df, prc=0):
     ''' assign a max value for the 99% percentile to replace inf'''
 
@@ -119,8 +121,14 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     all_member_df = []      # record member_df *2 (cur + ind)
     all_results_df = []     # record results_df *2
 
+    group_list = ['currency_code', 'icb_code']
+
+    if icb_num != 6:
+        df['icb_code'] = df['icb_code'].str[:icb_num]
+        group_list = ['icb_code']
+
     print(f'#################################################################################################')
-    for i in ['currency_code', 'icb_code']:
+    for i in group_list:
         print(f'      ------------------------> Start calculate factor premium - [{i}] Partition')
         member_g_list = []
         results = {}
@@ -167,6 +175,10 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         factor_table += '_biweekly'
         member_table += '_biweekly'
 
+    if icb_num != 6:
+        factor_table += str(icb_num)
+        member_table += str(icb_num)
+
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_results_df.to_sql(factor_table, **extra, dtype=results_dtypes)
@@ -189,6 +201,6 @@ def write_local_csv_to_db():
 
 if __name__=="__main__":
 
-    calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True)
+    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
 
     # write_local_csv_to_db()

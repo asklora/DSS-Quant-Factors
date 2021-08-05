@@ -18,8 +18,8 @@ from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
     # factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
-    # factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
-    factors = factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
+    factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
+    # factors = factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -378,56 +378,42 @@ def average_absolute_mean():
     df.to_csv('eda/average_absolute_mean.csv')
     print(df)
 
-def test_cluster():
+def test_cluster(method='dbscan'):
 
     from sklearn.cluster import KMeans, DBSCAN, OPTICS
+    from sklearn.decomposition import PCA
     from sklearn import metrics
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     from sklearn import decomposition
 
-    aa = factors.copy(1)[col_list].values
-    cluster_no = 5
     # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
-    bb = np.nan_to_num(aa, -99.9)
-    bb = StandardScaler().fit_transform(bb)
+    X = factors.copy(1)[col_list].transpose().values
+    X = np.nan_to_num(X, -99.9)
+    X = StandardScaler().fit_transform(X)
 
-    kmeans = KMeans(cluster_no).fit(bb)
-    centre = kmeans.cluster_centers_
+    if method == 'kmean':
+        cluster_no = 5
+        kmeans = KMeans(cluster_no).fit(X)
+        y = kmeans.predict(X)
+    elif method == 'optics':
+        opt = OPTICS(min_samples=1).fit(X)
+        y = opt.labels_
+    elif method == 'dbscan':
+        db = DBSCAN(min_samples=3, eps=0.9).fit(X)
+        y = db.labels_
+        print(y)
 
-    # pd.DataFrame(centre.transpose(), index=col_list).to_csv('eda/cluster_kmean.csv')
+    # use PCA and plot
+    ppca = PCA(n_components=2).fit(X)
+    X_pca = ppca.transform(X)
+    plt.figure(figsize=(6, 6), dpi=120, constrained_layout=True)
+    plt.scatter(X_pca[:, 0], X_pca[:, 1], c=y, s=50, cmap='viridis')
+    for i in range(len(col_list)):
+        plt.annotate(col_list[i], (X_pca[i, 0], X_pca[i, 1]), fontsize=4)
+    plt.savefig(f'eda/cluster_{method}.png')
 
-    # db = DBSCAN(eps=0.1, min_samples=4).fit(bb)
-
-    db = OPTICS(min_samples=4).fit(bb)
-
-    # centre = db.cluster_centers_
-    labels = db.labels_
-    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-    n_noise_ = list(labels).count(-1)
-    from collections import Counter
-    print(Counter(labels))
-    print('Estimated number of clusters: %d' % n_clusters_)
-    print('Estimated number of noise points: %d' % n_noise_)
-    print("Silhoette Coefficient: %0.3f" % metrics.silhouette_score(bb, labels))
-    exit(1)
-    print("Homogeneity: %0.3f" % metrics.homogeneity_score(bb, labels))
-    print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
-    print("V-measure: %0.3f" % metrics.v_measure_score(labels_true, labels))
-    print("Adjusted Rand Index: %0.3f"
-          % metrics.adjusted_rand_score(labels_true, labels))
-    print("Adjusted Mutual Information: %0.3f"
-          % metrics.adjusted_mutual_info_score(labels_true, labels))
-    print("Silhouette Coefficient: %0.3f"
-          % metrics.silhouette_score(X, labels))
-
-    # dbscan = make_pipeline(StandardScaler(), DBSCAN).fit(bb)
-    # ppca = make_pipeline(StandardScaler(), decomposition.PCA).fit(bb)
-    print(bb)
-
-    # results = kmeans[-1].inertia_
-    # print(results)
-
+    # calculate matrices for clustering
     clustering_metrics = [
         metrics.homogeneity_score,
         metrics.completeness_score,
@@ -436,19 +422,20 @@ def test_cluster():
         metrics.adjusted_mutual_info_score,
     ]
 
-    kmeans = KMeans(n_clusters=5).fit(bb)
-    # dbscan = DBSCAN(eps=0.3).fit(bb)
+    # save excel for pillar difference
+    dic = formula[['pillar','name']].set_index(['name'])['pillar'].to_dict()
+    cluster_df = pd.DataFrame({'name':col_list, 'cluster':y})
+    cluster_df['pillar'] = cluster_df['name'].map(dic)
+    cluster_df.sort_values(by=['pillar']).to_csv(f'eda/cluster_{method}.csv', index=False)
 
-    clustering = kmeans.predict(bb)
-    cluster_centers = np.zeros((cluster_no, bb.shape[-1]))
+    # calculate matrics
+    m = {}
+    for i in clustering_metrics:
+        pillar_code = cluster_df['pillar'].map({'momentum':0, 'quality':1, 'value':2}).to_list()
+        m[i.__name__] = i(cluster_df['cluster'].to_list(), pillar_code)
+    print(m)
 
-    # Finding cluster centers for later inference.
-    for i in range(cluster_no):
-        cluster_centers[i, :] = np.mean(bb[clustering == i], axis=0)
-
-    clustering = np.reshape(clustering, (aa.shape[0], aa.shape[1]))
-
-    return clustering
+    exit(2)
 
 def dist_all():
 
@@ -518,7 +505,7 @@ def dist_all_train_test():
             ax.set_xlabel(labels[k-1], fontsize=20)
             k+=1
 
-    plt.savefig(f'dist_all_train_test.png')
+    plt.savefig(f'eda/dist_all_train_test.png')
     plt.close()
 
 if __name__ == "__main__":
@@ -530,14 +517,15 @@ if __name__ == "__main__":
     # plot_trend()
 
     # sharpe_ratio()
-    test_if_persistent()
+    # test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
 
-    ## Clustering
-    # test_cluster()
-    # test_tsne()
-
     # dist_all()
     # dist_all_train_test()
+
+
+    ## Clustering
+    test_cluster()
+    # test_tsne()

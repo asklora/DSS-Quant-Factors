@@ -7,24 +7,22 @@ import numpy as np
 
 import global_vals
 
-r_name = '2021-07-22 17:46:31.704325_testing'
-r_name = '2021-07-23 11:16:48.504709_chron_valid'
-r_name = '2021-07-23 18:31:15.995890_indoverfit'
-r_name = 'biweekly_rerun'
+r_name = 'lastweekavg_rerun'
+model = 'lgbm'
 
 y_type = 'market_cap_usd'
-iter_name = r_name.split('_')[-1]
+iter_name = r_name
 
 def download_stock_pred():
     ''' download training history from score table DB '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT * FROM {global_vals.result_score_table}_lgbm_class WHERE name_sql='{r_name}'")
+        query = text(f"SELECT * FROM {global_vals.result_score_table}_{model}_class WHERE name_sql='{r_name}'")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
     df = df.sort_values(['finish_timing'])
-    df.to_csv(f'score/score_original_{iter_name}.csv', index=False)
+    # df.to_csv(f'score/score_original_{iter_name}.csv', index=False)
 
     print('Finish running for factors ', len(set(df['y_type'])), set(df['y_type']))
     print('Last running for factors ', df['y_type'].to_list()[-1])
@@ -36,7 +34,7 @@ def download_stock_pred():
     best_cv = best.groupby(['y_type','group_code','testing_period']).mean().reset_index()
     best_cv_time = best.groupby(['y_type','group_code']).mean().reset_index()
 
-    with pd.ExcelWriter(f'score/result_score_auc_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'score/{model}_score_auc_{iter_name}.xlsx') as writer:
         # df.to_excel(writer, sheet_name='original', index=False)
         best.to_excel(writer, sheet_name='best', index=False)
         best_cv.to_excel(writer, sheet_name='best_avg(cv)', index=False)

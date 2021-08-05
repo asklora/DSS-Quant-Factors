@@ -228,7 +228,7 @@ class load_data:
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         for i in [1,2]:
             if len(y_type) == 1:
-                ar_col_org = self.cross_factors[y_type[0]]        # for LGBM: add AR for top 4 factors based on importance
+                ar_col_org = list(set(y_type[0] + self.cross_factors[y_type[0]]))        # for LGBM: add AR for top 4 factors based on importance
             else:
                 ar_col_org = y_type            # for RF: add AR for all y_type predicted at the same time
             ar_col = [f"ar_{x}_{i}m" for x in ar_col_org]

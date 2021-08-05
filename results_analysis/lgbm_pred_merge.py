@@ -7,12 +7,14 @@ import datetime as dt
 import numpy as np
 from dateutil.relativedelta import relativedelta
 import matplotlib.dates as mdates
+from pandas.tseries.offsets import MonthEnd
 
 import global_vals
 
 restart = True
 model = 'lgbm'
-r_name = 'biweekly_rerun'
+period = 'weekavg' # biweekly / weekavg
+r_name = 'lastweekavg_morecross'
 
 iter_name = r_name
 
@@ -47,7 +49,7 @@ def download_stock_pred(count_pred=True):
                 count_i['year'] = count_i['testing_period'].dt.year
                 count_i.groupby(['year']).mean().to_excel(writer, sheet_name='year')
                 count_i.groupby(['y_type']).mean().to_excel(writer, sheet_name='factor')
-            print('----------------------> ')
+            print('----------------------> Finish writing counting to csv')
 
         # convert pred/actual class to int & combine 5-CV with mode
         result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
@@ -56,7 +58,11 @@ def download_stock_pred(count_pred=True):
         result_all.to_csv('cache_result_all.csv', index=False)
 
     # label period_end as the time where we assumed to train the model (try to incorporate all information before period_end)
-    result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))
+    if period == 'biweekly':
+        result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))
+    else:
+        result_all['period_end'] = pd.to_datetime(result_all['testing_period']) + MonthEnd(1)
+
     result_all = result_all.loc[result_all['period_end']<result_all['period_end'].max()] # remove last period no enough data to measure reliably
 
     # map the original premium to the prediction result
@@ -70,7 +76,7 @@ def add_org_premium(df):
     factor = df['y_type'].unique()
     with global_vals.engine_ali.connect() as conn:
         actual_ret = pd.read_sql(f"SELECT \"group\", period_end, {','.join(factor)} "
-                                 f"FROM {global_vals.factor_premium_table}_biweekly", conn)  # download training history
+                                 f"FROM {global_vals.factor_premium_table}_{period}", conn)  # download training history
     global_vals.engine_ali.dispose()
 
     actual_ret = actual_ret.set_index(['group', 'period_end']).stack().reset_index()
@@ -150,8 +156,11 @@ def combine_mode_time(df, time_plot=True):
             ax = fig.add_subplot(2,1,k)
             g['period_end'] = pd.to_datetime(g['period_end'])
             df_plot = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
-            ax.plot(df_plot)
+            ax.plot(df_plot, label=[x[1] for x in df_plot.columns.to_list()])
+            ax.set_ylabel(name, fontsize=20)
             plt.ylim((0,1))
+            if k==1:
+                plt.legend(loc='upper left', fontsize='small')
             k+=1
         plt.savefig(f'score/{model}_pred_accu_time_{iter_name}.png')
 
@@ -180,18 +189,16 @@ def calc_performance(df, compare_with_index=True, plot_performance=True):
     r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=['pred'], values=['premium'], aggfunc='mean')
     r.columns = [x[1] for x in r.columns.to_list()]
     r['ret'] = r.iloc[:,2].fillna(0) - r.iloc[:,0].fillna(0)
-    r = r.reset_index()
+    r = r.reset_index().sort_values(['group_code', 'y_type', 'period_end'])
 
     # r = r.loc[r['period_end']<r['period_end'].max()]
     # r = r.loc[r['y_type']!='market_cap_usd']
     r['year'] = r['period_end'].dt.year
     col_list = list(r['y_type'].unique())
 
-    fig = plt.figure(figsize=(28,8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
-
     if compare_with_index:
         with global_vals.engine_ali.connect() as conn:
-            index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_y FROM {global_vals.processed_ratio_table}_biweekly WHERE ticker like '.%%'",conn)
+            index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_y FROM {global_vals.processed_ratio_table}_{period} WHERE ticker like '.%%'",conn)
         global_vals.engine_ali.dispose()
         index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
         index_ret.columns = ['y_type','period_end','ret']
@@ -199,8 +206,10 @@ def calc_performance(df, compare_with_index=True, plot_performance=True):
 
     if plot_performance:
         k=1
+        num_year = len(r['year'].dropna().unique())
+        fig = plt.figure(figsize=(28, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
         for name, g in r.groupby(['group_code','year']):
-            ax = fig.add_subplot(2,5,k)
+            ax = fig.add_subplot(2,num_year,k)
 
             # add index benchmark
             g = pd.concat([g, index_ret.loc[index_ret['y_type'].isin(['.SPX','.CSI300'])]], axis=0)
@@ -212,19 +221,46 @@ def calc_performance(df, compare_with_index=True, plot_performance=True):
             g = g.fillna(0)
 
             g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
+            if period == 'biweekly':
+                start_index = g.index[0] - relativedelta(weeks=2)
+            else:
+                start_index = g.index[0] - MonthEnd(1)
+            g.loc[start_index, :] = 1
 
-            ax.plot(g, label=g.columns.to_list())        # plot cumulative return for the year
+            ax.plot(g.sort_index(), label=g.columns.to_list())        # plot cumulative return for the year
             myFmt = mdates.DateFormatter('%m')
             ax.xaxis.set_major_formatter(myFmt)
             plt.ylim((0.8,1.8))
-            plt.xlim([dt.date(int(name[1]), 1, 1), dt.date(int(name[1]), 12, 31)])
+            plt.xlim([dt.date(int(name[1])-1, 12, 31), dt.date(int(name[1]), 12, 31)])
 
-            if k in [1, 6]:
+            if k in [1, 1+num_year]:
                 ax.set_ylabel(name[0], fontsize=20)
-            if k > 5:
+            if k > num_year:
                 ax.set_xlabel(int(name[1]), fontsize=20)
             if k == 1:
-                plt.legend(loc='upper left', fontsize='x-large')
+                plt.legend(loc='upper left', fontsize='large')
+            k+=1
+
+        plt.savefig(f'score/{model}_performance_{iter_name}_yearly.png')
+
+        k=1
+        fig = plt.figure(figsize=(8, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
+        for name, g in r.groupby(['group_code']):
+            ax = fig.add_subplot(2,1,k)
+
+            # add index benchmark
+            g = pd.concat([g, index_ret.loc[index_ret['y_type'].isin(['.SPX','.CSI300'])]], axis=0)
+            g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['ret'], aggfunc='mean')
+            g.columns = [x[1] for x in g.columns.to_list()]
+            g = g.dropna(subset=col_list, how='all')
+            g = g.fillna(0)
+
+            g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
+            ax.plot(g.sort_index(), label=g.columns.to_list())        # plot cumulative return for the year
+            plt.ylim((0.8,1.8))
+            ax.set_ylabel(name, fontsize=20)
+            if k == 1:
+                plt.legend(loc='upper left', fontsize='large')
             k+=1
 
         plt.savefig(f'score/{model}_performance_{iter_name}.png')
@@ -243,16 +279,7 @@ def calc_pred_class():
     result_group = combine_mode_group(df)
     result_class = combine_mode_class(df)
 
-    # results = {}
-    # for i in ['mean', 'median', 'mode']:
-    #     results[i] = combine_pred_class(df, i)
-
-    # r = pd.DataFrame(results).reset_index()
-    # r.columns = ['group_code', 'testing_period', 'y_type'] + ['mean', 'median', 'mode']
-
     with pd.ExcelWriter(f'score/{model}_pred_accuracy_{iter_name}.xlsx') as writer:
-        # r.to_excel(writer, sheet_name='original', index=False)
-        # r.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='cv_average', index=False)
         result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
         pd.pivot_table(result_group, index=['group'], columns=['y_type'], values='accuracy').to_excel(writer, sheet_name='mode_group_pivot')
@@ -265,10 +292,4 @@ def calc_pred_class():
         result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)
 
 if __name__ == "__main__":
-    # df = pd.read_csv('y_conversion.csv')
-    # ddf = df.loc[(df['currency_code']=='USD')]
-    # ddf.to_csv('y_conversion_spx.csv')
-
     calc_pred_class()
-
-    # print(df)
