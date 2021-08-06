@@ -217,14 +217,15 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_icb4_auc'
+    sql_result['name_sql'] = 'lastweekavg_timevalid'
     use_biweekly_stock = False
     stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
-    valid_method = 'cv'
+    valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
-    group_code_list = ['industry']
+    group_code_list = ['industry','currency']
     use_median = False
+    continue_test = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -238,7 +239,7 @@ if __name__ == "__main__":
 
     if sql_result['objective'] == 'multiclass':
         base_space['num_class'] = sql_result['qcut_q']
-        base_space['metric'] = 'multi_error'
+        base_space['metric'] = 'multi_logloss'
 
     # create date list of all testing period
     if use_biweekly_stock:
@@ -255,6 +256,14 @@ if __name__ == "__main__":
     print(f"===== test on sample sets {testing_period_list[-1].strftime('%Y-%m-%d')} to "
           f"{testing_period_list[0].strftime('%Y-%m-%d')} ({len(testing_period_list)}) =====")
 
+    # read last record configuration for continue testing (continue_test = True)
+    if continue_test:
+        with global_vals.engine_ali.connect() as conn:
+            last_record = pd.read_sql(f"SELECT y_type, group_code, testing_period FROM {global_vals.result_score_table}_lgbm_class "
+                         f"WHERE name_sql='{sql_result['name_sql']}' ORDER BY finish_timing desc LIMIT 1", conn)       # download training history
+        global_vals.engine_ali.dispose()
+        last_record = last_record.iloc[0,:].to_list()
+
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
@@ -267,6 +276,13 @@ if __name__ == "__main__":
             sql_result['group_code'] = group_code
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in testing_period_list:
+                if continue_test:
+                    if [f, group_code,testing_period] != last_record:
+                        continue
+                    else:
+                        continue_test = False
+                        print(' ----------------------------> Continue testing from', last_record)
+
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
                                     'valid_method':valid_method, 'defined_cut_bins': defined_cut_bins,
