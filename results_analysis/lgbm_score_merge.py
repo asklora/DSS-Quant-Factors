@@ -7,7 +7,7 @@ import numpy as np
 
 import global_vals
 
-r_name = 'lastweekavg_rerun'
+r_name = 'lastweekavg_icb4_auc'
 model = 'lgbm'
 
 y_type = 'market_cap_usd'

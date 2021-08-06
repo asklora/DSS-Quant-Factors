@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lastweekavg_morecross'
+r_name = 'lastweekavg_icb4_auc'
 
 iter_name = r_name#.split('_')[-1]
 
@@ -71,9 +71,12 @@ def feature_importance():
     df['max'] = df.groupby(['group_code','testing_period','name', 'y_type'])['split'].transform('max')
     df['split'] = df['split']/df['max']
 
-    df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
-    # df1['avg'] = df1.mean(axis=1)
-    df1 = name_mapping(df1)
+    try:
+        df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
+        # df1['avg'] = df1.mean(axis=1)
+        df1 = name_mapping(df1)
+    except:
+        pass
 
     df11 = df.loc[df['group_code']=='industry'].groupby(['name', 'y_type'])['split'].mean().unstack()
     # df11['avg'] = df11.mean(axis=1)
@@ -82,8 +85,8 @@ def feature_importance():
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
     with pd.ExcelWriter(f'feature/lgbm_importance_{iter_name}.xlsx') as writer:
-        df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
-        df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
+        # df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
+        # df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
         df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)
         df11.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='ind_pivot')
         df2.to_excel(writer, sheet_name='group_code')

@@ -11,10 +11,10 @@ from pandas.tseries.offsets import MonthEnd
 
 import global_vals
 
-restart = True
-model = 'rf'
-period = 'biweekly' # biweekly / weekavg
-r_name = 'biweekly_rerun'
+restart = False
+model = 'lgbm'
+period = 'weekavg' # biweekly / weekavg
+r_name = 'lastweekavg_timevalid'
 
 iter_name = r_name
 
@@ -28,7 +28,7 @@ def download_stock_pred(count_pred=True):
     except Exception as e:
         print(e)
         with global_vals.engine_ali.connect() as conn:
-            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_{model}_class P "
+            query = text(f"SELECT P.group, P.pred, P.actual, S.group_code, S.y_type, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_{model}_class P "
                          f"INNER JOIN {global_vals.result_score_table}_{model}_class S ON S.finish_timing = P.finish_timing "
                          f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
             result_all = pd.read_sql(query, conn)       # download training history
@@ -57,13 +57,14 @@ def download_stock_pred(count_pred=True):
         result_all = result_all.dropna(subset=['actual'])
         result_all.to_csv('cache_result_all.csv', index=False)
 
+    # remove last period no enough data to measure reliably
+    result_all = result_all.loc[result_all['testing_period']<result_all['testing_period'].max()]
+
     # label period_end as the time where we assumed to train the model (try to incorporate all information before period_end)
     if period == 'biweekly':
         result_all['period_end'] = pd.to_datetime(result_all['testing_period']).apply(lambda x: x + relativedelta(weeks=2))
     else:
         result_all['period_end'] = pd.to_datetime(result_all['testing_period']) + MonthEnd(1)
-
-    result_all = result_all.loc[result_all['period_end']<result_all['period_end'].max()] # remove last period no enough data to measure reliably
 
     # map the original premium to the prediction result
     result_all = add_org_premium(result_all)
@@ -183,89 +184,99 @@ def calc_confusion(results):
 
     return confusion_df
 
-def calc_performance(df, compare_with_index=True, plot_performance=True):
+def calc_performance(df, accu_df, plot_performance=True):
     ''' calculate accuracy score by each industry/currency group '''
 
-    r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=['pred'], values=['premium'], aggfunc='mean')
-    r.columns = [x[1] for x in r.columns.to_list()]
-    r['ret'] = r.iloc[:,2].fillna(0) - r.iloc[:,0].fillna(0)
-    r = r.reset_index().sort_values(['group_code', 'y_type', 'period_end'])
+    col_list = list(df['y_type'].unique())
 
-    # r = r.loc[r['period_end']<r['period_end'].max()]
-    # r = r.loc[r['y_type']!='market_cap_usd']
-    r['year'] = r['period_end'].dt.year
-    col_list = list(r['y_type'].unique())
+    # 1. calculate return per our prediction & actual class
+    df_list = []
+    for i in ['pred', 'actual']:
+        r = pd.pivot_table(df, index=['group_code', 'y_type', 'period_end'], columns=[i], values=['premium'], aggfunc='mean')
+        r.columns = [f'{i}_{x[1]}' for x in r.columns.to_list()]
+        r[f'ret_{i}'] = r.iloc[:,2].fillna(0) - r.iloc[:,0].fillna(0)
+        df_list.append(r)
 
-    if compare_with_index:
-        with global_vals.engine_ali.connect() as conn:
-            index_ret = pd.read_sql(f"SELECT ticker, period_end, stock_return_y FROM {global_vals.processed_ratio_table}_{period} WHERE ticker like '.%%'",conn)
-        global_vals.engine_ali.dispose()
-        index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
-        index_ret.columns = ['y_type','period_end','ret']
-        r = pd.concat([r, index_ret], axis=0)
+    results = pd.concat(df_list, axis=1).reset_index().sort_values(['group_code', 'y_type', 'period_end'])
 
+    # 2. add accuracy for each (group_code, y_type, testing_period)
+    results = results.merge(accu_df, on=['group_code', 'y_type', 'period_end'], how='left')
+
+    # test on factor 'vol_30_90' first
+    results = results.loc[results['y_type']=='vol_30_90']
+
+    # 3. read index_return from DB & add for plot
+    with global_vals.engine_ali.connect() as conn:
+        index_ret = pd.read_sql(f"SELECT ticker as y_type, period_end, stock_return_y as ret_pred "
+                                f"FROM {global_vals.processed_ratio_table}_{period} "
+                                f"WHERE ticker like '.%%' AND period_end >= '{df['period_end'].min().strftime('%Y-%m-%d')}'",conn)
+    global_vals.engine_ali.dispose()
+    index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
+    index_ret = index_ret.loc[index_ret['y_type'].isin(['.SPX', '.CSI300'])]
+
+    results_plot = pd.concat([results, index_ret], axis=0)
+    results_plot['year'] = results_plot['period_end'].dt.year
+
+    # results_plot['ret_pred'].update(results_plot['ret_pred'].fillna(0))
+
+    # 4. plot performance with plt.plot again index
+    num_year = len(results_plot['year'].dropna().unique())
     if plot_performance:
+        currency = results_plot.loc[(results_plot['group_code'].isnull())|(results_plot['group_code']=='currency')]
+        industry = results_plot.loc[(results_plot['group_code'].isnull())|(results_plot['group_code']=='industry')]
+
+        # 4.1 - plot cumulative return for every year
         k=1
-        num_year = len(r['year'].dropna().unique())
         fig = plt.figure(figsize=(28, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
-        for name, g in r.groupby(['group_code','year']):
-            ax = fig.add_subplot(2,num_year,k)
+        for part_name, part in {'currency':currency, 'industry':industry}.items():
+            for name, g in part.groupby(['year']):
+                ax = fig.add_subplot(2, num_year, k)
+                g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values='ret_pred', aggfunc='mean')
+                g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
 
-            # add index benchmark
-            g = pd.concat([g, index_ret.loc[index_ret['y_type'].isin(['.SPX','.CSI300'])]], axis=0)
-            g['year'] = g['period_end'].dt.year     # fill in year
+                # define plot start point
+                if period == 'biweekly':
+                    start_index = g.index[0] - relativedelta(weeks=2)
+                else:
+                    start_index = g.index[0] - MonthEnd(1)
+                g.loc[start_index, :] = 1
 
-            g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['ret'], aggfunc='mean')
-            g.columns = [x[1] for x in g.columns.to_list()]
-            g = g.dropna(subset=col_list, how='all')
-            g = g.fillna(0)
+                # format plot
+                ax.plot(g.sort_index(), label=g.columns.to_list())
+                myFmt = mdates.DateFormatter('%m')
+                ax.xaxis.set_major_formatter(myFmt)
+                plt.ylim((0.8,1.8))
+                plt.xlim([dt.date(int(name)-1, 12, 31), dt.date(int(name), 12, 31)])
 
-            g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
-            if period == 'biweekly':
-                start_index = g.index[0] - relativedelta(weeks=2)
-            else:
-                start_index = g.index[0] - MonthEnd(1)
-            g.loc[start_index, :] = 1
-
-            ax.plot(g.sort_index(), label=g.columns.to_list())        # plot cumulative return for the year
-            myFmt = mdates.DateFormatter('%m')
-            ax.xaxis.set_major_formatter(myFmt)
-            plt.ylim((0.8,1.8))
-            plt.xlim([dt.date(int(name[1])-1, 12, 31), dt.date(int(name[1]), 12, 31)])
-
-            if k in [1, 1+num_year]:
-                ax.set_ylabel(name[0], fontsize=20)
-            if k > num_year:
-                ax.set_xlabel(int(name[1]), fontsize=20)
-            if k == 1:
-                plt.legend(loc='upper left', fontsize='large')
-            k+=1
+                if k in [1, 1+num_year]:
+                    ax.set_ylabel(part_name, fontsize=20)
+                if k > num_year:
+                    ax.set_xlabel(int(name), fontsize=20)
+                if k == 1:
+                    plt.legend(loc='upper left', fontsize='large')
+                k+=1
 
         plt.savefig(f'score/{model}_performance_{iter_name}_yearly.png')
 
+        # 4.2 - plot cumulative return for entire testing period
         k=1
         fig = plt.figure(figsize=(8, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
-        for name, g in r.groupby(['group_code']):
+        for part_name, g in {'currency':currency, 'industry':industry}.items():
             ax = fig.add_subplot(2,1,k)
 
             # add index benchmark
-            g = pd.concat([g, index_ret.loc[index_ret['y_type'].isin(['.SPX','.CSI300'])]], axis=0)
-            g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['ret'], aggfunc='mean')
-            g.columns = [x[1] for x in g.columns.to_list()]
-            g = g.dropna(subset=col_list, how='all')
-            g = g.fillna(0)
-
+            g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values='ret_pred', aggfunc='mean')
             g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
-            ax.plot(g.sort_index(), label=g.columns.to_list())        # plot cumulative return for the year
+            ax.plot(g, label=g.columns.to_list())        # plot cumulative return for the year
             plt.ylim((0.8,1.8))
-            ax.set_ylabel(name, fontsize=20)
+            ax.set_ylabel(part_name, fontsize=20)
             if k == 1:
                 plt.legend(loc='upper left', fontsize='large')
             k+=1
 
         plt.savefig(f'score/{model}_performance_{iter_name}.png')
 
-    return r
+    return results
 
 def calc_pred_class():
     ''' Calculte the accuracy_score if combine CV by mean, median, mode '''
@@ -273,8 +284,8 @@ def calc_pred_class():
     df = download_stock_pred()
 
     # calc_auc(df)
-    result_performance = calc_performance(df)
     result_time = combine_mode_time(df)
+    result_performance = calc_performance(df, result_time)
     confusion_df = calc_confusion(df)
     result_group = combine_mode_group(df)
     result_class = combine_mode_class(df)
