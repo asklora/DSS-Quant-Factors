@@ -14,7 +14,7 @@ import global_vals
 restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_timevalid_weight'
+r_name = 'lastweekavg_timevalid_unbalance'
 
 iter_name = r_name
 
