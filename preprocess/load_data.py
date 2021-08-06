@@ -73,6 +73,29 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
 
     return index_ret
 
+def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='median', change=True):
+    ''' download the aggregated value of all original ratios by each group '''
+
+    db_table = global_vals.processed_group_ratio_table
+    if stock_last_week_avg:
+        db_table += '_weekavg'
+    elif use_biweekly_stock:
+        db_table += '_biweekly'
+
+    with global_vals.engine_ali.connect() as conn:
+        df = pd.read_sql(f"SELECT * FROM {db_table} WHERE method = '{method}'", conn)
+    global_vals.engine_ali.dispose()
+    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')
+    field_col = df.columns.to_list()[2:-1]
+
+    if change:  # calculate the change of original ratio from T-1 -> T0
+        df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
+        df[field_col] = df[field_col].apply(trim_outlier)
+
+    df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
+
+    return df.iloc[:,:-1]
+
 def combine_data(use_biweekly_stock, stock_last_week_avg):
     ''' combine factor premiums with ratios '''
 
@@ -117,6 +140,10 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
     df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
+
+    # 3. (Removed) Add original ratios variables
+    org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
+    df = df.merge(org_df, on=['group', 'period_end'], how='left')
 
     # make up for all missing date in df
     indexes = pd.MultiIndex.from_product([df['group'].unique(), df['period_end'].unique()], names=['group', 'period_end']).to_frame().reset_index(drop=True)

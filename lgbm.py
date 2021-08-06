@@ -223,7 +223,7 @@ if __name__ == "__main__":
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
-    group_code_list = ['industry','currency']
+    group_code_list = ['currency']
     use_median = False
     continue_test = False
 
@@ -268,6 +268,7 @@ if __name__ == "__main__":
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
     factors_to_test = data.factor_list
+    factors_to_test=['vol_30_90']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
@@ -276,6 +277,10 @@ if __name__ == "__main__":
             sql_result['group_code'] = group_code
             data.split_group(group_code)                                                # load_data (class) STEP 2
             for testing_period in testing_period_list:
+
+                if testing_period!=dt.datetime(2019,3,31):
+                    continue
+
                 if continue_test:
                     if [f, group_code,testing_period] != last_record:
                         continue

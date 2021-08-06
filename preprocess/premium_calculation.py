@@ -8,7 +8,7 @@ from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 
-icb_num = 4
+icb_num = 6
 
 def trim_outlier(df, prc=0):
     ''' assign a max value for the 99% percentile to replace inf'''
@@ -134,6 +134,8 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         results = {}
         target_cols = factor_list + ['ticker', 'period_end', i, 'stock_return_y']
         for name, g in df[target_cols].groupby(['period_end', i]):
+            # if name[0]!=dt.datetime(2019,12,31):
+            #     continue
             results[name] = {}
             results[name], member_g = calc_group_premium_fama(name, g, factor_list)
             member_g['group'] = name[1]

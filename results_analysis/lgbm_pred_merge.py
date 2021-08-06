@@ -11,10 +11,10 @@ from pandas.tseries.offsets import MonthEnd
 
 import global_vals
 
-restart = False
+restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_timevalid'
+r_name = 'lastweekavg_timevalid_weight'
 
 iter_name = r_name
 
@@ -49,13 +49,16 @@ def download_stock_pred(count_pred=True):
                 count_i['year'] = count_i['testing_period'].dt.year
                 count_i.groupby(['year']).mean().to_excel(writer, sheet_name='year')
                 count_i.groupby(['y_type']).mean().to_excel(writer, sheet_name='factor')
+                pd.pivot_table(result_all, index=['group_code', 'y_type', 'testing_period','group'], columns=['cv_number']
+                               , values=['pred','actual']).to_excel(writer, sheet_name='cv')
             print('----------------------> Finish writing counting to csv')
 
         # convert pred/actual class to int & combine 5-CV with mode
-        result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
         result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
         result_all = result_all.dropna(subset=['actual'])
         result_all.to_csv('cache_result_all.csv', index=False)
+
+    result_all[['pred','actual']] = result_all[['pred','actual']].astype(int)
 
     # remove last period no enough data to measure reliably
     result_all = result_all.loc[result_all['testing_period']<result_all['testing_period'].max()]
