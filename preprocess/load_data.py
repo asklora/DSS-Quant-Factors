@@ -86,7 +86,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     if use_biweekly_stock:
         factor_table_name+='_biweekly'
     elif stock_last_week_avg:
-        factor_table_name+='_weekavg4'
+        factor_table_name+='_weekavg'
 
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql(f'SELECT * FROM {factor_table_name} WHERE \"group\" IS NOT NULL', conn)
@@ -295,10 +295,12 @@ class load_data:
                                                                               self.sample_set['train_y_final'],
                                                                               groups=self.train['group'])
         elif valid_method == "chron":       # split validation set by chronological order
-            valid_period = testing_period - relativedelta(years=2)   # using last 2 year samples as valid set
-            test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
-            train_index = self.train.loc[self.train['period_end'] < valid_period].index.to_list()
-            gkf = [(train_index, test_index)]
+            gkf = []
+            for n in range(1, n_splits+1):
+                valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
+                test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
+                train_index = self.train.loc[self.train['period_end'] < valid_period].index.to_list()
+                gkf.append((train_index, test_index))
         else:
             raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)
 
