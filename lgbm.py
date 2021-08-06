@@ -122,9 +122,9 @@ def eval_classifier(space):
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
-        test_true_arr = LabelBinarizer().fit(list(range(sql_result['qcut_q']))).transform(test_df['actual'])
-        Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
-        result['auc_test'] = roc_auc_score(test_true_arr, Y_test_pred_proba, multi_class='ovr')
+        # test_true_arr = LabelBinarizer().fit(list(range(sql_result['qcut_q']))).transform(test_df['actual'])
+        # Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
+        # result['auc_test'] = roc_auc_score(test_true_arr, Y_test_pred_proba, multi_class='ovr')
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
@@ -140,7 +140,7 @@ def eval_classifier(space):
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - result['auc_test']
+    return 1 - result['accuracy_test']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
