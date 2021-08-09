@@ -4,3 +4,5 @@ nb/
 *.json
 *.ipynb
 Pipfile*
+outputs/
+*ipynb_checkpoints*
