@@ -508,6 +508,19 @@ def dist_all_train_test():
     plt.savefig(f'eda/dist_all_train_test.png')
     plt.close()
 
+def plot_vol_30_90():
+    df = factors['vol_30_90']
+    print(df.describe())
+    # plt.hist(df, bins=1000)
+
+    df = factors.loc[factors['group'].str.len()==3].set_index(['period_end','group'])['vol_30_90'].unstack()
+    df.to_csv('test_vol.csv')
+    print(df)
+    plt.plot(df)
+
+    plt.legend(df.columns.to_list())
+    plt.show()
+
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_missing()
@@ -527,5 +540,7 @@ if __name__ == "__main__":
 
 
     ## Clustering
-    test_cluster()
+    # test_cluster()
     # test_tsne()
+
+    plot_vol_30_90()

@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lastweekavg_icb4_auc'
+r_name = 'lastweekavg_tv_maxret'
 
 iter_name = r_name#.split('_')[-1]
 
@@ -61,15 +61,15 @@ def feature_importance():
     # except Exception as e:
     # print(e)
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
+        query = text(f"SELECT P.*, S.cv_number, S.accuracy_test, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                      f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql='{r_name}'")
+                     f"WHERE S.name_sql='{r_name}' ORDER BY finish_timing, split desc")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
-    # df.to_csv('f_importance.csv', index=False)
 
-    df['max'] = df.groupby(['group_code','testing_period','name', 'y_type'])['split'].transform('max')
+    df['max'] = df.groupby(['cv_number','group_code','testing_period','y_type'])['split'].transform(np.nanmax)
     df['split'] = df['split']/df['max']
+    # df.to_csv('feature/f_importance.csv', index=False)
 
     try:
         df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
@@ -78,17 +78,17 @@ def feature_importance():
     except:
         pass
 
-    df11 = df.loc[df['group_code']=='industry'].groupby(['name', 'y_type'])['split'].mean().unstack()
+    # df11 = df.loc[df['group_code']=='industry'].groupby(['name', 'y_type'])[['split','accuracy_test']].mean().unstack()
     # df11['avg'] = df11.mean(axis=1)
-    df11 = name_mapping(df11)
+    # df11 = name_mapping(df11)
 
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
     with pd.ExcelWriter(f'feature/lgbm_importance_{iter_name}.xlsx') as writer:
-        # df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
-        # df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
-        df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)
-        df11.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='ind_pivot')
+        df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
+        df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
+        # df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)
+        # df11.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='ind_pivot')
         df2.to_excel(writer, sheet_name='group_code')
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ import global_vals
 restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_timevalid_unbalance'
+r_name = 'lastweekavg_tv_maxret'
 
 iter_name = r_name
 
@@ -187,10 +187,13 @@ def calc_confusion(results):
 
     return confusion_df
 
-def calc_performance(df, accu_df, plot_performance=True):
+def calc_performance(df, accu_df, plot_performance_yearly=False, plot_performance_all=True):
     ''' calculate accuracy score by each industry/currency group '''
 
     col_list = list(df['y_type'].unique())
+
+    # test on factor 'vol_30_90' first
+    df = df.loc[df['y_type']=='vol_30_90']
 
     # 1. calculate return per our prediction & actual class
     df_list = []
@@ -200,13 +203,16 @@ def calc_performance(df, accu_df, plot_performance=True):
         r[f'ret_{i}'] = r.iloc[:,2].fillna(0) - r.iloc[:,0].fillna(0)
         df_list.append(r)
 
+    mean_premium = -df.groupby(['group_code', 'y_type', 'period_end'])['premium'].mean()
+    mean_premium.name = 'ret_pred'
+    mean_premium = mean_premium.reset_index()
+    mean_premium['y_type'] = 'mean_premium'
+
     results = pd.concat(df_list, axis=1).reset_index().sort_values(['group_code', 'y_type', 'period_end'])
+    results = pd.concat([results, mean_premium], axis=0)
 
     # 2. add accuracy for each (group_code, y_type, testing_period)
     results = results.merge(accu_df, on=['group_code', 'y_type', 'period_end'], how='left')
-
-    # test on factor 'vol_30_90' first
-    results = results.loc[results['y_type']=='vol_30_90']
 
     # 3. read index_return from DB & add for plot
     with global_vals.engine_ali.connect() as conn:
@@ -215,19 +221,20 @@ def calc_performance(df, accu_df, plot_performance=True):
                                 f"WHERE ticker like '.%%' AND period_end >= '{df['period_end'].min().strftime('%Y-%m-%d')}'",conn)
     global_vals.engine_ali.dispose()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
-    index_ret = index_ret.loc[index_ret['y_type'].isin(['.SPX', '.CSI300'])]
+    index_ret_avg = index_ret.groupby(['period_end']).mean()['ret_pred'].reset_index()
+    index_ret_avg['y_type'] = 'index_avg'
+    index_ret = index_ret.loc[index_ret['y_type'].isin(['.SPX', '.CSI300','index_avg'])]
 
-    results_plot = pd.concat([results, index_ret], axis=0)
+    results_plot = pd.concat([results, index_ret, index_ret_avg], axis=0)
     results_plot['year'] = results_plot['period_end'].dt.year
 
     # results_plot['ret_pred'].update(results_plot['ret_pred'].fillna(0))
 
     # 4. plot performance with plt.plot again index
     num_year = len(results_plot['year'].dropna().unique())
-    if plot_performance:
-        currency = results_plot.loc[(results_plot['group_code'].isnull())|(results_plot['group_code']=='currency')]
-        industry = results_plot.loc[(results_plot['group_code'].isnull())|(results_plot['group_code']=='industry')]
-
+    currency = results_plot.loc[(results_plot['group_code'].isnull()) | (results_plot['group_code'] == 'currency')]
+    industry = results_plot.loc[(results_plot['group_code'].isnull()) | (results_plot['group_code'] == 'industry')]
+    if plot_performance_yearly:
         # 4.1 - plot cumulative return for every year
         k=1
         fig = plt.figure(figsize=(28, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
@@ -261,6 +268,7 @@ def calc_performance(df, accu_df, plot_performance=True):
 
         plt.savefig(f'score/{model}_performance_{iter_name}_yearly.png')
 
+    if plot_performance_all:
         # 4.2 - plot cumulative return for entire testing period
         k=1
         fig = plt.figure(figsize=(8, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot

@@ -186,12 +186,15 @@ class load_data:
 
         with global_vals.engine_ali.connect() as conn:
             query = text(
-                f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
+                f"SELECT P.*, S.cv_number, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                 f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
                 f"WHERE S.name_sql='biweekly_ma'")
             df = pd.read_sql(query, conn)  # download training history
             formula = pd.read_sql(f'SELECT name, rank, x_col FROM {global_vals.formula_factors_table}', conn)
         global_vals.engine_ali.dispose()
+
+        df['max'] = df.groupby(['cv_number', 'group_code', 'testing_period', 'y_type'])['split'].transform(np.nanmax)
+        df['split'] = df['split'] / df['max']
 
         # filter cross factors only
         x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()
