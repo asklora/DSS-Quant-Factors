@@ -14,7 +14,7 @@ import global_vals
 restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_timevalid_unbalance'
+r_name = 'lastweekavg_rerun'
 
 iter_name = r_name
 
@@ -85,7 +85,7 @@ def add_org_premium(df):
 
     actual_ret = actual_ret.set_index(['group', 'period_end']).stack().reset_index()
     actual_ret.columns = ['group', 'period_end', 'y_type', 'premium']
-
+    df['period_end'] = pd.to_datetime(df['period_end'])
     df = df.merge(actual_ret, on=['group', 'period_end', 'y_type'], how='left')
     return df
 
@@ -160,11 +160,11 @@ def combine_mode_time(df, time_plot=True):
             ax = fig.add_subplot(2,1,k)
             g['period_end'] = pd.to_datetime(g['period_end'])
             df_plot = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values=['accuracy'], aggfunc='mean')
-            ax.plot(df_plot, label=[x[1] for x in df_plot.columns.to_list()])
+            ax.plot(df_plot)
             ax.set_ylabel(name, fontsize=20)
             plt.ylim((0,1))
             if k==1:
-                plt.legend(loc='upper left', fontsize='small')
+                plt.legend([x[1] for x in df_plot.columns.to_list()], loc='upper left', fontsize='small')
             k+=1
         plt.savefig(f'score/{model}_pred_accu_time_{iter_name}.png')
 
@@ -206,7 +206,7 @@ def calc_performance(df, accu_df, plot_performance=True):
     results = results.merge(accu_df, on=['group_code', 'y_type', 'period_end'], how='left')
 
     # test on factor 'vol_30_90' first
-    results = results.loc[results['y_type']=='vol_30_90']
+    # results = results.loc[results['y_type']=='vol_30_90']
 
     # 3. read index_return from DB & add for plot
     with global_vals.engine_ali.connect() as conn:
@@ -245,7 +245,7 @@ def calc_performance(df, accu_df, plot_performance=True):
                 g.loc[start_index, :] = 1
 
                 # format plot
-                ax.plot(g.sort_index(), label=g.columns.to_list())
+                ax.plot(g.sort_index())
                 myFmt = mdates.DateFormatter('%m')
                 ax.xaxis.set_major_formatter(myFmt)
                 plt.ylim((0.8,1.8))
@@ -256,10 +256,10 @@ def calc_performance(df, accu_df, plot_performance=True):
                 if k > num_year:
                     ax.set_xlabel(int(name), fontsize=20)
                 if k == 1:
-                    plt.legend(loc='upper left', fontsize='large')
+                    plt.legend(g.columns.to_list(), loc='upper left', fontsize='large')
                 k+=1
 
-        plt.savefig(f'score/{model}_performance_{iter_name}_yearly.png')
+        plt.savefig(f'score/{model}_performance_yearly_{iter_name}.png')
 
         # 4.2 - plot cumulative return for entire testing period
         k=1
@@ -270,11 +270,11 @@ def calc_performance(df, accu_df, plot_performance=True):
             # add index benchmark
             g = pd.pivot_table(g, index=['period_end'], columns=['y_type'], values='ret_pred', aggfunc='mean')
             g[g.columns.to_list()] = np.cumprod(g + 1, axis=0)
-            ax.plot(g, label=g.columns.to_list())        # plot cumulative return for the year
+            ax.plot(g)        # plot cumulative return for the year
             plt.ylim((0.8,1.8))
             ax.set_ylabel(part_name, fontsize=20)
             if k == 1:
-                plt.legend(loc='upper left', fontsize='large')
+                plt.legend(g.columns.to_list(), loc='upper left', fontsize='large')
             k+=1
 
         plt.savefig(f'score/{model}_performance_{iter_name}.png')
@@ -297,10 +297,8 @@ def calc_pred_class():
         result_time.groupby(['group_code', 'y_type']).mean().to_excel(writer, sheet_name='average')
         result_group.to_excel(writer, sheet_name='mode_group', index=False)
         pd.pivot_table(result_group, index=['group'], columns=['y_type'], values='accuracy').to_excel(writer, sheet_name='mode_group_pivot')
-
         result_time.to_excel(writer, sheet_name='mode_time', index=False)
         pd.pivot_table(result_time, index=['period_end'], columns=['y_type'], values='accuracy').to_excel(writer, sheet_name='mode_time_pivot')
-
         confusion_df.to_excel(writer, sheet_name='confusion', index=False)
         result_performance.to_excel(writer, sheet_name='performance', index=False)
         result_class.groupby(['group_code', 'y_type']).mean().reset_index().to_excel(writer, sheet_name='mode_012_avg', index=False)

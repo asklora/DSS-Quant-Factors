@@ -508,6 +508,12 @@ def dist_all_train_test():
     plt.savefig(f'eda/dist_all_train_test.png')
     plt.close()
 
+def class_by_time():
+
+    factors['vol_30_90'] = pd.cut(factors['vol_30_90'], bins=[-np.inf, -0.013, 0.017, np.inf], labels=False)
+    df = pd.pivot_table(factors, index=['period_end'], columns=['group'], values='vol_30_90')
+    df.to_csv('test_by_time.csv')
+
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_missing()
@@ -527,5 +533,7 @@ if __name__ == "__main__":
 
 
     ## Clustering
-    test_cluster()
+    # test_cluster()
     # test_tsne()
+
+    class_by_time()
