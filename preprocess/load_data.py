@@ -217,7 +217,7 @@ class load_data:
             query = text(
                 f"SELECT P.*, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                 f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                f"WHERE S.name_sql='biweekly_ma'")
+                f"WHERE S.name_sql='lastweekavg_rerun'")
             df = pd.read_sql(query, conn)  # download training history
             formula = pd.read_sql(f'SELECT name, rank, x_col FROM {global_vals.formula_factors_table}', conn)
         global_vals.engine_ali.dispose()
@@ -307,12 +307,13 @@ class load_data:
             arma_col = self.x_col_dict['factor']        # if using pca, all history first
         elif len(y_type) == 1:
             corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-            self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
+            # self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
+            self.cross_factors = self.important_cross_factor(self.group_name)
             arma_col = self.cross_factors[y_type[0]]  # for LGBM: add AR for top 4 factors based on importance
         else:
             arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
-        arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
+        # arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         self.x_col_dict['ar'] = []
@@ -379,7 +380,7 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-                    + self.x_col_dict['index_pivot'] +  self.x_col_dict['macros_pivot']
+                    + self.x_col_dict['index'] +  self.x_col_dict['macro']
 
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[y_col].values, df[y_col_cut].values, df.filter(x_col).columns.to_list()     # Assuming using all factors
