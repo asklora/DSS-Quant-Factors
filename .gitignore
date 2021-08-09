@@ -6,3 +6,4 @@ nb/
 Pipfile*
 outputs/
 *ipynb_checkpoints*
+*.xlsx
