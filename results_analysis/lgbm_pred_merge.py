@@ -14,7 +14,7 @@ import global_vals
 restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_tv_maxret'
+r_name = 'lastweekavg_tv_maxret2'
 
 iter_name = r_name
 
