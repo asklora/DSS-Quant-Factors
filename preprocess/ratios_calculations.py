@@ -115,6 +115,11 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
         tri = get_tri(engine, save=save, update=update)
 
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
+        eikon_price = pd.read_sql(f'SELECT * FROM {global_vals.eikon_price_table}_daily', conn)
+        eikon_vol = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table}_vol', conn)
+    global_vals.engine_ali.dispose()
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends

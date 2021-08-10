@@ -218,12 +218,12 @@ def download_from_eikon_mktcap():
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
-    params = {'SDate': '2009-07-30', 'EDate': '2021-07-31', 'Frq': 'W', 'Scale':'6'}      # params for fundemantals
+    params = {'SDate': '1999-07-30', 'EDate': '2009-07-30', 'Frq': 'W', 'Scale':'6'}      # params for fundemantals
     field_name = ['TR.CompanyMarketCap(Curn=USD)','TR.CompanyMarketCap(Curn=Native)','TR.CompanyMarketCap.date']
 
-    tickers=['2943.HK']
+    tickers = check_eikon_full_ticker(global_vals.eikon_mktcap_table+'_weekly')
 
-    step = 1
+    step = 5
     for i in np.arange(0, len(tickers),step):
         ticker = tickers[i:(i + step)]
         print(i, ticker)
@@ -242,41 +242,132 @@ def download_from_eikon_mktcap():
             df.to_sql(global_vals.eikon_mktcap_table+'_weekly', **extra)
         global_vals.engine_ali.dispose()
 
-def check_eikon_full_ticker(csv_name=None, ddf=None):
+def check_eikon_full_ticker(table_name, last_day='2021-07-31'):
     ''' check if download csv file has all ticker in universe '''
 
-    try:
-        csv_ticker = pd.read_csv(csv_name).dropna(how='any')['ticker'].to_list()
-    except:
-        csv_ticker = ddf.dropna(how='any')['ticker'].to_list()
+    print(table_name)
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine_ali.connect() as conn:
+        # csv_ticker = set(pd.read_sql(f"SELECT DISTINCT ticker FROM {table_name}", conn)['ticker'].to_list())
+        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
         tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
-    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
-    miss_list = tickers-set(csv_ticker)
+    df = df.loc[df.isnull().sum(axis=1)!=0]
+    miss_list = set(df['ticker'].unique())
+
+    # miss_list = tickers-set(csv_ticker)
     print(len(miss_list), miss_list)
     if len(miss_list)<3:
         exit(1)
 
     return list(miss_list)
 
+def download_from_eikon_tri():
+    ''' download fields from eikon '''
+
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
+        tickers = sorted(list(set(universe['ticker'].to_list())))
+    global_vals.engine_ali.dispose()
+
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+
+    params = {'SDate': '1999-07-30', 'EDate': '2021-07-30', 'ADJUSTED': 1, 'Frq':'D'}      # params for fundemantals
+
+    field_name = ['TR.CLOSEPRICE','TR.HIGHPRICE','TR.OPENPRICE','TR.LOWPRICE']
+
+    # tickers = check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
+
+    step = 10
+    for i in np.arange(0, len(tickers),step):
+        ticker = tickers[i:(i + step)]
+        print(i, ticker)
+        for f in field_name:
+            try:
+                fields = [f, f+'.date']
+                df, err = ek.get_data(ticker, fields=fields, parameters=params)
+                df.columns = ['ticker', 'value', 'trading_day']
+                df['field'] = f
+                df['trading_day'] = pd.to_datetime(df['trading_day'].str[:10], format='%Y-%m-%d')
+                df = df.dropna(how='any')
+                print(df.head(10))
+            except Exception as e:
+                print(ticker, e)
+                continue
+
+        with global_vals.engine_ali.connect() as conn:
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
+            df.to_sql(global_vals.eikon_price_table+'_weekavg_daily', **extra)
+        global_vals.engine_ali.dispose()
+
+def download_from_eikon_vol():
+    ''' download fields from eikon '''
+
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
+        tickers = list(set(universe['ticker'].to_list()))
+    global_vals.engine_ali.dispose()
+
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+
+    params = {'SDate': '1999-07-30', 'EDate': '2021-07-30', 'Frq':'D'}      # params for fundemantals
+
+    field_name = ['TR.VOLUME', 'TR.CLOSEPRICE', 'TR.HIGHPRICE', 'TR.OPENPRICE', 'TR.LOWPRICE', 'TR.VOLUME.date']
+    tickers = check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_vol')
+    print(len(tickers))
+
+    step = 2
+    for i in np.arange(0, len(tickers),step):
+        ticker = tickers[i:(i + step)]
+        print(i, ticker)
+        # for f in field_name:
+        try:
+            # fields = field_name
+            df, err = ek.get_data(ticker, fields=field_name, parameters=params)
+            # df.columns = ['ticker', 'value', 'period_end']
+            # df['field'] = f
+            df['Date'] = pd.to_datetime(df['Date'].str[:10], format='%Y-%m-%d')
+            df = df.dropna(how='any')
+            print(df.head(10))
+        except Exception as e:
+            print(ticker, e)
+            continue
+
+        with global_vals.engine_ali.connect() as conn:
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
+            df.to_sql(global_vals.eikon_price_table+'_weekavg_vol', **extra)
+        global_vals.engine_ali.dispose()
+
+def org_eikon_tri_volume():
+    with global_vals.engine_ali.connect() as conn:
+        df1 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily", conn)
+        df2 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_vol", conn)
+    global_vals.engine_ali.dispose()
+
+    df1.columns = ['Instrument','Close Price','period_end']
+
+    df = df1.merge(df2, on=['Instrument','period_end'], how='outer').set_index(['Instrument','period_end'])[[
+        'Close Price','Open Price','High Price','Low Price']].reset_index()
+    df.columns = ['ticker','period_end'] + [x.split(' ')[0] for x in df.columns.to_list()[2:]]
+    print(df.head(10))
+
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
+        df.to_sql(global_vals.eikon_price_table + '_weekavg_final', **extra)
+    global_vals.engine_ali.dispose()
+
 if __name__ == '__main__':
 
-    # with global_vals.engine_ali.connect() as conn:
-    #     df = pd.read_sql(f"SELECT ticker FROM {global_vals.eikon_mktcap_table}_weekly", conn)
-    # global_vals.engine_ali.dispose()
-    # check_eikon_full_ticker(ddf=df)
-    # exit(1)
-
     # download_from_eikon_mktcap()
+    # check_eikon_full_ticker(global_vals.eikon_mktcap_table+'_weekly')
 
-    # download_from_eikon()
-    # combine_download_files()
-    # check_eikon_full_ticker('eikon_new_downloads1.csv')
-    # download_from_eikon_others()
-    # download_from_eikon_report_date()
-    download_from_eikon_vix()
+    download_from_eikon_tri()
+    # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
+
+    # download_from_eikon_vol()
+
+    # org_eikon_tri_volume()
 
     # from pandas.tseries.offsets import MonthEnd
     # df = pd.read_csv('eikon_new_downloads.csv')

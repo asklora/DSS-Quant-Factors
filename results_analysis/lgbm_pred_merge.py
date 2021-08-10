@@ -14,7 +14,7 @@ import global_vals
 restart = True
 model = 'lgbm'
 period = 'weekavg' # biweekly / weekavg
-r_name = 'lastweekavg_tv_maxret2'
+r_name = 'lastweekavg_maxprec'
 
 iter_name = r_name
 
@@ -285,6 +285,8 @@ def calc_performance(df, accu_df, plot_performance_yearly=False, plot_performanc
                 plt.legend(loc='upper left', fontsize='large')
             k+=1
 
+        plt.show()
+        exit(2)
         plt.savefig(f'score/{model}_performance_{iter_name}.png')
 
     return results

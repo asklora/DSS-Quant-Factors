@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lastweekavg_tv_maxret2'
+r_name = 'lastweekavg_timevalid_unbalance'
 
 iter_name = r_name#.split('_')[-1]
 

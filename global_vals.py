@@ -20,6 +20,7 @@ stock_data_table = "master_ohlcvtr"
 eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
 eikon_vix_table = "data_factor_eikon_vix"
+eikon_price_table = "data_factor_eikon_price"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"
