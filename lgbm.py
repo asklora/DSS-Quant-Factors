@@ -217,7 +217,7 @@ def HPOT(space, max_evals):
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_reg"+to_sql_suffix, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_reg"+to_sql_suffix, **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_reg"+to_sql_suffix, **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
