@@ -15,6 +15,8 @@ from preprocess.load_data import load_data
 from hyperspace_lgbm import find_hyperspace
 import global_vals
 
+to_sql_suffix = ""
+
 # ------------------------------------------- Train LightGBM ----------------------------------------------------
 
 def lgbm_train(space):
@@ -213,9 +215,9 @@ def HPOT(space, max_evals):
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_reg", **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_reg", **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class", **extra)
+            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_reg"+to_sql_suffix, **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_reg"+to_sql_suffix, **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
@@ -224,9 +226,9 @@ def HPOT(space, max_evals):
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class", **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class", **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class", **extra)
+            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class"+to_sql_suffix, **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class"+to_sql_suffix, **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
         global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
@@ -248,7 +250,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_cut10_reg1'
+    sql_result['name_sql'] = 'lastweekavg_cut10_reg1'+to_sql_suffix
     n_splits = 5
     use_biweekly_stock = False
     stock_last_week_avg = True
@@ -334,7 +336,7 @@ if __name__ == "__main__":
 
                         with global_vals.engine_ali.connect() as conn:
                             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-                            cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
+                            cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table+to_sql_suffix, **extra)
                         global_vals.engine_ali.dispose()
 
                     cv_number = 1   # represent which cross-validation sets
