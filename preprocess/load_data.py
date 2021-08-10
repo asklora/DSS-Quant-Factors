@@ -352,9 +352,9 @@ class load_data:
             y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        self.train = current_group.loc[(current_group['period_end'] < testing_period)]
+        self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
         # self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-        self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
+        self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
