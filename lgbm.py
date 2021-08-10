@@ -6,7 +6,7 @@ import numpy as np
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve, precision_score
 from sklearn.preprocessing import OneHotEncoder, LabelBinarizer
 from pandas.tseries.offsets import MonthEnd
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
@@ -137,8 +137,14 @@ def eval_classifier(space):
             x = 0
         return x
 
+    dict_weight = {0:2,1:1,2:2}
+
     result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
               'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred),
+              'precision_train': precision_score(sample_set['train_yy_final'], Y_train_pred, average='macro',
+                                                  sample_weight=list(map(dict_weight.get, sample_set['train_yy_final']))),
+              'precision_valid': precision_score(sample_set['valid_y_final'], Y_valid_pred, average='macro',
+                                                  sample_weight=list(map(dict_weight.get, sample_set['valid_y_final']))),
               'return_train': class_ret(sample_set['train_yy'], Y_train_pred, 2) - class_ret(sample_set['train_yy'],
                                                                                              Y_train_pred, 0),
               'return_valid': class_ret(sample_set['valid_y'], Y_valid_pred, 2) - class_ret(sample_set['valid_y'],
@@ -148,9 +154,11 @@ def eval_classifier(space):
         test_df = test_df.dropna(how='any')
         result_test = {
             'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
-            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
-            'r2_test': r2_score(test_df['actual'], test_df['pred']),
+            'precision_test': precision_score(test_df['actual'], test_df['pred'], average='macro',
+                                                sample_weight=list(map(dict_weight.get, test_df['actual'].values))),
+            # 'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
+            # 'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
+            # 'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
         # test_true_arr = LabelBinarizer().fit(list(range(sql_result['qcut_q']))).transform(test_df['actual'])
         # Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
@@ -166,12 +174,12 @@ def eval_classifier(space):
 
     hpot['all_results'].append(sql_result.copy())
 
-    if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+    if result['precision_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - result['accuracy_valid']
+    return 1 - result['precision_valid']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
@@ -236,8 +244,8 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='regression_l1')     # OPTIONS: regression_l1 / regression_l2 / multiclass
-    parser.add_argument('--qcut_q', default=10, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2 / multiclass
+    parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
@@ -248,7 +256,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_cut10_reg1'
+    sql_result['name_sql'] = 'lastweekavg_maxprec'
     n_splits = 5
     use_biweekly_stock = False
     stock_last_week_avg = True
@@ -256,7 +264,7 @@ if __name__ == "__main__":
     valid_method = 'cv'     # cv/chron
     defined_cut_bins = []
     group_code_list = ['currency']
-    use_median = True
+    use_median = False
     continue_test = False
     test_change = False
 
