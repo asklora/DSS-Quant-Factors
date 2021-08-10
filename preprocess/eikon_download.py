@@ -345,16 +345,15 @@ def org_eikon_tri_volume():
         df2 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_vol", conn)
     global_vals.engine_ali.dispose()
 
-    df1.columns = ['Instrument','Close Price','period_end']
+    df2.columns = ['ticker','value','trading_day']
+    df2['field'] = 'volume'
 
-    df = df1.merge(df2, on=['Instrument','period_end'], how='outer').set_index(['Instrument','period_end'])[[
-        'Close Price','Open Price','High Price','Low Price']].reset_index()
-    df.columns = ['ticker','period_end'] + [x.split(' ')[0] for x in df.columns.to_list()[2:]]
-    print(df.head(10))
+    df = pd.concat([df1, df2], axis=0)
+    df = df.pivot_table(index=['ticker','trading_day'], columns=['field'], values='value')
 
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
-        df.to_sql(global_vals.eikon_price_table + '_weekavg_final', **extra)
+        df.to_sql(global_vals.eikon_price_table + '_daily_final', **extra)
     global_vals.engine_ali.dispose()
 
 if __name__ == '__main__':
