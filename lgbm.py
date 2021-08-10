@@ -3,6 +3,7 @@ import lightgbm as lgb
 import argparse
 import pandas as pd
 import numpy as np
+import os
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
@@ -14,6 +15,8 @@ from pandas.tseries.offsets import MonthEnd
 from preprocess.load_data import load_data
 from hyperspace_lgbm import find_hyperspace
 import global_vals
+
+from utils import remove_tables_with_suffix
 
 to_sql_suffix = ""
 
@@ -299,6 +302,10 @@ if __name__ == "__main__":
                          f"WHERE name_sql='{sql_result['name_sql']}' ORDER BY finish_timing desc LIMIT 1", conn)       # download training history
         global_vals.engine_ali.dispose()
         last_record = last_record.iloc[0,:].to_list()
+
+    if os.environ.get('FACTORS_LGBM_REMOVE_CACHE', 'false').lower() == 'true':
+        print("FACTORS_LGBM_REMOVE_CACHE")
+        remove_tables_with_suffix(global_vals.engine_ali, to_sql_suffix)
 
     # --------------------------------- Model Training ------------------------------------------
 
