@@ -3,7 +3,7 @@ from hyperopt import hp
 space_lgbm_reg = {
     'learning_rate': hp.choice('learning_rate', [0.01]),
     'boosting_type': 'gbdt',
-    'max_bin': hp.choice('max_bin', [128, 256]),
+    'max_bin': hp.choice('max_bin', [256, 512]),
     'num_leaves': hp.quniform('num_leaves', 100, 300, 100),
     'min_data_in_leaf': hp.choice('min_data_in_leaf', [10, 30, 50]),
     'feature_fraction': hp.quniform('feature_fraction', 0.4, 0.8, 0.2),
@@ -35,11 +35,11 @@ space_lgbm_class['currency'] = {
     'boosting_type': 'gbdt',
     'max_bin': hp.choice('max_bin', [256, 512]),
     'num_leaves': hp.quniform('num_leaves', 100, 300, 100),
-    'min_data_in_leaf': hp.choice('min_data_in_leaf', [5, 15, 100]),
+    'min_data_in_leaf': hp.choice('min_data_in_leaf', [5, 50]),
     'feature_fraction': hp.quniform('feature_fraction', 0.4, 0.8, 0.2),
-    'bagging_fraction': hp.quniform('bagging_fraction', 0.4, 0.8, 0.2),
+    'bagging_fraction': hp.quniform('bagging_fraction', 0.6, 0.8, 0.2),
     'bagging_freq': hp.choice('bagging_freq', [4, 8]),
-    'min_gain_to_split': hp.choice('min_gain_to_split', [1e-2, 1e-1]),
+    'min_gain_to_split': hp.choice('min_gain_to_split', [0, 1e-2]),
     'lambda_l1': hp.choice('lambda_l1', [0, 10, 20]),
     'lambda_l2': hp.choice('lambda_l2', [0, 10, 100]),
 }

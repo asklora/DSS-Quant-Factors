@@ -195,18 +195,21 @@ class load_data:
 
         # calculate y for all factors
         self.all_y_col = ["y_"+x for x in self.factor_list]
+        self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
+        self.main[self.all_y_col_change] = (self.main[self.all_y_col].values+1)/(np.abs(self.main[self.factor_list]+1)).values-1
+        print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        curr_list = ['TWD','JPY','KRW','GBP','HKD','SGD','EUR','CNY','USD']
+        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD'] # 'TWD','JPY','SGD'
         self.group_name = group_name
 
         if group_name == 'currency':
             self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
         else:
-            self.group = self.main.loc[~self.main['group'].isin(curr_list)]          # train on currency partition factors
+            self.group = self.main.loc[~self.main['group'].str.len()==3]          # train on currency partition factors
 
         self.cross_factors = self.important_cross_factor(group_name)
 
@@ -217,7 +220,7 @@ class load_data:
             query = text(
                 f"SELECT P.*, S.cv_number, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
                 f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                f"WHERE S.name_sql='lastweekavg_rerun'")
+                f"WHERE S.name_sql='lastweekavg_timevalid_unbalance'")
             df = pd.read_sql(query, conn)  # download training history
             formula = pd.read_sql(f'SELECT name, rank, x_col FROM {global_vals.formula_factors_table}', conn)
         global_vals.engine_ali.dispose()
@@ -240,31 +243,38 @@ class load_data:
     def corr_cross_factor(self, df, y_type):
         ''' figure the top 3 most important cross factors '''
 
-        df = df[self.x_col_dict['factor']].corr()[y_type]
-        dic = {y_type:list(df.sort_values(ascending=False).index)[:10]}
+        all_x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro']
+        df = df[['y_'+y_type] + all_x_col].corr()['y_'+y_type]
+        dic = {y_type:list(df.sort_values(ascending=False).index)[1:10]}
         print('Correlation ', dic)
         return dic
 
-    def y_replace_median(self, qcut_q, arr, arr_cut):
+    def y_replace_median(self, qcut_q, arr, arr_cut, arr_test, arr_test_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
 
         df = pd.DataFrame(np.vstack((arr, arr_cut))).T   # concat original & qcut
         median = df.groupby([1]).median().sort_index()[0].to_list()     # find median of each group
         arr_cut_median = pd.DataFrame(arr_cut).replace(range(qcut_q), median)[0].values
-        return arr_cut_median
+        arr_test_cut_median = pd.DataFrame(arr_test_cut).replace(range(qcut_q), median)[0].values
+        return arr_cut_median, arr_test_cut_median
 
-    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, testing_period, y_type):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
-        cut_col = [x + "_cut" for x in self.all_y_col]
+        if test_change:
+            cut_col = [x + "_cut" for x in self.all_y_col_change]
+            y_col = self.all_y_col_change
+        else:
+            cut_col = [x + "_cut" for x in self.all_y_col]
+            y_col = self.all_y_col
 
         if qcut_q > 0:
             # convert consistently negative premium factor to positive
-            sharpe = self.train[self.all_y_col].mean(axis=0)/self.train[self.all_y_col].std(axis=0)
+            sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
             neg_factor = list(sharpe[sharpe<0].index)
             self.train[neg_factor] = -self.train[neg_factor]
 
-            arr = self.train[self.all_y_col].values.flatten()  # Flatten all training factors to qcut all together
+            arr = self.train[y_col].values.flatten()  # Flatten all training factors to qcut all together
             # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
 
             if defined_cut_bins == []:
@@ -277,15 +287,14 @@ class load_data:
                 cut_bins = defined_cut_bins
                 arr_cut = pd.cut(arr, bins=cut_bins, labels=False)
 
-            arr_test = self.test[self.all_y_col].values.flatten()  # Flatten all testing factors to qcut all together
+            arr_test = self.test[y_col].values.flatten()  # Flatten all testing factors to qcut all together
             arr_test_cut = pd.cut(arr_test, bins=cut_bins, labels=False)
 
             if use_median:      # for regression -> remove noise by regression on median of each bins
-                arr_cut = self.y_replace_median(qcut_q, arr, arr_cut)
-                arr_test_cut = self.y_replace_median(qcut_q, arr_test, arr_test_cut)
+                arr_cut, arr_test_cut = self.y_replace_median(qcut_q, arr, arr_cut, arr_test, arr_test_cut)
 
-            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(self.all_y_col)), order='C')
-            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(self.all_y_col)), order='C')
+            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
+            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
 
             # write cut_bins to DB
             self.cut_bins_df = self.train[cut_col].apply(pd.value_counts).transpose()
@@ -296,10 +305,10 @@ class load_data:
             self.cut_bins_df['cut_bins_low'] = cut_bins[1]
             self.cut_bins_df['cut_bins_high'] = cut_bins[-2]
         else:
-            self.train[cut_col] = self.train[self.all_y_col]
-            self.test[cut_col] = self.test[self.all_y_col]
+            self.train[cut_col] = self.train[y_col]
+            self.test[cut_col] = self.test[y_col]
 
-    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, use_pca=False):
+    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, use_pca=False, test_change=False):
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
@@ -310,13 +319,10 @@ class load_data:
             arma_col = self.x_col_dict['factor']        # if using pca, all history first
         elif len(y_type) == 1:
             corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-            # self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
-            self.cross_factors = self.important_cross_factor(self.group_name)
-            arma_col = self.cross_factors[y_type[0]]  # for LGBM: add AR for top 4 factors based on importance
+            self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
+            arma_col = self.important_cross_factor(self.group_name)[y_type[0]]  # for LGBM: add AR for top 4 factors based on importance
         else:
             arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
-
-        # arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         self.x_col_dict['ar'] = []
@@ -326,6 +332,7 @@ class load_data:
             self.x_col_dict['ar'].extend(ar_col)    # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y
+        # arma_col = y_type  # add MA for all y_type predicted at the same time
         ma_q_col = [f"ma_{x}_q" for x in arma_col]
         ma_y_col = [f"ma_{x}_y" for x in arma_col]
         current_group[ma_q_col] = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().values      # moving average for 3m
@@ -339,14 +346,18 @@ class load_data:
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 
-        y_col = ['y_'+x for x in y_type]
+        if test_change:
+            y_col = ['y_change_'+x for x in y_type]
+        else:
+            y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
+        self.train = current_group.loc[(current_group['period_end'] < testing_period)]
+        # self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True)
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_qcut_all(qcut_q, defined_cut_bins, use_median, testing_period, y_type)
+        self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
 
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
@@ -386,7 +397,8 @@ class load_data:
                     + self.x_col_dict['index'] +  self.x_col_dict['macro']
 
             y_col_cut = [x+'_cut' for x in y_col]
-            return df.filter(x_col).values, df[y_col].values, df[y_col_cut].values, df.filter(x_col).columns.to_list()     # Assuming using all factors
+            return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
+                   df.filter(x_col).columns.to_list()     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
@@ -418,10 +430,10 @@ class load_data:
         return gkf
 
     def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, valid_method='cv',
-                  defined_cut_bins=[], use_median=False):
+                  defined_cut_bins=[], use_median=False, test_change=False):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
 

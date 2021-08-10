@@ -27,13 +27,19 @@ def lgbm_train(space):
     sql_result.update(params)        # update hyper-parameter used in model
     print('===== hyperspace =====', params)
     params['is_unbalance'] = True
-    # params['min_hessian'] = 0
+    params['min_hessian'] = 0
+    params['first_metric_only'] = True
 
-    dict_weight = {0:2,1:1,2:2}
-    lgb_train = lgb.Dataset(sample_set['train_xx'], label=sample_set['train_yy_final'],
-                            weight=list(map(dict_weight.get, sample_set['train_yy_final'])), free_raw_data=False)
-    lgb_eval = lgb.Dataset(sample_set['valid_x'], label=sample_set['valid_y_final'],
-                           weight=list(map(dict_weight.get, sample_set['valid_y_final'])), free_raw_data=False, reference=lgb_train)
+    # if args.objective == 'multiclass':
+    #     dict_weight = {0:2,1:1,2:1}
+    #     lgb_train = lgb.Dataset(sample_set['train_xx'], label=sample_set['train_yy_final'],
+    #                             weight=list(map(dict_weight.get, sample_set['train_yy_final'])), free_raw_data=False)
+    #     lgb_eval = lgb.Dataset(sample_set['valid_x'], label=sample_set['valid_y_final'],
+    #                            weight=list(map(dict_weight.get, sample_set['valid_y_final'])), free_raw_data=False, reference=lgb_train)
+    # else:
+    lgb_train = lgb.Dataset(sample_set['train_xx'], label=sample_set['train_yy_final'], free_raw_data=False)
+    lgb_eval = lgb.Dataset(sample_set['valid_x'], label=sample_set['valid_y_final'], free_raw_data=False,
+                           reference=lgb_train)
 
     evals_result = {}
     gbm = lgb.train(params,
@@ -51,6 +57,8 @@ def lgbm_train(space):
         Y_train_pred = gbm.predict(sample_set['train_xx'], num_iteration=gbm.best_iteration)
         Y_valid_pred = gbm.predict(sample_set['valid_x'], num_iteration=gbm.best_iteration)
         Y_test_pred = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
+        sql_result['feature_importance'], feature_importance_df = to_list_importance(gbm)
+        return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df
 
     # prediction on all sets if using classification
     elif sql_result['objective'] in ['multiclass']:
@@ -60,10 +68,8 @@ def lgbm_train(space):
         Y_valid_pred = [list(i).index(max(i)) for i in Y_valid_pred_softmax]
         Y_test_pred_softmax = gbm.predict(sample_set['test_x'], num_iteration=gbm.best_iteration)
         Y_test_pred = [list(i).index(max(i)) for i in Y_test_pred_softmax]
-
-    sql_result['feature_importance'], feature_importance_df = to_list_importance(gbm)
-
-    return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_softmax
+        sql_result['feature_importance'], feature_importance_df = to_list_importance(gbm)
+        return Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_softmax
 
 # -------------------------------- Evaluate Results (Regression / Classification) -------------------------------------
 
@@ -71,14 +77,22 @@ def eval_regressor(space):
     ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_proba = lgbm_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
+
+    def port_ret(ret, pred, set_name='test_x'):
+        if test_change:
+            pred = (pred+1)*sample_set[set_name][:,data.x_col.index(sql_result['y_type'])]
+        return np.nanmean(ret[np.array(pred) > np.nanquantile(pred, 2/3)]) - np.nanmean(ret[np.array(pred) < np.nanquantile(pred, 1/3)])
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
               'mse_train': mean_squared_error(sample_set['train_yy'], Y_train_pred),
               'mse_valid': mean_squared_error(sample_set['valid_y'], Y_valid_pred),
               'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
-              'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
+              'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred),
+              'return_train': port_ret(sample_set['train_yy'], Y_train_pred, 'train_xx'),
+              'return_valid': port_ret(sample_set['valid_y'], Y_valid_pred, 'valid_x'),
+              }
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
         test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
@@ -86,7 +100,9 @@ def eval_regressor(space):
         result_test = {
             'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
-            'r2_test': r2_score(test_df['actual'], test_df['pred'])}
+            'r2_test': r2_score(test_df['actual'], test_df['pred']),
+            'return_test':  port_ret(test_df['actual'], test_df['pred'], 'test_x'),
+        }
         result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:  # for real_prediction -> no calculation
@@ -115,12 +131,18 @@ def eval_classifier(space):
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df, Y_test_pred_proba = lgbm_train(space)
 
+    def class_ret(ret, pred, ret_class):
+        x = np.nanmean(ret[np.array(pred) == ret_class])
+        if np.isnan(x):
+            x = 0
+        return x
+
     result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
-              'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred)}
-    result['return_train'] = np.nanmean(sample_set['train_yy'][np.array(Y_train_pred) == 2]) - \
-                            np.nanmean(sample_set['train_yy'][np.array(Y_train_pred) == 0])
-    result['return_valid'] = np.nanmean(sample_set['valid_y'][np.array(Y_valid_pred) == 2]) - \
-                            np.nanmean(sample_set['valid_y'][np.array(Y_valid_pred) == 0])
+              'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred),
+              'return_train': class_ret(sample_set['train_yy'], Y_train_pred, 2) - class_ret(sample_set['train_yy'],
+                                                                                             Y_train_pred, 0),
+              'return_valid': class_ret(sample_set['valid_y'], Y_valid_pred, 2) - class_ret(sample_set['valid_y'],
+                                                                                            Y_valid_pred, 0)}
     try:        # for backtesting -> calculate accuracy for testing set
         test_df = pd.DataFrame({'actual':sample_set['test_y_final'], 'pred': Y_test_pred})
         test_df = test_df.dropna(how='any')
@@ -134,8 +156,7 @@ def eval_classifier(space):
         # Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
         # result['auc_test'] = roc_auc_score(test_true_arr, Y_test_pred_proba, multi_class='ovr')
         result['test_len'] = len(test_df)
-        result['return_test'] = np.nanmean(sample_set['test_y'][np.array(Y_test_pred)==2]) - \
-                                np.nanmean(sample_set['test_y'][np.array(Y_test_pred)==0])
+        result['return_test'] = class_ret(sample_set['test_y'], Y_test_pred, 2) - class_ret(sample_set['test_y'], Y_test_pred, 0)
         result.update(result_test)
     except Exception as e:     # for real_prediction -> no calculation
         print(e)
@@ -150,11 +171,11 @@ def eval_classifier(space):
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - result['return_valid']
+    return 1 - result['accuracy_valid']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
-def to_sql_prediction(Y_test_pred, Y_test_pred_proba):
+def to_sql_prediction(Y_test_pred, Y_test_pred_proba=None):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
     df = pd.DataFrame()
@@ -215,11 +236,11 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2 / multiclass
-    parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--objective', default='regression_l1')     # OPTIONS: regression_l1 / regression_l2 / multiclass
+    parser.add_argument('--qcut_q', default=10, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
-    parser.add_argument('--max_eval', type=int, default=10)         # for hyperopt
+    parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
     parser.add_argument('--nthread', default=12, type=int)          # for the best speed, set this to the number of real CPU cores
     args = parser.parse_args()
     print(args)
@@ -227,7 +248,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_cv_maxreturn1'
+    sql_result['name_sql'] = 'lastweekavg_cut10_reg1'
     n_splits = 5
     use_biweekly_stock = False
     stock_last_week_avg = True
@@ -235,8 +256,9 @@ if __name__ == "__main__":
     valid_method = 'cv'     # cv/chron
     defined_cut_bins = []
     group_code_list = ['currency']
-    use_median = False
+    use_median = True
     continue_test = False
+    test_change = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -251,7 +273,7 @@ if __name__ == "__main__":
 
     if sql_result['objective'] == 'multiclass':
         base_space['num_class'] = sql_result['qcut_q']
-        base_space['metric'] = 'multi_error' # multi_logloss
+        base_space['metric'] = 'multi_logloss' # multi_logloss
 
     # create date list of all testing period
     if use_biweekly_stock:
@@ -280,7 +302,7 @@ if __name__ == "__main__":
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
     factors_to_test = data.factor_list
-    factors_to_test = ['vol_30_90']
+    # factors_to_test = ['vol_30_90']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
@@ -299,12 +321,12 @@ if __name__ == "__main__":
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': args.qcut_q, 'y_type': [sql_result['y_type']],
                                     'valid_method':valid_method, 'defined_cut_bins': defined_cut_bins,
-                                    'use_median':use_median, 'n_splits':n_splits}
+                                    'use_median':use_median, 'n_splits':n_splits, 'test_change':test_change}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
                     # write stock_pred for the best hyperopt records to sql
-                    if write_cutbins:
+                    if (write_cutbins)&(args.objective=='multiclass'):
                         cut_bins_df = data.cut_bins_df
                         cut_bins_df['testing_period'] = testing_period
                         cut_bins_df['group_code'] = group_code
@@ -335,6 +357,7 @@ if __name__ == "__main__":
 
                         sql_result['train_len'] = len(sample_set['train_xx']) # record length of training/validation sets
                         sql_result['valid_len'] = len(sample_set['valid_x'])
+                        sql_result['valid_group'] = ','.join(list(data.train['group'][valid_index].unique()))
 
                         space = find_hyperspace(sql_result)
                         space.update(base_space)
@@ -343,6 +366,8 @@ if __name__ == "__main__":
                         cv_number += 1
                 except Exception as e:
                     print(testing_period, e)
+                    raise e
+                    exit(2)
                     continue
 
         write_cutbins = False

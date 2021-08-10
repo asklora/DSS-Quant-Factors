@@ -6,7 +6,7 @@ import numpy as np
 
 import global_vals
 
-r_name = 'biweekly_org'
+r_name = 'lastweekavg_change3'
 
 iter_name = r_name
 
