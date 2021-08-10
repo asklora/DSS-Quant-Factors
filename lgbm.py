@@ -3,6 +3,7 @@ import lightgbm as lgb
 import argparse
 import pandas as pd
 import numpy as np
+import os
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
@@ -14,6 +15,8 @@ from pandas.tseries.offsets import MonthEnd
 from preprocess.load_data import load_data
 from hyperspace_lgbm import find_hyperspace
 import global_vals
+
+from utils import remove_tables_with_suffix
 
 to_sql_suffix = ""
 
@@ -214,10 +217,10 @@ def HPOT(space, max_evals):
         best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_reg"+to_sql_suffix, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_reg"+to_sql_suffix, **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
+            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_reg"+to_sql_suffix, **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['multiclass']:
@@ -225,7 +228,7 @@ def HPOT(space, max_evals):
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class"+to_sql_suffix, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class"+to_sql_suffix, **extra)
             hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
@@ -299,6 +302,10 @@ if __name__ == "__main__":
                          f"WHERE name_sql='{sql_result['name_sql']}' ORDER BY finish_timing desc LIMIT 1", conn)       # download training history
         global_vals.engine_ali.dispose()
         last_record = last_record.iloc[0,:].to_list()
+
+    if os.environ.get('FACTORS_LGBM_REMOVE_CACHE', 'false').lower() == 'true':
+        print("FACTORS_LGBM_REMOVE_CACHE")
+        remove_tables_with_suffix(global_vals.engine_ali, to_sql_suffix)
 
     # --------------------------------- Model Training ------------------------------------------
 
