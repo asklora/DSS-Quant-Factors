@@ -320,7 +320,7 @@ class load_data:
         elif len(y_type) == 1:
             corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
             self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
-            arma_col = self.important_cross_factor(self.group_name)[y_type[0]]  # for LGBM: add AR for top 4 factors based on importance
+            arma_col = self.important_cross_factor(self.group_name).get(y_type[0], [])
         else:
             arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
