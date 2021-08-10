@@ -173,6 +173,6 @@ def compare_all_similar_xls():
 
 if __name__ == "__main__":
 
-    # calc_pred_class()
-    compare_all_similar_xls()
+    calc_pred_class()
+    # compare_all_similar_xls()
 
