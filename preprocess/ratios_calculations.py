@@ -79,7 +79,7 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
-    tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)       # update tri to 1d before (i.e. all stock ret up to 1d before)
+    tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)-1       # update tri to 1d before (i.e. all stock ret up to 1d before)
     tri['skew'] = tri["skew"].rolling(365, min_periods=1).skew()
     tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
 
@@ -118,9 +118,11 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
         print(f'#################################################################################################')
-        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}_daily_final')
+        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
     global_vals.engine_ali.dispose()
+
+    # tri = tri.loc[tri['ticker']=='AAPL.O']
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
@@ -139,12 +141,13 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
 
     # merge DSS & EIKON data
-    tri = tri.merge(eikon_price[['ticker','trading_day']], on=['ticker','trading_day'], how='outer').sort_values(by=['ticker','trading_day'])
-    tri = tri.set_index(['ticker','trading_day'])
-    eikon_price = eikon_price.set_index(['ticker','trading_day'])
+    tri = tri.merge(eikon_price, on=['ticker','trading_day'], how='outer', suffixes=['','_eikon']).sort_values(by=['ticker','trading_day'])
+    # tri = tri.set_index(['ticker','trading_day'])
+    # eikon_price = eikon_price.set_index(['ticker','trading_day'])
     value_col = ['open','high','low','close','tri','volume']
-    tri[value_col] = tri[value_col].fillna(eikon_price[value_col])  # update missing tri (i.e. prior history) with EIKON tri calculated
-    tri = tri.reset_index()
+    for col in value_col:
+        tri[col] = tri[col].fillna(tri[col+'_eikon'])  # update missing tri (i.e. prior history) with EIKON tri calculated
+    tri = tri[['ticker','trading_day'] + value_col]
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
@@ -161,6 +164,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # resample tri using last week average as the proxy for monthly tri
     print(f'      ------------------------> Stock price using [{price_sample}] ')
     if price_sample == 'last_week_avg':
+        tri = tri.sort_values(['ticker','trading_day'])
         tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
         tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
     elif price_sample == 'last_day':
@@ -277,7 +281,10 @@ def fill_all_given_date(result, ref):
     indexes['period_end'] = pd.to_datetime(indexes['period_end'])
     result = result.merge(indexes, on=['ticker', 'period_end'], how='outer')
     result = result.sort_values(by=['ticker', 'period_end'], ascending=True)
+    # x = result.loc[result['ticker']=='AAPL.O']
     result.update(result.groupby(['ticker']).fillna(method='ffill'))        # fill forward for date
+    # x = result.loc[result['ticker']=='AAPL.O']
+
     result = result.loc[(result['period_end'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
     result = result.drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
 
@@ -582,5 +589,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=True, save=False, update=False)
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+                          use_cached=True, save=True, update=False)

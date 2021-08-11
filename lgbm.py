@@ -35,7 +35,7 @@ def lgbm_train(space):
     params['min_hessian'] = 0
     params['first_metric_only'] = True
     params['verbose'] = 2
-    params['metric'] = 'l2'  # multi_logloss
+    params['metric'] = 'l2'
 
     # if args.objective == 'multiclass':
     #     dict_weight = {0:2,1:1,2:1}
@@ -86,9 +86,15 @@ def eval_regressor(space):
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
 
-    def port_ret(ret, pred, set_name='test_x'):
-        if test_change:
-            pred = (pred+1)*sample_set[set_name][:,data.x_col.index(sql_result['y_type'])]
+    if test_change:
+        Y_train_prior = sample_set['train_xx'][:, data.x_col.index(sql_result['y_type'])]
+        Y_train_pred = Y_train_pred*np.abs(Y_train_prior)+Y_train_prior
+        Y_valid_prior = sample_set['valid_x'][:, data.x_col.index(sql_result['y_type'])]
+        Y_valid_pred = Y_valid_pred*np.abs(Y_valid_prior)+Y_valid_prior
+        Y_test_prior = sample_set['test_x'][:, data.x_col.index(sql_result['y_type'])]
+        Y_test_pred = Y_test_pred*np.abs(Y_test_prior)+Y_test_prior
+
+    def port_ret(ret, pred):
         return np.nanmean(ret[np.array(pred) > np.nanquantile(pred, 2/3)]) - np.nanmean(ret[np.array(pred) < np.nanquantile(pred, 1/3)])
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
@@ -97,8 +103,8 @@ def eval_regressor(space):
               'mse_valid': mean_squared_error(sample_set['valid_y'], Y_valid_pred),
               'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
               'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred),
-              'return_train': port_ret(sample_set['train_yy'], Y_train_pred, 'train_xx'),
-              'return_valid': port_ret(sample_set['valid_y'], Y_valid_pred, 'valid_x'),
+              'return_train': port_ret(sample_set['train_yy'], Y_train_pred),
+              'return_valid': port_ret(sample_set['valid_y'], Y_valid_pred),
               }
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
@@ -126,7 +132,7 @@ def eval_regressor(space):
         hpot['best_stock_feature'] = feature_importance_df
 
     if sql_result['objective'] == 'regression_l2':
-        return 1-result['r2_test']
+        return result['mse_valid']
     elif sql_result['objective'] == 'regression_l1':
         return result['mae_valid']
     else:
@@ -263,7 +269,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'newlastweekavg_dart'
+    sql_result['name_sql'] = 'newlastweekavg_mipivot_change1'
     n_splits = 1
     use_biweekly_stock = False
     stock_last_week_avg = True
@@ -271,9 +277,9 @@ if __name__ == "__main__":
     valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
     group_code_list = ['currency']
-    use_median = True
+    use_median = False
     continue_test = False
-    test_change = False
+    test_change = True
 
     # from preprocess.ratios_calculations import calc_factor_variables
     # from preprocess.premium_calculation import calc_premium_all
@@ -297,7 +303,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,6,27)
+        last_test_date = dt.datetime(2021,7,4)
         backtest_period = 100
         testing_period_list=[last_test_date+relativedelta(days=1) - 2*i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]

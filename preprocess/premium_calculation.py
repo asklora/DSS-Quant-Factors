@@ -71,6 +71,11 @@ def calc_group_premium_fama(name, g, factor_list):
             print(name, f, e)
             continue
 
+        g=g.sort_values(by=[f])
+        x1 = g.loc[g[f'{f}_cut'] == 0]
+        m1 = x1.mean()
+        x2 = g.loc[g[f'{f}_cut'] == 2]
+        m2 = x2.mean()
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
@@ -127,6 +132,8 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         df['icb_code'] = df['icb_code'].str[:icb_num]
         group_list = ['icb_code']
 
+    factor_list = ['vol_0_30']
+
     print(f'#################################################################################################')
     for i in group_list:
         print(f'      ------------------------> Start calculate factor premium - [{i}] Partition')
@@ -136,6 +143,8 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         for name, g in df[target_cols].groupby(['period_end', i]):
             # if name[0]!=dt.datetime(2019,12,31):
             #     continue
+            if name[1] != 'USD':
+                continue
             results[name] = {}
             results[name], member_g = calc_group_premium_fama(name, g, factor_list)
             member_g['group'] = name[1]
