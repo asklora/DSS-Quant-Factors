@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'lgbm'
-r_name = 'lastweekavg_cut10_reg1'
+r_name = 'newlastweekavg_maxr'
 
 iter_name = r_name
 
@@ -88,7 +88,7 @@ def calc_performance(df, accu_df, plot_performance_all=True, q=1/3):
     ''' calculate accuracy score by each industry/currency group '''
 
     # test on factor 'vol_30_90' first
-    df = df.loc[df['y_type']=='vol_30_90']
+    df = df.loc[df['y_type']=='vol_0_30']
 
     df['pred_low'] = df.groupby(['group_code', 'y_type', 'testing_period'])['pred'].transform(np.nanquantile, q=q)
     df['pred_high'] = df.groupby(['group_code', 'y_type', 'testing_period'])['pred'].transform(np.nanquantile, q=1-q)
@@ -124,7 +124,7 @@ def calc_performance(df, accu_df, plot_performance_all=True, q=1/3):
             ax = fig.add_subplot(2,1,k)
 
             # add index benchmark
-            g[cols] = np.cumprod(-g[cols] + 1, axis=0)
+            g[cols] = np.cumprod(g[cols] + 1, axis=1)
             ax.plot(g.set_index(['testing_period'])[cols])        # plot cumulative return for the year
             plt.ylim((0.8,2))
             ax.set_ylabel(part_name, fontsize=20)

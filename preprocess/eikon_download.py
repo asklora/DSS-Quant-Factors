@@ -248,15 +248,15 @@ def check_eikon_full_ticker(table_name, last_day='2021-07-31'):
     print(table_name)
 
     with global_vals.engine_ali.connect() as conn:
-        # csv_ticker = set(pd.read_sql(f"SELECT DISTINCT ticker FROM {table_name}", conn)['ticker'].to_list())
-        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+        csv_ticker = set(pd.read_sql(f"SELECT DISTINCT \"Instrument\" as ticker FROM {table_name}", conn)['ticker'].to_list())
+        # df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
         tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
     global_vals.engine_ali.dispose()
 
-    df = df.loc[df.isnull().sum(axis=1)!=0]
-    miss_list = set(df['ticker'].unique())
+    # df = df.loc[df.isnull().sum(axis=1)!=0]
+    # miss_list = set(df['ticker'].unique())
 
-    # miss_list = tickers-set(csv_ticker)
+    miss_list = tickers-set(csv_ticker)
     print(len(miss_list), miss_list)
     if len(miss_list)<3:
         exit(1)
@@ -275,7 +275,7 @@ def download_from_eikon_tri():
 
     params = {'SDate': '1999-07-30', 'EDate': '2021-07-30', 'ADJUSTED': 1, 'Frq':'D'}      # params for fundemantals
 
-    field_name = ['TR.CLOSEPRICE','TR.HIGHPRICE','TR.OPENPRICE','TR.LOWPRICE']
+    field_name = ['TR.CLOSEPRICE','TR.HIGHPRICE','TR.OPENPRICE']#,'TR.LOWPRICE']
 
     # tickers = check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
 
@@ -296,10 +296,10 @@ def download_from_eikon_tri():
                 print(ticker, e)
                 continue
 
-        with global_vals.engine_ali.connect() as conn:
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
-            df.to_sql(global_vals.eikon_price_table+'_weekavg_daily', **extra)
-        global_vals.engine_ali.dispose()
+            with global_vals.engine_ali.connect() as conn:
+                extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
+                df.to_sql(global_vals.eikon_price_table+'_weekavg_daily', **extra)
+            global_vals.engine_ali.dispose()
 
 def download_from_eikon_vol():
     ''' download fields from eikon '''
@@ -341,18 +341,20 @@ def download_from_eikon_vol():
 
 def org_eikon_tri_volume():
     with global_vals.engine_ali.connect() as conn:
-        df1 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily", conn)
-        df2 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_vol", conn)
+        df2 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_weekavg_vol WHERE \"Volume\"<>0", conn)
+        df1 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_weekavg_daily", conn)
     global_vals.engine_ali.dispose()
 
     df2.columns = ['ticker','value','trading_day']
     df2['field'] = 'volume'
 
     df = pd.concat([df1, df2], axis=0)
-    df = df.pivot_table(index=['ticker','trading_day'], columns=['field'], values='value')
+    df = pd.pivot_table(df, index=['ticker','trading_day'], columns=['field'], values='value').reset_index()
+
+    print(df.head(10))
 
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         df.to_sql(global_vals.eikon_price_table + '_daily_final', **extra)
     global_vals.engine_ali.dispose()
 
@@ -361,12 +363,15 @@ if __name__ == '__main__':
     # download_from_eikon_mktcap()
     # check_eikon_full_ticker(global_vals.eikon_mktcap_table+'_weekly')
 
-    download_from_eikon_tri()
+    # download_from_eikon_tri()
     # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
 
     # download_from_eikon_vol()
 
-    # org_eikon_tri_volume()
+    # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_daily')
+    # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_vol')
+
+    org_eikon_tri_volume()
 
     # from pandas.tseries.offsets import MonthEnd
     # df = pd.read_csv('eikon_new_downloads.csv')
