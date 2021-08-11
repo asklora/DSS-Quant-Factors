@@ -536,7 +536,7 @@ if __name__ == "__main__":
     # check_smb()
 
     # dist_all()
-    # dist_all_train_test()
+    dist_all_train_test()
 
 
     ## Clustering
