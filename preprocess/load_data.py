@@ -240,12 +240,13 @@ class load_data:
 
         return dic
 
-    def corr_cross_factor(self, df, y_type):
+    def corr_cross_factor(self, df, y_type, top_n=5):
         ''' figure the top 3 most important cross factors '''
 
         all_x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro']
+        all_x_col = self.x_col_dict['factor']
         df = df[['y_'+y_type] + all_x_col].corr()['y_'+y_type]
-        dic = {y_type:list(df.sort_values(ascending=False).index)[1:10]}
+        dic = {y_type:list(df.sort_values(ascending=False).index)[1:top_n]}
         print('Correlation ', dic)
         return dic
 
@@ -312,15 +313,20 @@ class load_data:
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
-        start = testing_period - relativedelta(years=8)    # train df = 40 quarters
+        start = testing_period - relativedelta(years=20)    # train df = 20*12 months
 
         # factor with ARMA history as X
         if use_pca:
             arma_col = self.x_col_dict['factor']        # if using pca, all history first
         elif len(y_type) == 1:
-            corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-            self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
-            arma_col = self.important_cross_factor(self.group_name).get(y_type[0], [])
+            try:
+                corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
+                self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
+                arma_col = self.cross_factors[y_type[0]]
+                # arma_col = self.important_cross_factor(self.group_name)
+            except Exception as e:
+                print(e)
+                arma_col = y_type
         else:
             arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
@@ -332,7 +338,7 @@ class load_data:
             self.x_col_dict['ar'].extend(ar_col)    # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y
-        # arma_col = y_type  # add MA for all y_type predicted at the same time
+        arma_col = y_type  # add MA for all y_type predicted at the same time
         ma_q_col = [f"ma_{x}_q" for x in arma_col]
         ma_y_col = [f"ma_{x}_y" for x in arma_col]
         current_group[ma_q_col] = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().values      # moving average for 3m
@@ -352,8 +358,8 @@ class load_data:
             y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
-        # self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
+        # self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
+        self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
@@ -394,7 +400,7 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-                    + self.x_col_dict['index'] +  self.x_col_dict['macro']
+                    + self.x_col_dict['index'] + self.x_col_dict['macro']
 
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \

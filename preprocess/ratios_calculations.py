@@ -117,9 +117,34 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
-        eikon_price = pd.read_sql(f'SELECT * FROM {global_vals.eikon_price_table}_daily', conn)
-        eikon_vol = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table}_vol', conn)
+        print(f'#################################################################################################')
+        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}_daily_final')
+        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
     global_vals.engine_ali.dispose()
+
+    # merge stock return from DSS & from EIKON (i.e. longer history)
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+
+    # find first tri from DSS as anchor
+    tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
+    tri_first['anchor_tri'] = tri_first['tri']
+    eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
+
+    # find anchor close price (adj.)
+    eikon_price['anchor_close'] = eikon_price['close']
+    eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'anchor_close'] = np.nan
+    eikon_price.update(eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].fillna(method='bfill'))
+
+    # calculate tri based on EIKON close price data
+    eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
+
+    # merge DSS & EIKON data
+    tri = tri.merge(eikon_price[['ticker','trading_day']], on=['ticker','trading_day'], how='outer').sort_values(by=['ticker','trading_day'])
+    tri = tri.set_index(['ticker','trading_day'])
+    eikon_price = eikon_price.set_index(['ticker','trading_day'])
+    value_col = ['open','high','low','close','tri','volume']
+    tri[value_col] = tri[value_col].fillna(eikon_price[value_col])  # update missing tri (i.e. prior history) with EIKON tri calculated
+    tri = tri.reset_index()
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends

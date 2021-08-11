@@ -31,9 +31,11 @@ def lgbm_train(space):
         params[k] = int(params[k])
     sql_result.update(params)        # update hyper-parameter used in model
     print('===== hyperspace =====', params)
-    params['is_unbalance'] = True
+    # params['is_unbalance'] = True
     params['min_hessian'] = 0
     params['first_metric_only'] = True
+    params['verbose'] = 2
+    params['metric'] = 'l2'  # multi_logloss
 
     # if args.objective == 'multiclass':
     #     dict_weight = {0:2,1:1,2:1}
@@ -124,7 +126,7 @@ def eval_regressor(space):
         hpot['best_stock_feature'] = feature_importance_df
 
     if sql_result['objective'] == 'regression_l2':
-        return result['mse_valid']
+        return 1-result['r2_test']
     elif sql_result['objective'] == 'regression_l1':
         return result['mae_valid']
     else:
@@ -249,8 +251,8 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='multiclass')     # OPTIONS: regression_l1 / regression_l2 / multiclass
-    parser.add_argument('--qcut_q', default=3, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--objective', default='regression_l2')     # OPTIONS: regression_l1 / regression_l2 / multiclass
+    parser.add_argument('--qcut_q', default=0, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
@@ -261,30 +263,35 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_maxprec'
-    n_splits = 5
+    sql_result['name_sql'] = 'newlastweekavg_dart'
+    n_splits = 1
     use_biweekly_stock = False
     stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
-    valid_method = 'cv'     # cv/chron
+    valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
     group_code_list = ['currency']
-    use_median = False
+    use_median = True
     continue_test = False
     test_change = False
+
+    # from preprocess.ratios_calculations import calc_factor_variables
+    # from preprocess.premium_calculation import calc_premium_all
+
+    # recalculate ratio & premium before rerun regression
+    # calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    #                       use_cached=True, save=False, update=False)
+    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
 
     # --------------------------------- Define Variables ------------------------------------------
 
     # create dict storing values/df used in training
     hpot = {}                   # storing data for best trials in each Hyperopt
+    base_space = {}
     write_cutbins = True        # write cut bins to DB
 
     # update additional base_space for Hyperopt
-    base_space = {'verbose': -1,
-                  'objective': args.objective,
-                  'num_threads': args.nthread}
-
-    if sql_result['objective'] == 'multiclass':
+    if args.objective == 'multiclass':
         base_space['num_class'] = sql_result['qcut_q']
         base_space['metric'] = 'multi_logloss' # multi_logloss
 
@@ -318,8 +325,8 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    factors_to_test = data.factor_list
-    # factors_to_test = ['vol_30_90']
+    # factors_to_test = data.factor_list[1:]
+    factors_to_test = ['vol_0_30']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
