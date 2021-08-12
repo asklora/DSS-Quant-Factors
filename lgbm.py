@@ -31,9 +31,11 @@ def lgbm_train(space):
         params[k] = int(params[k])
     sql_result.update(params)        # update hyper-parameter used in model
     print('===== hyperspace =====', params)
-    params['is_unbalance'] = True
+    # params['is_unbalance'] = True
     params['min_hessian'] = 0
     params['first_metric_only'] = True
+    params['verbose'] = -1
+    params['metric'] = 'l2'
 
     # if args.objective == 'multiclass':
     #     dict_weight = {0:2,1:1,2:1}
@@ -84,9 +86,15 @@ def eval_regressor(space):
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, evals_result, feature_importance_df = lgbm_train(space)
 
-    def port_ret(ret, pred, set_name='test_x'):
-        if test_change:
-            pred = (pred+1)*sample_set[set_name][:,data.x_col.index(sql_result['y_type'])]
+    if test_change:
+        Y_train_prior = data.train.iloc[train_index][sql_result['y_type']].values
+        Y_train_pred = Y_train_pred*np.abs(Y_train_prior)+Y_train_prior
+        Y_valid_prior = data.train.iloc[valid_index][sql_result['y_type']].values
+        Y_valid_pred = Y_valid_pred*np.abs(Y_valid_prior)+Y_valid_prior
+        Y_test_prior = data.test[sql_result['y_type']].values
+        Y_test_pred = Y_test_pred*np.abs(Y_test_prior)+Y_test_prior
+
+    def port_ret(ret, pred):
         return np.nanmean(ret[np.array(pred) > np.nanquantile(pred, 2/3)]) - np.nanmean(ret[np.array(pred) < np.nanquantile(pred, 1/3)])
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
@@ -95,8 +103,8 @@ def eval_regressor(space):
               'mse_valid': mean_squared_error(sample_set['valid_y'], Y_valid_pred),
               'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
               'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred),
-              'return_train': port_ret(sample_set['train_yy'], Y_train_pred, 'train_xx'),
-              'return_valid': port_ret(sample_set['valid_y'], Y_valid_pred, 'valid_x'),
+              'return_train': port_ret(sample_set['train_yy'], Y_train_pred),
+              'return_valid': port_ret(sample_set['valid_y'], Y_valid_pred),
               }
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
@@ -106,7 +114,7 @@ def eval_regressor(space):
             'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
             'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
             'r2_test': r2_score(test_df['actual'], test_df['pred']),
-            'return_test':  port_ret(test_df['actual'], test_df['pred'], 'test_x'),
+            'return_test':  port_ret(test_df['actual'], test_df['pred']),
         }
         result['test_len'] = len(test_df)
         result.update(result_test)
@@ -142,8 +150,14 @@ def eval_classifier(space):
             x = 0
         return x
 
+    dict_weight = {0:2,1:1,2:2}
+
     result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'], Y_train_pred),
               'accuracy_valid': accuracy_score(sample_set['valid_y_final'], Y_valid_pred),
+              'precision_train': precision_score(sample_set['train_yy_final'], Y_train_pred, average='macro',
+                                                  sample_weight=list(map(dict_weight.get, sample_set['train_yy_final']))),
+              'precision_valid': precision_score(sample_set['valid_y_final'], Y_valid_pred, average='macro',
+                                                  sample_weight=list(map(dict_weight.get, sample_set['valid_y_final']))),
               'return_train': class_ret(sample_set['train_yy'], Y_train_pred, 2) - class_ret(sample_set['train_yy'],
                                                                                              Y_train_pred, 0),
               'return_valid': class_ret(sample_set['valid_y'], Y_valid_pred, 2) - class_ret(sample_set['valid_y'],
@@ -153,9 +167,11 @@ def eval_classifier(space):
         test_df = test_df.dropna(how='any')
         result_test = {
             'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
-            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
-            'r2_test': r2_score(test_df['actual'], test_df['pred']),
+            'precision_test': precision_score(test_df['actual'], test_df['pred'], average='macro',
+                                                sample_weight=list(map(dict_weight.get, test_df['actual'].values))),
+            # 'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
+            # 'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
+            # 'r2_test': r2_score(test_df['actual'], test_df['pred']),
         }
         # test_true_arr = LabelBinarizer().fit(list(range(sql_result['qcut_q']))).transform(test_df['actual'])
         # Y_test_pred_proba = Y_test_pred_proba[list(test_df.index),:]
@@ -171,12 +187,12 @@ def eval_classifier(space):
 
     hpot['all_results'].append(sql_result.copy())
 
-    if result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+    if result['precision_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred, Y_test_pred_proba)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - result['accuracy_valid']
+    return 1 - result['precision_valid']
 
 # -------------------------------------- Organize / Visualize Results -------------------------------------------
 
@@ -241,8 +257,8 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='regression_l1')     # OPTIONS: regression_l1 / regression_l2 / multiclass
-    parser.add_argument('--qcut_q', default=10, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--objective', default='regression_l2')     # OPTIONS: regression_l1 / regression_l2 / multiclass
+    parser.add_argument('--qcut_q', default=0, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
@@ -253,36 +269,41 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_cut10_reg1'+to_sql_suffix
-    n_splits = 5
+    sql_result['name_sql'] = 'newlastweekavg_mcap'
+    n_splits = 1
     use_biweekly_stock = False
     stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
-    valid_method = 'cv'     # cv/chron
+    valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
-    group_code_list = ['currency']
-    use_median = True
+    group_code_list = ['KRW','GBP','HKD','EUR','CNY','USD'] #['currency']
+    use_median = False
     continue_test = False
     test_change = False
+
+    # from preprocess.ratios_calculations import calc_factor_variables
+    # from preprocess.premium_calculation import calc_premium_all
+
+    # recalculate ratio & premium before rerun regression
+    # calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    #                       use_cached=True, save=False, update=False)
+    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
 
     # --------------------------------- Define Variables ------------------------------------------
 
     # create dict storing values/df used in training
     hpot = {}                   # storing data for best trials in each Hyperopt
+    base_space = {}
     write_cutbins = True        # write cut bins to DB
 
     # update additional base_space for Hyperopt
-    base_space = {'verbose': -1,
-                  'objective': args.objective,
-                  'num_threads': args.nthread}
-
-    if sql_result['objective'] == 'multiclass':
+    if args.objective == 'multiclass':
         base_space['num_class'] = sql_result['qcut_q']
         base_space['metric'] = 'multi_logloss' # multi_logloss
 
     # create date list of all testing period
     if use_biweekly_stock:
-        last_test_date = dt.datetime(2021,6,27)
+        last_test_date = dt.datetime(2021,7,4)
         backtest_period = 100
         testing_period_list=[last_test_date+relativedelta(days=1) - 2*i*relativedelta(weeks=2)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
@@ -310,8 +331,8 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    factors_to_test = data.factor_list
-    # factors_to_test = ['vol_30_90']
+    # factors_to_test = data.factor_list[1:]
+    factors_to_test = ['market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
@@ -343,7 +364,7 @@ if __name__ == "__main__":
 
                         with global_vals.engine_ali.connect() as conn:
                             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-                            cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table+to_sql_suffix, **extra)
+                            cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
                         global_vals.engine_ali.dispose()
 
                     cv_number = 1   # represent which cross-validation sets
@@ -380,16 +401,3 @@ if __name__ == "__main__":
                     continue
 
         write_cutbins = False
-
-    # --------------------------------- Results Analysis ------------------------------------------
-
-    # data = load_data(y_type=args.y_type, first_test=testing_period_list[-1], restart_eval=True)     # restart evaluation
-    # sql_result['name_sql'] = 'rev_yoy_2021-07-09 09:23:27.029713'                                      # restart evaluation
-
-    # results = combine_pred(sql_result['name_sql'], restart_eval=False).combine_industry_market()     # write consolidated results to DB
-    #
-    # calc = calc_mae_write(sql_result['name_sql'], results, data.all_test, restart_eval=False)    # calculate MAE/MSE/R2 for backtesting
-    #
-    # best_pred = read_eval_best(pred=calc.all_results, eval=calc.all_metrices)   # best prediciton based on backtest MAE
-
-    # print(best_pred)

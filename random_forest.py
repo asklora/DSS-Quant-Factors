@@ -202,18 +202,18 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tree_type', default='rf')
-    parser.add_argument('--objective', default='gini')
-    parser.add_argument('--qcut_q', default=3, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--tree_type', default='extra')
+    parser.add_argument('--objective', default='mse')
+    parser.add_argument('--qcut_q', default=10, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'biweekly_rerun'
-    use_biweekly_stock = True
-    stock_last_week_avg = False
-    valid_method = 'cv'
+    sql_result['name_sql'] = 'fill0'
+    use_biweekly_stock = False
+    stock_last_week_avg = True
+    valid_method = 'chron'
     ar_list = [1, 2, 12]
     defined_cut_bins = []
 
@@ -229,7 +229,7 @@ if __name__ == "__main__":
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
     else:
         last_test_date = dt.date.today() + MonthEnd(-2)     # Default last_test_date is month end of 2 month ago from today
-        backtest_period = 22
+        backtest_period = 46
         testing_period_list=[last_test_date+relativedelta(days=1) - i*relativedelta(months=1)
                              - relativedelta(days=1) for i in range(0, backtest_period+1)]
 
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
-    for group_code in ['industry', 'currency']:
+    for group_code in ['currency']:
         sql_result['group_code'] = group_code
         data.split_group(group_code)  # load_data (class) STEP 2
         print(sql_result['y_type'])
@@ -247,7 +247,7 @@ if __name__ == "__main__":
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
-                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins}
+                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median':True}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                 sql_result['cut_bins'] = list(data.cut_bins)
@@ -267,7 +267,7 @@ if __name__ == "__main__":
                     sql_result['valid_len'] = len(sample_set['valid_x'])
 
                     for k in ['valid_x','train_xx','test_x']:
-                        sample_set[k] = np.nan_to_num(sample_set[k], nan=-99.9)
+                        sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
                     print(group_code, testing_period, len(sample_set['train_yy_final']))
                     HPOT(space, max_evals=10)  # start hyperopt

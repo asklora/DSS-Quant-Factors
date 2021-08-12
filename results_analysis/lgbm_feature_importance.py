@@ -4,7 +4,9 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lastweekavg_timevalid_unbalance'
+r_name = 'newlastweekavg'
+model = 'lgbm'
+type = 'reg'
 
 iter_name = r_name#.split('_')[-1]
 
@@ -60,9 +62,13 @@ def feature_importance():
     #     df = pd.read_csv('f_importance.csv')
     # except Exception as e:
     # print(e)
+    if type == 'class':
+        eval_metric = 'accuracy_test'
+    else:
+        eval_metric
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.cv_number, S.accuracy_test, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
-                     f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
+        query = text(f"SELECT P.*, S.cv_number, S.accuracy_test, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_{model}_{type} P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model}_{type} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}' ORDER BY finish_timing, split desc")
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
@@ -84,7 +90,7 @@ def feature_importance():
 
     df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
 
-    with pd.ExcelWriter(f'feature/lgbm_importance_{iter_name}.xlsx') as writer:
+    with pd.ExcelWriter(f'feature/{model}_{type}_importance_{iter_name}.xlsx') as writer:
         df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
         df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
         # df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)
