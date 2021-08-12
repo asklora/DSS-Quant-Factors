@@ -69,13 +69,14 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
     input1 = np.multiply(log_hc_ratio, log_ho_ratio)
     input2 = np.multiply(log_lo_ratio, log_lc_ratio)
-    sum = np.add(input1, input2)
+    sum_ = np.add(input1, input2)
 
     # Calculate annualize volatility
     for l in list_of_start_end:
         start, end = l[0], l[1]
         name_col = f'vol_{start}_{end}'
-        tri[name_col] = pd.Series(sum).rolling(end - start, min_periods=1).mean()
+        tri[name_col] = sum_
+        tri[name_col] = tri.groupby('ticker')[name_col].rolling(end - start, min_periods=1).mean().reset_index(drop=1)
         tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x * days_in_year))
         tri[name_col] = tri[name_col].shift(start)
         tri.loc[tri.groupby('ticker').head(end - 1).index, name_col] = np.nan  # y-1 ~ y0
