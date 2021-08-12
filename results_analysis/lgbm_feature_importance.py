@@ -62,12 +62,9 @@ def feature_importance():
     #     df = pd.read_csv('f_importance.csv')
     # except Exception as e:
     # print(e)
-    if type == 'class':
-        eval_metric = 'accuracy_test'
-    else:
-        eval_metric
+
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.cv_number, S.accuracy_test, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_{model}_{type} P "
+        query = text(f"SELECT P.*, S.cv_number, S.return_test, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_{model}_{type} P "
                      f"INNER JOIN {global_vals.result_score_table}_{model}_{type} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}' ORDER BY finish_timing, split desc")
         df = pd.read_sql(query, conn)       # download training history

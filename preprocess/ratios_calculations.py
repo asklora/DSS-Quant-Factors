@@ -10,15 +10,21 @@ from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(engine, save=True, update=False):
+def get_tri(engine, save=True, update=False, currency=None):
     with engine.connect() as conn:
+        conditions = []
+        if currency:
+            conditions.append(f"currency_code = '{currency}'")
         if update:
             trading_day_cutoff = (dt.datetime.today() - relativedelta(months=1)).strftime('%Y-%m-%d')
+            conditions.append(f"trading_day > '{trading_day_cutoff}'")
+        if conditions:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
-                         f"FROM {global_vals.stock_data_table} WHERE trading_day>'{trading_day_cutoff}'")
+                         f"FROM {global_vals.stock_data_table} WHERE {' AND '.join(conditions)}")
         else:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
-        tri = pd.read_sql(query, con=conn)
+        tri = pd.read_sql(query, con=conn, chunksize=1000)
+        tri = pd.concat(tri, axis=0, ignore_index=True)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
     engine.dispose()
@@ -63,13 +69,14 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
     input1 = np.multiply(log_hc_ratio, log_ho_ratio)
     input2 = np.multiply(log_lo_ratio, log_lc_ratio)
-    sum = np.add(input1, input2)
+    sum_ = np.add(input1, input2)
 
     # Calculate annualize volatility
     for l in list_of_start_end:
         start, end = l[0], l[1]
         name_col = f'vol_{start}_{end}'
-        tri[name_col] = pd.Series(sum).rolling(end - start, min_periods=1).mean()
+        tri[name_col] = sum_
+        tri[name_col] = tri.groupby('ticker')[name_col].rolling(end - start, min_periods=1).mean().reset_index(drop=1)
         tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x * days_in_year))
         tri[name_col] = tri[name_col].shift(start)
         tri.loc[tri.groupby('ticker').head(end - 1).index, name_col] = np.nan  # y-1 ~ y0
