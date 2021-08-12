@@ -9,14 +9,14 @@ import re
 
 import global_vals
 
-r_name = 'lastweekavg_pca_new'
+r_name = 'lastweekavg_pca_new1'
 iter_name = r_name
 
 def download_stock_pred():
     ''' download training history and training prediction from DB '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.alpha, S.y_type FROM {global_vals.result_pred_table}_lasso P "
+        query = text(f"SELECT P.*, S.group_code, S.testing_period, S.alpha FROM {global_vals.result_pred_table}_lasso P "
                      f"INNER JOIN {global_vals.result_score_table}_lasso S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
@@ -30,20 +30,24 @@ def download_stock_pred():
     ret_dict = {}
     for name, g in result_all.groupby(['group_code', 'testing_period', 'alpha']):
         ret_dict[name] = {}
-        ret_dict[name]['code'] = g.loc[g['pred']==g['pred'].max(), 'y_type'].values[0]
-        ret_dict[name]['max_ret'] = g.loc[g['pred']==g['pred'].max(), 'actual'].values[0]
-        ret_dict[name]['min_ret'] = g.loc[g['pred']==g['pred'].min(), 'actual'].values[0]
+        max_g = g.loc[g['pred']>g['pred'].quantile(q=2/3)]
+        min_g = g.loc[g['pred']<g['pred'].quantile(q=1/3)]
+        ret_dict[name]['max_factor'] = ','.join(list(max_g['y_type'].values))
+        ret_dict[name]['min_factor'] = ','.join(list(min_g['y_type'].values))
+        ret_dict[name]['max_ret'] = max_g['actual'].mean()
+        ret_dict[name]['min_ret'] = min_g['actual'].mean()
         ret_dict[name]['mae'] = mean_absolute_error(g['pred'], g['actual'])
         ret_dict[name]['mse'] = mean_squared_error(g['pred'], g['actual'])
         ret_dict[name]['r2'] = r2_score(g['pred'], g['actual'])
 
     result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
     result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
-    result_all_comb.iloc[:,4:] = result_all_comb.iloc[:,4:].astype(float)
+    result_all_comb.iloc[:,5:] = result_all_comb.iloc[:,5:].astype(float)
 
     writer = pd.ExcelWriter(f'score/#lasso_pred_{iter_name}.xlsx')
     result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
-    result_all_comb.to_excel(writer, sheet_name='all', index=False)
+    result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
+    pd.pivot_table(result_all, index=['alpha', 'group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
     writer.save()
 
     result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period', 'alpha'])

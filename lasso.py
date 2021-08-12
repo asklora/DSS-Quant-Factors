@@ -16,15 +16,21 @@ from sklearn import linear_model
 from preprocess.load_data import load_data
 import global_vals
 
+method = 'en'
+
 def rf_train():
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    clf = linear_model.Lasso(alpha=sql_result['alpha']).fit(sample_set['train_x'], sample_set['train_y_final'])
 
-    # prediction on all sets
-    Y_train_pred = clf.predict(sample_set['train_x'])
-    Y_test_pred = clf.predict(sample_set['test_x'])
+    if method == 'lasso':
+        clf = linear_model.Lasso(alpha=sql_result['alpha']).fit(sample_set['train_x'], sample_set['train_y_final'])
+        Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
+        Y_test_pred = clf.predict(sample_set['test_x'])
+    elif method == 'en':
+        clf = linear_model.ElasticNet(alpha=sql_result['alpha'], l1_ratio=sql_result['l1_ratio']).fit(sample_set['train_x'], sample_set['train_y_final'])
+        Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
+        Y_test_pred = clf.predict(sample_set['test_x'])
 
     sql_result['feature_importance'], feature_importance_df = to_list_importance(clf)
     print(feature_importance_df)
@@ -105,16 +111,17 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_pca_new'
+    sql_result['name_sql'] = 'lastweekavg_pca_en'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    group_code_list = ['JPY','EUR','USD']
+    group_code_list = ['JPY','EUR','USD','HKD']
     qcut_q = 0
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.0001
+    sql_result['alpha'] = 0.001
+    sql_result['l1_ratio'] = 0.5
     use_pca = True
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -137,7 +144,7 @@ if __name__ == "__main__":
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
     factors_to_test = data.factor_list       # random forest model predict all factor at the same time
-    factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
+    # factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
 
     for f in factors_to_test:

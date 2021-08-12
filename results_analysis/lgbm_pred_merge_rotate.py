@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'lgbm'
-r_name = 'newlastweekavg_pca4'
+r_name = 'newlastweekavg_org'
 iter_name = r_name
 
 def download_stock_pred():
@@ -30,21 +30,24 @@ def download_stock_pred():
     ret_dict = {}
     for name, g in result_all.groupby(['group_code', 'testing_period']):
         ret_dict[name] = {}
-        ret_dict[name]['code'] = g.loc[g['pred']==g['pred'].max(), 'y_type'].values[0]
-        ret_dict[name]['max_ret'] = g.loc[g['pred']==g['pred'].max(), 'actual'].values[0]
-        ret_dict[name]['min_ret'] = g.loc[g['pred']==g['pred'].min(), 'actual'].values[0]
+        max_g = g.loc[g['pred']>g['pred'].quantile(q=2/3)]
+        min_g = g.loc[g['pred']<g['pred'].quantile(q=1/3)]
+        ret_dict[name]['max_factor'] = ','.join(list(max_g['y_type'].values))
+        ret_dict[name]['min_factor'] = ','.join(list(min_g['y_type'].values))
+        ret_dict[name]['max_ret'] = max_g['actual'].mean()
+        ret_dict[name]['min_ret'] = min_g['actual'].mean()
         ret_dict[name]['mae'] = mean_absolute_error(g['pred'], g['actual'])
         ret_dict[name]['mse'] = mean_squared_error(g['pred'], g['actual'])
         ret_dict[name]['r2'] = r2_score(g['pred'], g['actual'])
 
     result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
     result_all_comb.columns = ['group_code', 'testing_period'] + result_all_comb.columns.to_list()[2:]
-    result_all_comb.iloc[:,3:] = result_all_comb.iloc[:,3:].astype(float)
+    result_all_comb.iloc[:,4:] = result_all_comb.iloc[:,4:].astype(float)
 
     writer = pd.ExcelWriter(f'score/#lgbm_pred_{iter_name}.xlsx')
-    result_all_comb.drop(['testing_period','code'], axis=1).groupby(by=['group_code']).mean().to_excel(writer, sheet_name='average')
+    result_all_comb.groupby(by=['group_code']).mean().to_excel(writer, sheet_name='average')
     result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
-    result_all.to_excel(writer, sheet_name='all', index=False)
+    pd.pivot_table(result_all, index=['group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
     writer.save()
 
     result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
