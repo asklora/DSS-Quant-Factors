@@ -10,15 +10,21 @@ from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(engine, save=True, update=False):
+def get_tri(engine, save=True, update=False, currency=None):
     with engine.connect() as conn:
+        conditions = []
+        if currency:
+            conditions.append(f"currency_code = '{currency}'")
         if update:
             trading_day_cutoff = (dt.datetime.today() - relativedelta(months=1)).strftime('%Y-%m-%d')
+            conditions.append(f"trading_day > '{trading_day_cutoff}'")
+        if conditions:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
-                         f"FROM {global_vals.stock_data_table} WHERE trading_day>'{trading_day_cutoff}'")
+                         f"FROM {global_vals.stock_data_table} WHERE {' AND '.join(conditions)}")
         else:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
-        tri = pd.read_sql(query, con=conn)
+        tri = pd.read_sql(query, con=conn, chunksize=1000)
+        tri = pd.concat(tri, axis=0, ignore_index=True)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
     engine.dispose()
