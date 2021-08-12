@@ -11,6 +11,9 @@ import global_vals
 # from scipy.fft import fft, fftfreq, rfft, rfftfreq
 from sqlalchemy import text
 
+def add_arr_col(df, arr, col_name):
+    add_df = pd.DataFrame(arr, columns=col_name)
+    return pd.concat([df.reset_index(drop=True), add_df], axis=1)
 
 def download_clean_macros(main_df, use_biweekly_stock):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
@@ -193,9 +196,9 @@ class load_data:
 
         # calculate y for all factors
         self.all_y_col = ["y_"+x for x in self.factor_list]
-        self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
+        # self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
-        self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
+        # self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         print(self.main)
 
     def split_group(self, group_name=None):
@@ -300,8 +303,10 @@ class load_data:
             if use_median:      # for regression -> remove noise by regression on median of each bins
                 arr_cut, arr_test_cut = self.y_replace_median(qcut_q, arr, arr_cut, arr_test, arr_test_cut)
 
-            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
-            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
+            arr_add = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
+            self.train = add_arr_col(self.train, arr_add, cut_col)
+            arr_add = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
+            self.test = add_arr_col(self.test, arr_add, cut_col)
 
             # write cut_bins to DB
             self.cut_bins_df = self.train[cut_col].apply(pd.value_counts).transpose()
@@ -321,7 +326,7 @@ class load_data:
         current_group = self.group.copy(1)
         start = testing_period - relativedelta(years=20)    # train df = 20*12 months
 
-        # factor with ARMA history as X
+        # factor with ARMA history as X5
         if use_pca:
             arma_col = self.x_col_dict['factor']        # if using pca, all history first
         elif len(y_type) == 1:
@@ -346,15 +351,15 @@ class load_data:
         # 2. Calculate the moving average for predicted Y
         if not(use_pca):
             arma_col = y_type  # add MA for all y_type predicted at the same time
-        ma_q_col = [f"ma_{x}_q" for x in arma_col]
-        ma_y_col = [f"ma_{x}_y" for x in arma_col]
-        current_group[ma_q_col] = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().values      # moving average for 3m
-        current_group[ma_y_col] = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().values      # moving average for 12m
+        ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
+        ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
+        ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
+        ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
+        current_group = pd.concat([current_group,ma_q,ma_y], axis=1)
         self.x_col_dict['ma'] = []
-        if len(y_type) == 1:        # not for RF -> avoid too many inputs
-            for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
-                current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
-                self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
+        for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
+            current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
+            self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
         for i in [12]:          # include moving average of 12 - 23
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
@@ -383,9 +388,10 @@ class load_data:
             # y = arma_pca.components_
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            self.train[self.x_col_dict['arma_pca']] = arma_trans
-            self.test[self.x_col_dict['arma_pca']] = arma_pca.transform(
-                self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
+
+            self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
+            arr = arma_pca.transform(self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
+            self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
 
             # use PCA on all index/macro inputs
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1)
@@ -394,9 +400,10 @@ class load_data:
             # y = mi_pca.components_
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
-            self.train[self.x_col_dict['mi_pca']] = mi_trans
-            self.test[self.x_col_dict['mi_pca']] = mi_pca.transform(
-                self.test[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1))
+
+            self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
+            arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1))
+            self.test = add_arr_col(self.test, arr, self.x_col_dict['mi_pca'])
 
         def divide_set(df):
             ''' split x, y from main '''

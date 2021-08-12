@@ -251,7 +251,8 @@ if __name__ == "__main__":
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
-                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median': use_median, 'use_pca':use_pca}
+                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
+                                'use_median': use_median, 'use_pca':use_pca}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
