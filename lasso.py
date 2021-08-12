@@ -105,16 +105,16 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_pca'
+    sql_result['name_sql'] = 'lastweekavg_pca_new'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    group_code_list = ['KRW','GBP','HKD','EUR','CNY','USD']
+    group_code_list = ['JPY','EUR','USD']
     qcut_q = 0
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.01
+    sql_result['alpha'] = 0.0001
     use_pca = True
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -137,6 +137,7 @@ if __name__ == "__main__":
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
     factors_to_test = data.factor_list       # random forest model predict all factor at the same time
+    factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
 
     for f in factors_to_test:
@@ -152,6 +153,7 @@ if __name__ == "__main__":
                                     'use_median': use_median, 'n_splits': n_splits, 'test_change': test_change, 'use_pca': use_pca}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+                    print(list(data.x_col))
 
                     cv_number = 1  # represent which cross-validation sets
                     for train_index, valid_index in cv:  # roll over 5 cross validation set
@@ -172,6 +174,7 @@ if __name__ == "__main__":
                         sql_result['valid_group'] = ','.join(list(data.train['group'][valid_index].unique()))
 
                         for k in ['train_x', 'test_x']:
+                            # sample_set[k][(np.abs(sample_set[k])==np.inf)] = np.nan
                             sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
                         print(group_code, testing_period, len(sample_set['train_y_final']))
