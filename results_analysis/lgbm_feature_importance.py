@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'newlastweekavg'
+r_name = 'newlastweekavg_pca'
 model = 'lgbm'
 type = 'reg'
 
@@ -70,29 +70,19 @@ def feature_importance():
         df = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
+    writer = pd.ExcelWriter(f'feature/#{model}_{type}_importance_{iter_name}.xlsx')
+
     df['max'] = df.groupby(['cv_number','group_code','testing_period','y_type'])['split'].transform(np.nanmax)
     df['split'] = df['split']/df['max']
     # df.to_csv('feature/f_importance.csv', index=False)
 
-    try:
-        df1 = df.loc[df['group_code']=='currency'].groupby(['name', 'y_type'])['split'].mean().unstack()
-        # df1['avg'] = df1.mean(axis=1)
-        df1 = name_mapping(df1)
-    except:
-        pass
+    for name, g in df.groupby(['group_code']):
+        f = g.groupby(['name', 'y_type'])['split'].mean().unstack()
+        # f = name_mapping(f)
+        f.to_excel(writer, sheet_name=name)
+        # f.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name=f'{g}_pivot')
 
-    # df11 = df.loc[df['group_code']=='industry'].groupby(['name', 'y_type'])[['split','accuracy_test']].mean().unstack()
-    # df11['avg'] = df11.mean(axis=1)
-    # df11 = name_mapping(df11)
-
-    df2=df.groupby(['y_type','name','group_code'])['split'].mean().unstack()
-
-    with pd.ExcelWriter(f'feature/{model}_{type}_importance_{iter_name}.xlsx') as writer:
-        df1.sort_values(by=['type','name']).to_excel(writer, sheet_name='cur', index=False)
-        df1.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='cur_pivot')
-        # df11.sort_values(by=['type','name']).to_excel(writer, sheet_name='ind', index=False)
-        # df11.sort_values(by=['type','name']).groupby(['type']).mean().to_excel(writer, sheet_name='ind_pivot')
-        df2.to_excel(writer, sheet_name='group_code')
+    writer.save()
 
 if __name__ == "__main__":
     feature_importance()

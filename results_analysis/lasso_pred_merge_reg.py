@@ -42,7 +42,7 @@ def download_stock_pred():
     result_all_comb.iloc[:,4:] = result_all_comb.iloc[:,4:].astype(float)
 
     writer = pd.ExcelWriter(f'score/#lasso_pred_{iter_name}.xlsx')
-    result_all_comb.groupby(['alpha']).mean().to_excel(writer, sheet_name='average')
+    result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
     result_all_comb.to_excel(writer, sheet_name='all', index=False)
     writer.save()
 

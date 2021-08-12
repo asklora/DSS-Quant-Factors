@@ -68,7 +68,7 @@ def eval_regressor(space):
     '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred = rf_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(space)
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
@@ -97,6 +97,7 @@ def eval_regressor(space):
     if result['mae_valid'] < hpot['best_score']: # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['mae_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
+        hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
     if sql_result['objective'] == 'mae':
         return result['mse_valid']
@@ -216,6 +217,8 @@ if __name__ == "__main__":
     valid_method = 'chron'
     defined_cut_bins = []
     group_code_list = ['JPY','EUR','USD','HKD']
+    use_pca = True
+    use_median = True
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -248,10 +251,21 @@ if __name__ == "__main__":
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
-                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median': True}
+                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median': use_median, 'use_pca':use_pca}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-                sql_result['cut_bins'] = list(data.cut_bins)
+
+                # # write stock_pred for the best hyperopt records to sql
+                # if (write_cutbins) & (args.objective == 'multiclass'):
+                #     cut_bins_df = data.cut_bins_df
+                #     cut_bins_df['testing_period'] = testing_period
+                #     cut_bins_df['group_code'] = group_code
+                #     cut_bins_df['name_sql'] = sql_result['name_sql']
+                #
+                #     with global_vals.engine_ali.connect() as conn:
+                #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+                #         cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
+                #     global_vals.engine_ali.dispose()
 
                 cv_number = 1  # represent which cross-validation sets
                 for train_index, valid_index in cv:  # roll over 5 cross validation set
@@ -269,6 +283,8 @@ if __name__ == "__main__":
 
                     for k in ['valid_x','train_xx','test_x']:
                         sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+
+                    print(data.x_col)
 
                     print(group_code, testing_period, len(sample_set['train_yy_final']))
                     HPOT(space, max_evals=10)  # start hyperopt

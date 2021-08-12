@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'lgbm'
-r_name = 'newlastweekavg_org'
+r_name = 'newlastweekavg_pca4'
 iter_name = r_name
 
 def download_stock_pred():
