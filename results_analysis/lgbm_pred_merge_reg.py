@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'lgbm'
-r_name = 'newlastweekavg_mipivot2'
+r_name = 'newlastweekavg_pca'
 
 iter_name = r_name
 
@@ -166,7 +166,7 @@ def calc_pred_class():
 
     writer.save()
 
-    compare_all_similar_xls()
+    # compare_all_similar_xls()
 
 def compare_all_similar_xls():
     df_list = []
