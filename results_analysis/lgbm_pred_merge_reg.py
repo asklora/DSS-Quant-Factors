@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'lgbm'
-r_name = 'newlastweekavg_maxr'
+r_name = 'newlastweekavg_mipivot2'
 
 iter_name = r_name
 
@@ -31,9 +31,17 @@ def download_stock_pred(plot_dist=True):
     # result_all_comb.columns = ['median','actual']
     # result_all_comb['mean'] = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group'])['pred'].mean()
 
+    fig = plt.figure(figsize=(16, 8), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
+
+    k=1
     if plot_dist:
-        plt.hist(result_all_comb, bins=10)
-        plt.legend(['pred','actual'])
+        for name, g in result_all_comb.groupby(['group']):
+            ax = fig.add_subplot(2, 3, k)
+            ax.hist(g, bins=10)
+            ax.set_ylabel(name, fontsize=20)
+            if k == 1:
+                plt.legend(['pred','actual'])
+            k+=1
         plt.savefig(f'score/{model}_pred_reg_mean_{iter_name}.png')
         # plt.show()
 

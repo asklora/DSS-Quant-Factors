@@ -199,14 +199,18 @@ def download_from_eikon_vix():
 
     ticker = ['.VIX']
     fields = ['TR.PriceClose', 'TR.PriceCloseDate']
-    params = {'SDate': '2009-01-01', 'EDate': '2021-07-01', 'Period':'FY0', 'Frq': 'W', 'Scale':'0'}      # params for fundemantals
+    params = {'SDate': '2000-01-01', 'EDate': '2021-07-31', 'Period':'FY0', 'Frq': 'W', 'Scale':'0'}      # params for fundemantals
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
     df, err = ek.get_data(ticker, fields=fields, parameters=params)
+    df.columns = ['ticker','.VIX','period_end']
+    df['period_end'] = pd.to_datetime(df['period_end'].str[:10], format='%Y-%m-%d')
 
-    df.to_csv('eikon_new_downloads.csv')
-    print(df)
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        df[['.VIX','period_end']].to_sql('data_factor_eikon_vix_weekly', **extra)
+    global_vals.engine_ali.dispose()
 
 def download_from_eikon_mktcap():
     ''' download fields from eikon '''
@@ -359,6 +363,7 @@ def org_eikon_tri_volume():
     global_vals.engine_ali.dispose()
 
 if __name__ == '__main__':
+    download_from_eikon_vix()
 
     # download_from_eikon_mktcap()
     # check_eikon_full_ticker(global_vals.eikon_mktcap_table+'_weekly')
@@ -371,7 +376,7 @@ if __name__ == '__main__':
     # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_daily')
     # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_vol')
 
-    org_eikon_tri_volume()
+    # org_eikon_tri_volume()
 
     # from pandas.tseries.offsets import MonthEnd
     # df = pd.read_csv('eikon_new_downloads.csv')

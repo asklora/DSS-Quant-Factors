@@ -17,9 +17,7 @@ import statsmodels.api as sm
 from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
-    # factors = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}', conn)
     factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
-    # factors = factors_bi = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_biweekly', conn)
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -218,6 +216,10 @@ def plot_autocorrel():
 def test_if_persistent():
 
     df = factors.copy(1)
+
+    curr_list = ['KRW', 'GBP', 'HKD', 'EUR', 'CNY', 'USD']  # 'TWD','JPY','SGD'
+    df = df.loc[df['group'].isin(curr_list)]
+
     m = np.array([(df[col_list].mean()<0).values]*df.shape[0])
     df[col_list] = df[col_list].mask(m, -df[col_list])
 
@@ -232,7 +234,7 @@ def test_if_persistent():
     new_g = g[col_list].transpose().values
     new_g = np.cumprod(new_g + 1, axis=1)
     ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
-    ddf.to_csv('eda/performance.csv')
+    ddf.transpose().to_csv('eda/performance.csv')
     ddf = ddf.iloc[:10,:].transpose()
     print(ddf)
     plt.plot(ddf, label=list(ddf.columns))
@@ -508,18 +510,34 @@ def dist_all_train_test():
     plt.savefig(f'eda/dist_all_train_test.png')
     plt.close()
 
-def plot_vol_30_90():
-    df = factors['vol_30_90']
+def plot_factor(factor):
+    df = factors[factor]
     print(df.describe())
     # plt.hist(df, bins=1000)
+    curr_list = ['KRW', 'GBP', 'HKD', 'EUR', 'CNY', 'USD']  # 'TWD','JPY','SGD'
 
-    df = factors.loc[factors['group'].str.len()==3].set_index(['period_end','group'])['vol_30_90'].unstack()
-    df.to_csv('test_vol.csv')
-    print(df)
+    df = factors.loc[factors['group'].isin(curr_list)].set_index(['period_end','group'])[factor].unstack()
+    df.to_csv(f'eda/single_{factor}.csv')
+    x = df.corr().unstack().sort_values(ascending=False)
     plt.plot(df)
 
     plt.legend(df.columns.to_list())
     plt.show()
+
+def pillar_corr():
+
+    global factors
+    df = pd.DataFrame()
+    df[['period_end','group']] = factors[['period_end','group']]
+    for p in formula['pillar'].unique():
+        cols = formula.loc[formula['pillar']==p, 'name'].to_list()
+        df[p] = factors[cols].mean(axis=1)
+        x = factors[cols].corr()
+        print(x)
+
+    df = df.dropna(how='any').set_index(['period_end','group'])
+    c = df.corr()
+    print(df.corr())
 
 if __name__ == "__main__":
     # correl_fama_website()
@@ -530,17 +548,19 @@ if __name__ == "__main__":
     # plot_trend()
 
     # sharpe_ratio()
-    # test_if_persistent()
+    test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
 
     # dist_all()
-    dist_all_train_test()
+    # dist_all_train_test()
 
 
     ## Clustering
     # test_cluster()
     # test_tsne()
 
-    plot_vol_30_90()
+    # plot_factor('vol_0_30')
+
+    # pillar_corr()
