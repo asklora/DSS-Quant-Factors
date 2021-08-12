@@ -195,15 +195,14 @@ class load_data:
         self.all_y_col = ["y_"+x for x in self.factor_list]
         self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
-        x=(self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD'] #
-        # curr_list = ['GBP','HKD','EUR','USD'] # 'TWD','JPY','SGD'
+        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD','TWD','JPY','SGD'] #
+        # curr_list = ['GBP','HKD','EUR','USD'] #
 
         # curr_list = ['USD'] # 'TWD','JPY','SGD'
 
@@ -214,7 +213,9 @@ class load_data:
         elif group_name == 'industry':
             self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
         elif group_name in curr_list:
-            self.group = self.group[self.main['group']==group_name]
+            self.group = self.main.loc[self.main['group']==group_name]
+
+        print(self.group)
 
         # self.cross_factors = self.important_cross_factor(group_name)
 
@@ -343,7 +344,8 @@ class load_data:
             self.x_col_dict['ar'].extend(ar_col)    # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y
-        arma_col = y_type  # add MA for all y_type predicted at the same time
+        if not(use_pca):
+            arma_col = y_type  # add MA for all y_type predicted at the same time
         ma_q_col = [f"ma_{x}_q" for x in arma_col]
         ma_y_col = [f"ma_{x}_y" for x in arma_col]
         current_group[ma_q_col] = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().values      # moving average for 3m
@@ -375,15 +377,15 @@ class load_data:
             from sklearn.decomposition import PCA
             import matplotlib.pyplot as plt
             # use PCA on all ARMA inputs
-            pca_arma_df = self.train[self.x_col_dict['factor']] + self.train[self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
+            pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=0.6).fit(pca_arma_df)
             # x = np.cumsum(arma_pca.explained_variance_ratio_)
             # y = arma_pca.components_
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
             self.train[self.x_col_dict['arma_pca']] = arma_trans
-            self.test[self.x_col_dict['arma_pca']] = arma_pca.transform(self.test[self.x_col_dict['ar']+
-                                                                                  self.x_col_dict['ma']].fillna(0))
+            self.test[self.x_col_dict['arma_pca']] = arma_pca.transform(
+                self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
 
             # use PCA on all index/macro inputs
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1)
@@ -393,8 +395,8 @@ class load_data:
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
             self.train[self.x_col_dict['mi_pca']] = mi_trans
-            self.test[self.x_col_dict['mi_pca']] = mi_pca.transform(self.test[self.x_col_dict['index'] +
-                                                                          self.x_col_dict['macro']].fillna(-1))
+            self.test[self.x_col_dict['mi_pca']] = mi_pca.transform(
+                self.test[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1))
 
         def divide_set(df):
             ''' split x, y from main '''
@@ -402,10 +404,11 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] + ["org_"+x for x in y_type]
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] +  self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
-            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
-            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-                    + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
-            x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
+            # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
+            # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
+            #         + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
+            if use_pca:
+                x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
                    df.filter(x_col).columns.to_list()     # Assuming using all factors

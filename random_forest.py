@@ -210,12 +210,12 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'fill0'
+    sql_result['name_sql'] = 'pca_fill0'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    ar_list = [1, 2, 12]
     defined_cut_bins = []
+    group_code_list = ['JPY','EUR','USD','HKD']
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -236,10 +236,11 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
+    # sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
-    for group_code in ['currency']:
+    for group_code in group_code_list:
         sql_result['group_code'] = group_code
         data.split_group(group_code)  # load_data (class) STEP 2
         print(sql_result['y_type'])
@@ -247,7 +248,7 @@ if __name__ == "__main__":
             sql_result['testing_period'] = testing_period
             backtest = testing_period not in testing_period_list[0:4]
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
-                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median':True}
+                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins, 'use_median': True}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                 sql_result['cut_bins'] = list(data.cut_bins)
