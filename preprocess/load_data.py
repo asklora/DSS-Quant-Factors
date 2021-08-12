@@ -20,7 +20,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
 
     with global_vals.engine_ali.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
-        vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}', conn)
+        vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}_weekly', conn)
     global_vals.engine_ali.dispose()
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
@@ -41,15 +41,13 @@ def download_clean_macros(main_df, use_biweekly_stock):
     macro_map['type'] = macro_map['name'].str[2:].replace(['inter3','gbill','mshort'],['ibor3','gbond','ibor3'])
 
     # add vix to macro_data
-    if use_biweekly_stock:
-        df_date_list = main_df['period_end'].drop_duplicates().sort_values()
-        macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
-                              how='outer').sort_values(['period_end'])
-        macros = macros.fillna(method='ffill')
-    else:
-        macros["period_end"] = macros['trading_day'] + MonthEnd(0)
-        vix["period_end"] = pd.to_datetime(vix["period_end"])
-        macros = macros.merge(vix, on=['period_end'], how='outer')
+    df_date_list = main_df['period_end'].drop_duplicates().sort_values()
+    macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
+                          how='outer').sort_values(['period_end'])
+    vix["period_end"] = pd.to_datetime(vix["period_end"])
+    macros = macros.merge(vix, on=['period_end'], how='outer').sort_values(by=['period_end'])
+    macros = macros.fillna(method='ffill')
+    macros = macros.loc[macros['period_end'].isin(df_date_list)]
 
     # create macros mapped to each currency
     macros_org = macros.set_index('period_end').transpose().merge(macro_map, left_index=True,
@@ -81,7 +79,7 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     global_vals.engine_ali.dispose()
 
     index_ret_org = index_ret.loc[index_ret['ticker']!='.HSLI',
-                                  ['currency_code','period_end','stock_return_r12_7','stock_return_r6_2', 'vol_30_90','stock_return_r1_0']]
+                                  ['currency_code','period_end','vol_0_30','stock_return_r1_0']]
     index_ret_org.columns = ['group','period_end'] + ['mkt_' + x for x in index_ret_org.columns.to_list()[2:]]
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
@@ -149,7 +147,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     # 1. Add Macroeconomic variables - from Datastream
     macros, macros_org = download_clean_macros(df, use_biweekly_stock)
     x_col['macro'] = macros.columns.to_list()[1:]              # add macros variables name to x_col
-    x_col['macros_pivot'] = macros_org.columns.to_list()[2:]              # add macros variables name to x_col
+    x_col['macro_pivot'] = macros_org.columns.to_list()[2:]              # add macros variables name to x_col
 
     # 2. Add index return variables
     index_ret, index_ret_org = download_index_return(use_biweekly_stock, stock_last_week_avg)
@@ -197,21 +195,28 @@ class load_data:
         self.all_y_col = ["y_"+x for x in self.factor_list]
         self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
-        self.main[self.all_y_col_change] = (self.main[self.all_y_col].values+1)/(np.abs(self.main[self.factor_list]+1)).values-1
+        x=(self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
+        self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD'] # 'TWD','JPY','SGD'
+        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD'] #
+        # curr_list = ['GBP','HKD','EUR','USD'] # 'TWD','JPY','SGD'
+
+        # curr_list = ['USD'] # 'TWD','JPY','SGD'
+
         self.group_name = group_name
 
         if group_name == 'currency':
             self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
-        else:
-            self.group = self.main.loc[~self.main['group'].str.len()==3]          # train on currency partition factors
+        elif group_name == 'industry':
+            self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
+        elif group_name in curr_list:
+            self.group = self.group[self.main['group']==group_name]
 
-        self.cross_factors = self.important_cross_factor(group_name)
+        # self.cross_factors = self.important_cross_factor(group_name)
 
     def important_cross_factor(self, group_name):
         ''' figure the top 3 most important cross factors '''
@@ -243,10 +248,10 @@ class load_data:
     def corr_cross_factor(self, df, y_type, top_n=5):
         ''' figure the top 3 most important cross factors '''
 
-        all_x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro']
+        # all_x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro']
         all_x_col = self.x_col_dict['factor']
         df = df[['y_'+y_type] + all_x_col].corr()['y_'+y_type]
-        dic = {y_type:list(df.sort_values(ascending=False).index)[1:top_n]}
+        dic = {y_type:list(df.sort_values(ascending=False).index)[1:top_n]} # the 1st one would be y itself
         print('Correlation ', dic)
         return dic
 
@@ -309,7 +314,7 @@ class load_data:
             self.train[cut_col] = self.train[y_col]
             self.test[cut_col] = self.test[y_col]
 
-    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, use_pca=False, test_change=False):
+    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca=False):
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
@@ -364,14 +369,13 @@ class load_data:
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
-
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         if use_pca:
             from sklearn.decomposition import PCA
             import matplotlib.pyplot as plt
             # use PCA on all ARMA inputs
-            pca_arma_df = self.train[self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
+            pca_arma_df = self.train[self.x_col_dict['factor']] + self.train[self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=0.6).fit(pca_arma_df)
             # x = np.cumsum(arma_pca.explained_variance_ratio_)
             # y = arma_pca.components_
@@ -400,8 +404,8 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-                    + self.x_col_dict['index'] + self.x_col_dict['macro']
-
+                    + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
+            x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
                    df.filter(x_col).columns.to_list()     # Assuming using all factors
@@ -436,10 +440,10 @@ class load_data:
         return gkf
 
     def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, valid_method='cv',
-                  defined_cut_bins=[], use_median=False, test_change=False):
+                  defined_cut_bins=[], use_median=False, test_change=False, use_pca=False):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change)   # split x, y for test / train samples
+        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change=test_change, use_pca=use_pca)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
 

@@ -2,7 +2,7 @@ from hyperopt import hp
 
 space_lgbm_reg = {
     'learning_rate': hp.choice('learning_rate', [0.01, 0.1]),
-    'boosting_type': 'dart',
+    'boosting_type': 'gbdt',
     'max_bin': hp.choice('max_bin', [256, 512]),
     'num_leaves': hp.choice('num_leaves', [100, 200, 300]),
     'min_data_in_leaf': hp.choice('min_data_in_leaf', [10, 30, 50]),
