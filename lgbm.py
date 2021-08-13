@@ -199,14 +199,13 @@ def eval_classifier(space):
 def to_sql_prediction(Y_test_pred, Y_test_pred_proba=None):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
-    df = pd.DataFrame()
-    df['group'] = data.test['group'].to_list()
-    df['pred'] = Y_test_pred
+    df = pd.DataFrame({'group': data.test['group'], 'pred': Y_test_pred, 'y_type': [sql_result['y_type']]})
     if sql_result['objective'] in ['regression_l1', 'regression_l2']:       # for regression use original (before qcut/convert to median)
         df['actual'] = sample_set['test_y']
     elif sql_result['objective'] in ['multiclass']:         # for classification use after qcut
         df['proba'] = [','.join([str(i) for i in x]) for x in Y_test_pred_proba]
         df['actual'] = sample_set['test_y_final']
+    df['boosting_type'] = sql_result['boosting_type']
     # df['y_type'] = sql_result['y_type']
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
@@ -263,6 +262,7 @@ if __name__ == "__main__":
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
     parser.add_argument('--nthread', default=12, type=int)          # for the best speed, set this to the number of real CPU cores
+    parser.add_argument('--boosting_type', type=str, required=True)
     args = parser.parse_args()
     print(args)
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
@@ -365,7 +365,7 @@ if __name__ == "__main__":
                         cut_bins_df['name_sql'] = sql_result['name_sql']
 
                         with global_vals.engine_ali.connect() as conn:
-                            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+                            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
                             cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
                         global_vals.engine_ali.dispose()
 
@@ -392,6 +392,7 @@ if __name__ == "__main__":
                         sql_result['valid_group'] = ','.join(list(data.train['group'][valid_index].unique()))
 
                         space = find_hyperspace(sql_result)
+                        space['boosting_type'] = args.boosting_type
                         space.update(base_space)
                         print(group_code, testing_period, len(sample_set['train_yy_final']))
                         HPOT(space, max_evals=args.max_eval)   # start hyperopt
