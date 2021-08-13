@@ -10,6 +10,8 @@ from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
 # from scipy.fft import fft, fftfreq, rfft, rfftfreq
 from sqlalchemy import text
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
@@ -143,6 +145,10 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     x_col = {}
     factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
+
+    for p in formula['pillar'].unique():
+        x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
+
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
 
     # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
@@ -168,9 +174,9 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
 
     # 3. (Removed) Add original ratios variables
-    org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
-    x_col['org'] = org_df.columns.to_list()[2:]           # add index variables name to x_col
-    df = df.merge(org_df, on=['group', 'period_end'], how='left')
+    # org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
+    # x_col['org'] = org_df.columns.to_list()[2:]           # add index variables name to x_col
+    # df = df.merge(org_df, on=['group', 'period_end'], how='left')
     df = df.merge(macros_org, on=['group', 'period_end'], how='left')
     df = df.merge(index_ret_org, on=['group', 'period_end'], how='left')
 
@@ -379,8 +385,18 @@ class load_data:
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         if use_pca:
-            from sklearn.decomposition import PCA
-            import matplotlib.pyplot as plt
+            all_cols = [x for v in self.x_col_dict.values() for x in v]
+
+            # use PCA on each pillar factors
+            for p in ['quality','value','momentum']:
+                pillar_cols = [x for x in all_cols if any([col in x for col in self.x_col_dict[p]])]
+                fit_pca = PCA(n_components=0.6).fit(self.train[pillar_cols].fillna(0))
+                train_trans = fit_pca.transform(self.train[pillar_cols].fillna(0))
+                self.x_col_dict[f'{p}_pca'] = [f'{p}_{i}' for i in range(1, train_trans.shape[1] + 1)]
+                self.train = add_arr_col(self.train, train_trans, self.x_col_dict[f'{p}_pca'])
+                test_trans = fit_pca.transform(self.train[pillar_cols].fillna(0).fillna(0))
+                self.test = add_arr_col(self.test, test_trans, self.x_col_dict[f'{p}_pca'])
+
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=0.6).fit(pca_arma_df)
@@ -396,8 +412,6 @@ class load_data:
             # use PCA on all index/macro inputs
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1)
             mi_pca = PCA(n_components=0.9).fit(pca_mi_df)
-            # x = mi_pca.explained_variance_ratio_
-            # y = mi_pca.components_
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
 
@@ -416,6 +430,8 @@ class load_data:
             #         + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
+                x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
+
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
                    df.filter(x_col).columns.to_list()     # Assuming using all factors
@@ -465,7 +481,7 @@ if __name__ == '__main__':
     # download_org_ratios('mean')
     # download_index_return()
     testing_period = dt.datetime(2021,5,30)
-    y_type = ['vol_30_90']
+    y_type = ['vol_0_30']
     group_code = 'industry'
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
@@ -473,7 +489,7 @@ if __name__ == '__main__':
     data.split_group(group_code)
 
     for y in y_type:
-        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False, valid_method='chron')
+        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False, valid_method='chron', use_pca=True)
         print(data.cut_bins)
 
     print(data.x_col)
