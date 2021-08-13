@@ -33,7 +33,7 @@ def move_factor_only_table():
     results_dtypes['group']=TEXT
 
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
         mktcap.to_sql(global_vals.eikon_mktcap_table, **extra)
         others.to_sql(global_vals.eikon_other_table, **extra)
         formula.to_sql(global_vals.formula_factors_table, **extra)
@@ -47,7 +47,7 @@ def move_general(table_name):
     global_vals.engine.dispose()
 
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
         df.to_sql(table_name, **extra)
     global_vals.engine_ali.dispose()
 

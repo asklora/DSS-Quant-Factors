@@ -23,7 +23,7 @@ def get_tri(engine, save=True, update=False, currency=None):
                          f"FROM {global_vals.stock_data_table} WHERE {' AND '.join(conditions)}")
         else:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
-        tri = pd.read_sql(query, con=conn, chunksize=1000)
+        tri = pd.read_sql(query, con=conn, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
         print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
@@ -127,7 +127,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         tri, eikon_price = get_tri(engine, save=save, update=update)
 
     with global_vals.engine_ali.connect() as conn:
-        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
+        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
         print(f'#################################################################################################')
     global_vals.engine_ali.dispose()
 
@@ -220,7 +220,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     # if price_sample == 'last_week_avg':
     #     with global_vals.engine_ali.connect() as conn:
-    #         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+    #         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
     #         df = tri.drop(['close'], axis=1)
     #         df.columns = ['ticker', 'period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
     #         df.to_sql(global_vals.processed_stock_table, **extra)
@@ -236,7 +236,7 @@ def update_period_end(ws):
     print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
     with global_vals.engine_ali.connect() as conn:
-        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
+        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
     global_vals.engine_ali.dispose()
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
@@ -307,10 +307,10 @@ def download_clean_worldscope_ibes(save):
         query_ws = f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null'
         query_ibes = f'SELECT * FROM {global_vals.ibes_data_table}'
         print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        ws = pd.read_sql(query_ws, conn)  # quarterly records
+        ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
-        ibes = pd.read_sql(query_ibes, conn)  # ibes_data
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn)
+        ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
     global_vals.engine_ali.dispose()
 
     def drop_dup(df):
@@ -355,7 +355,7 @@ def download_eikon_others(save):
     with global_vals.engine_ali.connect() as conn:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download eikon data from {global_vals.eikon_other_table}')
-        ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn)  # quarterly records
+        ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn, chunksize=10000)  # quarterly records
     global_vals.engine_ali.dispose()
 
     ek = ek.drop_duplicates()
@@ -424,7 +424,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
         market_cap_table += '_weekly'
 
     with global_vals.engine_ali.connect() as conn:
-        market_cap = pd.read_sql(f'SELECT * FROM {market_cap_table}', conn)
+        market_cap = pd.read_sql(f'SELECT * FROM {market_cap_table}', conn, chunksize=10000)
     global_vals.engine_ali.dispose()
     market_cap['period_end'] = pd.to_datetime(market_cap['period_end'], format='%Y-%m-%d')
     market_cap = fill_all_given_date(market_cap, tri)   # align to dates of stock_return
@@ -518,7 +518,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save, update)
 
     with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)  # ratio calculation used
+        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn, chunksize=10000)  # ratio calculation used
     global_vals.engine.dispose()
 
     print(f'#################################################################################################')
@@ -586,7 +586,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 100000}
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
         print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
