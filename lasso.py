@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_pca_weight_equal'
+    sql_result['name_sql'] = 'lastweekavg_pca_weight_tanh'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.001
+    sql_result['alpha'] = 0
     sql_result['l1_ratio'] = 0
     use_pca = True
 
@@ -188,7 +188,7 @@ if __name__ == "__main__":
                         sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
                     sql_result['weight'] = np.array(range(len(sample_set['train_y'])))/len(sample_set['train_y'])
-                    # sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
+                    sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
                     # sql_result['weight'] = 1/(1+1/np.exp(sql_result['weight']-0.5))
                     # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
                     # print(sql_result['weight'])
