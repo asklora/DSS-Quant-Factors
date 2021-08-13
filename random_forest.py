@@ -24,9 +24,11 @@ space = {
     'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 0.1]),
     'max_features': hp.choice('max_features',[0.3, 0.5, 0.8]),
     'min_impurity_decrease': 0,
-    'max_samples': hp.choice('max_samples',[0.3, 0.6, 0.9]),
+    'max_samples': hp.choice('max_samples',[0.6, 0.9]),
+    'ccp_alpha': hp.choice('ccp_alpha',[0, 0.001]),
     'n_jobs': -1,
-    'random_state': 666}
+    # 'random_state': 666
+}
 
 def rf_train(space):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -37,7 +39,7 @@ def rf_train(space):
     print('===== hyperspace =====', params)
     sql_result.update(params)
 
-    # params['n_jobs'] = 6
+    params['bootstrap'] = False
 
     if args.objective in ['gini','entropy']:        # Classification problem
         if args.tree_type == 'extra':
@@ -205,21 +207,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
-    parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--qcut_q', default=10, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_fill0_extra_weight'
+    sql_result['name_sql'] = 'pca_fill0_fixneg_cut'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
     n_splits=1
     defined_cut_bins = []
-    group_code_list = ['JPY','EUR','USD','HKD']
+    group_code_list = ['JPY','EUR','USD']
     use_pca = True
-    use_median = False
+    use_median = True
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -244,57 +246,61 @@ if __name__ == "__main__":
     # sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
-    for group_code in group_code_list:
-        sql_result['group_code'] = group_code
-        data.split_group(group_code)  # load_data (class) STEP 2
-        print(sql_result['y_type'])
-        for testing_period in reversed(testing_period_list):
-            sql_result['testing_period'] = testing_period
-            backtest = testing_period not in testing_period_list[0:4]
-            load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
-                                'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
-                                'use_median': use_median, 'use_pca':use_pca, 'n_splits':n_splits}
-            try:
-                sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+    for tree_type in ['rf','extra']:
+        sql_result['tree_type'] = tree_type
+        for group_code in group_code_list:
+            sql_result['group_code'] = group_code
+            data.split_group(group_code)  # load_data (class) STEP 2
+            print(sql_result['y_type'])
+            for testing_period in reversed(testing_period_list):
+                sql_result['testing_period'] = testing_period
+                backtest = testing_period not in testing_period_list[0:4]
+                load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
+                                    'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
+                                    'use_median': use_median, 'use_pca':use_pca, 'n_splits':n_splits}
+                try:
+                    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
-                # # write stock_pred for the best hyperopt records to sql
-                # if (write_cutbins) & (args.objective == 'multiclass'):
-                #     cut_bins_df = data.cut_bins_df
-                #     cut_bins_df['testing_period'] = testing_period
-                #     cut_bins_df['group_code'] = group_code
-                #     cut_bins_df['name_sql'] = sql_result['name_sql']
-                #
-                #     with global_vals.engine_ali.connect() as conn:
-                #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-                #         cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
-                #     global_vals.engine_ali.dispose()
+                    # # write stock_pred for the best hyperopt records to sql
+                    # if (write_cutbins) & (args.objective == 'multiclass'):
+                    #     cut_bins_df = data.cut_bins_df
+                    #     cut_bins_df['testing_period'] = testing_period
+                    #     cut_bins_df['group_code'] = group_code
+                    #     cut_bins_df['name_sql'] = sql_result['name_sql']
+                    #
+                    #     with global_vals.engine_ali.connect() as conn:
+                    #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+                    #         cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
+                    #     global_vals.engine_ali.dispose()
 
-                cv_number = 1  # represent which cross-validation sets
-                for train_index, valid_index in cv:  # roll over 5 cross validation set
-                    sql_result['cv_number'] = cv_number
+                    cv_number = 1  # represent which cross-validation sets
+                    for train_index, valid_index in cv:  # roll over 5 cross validation set
+                        sql_result['cv_number'] = cv_number
 
-                    sample_set['valid_x'] = sample_set['train_x'][valid_index]
-                    sample_set['train_xx'] = sample_set['train_x'][train_index]
-                    sample_set['valid_y'] = sample_set['train_y'][valid_index]
-                    sample_set['train_yy'] = sample_set['train_y'][train_index]
-                    sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-                    sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+                        sample_set['valid_x'] = sample_set['train_x'][valid_index]
+                        sample_set['train_xx'] = sample_set['train_x'][train_index]
+                        sample_set['valid_y'] = sample_set['train_y'][valid_index]
+                        sample_set['train_yy'] = sample_set['train_y'][train_index]
+                        sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+                        sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-                    sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-                    sql_result['valid_len'] = len(sample_set['valid_x'])
+                        sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+                        sql_result['valid_len'] = len(sample_set['valid_x'])
 
-                    for k in ['valid_x','train_xx','test_x']:
-                        sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+                        for k in ['valid_x','train_xx','test_x']:
+                            sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-                    sample_set['weight'] = np.array(range(len(sample_set['train_xx'])))/len(sample_set['train_xx'])
-                    sample_set['weight'] = np.tanh(sample_set['weight']-0.5)+0.5
-                    # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
-                    # print(sql_result['weight'])
-                    print(data.x_col)
+                        # sample_set['weight'] = np.array(range(len(sample_set['train_xx'])))/len(sample_set['train_xx'])
+                        # sample_set['weight'] = np.tanh(sample_set['weight']-0.5)+0.5
+                        sample_set['weight'] = np.ones((len(sample_set['train_xx']),))
 
-                    print(group_code, testing_period, len(sample_set['train_yy_final']))
-                    HPOT(space, max_evals=10)  # start hyperopt
-                    cv_number += 1
-            except Exception as e:
-                print(testing_period, e)
-                continue
+                        # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
+                        # print(sql_result['weight'])
+                        print(data.x_col)
+
+                        print(group_code, testing_period, len(sample_set['train_yy_final']))
+                        HPOT(space, max_evals=10)  # start hyperopt
+                        cv_number += 1
+                except Exception as e:
+                    print(testing_period, e)
+                    continue
