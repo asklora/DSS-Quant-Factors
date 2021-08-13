@@ -284,11 +284,13 @@ class load_data:
             cut_col = [x + "_cut" for x in self.all_y_col]
             y_col = self.all_y_col
 
+        # convert consistently negative premium factor to positive
+        sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
+        neg_factor = list(sharpe[sharpe<0].index)
+        self.train[neg_factor] = -self.train[neg_factor]
+        self.test[neg_factor] = -self.test[neg_factor]
+
         if qcut_q > 0:
-            # convert consistently negative premium factor to positive
-            sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
-            neg_factor = list(sharpe[sharpe<0].index)
-            self.train[neg_factor] = -self.train[neg_factor]
 
             arr = self.train[y_col].values.flatten()  # Flatten all training factors to qcut all together
             # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
