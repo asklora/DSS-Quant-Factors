@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='regression_l2')     # OPTIONS: regression_l1 / regression_l2 / multiclass
-    parser.add_argument('--qcut_q', default=10, type=int)            # Default: Low, Mid, High
+    parser.add_argument('--qcut_q', default=0, type=int)            # Default: Low, Mid, High
     # parser.add_argument('--backtest_period', default=12, type=int)
     # parser.add_argument('--last_quarter', default='')             # OPTIONS: 'YYYYMMDD' date format
     parser.add_argument('--max_eval', type=int, default=20)         # for hyperopt
@@ -269,15 +269,15 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'newlastweekavg_pca4'
+    sql_result['name_sql'] = 'newlastweekavg_all'
     n_splits = 1
     use_biweekly_stock = False
     stock_last_week_avg = True
     # factors_to_test = ['stock_return_r6_2']
     valid_method = 'chron'     # cv/chron
     defined_cut_bins = []
-    group_code_list = ['JPY','EUR','USD','HKD'] #['currency']
-    use_median = True
+    group_code_list = ['USD','EUR','JPY','HKD'] #['currency']
+    use_median = False
     continue_test = False
     test_change = False
     use_pca = True
@@ -332,8 +332,8 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    # factors_to_test = data.factor_list[1:]
-    factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
+    factors_to_test = data.factor_list
+    # factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
     for f in factors_to_test:
         sql_result['y_type'] = f
