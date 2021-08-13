@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'newlastweekavg_pca'
+r_name = 'newlastweekavg_all1'
 model = 'lgbm'
 type = 'reg'
 

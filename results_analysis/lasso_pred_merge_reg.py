@@ -10,6 +10,8 @@ import re
 import global_vals
 
 r_name = 'lastweekavg_pca_new1'
+# r_name = 'lastweekavg_pca_en2'
+
 iter_name = r_name
 
 def download_stock_pred():
@@ -25,7 +27,12 @@ def download_stock_pred():
     # remove duplicate samples from running twice when testing
     result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha','group'], keep='last')
 
-    result_all_avg = result_all.groupby(['testing_period','group_code','alpha'])['actual'].mean().reset_index()
+    result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
+
+    corr_dict = {}
+    for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
+        corr_dict[name] = g[['pred','actual']].corr().iloc[0, 1]
+    corr_df = pd.DataFrame(corr_dict, index=[0]).stack(level=-1).reset_index(level=0, drop=True).transpose().reset_index()
 
     ret_dict = {}
     for name, g in result_all.groupby(['group_code', 'testing_period', 'alpha']):
@@ -46,12 +53,13 @@ def download_stock_pred():
 
     writer = pd.ExcelWriter(f'score/#lasso_pred_{iter_name}.xlsx')
     result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
+    corr_df.to_excel(writer, sheet_name='corr')
     result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
     pd.pivot_table(result_all, index=['alpha', 'group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
     writer.save()
 
-    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period', 'alpha'])
-    print(result_all_comb.groupby(['alpha']).mean())
+    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
+    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
 
     num_alpha = len(result_all_comb['alpha'].unique())
     num_group = len(result_all_comb['group_code'].unique())

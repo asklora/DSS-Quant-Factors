@@ -9,15 +9,20 @@ import re
 
 import global_vals
 
-model = 'lgbm'
-r_name = 'newlastweekavg_org'
+model = 'rf'
+r_name = 'pca_fill0'
 iter_name = r_name
 
 def download_stock_pred():
     ''' download training history and training prediction from DB '''
 
+    if model == 'rf':
+        y_type = 'P.y_type'
+    elif model == 'lgbm':
+        y_type = 'S.y_type'
+
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, P.group as group_code, S.testing_period, S.cv_number, S.y_type FROM {global_vals.result_pred_table}_{model}_reg P "
+        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_{model}_reg P "
                      f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
@@ -27,6 +32,13 @@ def download_stock_pred():
     result_all = result_all.drop_duplicates(subset=['testing_period', 'y_type', 'group_code'], keep='last')
     result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
 
+    # calculate correlation for each factor in each currency
+    corr_dict = {}
+    for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
+        corr_dict[name] = g[['pred','actual']].corr().iloc[0, 1]
+    corr_df = pd.DataFrame(corr_dict, index=[0]).stack(level=-1).reset_index(level=0, drop=True).transpose().reset_index()
+
+    # calculate ret in each currency
     ret_dict = {}
     for name, g in result_all.groupby(['group_code', 'testing_period']):
         ret_dict[name] = {}
@@ -46,6 +58,7 @@ def download_stock_pred():
 
     writer = pd.ExcelWriter(f'score/#lgbm_pred_{iter_name}.xlsx')
     result_all_comb.groupby(by=['group_code']).mean().to_excel(writer, sheet_name='average')
+    corr_df.to_excel(writer, sheet_name='corr')
     result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
     pd.pivot_table(result_all, index=['group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
     writer.save()

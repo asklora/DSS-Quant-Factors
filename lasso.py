@@ -16,7 +16,7 @@ from sklearn import linear_model
 from preprocess.load_data import load_data
 import global_vals
 
-method = 'en'
+method = 'lasso'
 
 def rf_train():
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_pca_en'
+    sql_result['name_sql'] = 'lastweekavg_pca_new1'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
@@ -120,8 +120,8 @@ if __name__ == "__main__":
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.001
-    sql_result['l1_ratio'] = 0.5
+    sql_result['alpha'] = 0.0001
+    sql_result['l1_ratio'] = 0
     use_pca = True
 
     # --------------------------------- Define Variables ------------------------------------------
