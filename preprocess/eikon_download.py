@@ -111,7 +111,7 @@ def download_from_eikon_others():
         ddf.to_csv('eikon_new_downloads.csv')
 
         with global_vals.engine.connect() as conn:
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             ddf.to_sql(global_vals.eikon_other_table, **extra)
         global_vals.engine.dispose()
 
@@ -158,7 +158,7 @@ def download_from_eikon_report_date():
     ddf.drop_duplicates().to_csv('eikon_new_downloads.csv')
 
         # with global_vals.engine_ali.connect() as conn:
-        #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+        #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
         #     ddf.to_sql("data_factor_eikon_report_date", **extra)
         # global_vals.engine_ali.dispose()
         #
@@ -208,7 +208,7 @@ def download_from_eikon_vix():
     df['period_end'] = pd.to_datetime(df['period_end'].str[:10], format='%Y-%m-%d')
 
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
         df[['.VIX','period_end']].to_sql('data_factor_eikon_vix_weekly', **extra)
     global_vals.engine_ali.dispose()
 

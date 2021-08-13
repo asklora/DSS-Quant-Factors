@@ -7,7 +7,7 @@ import os
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve, precision_score
 from sklearn.preprocessing import OneHotEncoder, LabelBinarizer
 from pandas.tseries.offsets import MonthEnd
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
@@ -233,7 +233,7 @@ def HPOT(space, max_evals):
         best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_reg"+to_sql_suffix, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_reg"+to_sql_suffix, **extra)
             hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_reg"+to_sql_suffix, **extra)
@@ -244,7 +244,7 @@ def HPOT(space, max_evals):
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_lgbm_class"+to_sql_suffix, **extra)
             pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_lgbm_class"+to_sql_suffix, **extra)
             hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_lgbm_class"+to_sql_suffix, **extra)
