@@ -50,7 +50,7 @@ def rf_train(space):
         elif args.tree_type == 'rf':
             regr = RandomForestRegressor(criterion=args.objective, **params)
 
-    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'], sample_weight=sql_result['weight'])
+    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'], sample_weight=sample_set['weight'])
 
     # prediction on all sets
     Y_train_pred = regr.predict(sample_set['train_xx'])
@@ -189,8 +189,6 @@ def HPOT(space, max_evals):
         hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-        hpot['all_results'][0]['weight'] = 'tanh'
-
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_class", **extra)
@@ -207,20 +205,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
-    parser.add_argument('--qcut_q', default=10, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_fill0'
+    sql_result['name_sql'] = 'pca_fill0_extra_weight'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
+    n_splits=1
     defined_cut_bins = []
     group_code_list = ['JPY','EUR','USD','HKD']
     use_pca = True
-    use_median = True
+    use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -241,8 +240,8 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    # sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
-    sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
+    sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
+    # sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
     for group_code in group_code_list:
@@ -254,7 +253,7 @@ if __name__ == "__main__":
             backtest = testing_period not in testing_period_list[0:4]
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
                                 'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
-                                'use_median': use_median, 'use_pca':use_pca}
+                                'use_median': use_median, 'use_pca':use_pca, 'n_splits':n_splits}
             try:
                 sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
@@ -287,8 +286,8 @@ if __name__ == "__main__":
                     for k in ['valid_x','train_xx','test_x']:
                         sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-                    sql_result['weight'] = np.array(range(len(sample_set['train_y_final'])))/len(sample_set['train_y_final'])
-                    sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
+                    sample_set['weight'] = np.array(range(len(sample_set['train_xx'])))/len(sample_set['train_xx'])
+                    sample_set['weight'] = np.tanh(sample_set['weight']-0.5)+0.5
                     # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
                     # print(sql_result['weight'])
                     print(data.x_col)
