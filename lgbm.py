@@ -7,7 +7,7 @@ import os
 from math import floor
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, roc_auc_score, roc_curve, precision_score
 from sklearn.preprocessing import OneHotEncoder, LabelBinarizer
 from pandas.tseries.offsets import MonthEnd
 # from results_analysis.lgbm_merge import combine_pred, calc_mae_write, read_eval_best
