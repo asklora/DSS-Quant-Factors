@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'rf'
-r_name = 'pca_fill0_extra'
+r_name = 'pca_fill0_extra1_weight'
 iter_name = r_name
 
 def download_stock_pred():

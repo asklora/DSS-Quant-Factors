@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'newlastweekavg_all'
+    sql_result['name_sql'] = 'newlastweekavg_all3'
     n_splits = 1
     use_biweekly_stock = False
     stock_last_week_avg = True
@@ -399,8 +399,8 @@ if __name__ == "__main__":
                         cv_number += 1
                 except Exception as e:
                     print(testing_period, e)
-                    raise e
-                    exit(2)
+                    # raise e
+                    # exit(2)
                     continue
 
         write_cutbins = False
