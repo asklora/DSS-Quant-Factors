@@ -145,6 +145,7 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     x_col = {}
     factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
+    x_col['neg_factor'] = formula.loc[formula['long_large'], 'name'].to_list()         # x_col remove highly correlated variables
 
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
@@ -285,8 +286,9 @@ class load_data:
             y_col = self.all_y_col
 
         # convert consistently negative premium factor to positive
-        sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
-        neg_factor = list(sharpe[sharpe<0].index)
+        # sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
+        # neg_factor = list(sharpe[sharpe<0].index)
+        neg_factor = self.x_col_dict['neg_factor']
         self.train[neg_factor] = -self.train[neg_factor]
         self.test[neg_factor] = -self.test[neg_factor]
 
@@ -432,7 +434,7 @@ class load_data:
             #         + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
-                x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
+                # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
 
             y_col_cut = [x+'_cut' for x in y_col]
             return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
