@@ -22,7 +22,7 @@ with global_vals.engine_ali.connect() as conn:
 global_vals.engine_ali.dispose()
 
 x_list = list(set(formula.loc[formula['x_col'],'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
-col_list = list(set(formula['name'].to_list())- {'volume'})
+col_list = formula['name'].to_list()
 factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
@@ -539,6 +539,29 @@ def pillar_corr():
     c = df.corr()
     print(df.corr())
 
+def select_by_cum_ret():
+
+    df = factors.loc[factors['group']=='USD']
+    train = df.loc[df['period_end']<dt.date(2017,8,30)]
+    test = df.loc[df['period_end']>dt.date(2017,8,30)]
+
+    def select_cumprod(df):
+        rk = pd.DataFrame(index=col_list)
+        rk['long'] = np.cumprod(df[col_list]+1, axis=0).values[-1]
+        rk['short'] = np.cumprod(-df[col_list]+1, axis=0).values[-1]
+        rk['best'] = rk[['long','short']].max(axis=1)
+        return rk.sort_values(by=['best'], ascending=False)
+
+    train = select_cumprod(train)
+    best_col = train.index[:10]
+    test['best_train'] = test[best_col].mean(axis=1)
+    global col_list
+    col_list += ['best_train']
+    test = select_cumprod(test)
+
+    print(train, test)
+
+
 if __name__ == "__main__":
     # correl_fama_website()
     # eda_missing()
@@ -548,7 +571,7 @@ if __name__ == "__main__":
     # plot_trend()
 
     # sharpe_ratio()
-    test_if_persistent()
+    # test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
@@ -564,3 +587,5 @@ if __name__ == "__main__":
     # plot_factor('vol_0_30')
 
     # pillar_corr()
+
+    select_by_cum_ret()

@@ -9,7 +9,7 @@ import re
 
 import global_vals
 
-r_name = 'lastweekavg_pca_new1'
+r_name = 'lastweekavg_pca_weight_equal'
 # r_name = 'lastweekavg_pca_en2'
 
 iter_name = r_name

@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'rf'
-r_name = 'pca_fill0'
+r_name = 'pca_fill0_extra'
 iter_name = r_name
 
 def download_stock_pred():
@@ -34,7 +34,7 @@ def download_stock_pred():
 
     # calculate correlation for each factor in each currency
     corr_dict = {}
-    for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
+    for name, g in result_all.groupby([ 'y_type', 'group_code']):
         corr_dict[name] = g[['pred','actual']].corr().iloc[0, 1]
     corr_df = pd.DataFrame(corr_dict, index=[0]).stack(level=-1).reset_index(level=0, drop=True).transpose().reset_index()
 

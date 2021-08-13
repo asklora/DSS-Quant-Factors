@@ -9,7 +9,7 @@ from preprocess.premium_calculation import calc_premium_all
 
 def update_premium():
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=False, update=False)
     calc_premium_all(stock_last_week_avg=False, use_biweekly_stock=True, update=False)
 

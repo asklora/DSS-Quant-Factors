@@ -25,10 +25,13 @@ def get_tri(engine, save=True, update=False, currency=None):
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
         tri = pd.read_sql(query, con=conn, chunksize=1000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
+        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
+        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
+            eikon_price.to_csv('cache_eikon_price.csv', index=False)
     engine.dispose()
-    return tri
+    return tri, eikon_price
 
 def fill_all_day(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
@@ -112,21 +115,20 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     if use_cached:
         try:
             tri = pd.read_csv('cache_tri.csv', low_memory=False)
+            eikon_price = pd.read_csv('cache_eikon_price.csv', low_memory=False)
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
             print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
-            tri = get_tri(engine, save=save)
+            tri, eikon_price = get_tri(engine, save=save)
     else:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
-        tri = get_tri(engine, save=save, update=update)
+        tri, eikon_price = get_tri(engine, save=save, update=update)
 
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn)
         print(f'#################################################################################################')
-        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
-        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
     global_vals.engine_ali.dispose()
 
     # tri = tri.loc[tri['ticker']=='AAPL.O']

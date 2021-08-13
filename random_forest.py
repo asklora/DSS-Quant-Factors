@@ -50,7 +50,7 @@ def rf_train(space):
         elif args.tree_type == 'rf':
             regr = RandomForestRegressor(criterion=args.objective, **params)
 
-    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'])
+    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'], sample_weight=sql_result['weight'])
 
     # prediction on all sets
     Y_train_pred = regr.predict(sample_set['train_xx'])
@@ -189,6 +189,8 @@ def HPOT(space, max_evals):
         hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
+        hpot['all_results'][0]['weight'] = 'tanh'
+
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_class", **extra)
@@ -285,6 +287,10 @@ if __name__ == "__main__":
                     for k in ['valid_x','train_xx','test_x']:
                         sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
+                    sql_result['weight'] = np.array(range(len(sample_set['train_y_final'])))/len(sample_set['train_y_final'])
+                    sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
+                    # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
+                    # print(sql_result['weight'])
                     print(data.x_col)
 
                     print(group_code, testing_period, len(sample_set['train_yy_final']))
