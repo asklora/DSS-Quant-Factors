@@ -365,7 +365,7 @@ if __name__ == "__main__":
                         cut_bins_df['name_sql'] = sql_result['name_sql']
 
                         with global_vals.engine_ali.connect() as conn:
-                            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
+                            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
                             cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
                         global_vals.engine_ali.dispose()
 
