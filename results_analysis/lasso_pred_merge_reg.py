@@ -26,7 +26,7 @@ def download_stock_pred():
     global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
-    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha','group'], keep='last')
+    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha'], keep='last')
 
     result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
 
