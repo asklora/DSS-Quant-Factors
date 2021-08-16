@@ -34,6 +34,7 @@ def get_tri(save=True, update=False, currency=None):
         tri = pd.concat(tri, axis=0, ignore_index=True)
         print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
+        eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
             eikon_price.to_csv('cache_eikon_price.csv', index=False)
