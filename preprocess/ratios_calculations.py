@@ -10,8 +10,8 @@ from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(engine, save=True, update=False, currency=None):
-    with engine.connect() as conn:
+def get_tri(save=True, update=False, currency=None):
+    with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
         conditions = []
         if currency:
             conditions.append(f"currency_code = '{currency}'")
@@ -23,14 +23,14 @@ def get_tri(engine, save=True, update=False, currency=None):
                          f"FROM {global_vals.stock_data_table} WHERE {' AND '.join(conditions)}")
         else:
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
-        tri = pd.read_sql(query, con=conn, chunksize=10000)
+        tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
         print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
-        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn)
+        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
             eikon_price.to_csv('cache_eikon_price.csv', index=False)
-    engine.dispose()
+            
     return tri, eikon_price
 
 def fill_all_day(result):
@@ -120,11 +120,11 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
             print(e)
             print(f'#################################################################################################')
             print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
-            tri, eikon_price = get_tri(engine, save=save)
+            tri, eikon_price = get_tri(save=save)
     else:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
-        tri, eikon_price = get_tri(engine, save=save, update=update)
+        tri, eikon_price = get_tri(save=save, update=update)
 
     with global_vals.engine_ali.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
@@ -603,6 +603,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 
 if __name__ == "__main__":
-    
+
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True, update=False)
