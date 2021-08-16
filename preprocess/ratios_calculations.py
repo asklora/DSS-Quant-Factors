@@ -527,7 +527,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn, chunksize=10000)  # ratio calculation used
         formula = pd.concat(formula, axis=0, ignore_index=True)
-    global_vals.engine.dispose()
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
@@ -599,12 +598,11 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
         print(f'      ------------------------> Finish writing {db_table_name} table ')
-    global_vals.engine.dispose()
 
     return df, stocks_col, formula
 
 
 if __name__ == "__main__":
-
+    
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True, update=False)
