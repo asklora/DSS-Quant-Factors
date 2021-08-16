@@ -11,6 +11,13 @@ from scipy.stats import skew
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
 def get_tri(save=True, update=False, currency=None):
+    if not isinstance(save, bool):
+        raise Exception("Parameter 'save' must be a bool")
+    if not isinstance(update, bool):
+        raise Exception("Parameter 'update' must be a bool")
+    if not isinstance(currency, str):
+        raise Exception("Parameter 'currency' must be a str")
+
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
         conditions = []
         if currency:
