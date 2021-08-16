@@ -202,6 +202,7 @@ class load_data:
         self.main, self.factor_list, self.x_col_dict = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
 
         # calculate y for all factors
+        self.factor_list = self.x_col_dict['factor']
         self.all_y_col = ["y_"+x for x in self.factor_list]
         # self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
@@ -279,18 +280,21 @@ class load_data:
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         if test_change:
-            cut_col = [x + "_cut" for x in self.all_y_col_change]
             y_col = self.all_y_col_change
         else:
-            cut_col = [x + "_cut" for x in self.all_y_col]
             y_col = self.all_y_col
 
+        null_col = self.train.isnull().sum()
+        null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
+        y_col = [x for x in y_col if x not in null_col]
+        cut_col = [x + "_cut" for x in y_col]
+
         # convert consistently negative premium factor to positive
-        # sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
-        # neg_factor = list(sharpe[sharpe<0].index)
-        neg_factor = self.x_col_dict['neg_factor']
-        self.train[neg_factor] = -self.train[neg_factor]
-        self.test[neg_factor] = -self.test[neg_factor]
+        sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
+        self.neg_factor = list(sharpe[sharpe<0].index)
+        # neg_factor = self.x_col_dict['neg_factor']
+        self.train[self.neg_factor] = -self.train[self.neg_factor]
+        self.test[self.neg_factor] = -self.test[self.neg_factor]
 
         if qcut_q > 0:
 
@@ -322,13 +326,15 @@ class load_data:
             self.cut_bins_df = self.train[cut_col].apply(pd.value_counts).transpose()
             self.cut_bins_df = self.cut_bins_df.divide(self.cut_bins_df.sum(axis=1).values, axis=0).reset_index()
             self.cut_bins_df['negative'] = False
-            self.cut_bins_df.loc[self.cut_bins_df['index'].isin([x+'_cut' for x in neg_factor]), 'negative'] = True
+            # self.cut_bins_df.loc[self.cut_bins_df['index'].isin([x+'_cut' for x in neg_factor]), 'negative'] = True
             self.cut_bins_df['y_type'] = [x[2:-4] for x in self.cut_bins_df['index']]
             self.cut_bins_df['cut_bins_low'] = cut_bins[1]
             self.cut_bins_df['cut_bins_high'] = cut_bins[-2]
         else:
             self.train[cut_col] = self.train[y_col]
             self.test[cut_col] = self.test[y_col]
+
+        return y_col
 
     def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca=False):
         ''' split training / testing set based on testing period '''
@@ -385,21 +391,21 @@ class load_data:
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
+        self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
         if use_pca:
             all_cols = [x for v in self.x_col_dict.values() for x in v]
 
             # use PCA on each pillar factors
-            for p in ['quality','value','momentum']:
-                pillar_cols = [x for x in all_cols if any([col in x for col in self.x_col_dict[p]])]
-                fit_pca = PCA(n_components=0.6).fit(self.train[pillar_cols].fillna(0))
-                train_trans = fit_pca.transform(self.train[pillar_cols].fillna(0))
-                self.x_col_dict[f'{p}_pca'] = [f'{p}_{i}' for i in range(1, train_trans.shape[1] + 1)]
-                self.train = add_arr_col(self.train, train_trans, self.x_col_dict[f'{p}_pca'])
-                test_trans = fit_pca.transform(self.train[pillar_cols].fillna(0).fillna(0))
-                self.test = add_arr_col(self.test, test_trans, self.x_col_dict[f'{p}_pca'])
+            # for p in ['quality','value','momentum']:
+            #     pillar_cols = [x for x in all_cols if any([col in x for col in self.x_col_dict[p]])]
+            #     fit_pca = PCA(n_components=0.6).fit(self.train[pillar_cols].fillna(0))
+            #     train_trans = fit_pca.transform(self.train[pillar_cols].fillna(0))
+            #     self.x_col_dict[f'{p}_pca'] = [f'{p}_{i}' for i in range(1, train_trans.shape[1] + 1)]
+            #     self.train = add_arr_col(self.train, train_trans, self.x_col_dict[f'{p}_pca'])
+            #     test_trans = fit_pca.transform(self.train[pillar_cols].fillna(0).fillna(0))
+            #     self.test = add_arr_col(self.test, test_trans, self.x_col_dict[f'{p}_pca'])
 
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
@@ -437,8 +443,7 @@ class load_data:
                 # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
 
             y_col_cut = [x+'_cut' for x in y_col]
-            return df.filter(x_col).values, df[['y_'+x for x in y_type]].values, df[y_col_cut].values, \
-                   df.filter(x_col).columns.to_list()     # Assuming using all factors
+            return df.filter(x_col).values, df[y_col].values, df[y_col_cut].values, df.filter(x_col).columns.to_list()     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
