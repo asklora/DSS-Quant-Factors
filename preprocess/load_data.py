@@ -336,14 +336,14 @@ class load_data:
 
         return y_col
 
-    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca=False):
+    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca):
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
         start = testing_period - relativedelta(years=20)    # train df = 20*12 months
 
         # factor with ARMA history as X5
-        if use_pca:
+        if use_pca>0:
             arma_col = self.x_col_dict['factor']        # if using pca, all history first
         elif len(y_type) == 1:
             try:
@@ -367,7 +367,7 @@ class load_data:
             self.x_col_dict['ar'].extend(ar_col)    # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y
-        if not(use_pca):
+        if use_pca==0:
             arma_col = y_type  # add MA for all y_type predicted at the same time
 
         arma_col = self.x_col_dict['factor']  # if using pca, all history first
@@ -399,7 +399,7 @@ class load_data:
         self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
         self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
 
-        if use_pca:
+        if use_pca>0:
             all_cols = [x for v in self.x_col_dict.values() for x in v]
 
             # use PCA on each pillar factors
@@ -414,7 +414,7 @@ class load_data:
 
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
-            arma_pca = PCA(n_components=0.6).fit(pca_arma_df)
+            arma_pca = PCA(n_components=use_pca).fit(pca_arma_df)
 
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
@@ -453,7 +453,7 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
                     + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
-            if use_pca:
+            if use_pca>0:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
                 # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
 
@@ -490,7 +490,7 @@ class load_data:
         return gkf
 
     def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, valid_method='cv',
-                  defined_cut_bins=[], use_median=False, test_change=False, use_pca=False):
+                  defined_cut_bins=[], use_median=False, test_change=False, use_pca=0):
         ''' work through cleansing process '''
 
         self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change=test_change, use_pca=use_pca)   # split x, y for test / train samples
@@ -513,7 +513,7 @@ if __name__ == '__main__':
     data.split_group(group_code)
 
     for y in y_type:
-        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False, valid_method='chron', use_pca=True)
+        sample_set, cv = data.split_all(testing_period, y_type=[y], use_median=False, valid_method='chron', use_pca=0.6)
         print(data.cut_bins)
 
     print(data.x_col)

@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'rf'
-r_name = 'pca_mse_yfill0'
+r_name = 'pca_neg_lesstree'
 iter_name = r_name
 
 def download_stock_pred(q):
@@ -102,7 +102,8 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     for i in range(1, 10):
         iter_name += str(i)
         with global_vals.engine_ali.connect() as conn:
-            query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.tree_type as alpha FROM {global_vals.result_pred_table}_{model}_reg P "
+            query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.tree_type as alpha, S.neg_factor "
+                         f"FROM {global_vals.result_pred_table}_{model}_reg P "
                          f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
                          f"WHERE S.name_sql='{iter_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
             result_all = pd.read_sql(query, conn)       # download training history
@@ -115,6 +116,7 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
 
     df = pd.concat(df_list, axis=0)
     df['pred'] = df.groupby(['group_code', 'testing_period', 'alpha', 'iter'])['pred'].rank().values
+    df_neg = df[['group_code', 'testing_period', 'neg_factor']].drop_duplicates()
     result_all = df.groupby(['group_code', 'testing_period',  'y_type', 'alpha']).mean().reset_index()
 
     result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
@@ -174,7 +176,10 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
         plt.savefig(f'score/#{model}_consol_pred_{iter_name}.png')
     # plt.show()
 
-    return result_all_comb
+    result_return = pd.pivot_table(result_all, index=['group_code', 'testing_period', 'alpha'], columns=['y_type'], values='pred')
+    result_return = result_return.transpose().apply(pd.qcut, q=3, labels=[-1,0,1])
+
+    return result_return.transpose().reset_index()
 
 if __name__ == "__main__":
 

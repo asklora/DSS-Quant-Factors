@@ -15,8 +15,8 @@ def get_tri(save=True, update=False, currency=None):
         raise Exception("Parameter 'save' must be a bool")
     if not isinstance(update, bool):
         raise Exception("Parameter 'update' must be a bool")
-    if not isinstance(currency, str):
-        raise Exception("Parameter 'currency' must be a str")
+    # if not isinstance(currency, str):
+    #     raise Exception("Parameter 'currency' must be a str")
 
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
         conditions = []
@@ -144,10 +144,12 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
 
     # find first tri from DSS as anchor
     tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
     tri_first['anchor_tri'] = tri_first['tri']
+    eikon_price['close'] = eikon_price['close'].fillna(eikon_price[['high','low']].mean(axis=1))
     eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
 
     # find anchor close price (adj.)
@@ -612,5 +614,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='biweekly',
                           use_cached=True, save=True, update=False)

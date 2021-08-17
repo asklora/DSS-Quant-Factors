@@ -15,7 +15,7 @@ def calc_score(testing_period=None):
 
     # download best factors
     f = download_stock_pred_multi('pca_mse_moretree', False, False)
-    f = f.loc[(f['group_code']=='USD')&(f['alpha']=='extra')].set_index(['period_end'])[['max_factor','min_factor']]
+    f = f.loc[(f['group_code']=='USD')&(f['alpha']=='extra')].set_index(['testing_period'])[['max_factor','min_factor']]
 
     # download membership table
     with global_vals.engine_ali.connect() as conn:

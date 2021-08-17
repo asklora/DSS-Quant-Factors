@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lasso_nopca'
+    sql_result['name_sql'] = 'lasso_multipca'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
@@ -124,9 +124,9 @@ if __name__ == "__main__":
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.005
+    sql_result['alpha'] = 0.001
     sql_result['l1_ratio'] = 1
-    use_pca = False
+    # use_pca = 0.6
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -154,8 +154,8 @@ if __name__ == "__main__":
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
     print(sql_result['y_type'])
-    for a in [0.005]:
-        sql_result['alpha'] = a
+    for a in [0.4, 0.2, 0.8]:
+        sql_result['use_pca'] = use_pca = a
         for group_code in group_code_list:
             sql_result['group_code'] = group_code
             data.split_group(group_code)  # load_data (class) STEP 2
