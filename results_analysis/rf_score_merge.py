@@ -8,8 +8,9 @@ import ast
 import global_vals
 
 r_name = 'biweekly_rerun'
+r_name = 'pca_mse_yfill0'
 
-y_type = 'market_cap_usd'
+# y_type = 'market_cap_usd'
 iter_name = r_name.split('_')[-1]
 
 def download_stock_pred():

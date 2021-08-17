@@ -542,8 +542,8 @@ def pillar_corr():
 def select_by_cum_ret():
 
     df = factors.loc[factors['group']=='USD']
-    train = df.loc[df['period_end']<dt.date(2017,8,30)]
-    test = df.loc[df['period_end']>dt.date(2017,8,30)]
+    train = df.loc[df['period_end']<=dt.date(2017,8,31)]
+    test = df.loc[df['period_end']>dt.date(2017,8,31)]
 
     def select_cumprod(df):
         rk = pd.DataFrame(index=col_list)
@@ -558,6 +558,10 @@ def select_by_cum_ret():
     global col_list
     col_list += ['best_train']
     test = select_cumprod(test)
+
+    # test.to_csv('test.csv')
+    df = pd.merge(train, test, left_index=True, right_index=True, suffixes=['_train','_test'])
+    df.to_csv('train.csv')
 
     print(train, test)
 

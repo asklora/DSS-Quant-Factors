@@ -28,6 +28,7 @@ processed_stock_table = "processed_stock_weekavg"
 factor_premium_table = "processed_factor_premium"
 processed_group_ratio_table = "processed_group_ratio"
 processed_cutbins_table = "processed_cutbins"
+processed_pca_table = 'processed_pca'
 
 # TABLE names - preprocess formula
 formula_factors_table = "factor_formula_ratios"

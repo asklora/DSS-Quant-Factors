@@ -24,14 +24,14 @@ def rf_train():
 
     sql_result['finish_timing'] = dt.datetime.now()
 
-    if method == 'lasso':
-        clf = linear_model.Lasso(alpha=sql_result['alpha']).fit(sample_set['train_x'], sample_set['train_y_final'], sample_weight=sql_result['weight'])
-        Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
-        Y_test_pred = clf.predict(sample_set['test_x'])
-    elif method == 'en':
-        clf = linear_model.ElasticNet(alpha=sql_result['alpha'], l1_ratio=sql_result['l1_ratio']).fit(sample_set['train_x'], sample_set['train_y_final'])
-        Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
-        Y_test_pred = clf.predict(sample_set['test_x'])
+    # if method == 'lasso':
+    #     clf = linear_model.Lasso(alpha=sql_result['alpha']).fit(sample_set['train_x'], sample_set['train_y_final'], sample_weight=sql_result['weight'])
+    #     Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
+    #     Y_test_pred = clf.predict(sample_set['test_x'])
+    # elif method == 'en':
+    clf = linear_model.ElasticNet(alpha=sql_result['alpha'], l1_ratio=sql_result['l1_ratio']).fit(sample_set['train_x'], sample_set['train_y_final'])
+    Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
+    Y_test_pred = clf.predict(sample_set['test_x'])
 
     sql_result['feature_importance'], feature_importance_df = to_list_importance(clf)
     print(feature_importance_df)
@@ -115,18 +115,18 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lastweekavg_pca_weight_tanh'
+    sql_result['name_sql'] = 'lasso_nopca'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    group_code_list = ['JPY','EUR','USD','HKD']
+    group_code_list = ['EUR','JPY','USD','HKD']
     qcut_q = 0
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0
-    sql_result['l1_ratio'] = 0
-    use_pca = True
+    sql_result['alpha'] = 0.005
+    sql_result['l1_ratio'] = 1
+    use_pca = False
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -154,48 +154,50 @@ if __name__ == "__main__":
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
     print(sql_result['y_type'])
-    for group_code in group_code_list:
-        sql_result['group_code'] = group_code
-        data.split_group(group_code)  # load_data (class) STEP 2
-        for testing_period in testing_period_list:
-            sql_result['testing_period'] = testing_period
-            load_data_params = {'qcut_q': qcut_q, 'y_type': sql_result['y_type'], 'valid_method': valid_method,
-                                'use_median': use_median, 'n_splits': n_splits, 'test_change': test_change, 'use_pca': use_pca}
-            try:
-                sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-                print(list(data.x_col))
+    for a in [0.005]:
+        sql_result['alpha'] = a
+        for group_code in group_code_list:
+            sql_result['group_code'] = group_code
+            data.split_group(group_code)  # load_data (class) STEP 2
+            for testing_period in testing_period_list:
+                sql_result['testing_period'] = testing_period
+                load_data_params = {'qcut_q': qcut_q, 'y_type': sql_result['y_type'], 'valid_method': valid_method,
+                                    'use_median': use_median, 'n_splits': n_splits, 'test_change': test_change, 'use_pca': use_pca}
+                try:
+                    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+                    print(list(data.x_col))
 
-                cv_number = 1  # represent which cross-validation sets
-                for train_index, valid_index in cv:  # roll over 5 cross validation set
-                    sql_result['cv_number'] = cv_number
+                    cv_number = 1  # represent which cross-validation sets
+                    for train_index, valid_index in cv:  # roll over 5 cross validation set
+                        sql_result['cv_number'] = cv_number
 
-                    # sample_set['valid_x'] = sample_set['train_x'][valid_index]
-                    # sample_set['train_xx'] = sample_set['train_x'][train_index]
-                    # sample_set['valid_y'] = sample_set['train_y'][valid_index]
-                    # sample_set['train_yy'] = sample_set['train_y'][train_index]
-                    # sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-                    # sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+                        # sample_set['valid_x'] = sample_set['train_x'][valid_index]
+                        # sample_set['train_xx'] = sample_set['train_x'][train_index]
+                        # sample_set['valid_y'] = sample_set['train_y'][valid_index]
+                        # sample_set['train_yy'] = sample_set['train_y'][train_index]
+                        # sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+                        # sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-                    # sample_set['train_y'] = sample_set['train_y'].flatten()
-                    # sample_set['test_y'] = sample_set['test_y'].flatten()
-                    # sample_set['train_y_final'] = sample_set['train_y_final'].flatten()
-                    # sample_set['test_y_final'] = sample_set['test_y_final'].flatten()
+                        # sample_set['train_y'] = sample_set['train_y'].flatten()
+                        # sample_set['test_y'] = sample_set['test_y'].flatten()
+                        # sample_set['train_y_final'] = sample_set['train_y_final'].flatten()
+                        # sample_set['test_y_final'] = sample_set['test_y_final'].flatten()
 
-                    sql_result['valid_group'] = ','.join(list(data.train['group'][valid_index].unique()))
+                        sql_result['valid_group'] = ','.join(list(data.train['group'][valid_index].unique()))
 
-                    for k in ['train_x', 'test_x']:
-                        # sample_set[k][(np.abs(sample_set[k])==np.inf)] = np.nan
-                        sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+                        for k in ['train_x', 'test_x']:
+                            # sample_set[k][(np.abs(sample_set[k])==np.inf)] = np.nan
+                            sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-                    sql_result['weight'] = np.array(range(len(sample_set['train_y'])))/len(sample_set['train_y'])
-                    sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
-                    # sql_result['weight'] = 1/(1+1/np.exp(sql_result['weight']-0.5))
-                    # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
-                    # print(sql_result['weight'])
+                        sql_result['weight'] = np.array(range(len(sample_set['train_y'])))/len(sample_set['train_y'])
+                        sql_result['weight'] = np.tanh(sql_result['weight']-0.5)+0.5
+                        # sql_result['weight'] = 1/(1+1/np.exp(sql_result['weight']-0.5))
+                        # sql_result['weight'] = pd.cut(sql_result['weight'], bins=12, labels=False)
+                        # print(sql_result['weight'])
 
-                    print(group_code, testing_period, len(sample_set['train_y_final']))
-                    HPOT()  # start hyperopt
-                    cv_number += 1
-            except Exception as e:
-                print(testing_period, e)
-                continue
+                        print(group_code, testing_period, len(sample_set['train_y_final']))
+                        HPOT()  # start hyperopt
+                        cv_number += 1
+                except Exception as e:
+                    print(testing_period, e)
+                    continue

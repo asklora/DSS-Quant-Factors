@@ -252,7 +252,7 @@ def check_eikon_full_ticker(table_name, last_day='2021-07-31'):
     print(table_name)
 
     with global_vals.engine_ali.connect() as conn:
-        csv_ticker = set(pd.read_sql(f"SELECT DISTINCT \"Instrument\" as ticker FROM {table_name}", conn)['ticker'].to_list())
+        miss_list = set(pd.read_sql(f"SELECT DISTINCT ticker FROM {table_name} WHERE close is null and open is not null", conn)['ticker'].to_list())
         # df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
         tickers = set(pd.read_sql(f'SELECT ticker FROM {global_vals.dl_value_universe_table}', conn)['ticker'].to_list())
     global_vals.engine_ali.dispose()
@@ -260,10 +260,10 @@ def check_eikon_full_ticker(table_name, last_day='2021-07-31'):
     # df = df.loc[df.isnull().sum(axis=1)!=0]
     # miss_list = set(df['ticker'].unique())
 
-    miss_list = tickers-set(csv_ticker)
+    # miss_list = tickers-set(csv_ticker)
     print(len(miss_list), miss_list)
-    if len(miss_list)<3:
-        exit(1)
+    # if len(miss_list)<3:
+    #     exit(1)
 
     return list(miss_list)
 
@@ -277,11 +277,12 @@ def download_from_eikon_tri():
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
-    params = {'SDate': '1999-07-30', 'EDate': '2021-07-30', 'ADJUSTED': 1, 'Frq':'D'}      # params for fundemantals
+    params = {'SDate': '1999-07-30', 'EDate': '2009-09-01', 'ADJUSTED': 1, 'Frq':'D'}      # params for fundemantals
 
-    field_name = ['TR.CLOSEPRICE','TR.HIGHPRICE','TR.OPENPRICE']#,'TR.LOWPRICE']
+    field_name = ['TR.PRICECLOSE']#,,'TR.HIGHPRICE','TR.OPENPRICE', 'TR.LOWPRICE', 'TR.CLOSEPRICE']
 
-    # tickers = check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
+    tickers = check_eikon_full_ticker(global_vals.eikon_price_table+'_daily_final')
+    # tickers = ['4904.TW']
 
     step = 10
     for i in np.arange(0, len(tickers),step):
@@ -302,7 +303,7 @@ def download_from_eikon_tri():
 
             with global_vals.engine_ali.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':1000}
-                df.to_sql(global_vals.eikon_price_table+'_weekavg_daily', **extra)
+                df.to_sql(global_vals.eikon_price_table+'_daily_final5', **extra)
             global_vals.engine_ali.dispose()
 
 def download_from_eikon_vol():
@@ -362,14 +363,51 @@ def org_eikon_tri_volume():
         df.to_sql(global_vals.eikon_price_table + '_daily_final', **extra)
     global_vals.engine_ali.dispose()
 
+def combine_tri_downloads():
+    with global_vals.engine_ali.connect() as conn:
+        df1 = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final", conn)
+        df2 = pd.read_sql(f"SELECT ticker, value, trading_day FROM {global_vals.eikon_price_table}_daily_final5", conn)
+    global_vals.engine_ali.dispose()
+
+    df2.columns = ['ticker','close','trading_day']
+
+    print(df1.isnull().sum())
+    df1 = df1.merge(df2, on=['ticker','trading_day'], how='outer', suffixes=['','_new'])
+    df1['close'] = df1['close'].fillna(df1['close_new'])
+    print(len(df1))
+    df1 = df1.drop_duplicates(subset=['ticker','trading_day'], keep='last')
+    print(len(df1))
+    print(df1.isnull().sum())
+
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
+        df1.drop(['close_new'], axis=1).to_sql(global_vals.eikon_price_table + '_daily_final3', **extra)
+    global_vals.engine_ali.dispose()
+
+def remove_dup_tri_downloads():
+    with global_vals.engine_ali.connect() as conn:
+        df = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final", conn)
+    global_vals.engine_ali.dispose()
+
+    df = df.drop_duplicates(subset=['ticker', 'trading_day'], keep='last')
+    print(df.isnull().sum())
+
+    with global_vals.engine_ali.connect() as conn:
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
+        df.to_sql(global_vals.eikon_price_table + '_daily_final', **extra)
+    global_vals.engine_ali.dispose()
+
 if __name__ == '__main__':
-    download_from_eikon_vix()
+    # download_from_eikon_vix()
 
     # download_from_eikon_mktcap()
     # check_eikon_full_ticker(global_vals.eikon_mktcap_table+'_weekly')
 
     # download_from_eikon_tri()
     # check_eikon_full_ticker(global_vals.eikon_price_table+'_weekavg_final')
+
+    combine_tri_downloads()
+    # remove_dup_tri_downloads()
 
     # download_from_eikon_vol()
 

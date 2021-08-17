@@ -386,6 +386,8 @@ class load_data:
         else:
             arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
 
+        arma_col = self.x_col_dict['factor']        # if using pca, all history first
+
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         self.x_col_dict['ar'] = []
         for i in [1,2]:
@@ -396,6 +398,9 @@ class load_data:
         # 2. Calculate the moving average for predicted Y
         if not(use_pca):
             arma_col = y_type  # add MA for all y_type predicted at the same time
+
+        arma_col = self.x_col_dict['factor']  # if using pca, all history first
+
         ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
@@ -442,6 +447,17 @@ class load_data:
 
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
+
+            # df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']).reset_index()
+            # df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
+            # df['group'] = self.group_name
+            # df['testing_period'] = testing_period
+            #
+            # with global_vals.engine_ali.connect() as conn:
+            #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            #     df.to_sql(global_vals.processed_pca_table, **extra)
+            # global_vals.engine_ali.dispose()
+            # raise Exception
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
