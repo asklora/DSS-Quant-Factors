@@ -171,9 +171,10 @@ def calc_pred_class():
 def compare_all_similar_xls():
     df_list = []
     for f in os.listdir('./score'):
-        if ('_pred_reg_mean_' in f) and ('.xlsx' in f):
+        if ('#rf_pred_' in f) and ('.xlsx' in f):
             df = pd.read_excel(open('score/' + f, 'rb'), sheet_name='average')
             df['name_sql'] = f
+            df = df.ffill()
             df_list.append(df)
 
     all_df = pd.concat(df_list, axis=0)
@@ -181,6 +182,6 @@ def compare_all_similar_xls():
 
 if __name__ == "__main__":
 
-    calc_pred_class()
-    # compare_all_similar_xls()
+    # calc_pred_class()
+    compare_all_similar_xls()
 

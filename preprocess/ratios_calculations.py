@@ -140,11 +140,17 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         print(f'#################################################################################################')
     global_vals.engine_ali.dispose()
 
-    # tri = tri.loc[tri['ticker']=='AAPL.O']
+    tri = tri.loc[tri['ticker'].str[-2:] == '.T']
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
+
+    def count_jpy(df):
+        print(df.isnull().sum())
+        print(len(df))
+
+    count_jpy(eikon_price)
 
     # find first tri from DSS as anchor
     tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
@@ -160,6 +166,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # calculate tri based on EIKON close price data
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
 
+    count_jpy(eikon_price)
+
     # merge DSS & EIKON data
     tri = tri.merge(eikon_price, on=['ticker','trading_day'], how='outer', suffixes=['','_eikon']).sort_values(by=['ticker','trading_day'])
     # tri = tri.set_index(['ticker','trading_day'])
@@ -171,6 +179,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
+
+    count_jpy(tri)
 
     print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
@@ -195,6 +205,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
+
+    count_jpy(tri)
 
     print(f'      ------------------------> Sample interval using [{sample_interval}] ')
     if sample_interval == 'monthly':
@@ -614,5 +626,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='biweekly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True, update=False)

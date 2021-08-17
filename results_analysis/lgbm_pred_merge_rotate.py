@@ -10,10 +10,9 @@ import re
 import global_vals
 
 model = 'rf'
-r_name = 'pca_neg_lesstree'
-iter_name = r_name
+r_name = 'pca_neg_lowpca'
 
-def download_stock_pred(q):
+def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ''' download training history and training prediction from DB '''
 
     if model == 'rf':
@@ -21,44 +20,42 @@ def download_stock_pred(q):
     elif model == 'lgbm':
         y_type = 'S.y_type'
 
-    iter_name = r_name
-    for i in range(1, 10):
-        iter_name += str(i)
-        with global_vals.engine_ali.connect() as conn:
-            query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.tree_type as alpha FROM {global_vals.result_pred_table}_{model}_reg P "
-                         f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
-                         f"WHERE S.name_sql='{iter_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-            result_all = pd.read_sql(query, conn)       # download training history
-        global_vals.engine_ali.dispose()
+    with global_vals.engine_ali.connect() as conn:
+        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.tree_type as alpha FROM {global_vals.result_pred_table}_{model}_reg P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
+                     f"WHERE S.name_sql='{iter_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
+        result_all = pd.read_sql(query, conn)       # download training history
+    global_vals.engine_ali.dispose()
 
-        # remove duplicate samples from running twice when testing
-        result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha', 'cv_number'], keep='last')
-        result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha']).mean().reset_index()
+    # remove duplicate samples from running twice when testing
+    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha', 'cv_number'], keep='last')
+    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha']).mean().reset_index()
 
-        result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
+    result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
 
-        corr_dict = {}
-        for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
-            corr_dict[name] = g[['pred','actual']].corr().iloc[0, 1]
-        corr_df = pd.DataFrame(corr_dict, index=[0]).stack(level=-1).reset_index(level=0, drop=True).transpose().reset_index()
+    corr_dict = {}
+    for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
+        corr_dict[name] = g[['pred','actual']].corr().iloc[0, 1]
+    corr_df = pd.DataFrame(corr_dict, index=[0]).stack(level=-1).reset_index(level=0, drop=True).transpose().reset_index()
 
-        ret_dict = {}
-        for name, g in result_all.groupby(['group_code', 'testing_period', 'alpha']):
-            ret_dict[name] = {}
-            max_g = g.loc[g['pred']>g['pred'].quantile(q=1-q)]
-            min_g = g.loc[g['pred']<g['pred'].quantile(q=q)]
-            ret_dict[name]['max_factor'] = ','.join(list(max_g['y_type'].values))
-            ret_dict[name]['min_factor'] = ','.join(list(min_g['y_type'].values))
-            ret_dict[name]['max_ret'] = max_g['actual'].mean()
-            ret_dict[name]['min_ret'] = min_g['actual'].mean()
-            ret_dict[name]['mae'] = mean_absolute_error(g['pred'], g['actual'])
-            ret_dict[name]['mse'] = mean_squared_error(g['pred'], g['actual'])
-            ret_dict[name]['r2'] = r2_score(g['pred'], g['actual'])
+    ret_dict = {}
+    for name, g in result_all.groupby(['group_code', 'testing_period', 'alpha']):
+        ret_dict[name] = {}
+        max_g = g.loc[g['pred']>g['pred'].quantile(q=1-q)]
+        min_g = g.loc[g['pred']<g['pred'].quantile(q=q)]
+        ret_dict[name]['max_factor'] = ','.join(list(max_g['y_type'].values))
+        ret_dict[name]['min_factor'] = ','.join(list(min_g['y_type'].values))
+        ret_dict[name]['max_ret'] = max_g['actual'].mean()
+        ret_dict[name]['min_ret'] = min_g['actual'].mean()
+        ret_dict[name]['mae'] = mean_absolute_error(g['pred'], g['actual'])
+        ret_dict[name]['mse'] = mean_squared_error(g['pred'], g['actual'])
+        ret_dict[name]['r2'] = r2_score(g['pred'], g['actual'])
 
-        result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
-        result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
-        result_all_comb.iloc[:,5:] = result_all_comb.iloc[:,5:].astype(float)
+    result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
+    result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
+    result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
 
+    if save_xls:
         writer = pd.ExcelWriter(f'score/#{model}_pred_{iter_name}.xlsx')
         result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
         corr_df.to_excel(writer, sheet_name='corr')
@@ -66,9 +63,10 @@ def download_stock_pred(q):
         pd.pivot_table(result_all, index=['alpha', 'group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
         writer.save()
 
-        result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
-        print(result_all_comb.groupby(['group_code', 'alpha']).mean())
+    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
+    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
 
+    if save_plot:
         num_alpha = len(result_all_comb['alpha'].unique())
         num_group = len(result_all_comb['group_code'].unique())
         fig = plt.figure(figsize=(num_group*8, num_alpha*4), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
@@ -89,6 +87,8 @@ def download_stock_pred(q):
             k+=1
         plt.savefig(f'score/#{model}_pred_{iter_name}.png')
         plt.close()
+
+    return result_all_comb.groupby(['group_code','alpha']).mean()
 
 def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     ''' download training history and training prediction from DB '''
@@ -116,9 +116,16 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
 
     df = pd.concat(df_list, axis=0)
     df['pred'] = df.groupby(['group_code', 'testing_period', 'alpha', 'iter'])['pred'].rank().values
-    df_neg = df[['group_code', 'testing_period', 'neg_factor']].drop_duplicates()
-    result_all = df.groupby(['group_code', 'testing_period',  'y_type', 'alpha']).mean().reset_index()
 
+    # list out negative premiums
+    df_neg = df[['group_code', 'testing_period', 'neg_factor']].drop_duplicates()
+    all_neg_factor = list(set([i for x in df['neg_factor'].unique() for i in x.split(',')]))
+    from sklearn.preprocessing import LabelBinarizer
+    lb = LabelBinarizer().fit(all_neg_factor)
+    df_neg[all_neg_factor] = df_neg['neg_factor'].apply(lambda x: lb.transform(x.split(',')).sum(axis=0)).values.tolist()
+    df_neg = df_neg.drop(['neg_factor'], axis=1)
+
+    result_all = df.groupby(['group_code', 'testing_period',  'y_type', 'alpha']).mean().reset_index()
     result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
 
     corr_dict = {}
@@ -177,12 +184,32 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     # plt.show()
 
     result_return = pd.pivot_table(result_all, index=['group_code', 'testing_period', 'alpha'], columns=['y_type'], values='pred')
-    result_return = result_return.transpose().apply(pd.qcut, q=3, labels=[-1,0,1])
+    result_return = result_return.transpose().apply(pd.qcut, q=3, labels=[-1,0,1]).transpose().reset_index()
+    result_return = result_return.merge(df_neg, on=['group_code', 'testing_period'], suffixes=['','_neg'])
+    # x = result_return[all_neg_factor]
+    # y = result_return[[x+'_neg' for x in all_neg_factor]]
+    result_return[all_neg_factor] = -result_return[all_neg_factor].values*result_return[[x+'_neg' for x in all_neg_factor]].values
 
-    return result_return.transpose().reset_index()
+    return result_return.drop([x+'_neg' for x in all_neg_factor], axis=1)
+
+def compare_all():
+    with global_vals.engine_ali.connect() as conn:
+        name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_{model}_reg', conn)['name_sql'].to_list()
+    global_vals.engine_ali.dispose()
+
+    df_list = []
+    for i in name_sql:
+        print(i)
+        df = download_stock_pred(1/3, i, False, False).reset_index()
+        df['name_sql'] = i
+        df_list.append(df)
+
+    all = pd.concat(df_list, axis=0)
+    all.to_csv('all.csv', index=False)
+    exit(1)
 
 if __name__ == "__main__":
-
-    download_stock_pred(1/3)
-    download_stock_pred_multi(iter_name)
+    compare_all()
+    # download_stock_pred(1/3, iter_name=r_name)
+    # download_stock_pred_multi(iter_name)
 
