@@ -248,12 +248,13 @@ class load_data:
 
         self.group_name = group_name
 
-        if group_name == 'currency':
-            self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
-        elif group_name == 'industry':
-            self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
-        elif group_name in curr_list:
-            self.group = self.main.loc[self.main['group']==group_name]
+        # if group_name == 'currency':
+        #     self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
+        # elif group_name == 'industry':
+        #     self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
+        # elif group_name in curr_list:
+        #     self.group = self.main.loc[self.main['group']==group_name]
+        self.group = self.main.loc[self.main['group']==group_name]
 
         print(self.group)
 
