@@ -398,6 +398,11 @@ def remove_dup_tri_downloads():
     global_vals.engine_ali.dispose()
 
 if __name__ == '__main__':
+
+    df = pd.read_csv('cache_tri_ratio.csv')
+    print(df)
+    exit(5)
+
     # download_from_eikon_vix()
 
     # download_from_eikon_mktcap()

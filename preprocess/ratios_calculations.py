@@ -15,8 +15,8 @@ def get_tri(save=True, update=False, currency=None):
         raise Exception("Parameter 'save' must be a bool")
     if not isinstance(update, bool):
         raise Exception("Parameter 'update' must be a bool")
-    if not isinstance(currency, str):
-        raise Exception("Parameter 'currency' must be a str")
+    # if not isinstance(currency, str):
+    #     raise Exception("Parameter 'currency' must be a str")
 
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
         conditions = []
@@ -140,14 +140,22 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         print(f'#################################################################################################')
     global_vals.engine_ali.dispose()
 
-    # tri = tri.loc[tri['ticker']=='AAPL.O']
+    tri = tri.loc[tri['ticker'].str[-2:] == '.T']
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
+
+    def count_jpy(df):
+        print(df.isnull().sum())
+        print(len(df))
+
+    count_jpy(eikon_price)
 
     # find first tri from DSS as anchor
     tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
     tri_first['anchor_tri'] = tri_first['tri']
+    eikon_price['close'] = eikon_price['close'].fillna(eikon_price[['high','low']].mean(axis=1))
     eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
 
     # find anchor close price (adj.)
@@ -157,6 +165,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     # calculate tri based on EIKON close price data
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
+
+    count_jpy(eikon_price)
 
     # merge DSS & EIKON data
     tri = tri.merge(eikon_price, on=['ticker','trading_day'], how='outer', suffixes=['','_eikon']).sort_values(by=['ticker','trading_day'])
@@ -169,6 +179,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
+
+    count_jpy(tri)
 
     print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
@@ -193,6 +205,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
+
+    count_jpy(tri)
 
     print(f'      ------------------------> Sample interval using [{sample_interval}] ')
     if sample_interval == 'monthly':

@@ -17,7 +17,7 @@ import statsmodels.api as sm
 from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
-    factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg', conn)
+    factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -148,14 +148,13 @@ def plot_trend():
     # by market
     fig = plt.figure(figsize=(12, 20), dpi=300)  # create figure for test & train boxplot
 
-    df = factors.loc[factors['group'].str[-1]!='0']
-    for i in mean[:10]:
-        df_new = pd.pivot_table(df, index=['period_end'], columns=['group'], values=[i])
-        ax = df_new.plot.line(linewidth=1)
-        plt.legend(ncol=1)
-        plt.tight_layout()
-        plt.show()
-        exit(1)
+    # df = factors.loc[factors['group']=='USD']
+    # for i in mean[:10]:
+    #     df_new = pd.pivot_table(df, index=['period_end'], columns=['group'], values=[i])
+    #     ax = df_new.plot.line(linewidth=1)
+    #     plt.legend(ncol=1)
+    #     plt.tight_layout()
+    #     plt.show()
 
     # factors = factors.filter(['period_end','group','fwd_ey',''])
 
@@ -165,7 +164,7 @@ def plot_trend():
         plt.legend(ncol=1)
         plt.tight_layout()
         plt.show()
-        # plt.savefig('eda/test_eda_trend.png')
+        plt.savefig('eda/test_eda_trend.png')
 
 
 def plot_autocorrel():
@@ -565,23 +564,27 @@ def select_by_cum_ret():
 
     print(train, test)
 
+def plot_usd_trend():
+    factors.loc[factors['group']=='USD'].to_csv('usd.csv')
 
 if __name__ == "__main__":
     # correl_fama_website()
-    # eda_missing()
-    # eda_correl()
-    # eda_vif()
-    # plot_autocorrel()
+    eda_missing()
+    eda_correl()
+    eda_vif()
+    plot_autocorrel()
     # plot_trend()
 
-    # sharpe_ratio()
-    # test_if_persistent()
-    # average_absolute_mean()
+    sharpe_ratio()
+    test_if_persistent()
+    average_absolute_mean()
 
     # check_smb()
 
     # dist_all()
-    # dist_all_train_test()
+    dist_all_train_test()
+
+    # plot_usd_trend()
 
 
     ## Clustering

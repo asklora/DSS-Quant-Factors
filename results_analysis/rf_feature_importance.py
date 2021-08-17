@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'lasso_nopca'
+r_name = 'lasso_multipca'
 pred_table_name = 'lasso'
 score_table_name = 'lasso'
 
