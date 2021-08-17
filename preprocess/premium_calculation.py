@@ -1,14 +1,40 @@
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.sql.sqltypes import TIMESTAMP
+from sqlalchemy import create_engine
 import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
+from sqlalchemy.dialects.postgresql import INTEGER
+from utils import remove_tables_with_suffix
+import multiprocessing as mp
+import time
 
 icb_num = 6
+
+# define dtypes for final_member_df & final_results_df when writing to DB
+mem_dtypes = dict(
+    group=TEXT,
+    ticker=TEXT,
+    period_end=DATE,
+    factor_name=TEXT,
+    quantile_group=INTEGER,
+    last_update=TIMESTAMP
+)
+
+results_dtypes = dict(
+    group=TEXT,
+    period_end=DATE,
+    factor_name=TEXT,
+    stock_return_y=DOUBLE_PRECISION,
+    last_update=TIMESTAMP
+)
+
+to_sql_params = {'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 8192}
 
 def trim_outlier(df, prc=0):
     ''' assign a max value for the 99% percentile to replace inf'''
@@ -71,11 +97,11 @@ def calc_group_premium_fama(name, g, factor_list):
             print(name, f, e)
             continue
 
-        g=g.sort_values(by=[f])
-        x1 = g.loc[g[f'{f}_cut'] == 0]
-        m1 = x1.mean()
-        x2 = g.loc[g[f'{f}_cut'] == 2]
-        m2 = x2.mean()
+        # g=g.sort_values(by=[f])
+        # x1 = g.loc[g[f'{f}_cut'] == 0]
+        # m1 = x1.mean()
+        # x2 = g.loc[g[f'{f}_cut'] == 2]
+        # m2 = x2.mean()
         premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
@@ -132,7 +158,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         df['icb_code'] = df['icb_code'].str[:icb_num]
         group_list = ['icb_code']
 
-    factor_list = ['vol_0_30']
+    # factor_list = ['vol_0_30']
 
     print(f'#################################################################################################')
     for i in group_list:
@@ -143,8 +169,8 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         for name, g in df[target_cols].groupby(['period_end', i]):
             # if name[0]!=dt.datetime(2019,12,31):
             #     continue
-            if name[1] != 'USD':
-                continue
+            # if name[1] != 'USD':
+            #     continue
             results[name] = {}
             results[name], member_g = calc_group_premium_fama(name, g, factor_list)
             member_g['group'] = name[1]
@@ -210,8 +236,141 @@ def write_local_csv_to_db():
         final_member_df.to_sql(global_vals.membership_table, **extra)
     global_vals.engine_ali.dispose()
 
-if __name__=="__main__":
 
-    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
+def insert_prem_and_membership_for_group(*args):
+    def qcut(series):
+        try:
+            series_fillinf = series.replace([-np.inf, np.inf], np.nan)
+            nonnull_count = series_fillinf.notnull().sum()
+            if nonnull_count < 3:
+                return series.map(lambda _: np.nan)
+            elif nonnull_count > 65:
+                prc = [0, 0.2, 0.8, 1]
+            else:
+                prc = [0, 0.3, 0.7, 1]
+            
+            q = pd.qcut(series_fillinf, prc, duplicates='drop')
 
+            n_cat = len(q.cat.categories)
+            if n_cat == 3:
+                q.cat.categories = range(3)
+            elif n_cat == 2:
+                q.cat.categories = [0, 2]
+            else:
+                return series.map(lambda _: np.nan)
+            q[series_fillinf == np.inf] = 2
+            q[series_fillinf == -np.inf] = 0
+            return q
+        except ValueError as e:
+            print(e)
+            return series.map(lambda _: np.nan)
+
+    gp_type, group, tbl_suffix, factor_list = args
+    print(f'      ------------------------> Start calculating factor premium - [{group}] Partition')
+
+    thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+
+    try:
+        with thread_engine_ali.connect() as conn:
+            if gp_type == 'curr':
+                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = '{group}';", conn)
+            else:
+                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE SUBSTR(icb_code, 1, {icb_num}) = '{group}';", conn)
+
+        df = df.dropna(subset=['stock_return_y','ticker'])
+        df = df.loc[~df['ticker'].str.startswith('.')].copy()
+        df = df.melt(
+            id_vars=['ticker', 'period_end', 'stock_return_y'],
+            value_vars=factor_list,
+            var_name='factor_name',
+            value_name='factor_value')
+        df['quantile_group'] = df.groupby(['period_end', 'factor_name'])['factor_value'].transform(qcut)
+        df = df.dropna(subset=['quantile_group']).copy()
+        df['quantile_group'] = df['quantile_group'].astype(int)
+
+        quantile_mean_returns = df.groupby(['period_end', 'factor_name', 'quantile_group'])['stock_return_y'].mean().reset_index()
+
+        # Calculate small minus big
+        prem = quantile_mean_returns.pivot(['period_end', 'factor_name'], ['quantile_group']).droplevel(0, axis=1)
+        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
+        membership = df[['ticker', 'period_end', 'factor_name', 'quantile_group']].reset_index(drop=True)
+
+        prem['group'] = group
+        membership['group'] = group
+        
+        prem['last_update'] = last_update
+        membership['last_update'] = last_update
+        
+        print(f'      ------------------------> Start writing membership and factor premium - [{group}] Partition')
+        with thread_engine_ali.connect() as conn:
+            membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
+            prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=results_dtypes, **to_sql_params)
+    except Exception as e:
+        print(e)
+        thread_engine_ali.dispose()
+        return False
+    thread_engine_ali.dispose()
+    return True
+
+def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False):
+
+    ''' calculate factor premium for different configurations:
+        1. monthly sample + using last day price
+        2. biweekly sample + using last day price
+        3. monthly sample + using average price of last week
+    '''
+
+    if use_biweekly_stock and stock_last_week_avg:
+        raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
+
+    # Read stock_return / ratio table
+    print(f'#################################################################################################')
+    print(f'      ------------------------> Download ratio data from DB')
+
+    if use_biweekly_stock:
+        tbl_suffix = '_biweekly'
+        print(f'      ------------------------> Use biweekly ratios')
+    elif stock_last_week_avg:
+        tbl_suffix = '_weekavg'
+        print(f'      ------------------------> Replace stock return with last week average returns')
+    else:
+        tbl_suffix = ''
+
+    with global_vals.engine_ali.connect() as conn:
+        formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
+        factor_list = formula['name'].to_list()                           # factor = all variabales
+                
+        all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
+        all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {global_vals.processed_ratio_table}{tbl_suffix} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
+        
+    if icb_num != 6:
+        all_icb = [icb[:icb_num] for icb in all_icb]
+        all_icb = list(set(all_icb))
+        all_curr = []
+
+    all_groups = [('curr', curr) for curr in all_curr] + [('icb', icb) for icb in all_icb]
+
+    print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
+
+    with mp.Pool(processes=3) as pool:
+        # all_groups = [('curr', 'KRW')]
+        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list) for x in all_groups])
+    
+    return res
+
+
+if __name__ == "__main__":
+
+    last_update = datetime.now()
+    tbl_suffix_extra = '_v2'
+
+    start = datetime.now()
+
+    remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
+    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
+    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True)
+
+    end = datetime.now()
+
+    print(f'Time elapsed: {(end - start).total_seconds():.2f} s')
     # write_local_csv_to_db()

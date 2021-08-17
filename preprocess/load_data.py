@@ -12,6 +12,7 @@ import global_vals
 from sqlalchemy import text
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
@@ -121,7 +122,7 @@ def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='median'
 
     return df.iloc[:,:-1]
 
-def combine_data(use_biweekly_stock, stock_last_week_avg):
+def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_since=None, mode='default'):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
@@ -131,14 +132,39 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
 
     # Read sql from different tables
     factor_table_name = global_vals.factor_premium_table
+    
     if use_biweekly_stock:
-        factor_table_name+='_biweekly'
+        tbl_suffix = '_biweekly'
+        print(f'      ------------------------> Use biweekly ratios')
     elif stock_last_week_avg:
-        factor_table_name+='_weekavg'
+        tbl_suffix = '_weekavg'
+        print(f'      ------------------------> Replace stock return with last week average returns')
+    else:
+        tbl_suffix = ''
+
+    tbl_suffix_extra = '_v2'
+
+    conditions = ['"group" IS NOT NULL']
+    
+    if isinstance(update_since, datetime):
+        update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
+        conditions.append(f"period_end >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f'SELECT * FROM {factor_table_name} WHERE \"group\" IS NOT NULL', conn)
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
+        if mode == 'default':
+            df = pd.read_sql(f'SELECT * FROM {factor_table_name}{tbl_suffix} WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
+            df = pd.concat(df, axis=0, ignore_index=True)
+            df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
+        elif mode == 'v2':
+            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}{tbl_suffix_extra} WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
+            df = pd.concat(df, axis=0, ignore_index=True)
+            df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
+            df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
+            df.columns.name = None
+            df = df.reset_index()
+        else:
+            raise Exception('Unknown mode')
+        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table};', conn)
     global_vals.engine_ali.dispose()
 
     # Research stage using 10 selected factor only
@@ -150,7 +176,6 @@ def combine_data(use_biweekly_stock, stock_last_week_avg):
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
 
-    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
 
     # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
@@ -193,16 +218,20 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    def __init__(self, use_biweekly_stock=False, stock_last_week_avg=False):
+    def __init__(self, use_biweekly_stock=False, stock_last_week_avg=False, update_since=None, mode='default'):
         ''' combine all possible data to be used '''
 
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.main, self.factor_list, self.x_col_dict = combine_data(use_biweekly_stock, stock_last_week_avg)    # combine all data
+        self.main, self.factor_list, self.x_col_dict = combine_data(
+            use_biweekly_stock=use_biweekly_stock,
+            stock_last_week_avg=stock_last_week_avg,
+            update_since=update_since,
+            mode=mode)    # combine all data
 
         # calculate y for all factors
-        self.factor_list = self.x_col_dict['factor']
+        # self.factor_list = self.x_col_dict['factor']
         self.all_y_col = ["y_"+x for x in self.factor_list]
         # self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
@@ -290,7 +319,7 @@ class load_data:
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
-        sharpe = self.train[y_col].mean(axis=0)/self.train[y_col].std(axis=0)
+        sharpe = self.train[y_col].mean(axis=0)
         self.neg_factor = list(sharpe[sharpe<0].index)
         # neg_factor = self.x_col_dict['neg_factor']
         self.train[self.neg_factor] = -self.train[self.neg_factor]
@@ -410,8 +439,7 @@ class load_data:
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=0.6).fit(pca_arma_df)
-            # x = np.cumsum(arma_pca.explained_variance_ratio_)
-            # y = arma_pca.components_
+
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
 
@@ -436,8 +464,8 @@ class load_data:
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] +  self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-            #         + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
+            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
+                    + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
                 # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
