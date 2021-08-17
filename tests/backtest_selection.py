@@ -8,50 +8,19 @@ from sklearn.preprocessing import RobustScaler, QuantileTransformer
 from preprocess.premium_calculation import trim_outlier
 import global_vals
 
-# r_name = 'indoverfit'
-# r_name = 'testing'
-# r_name = 'laskweekavg'
-r_name = 'lastweekavg'
-# r_name = 'lastweekavg_newmacros'
-r_name = 'biweekly'
-r_name = 'biweekly_new1'
-r_name = 'biweekly_ma'
+from results_analysis.lgbm_pred_merge_rotate import download_stock_pred_multi
 
-iter_name = r_name
-factor_list = ['book_to_price', 'cash_ratio', 'fwd_ey', 'gross_margin', 'market_cap_usd', 'tax_less_pension_to_accu_depre', 'vol_30_90']
-
-def download_stock_pred():
-    ''' download training history and training prediction from DB '''
-
-    try:
-        result_all = pd.read_csv('result_all.csv')
-    except Exception as e:
-        print(e)
-        with global_vals.engine_ali.connect() as conn:
-            query = text(f"SELECT P.*, S.group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_lgbm_class P "
-                         f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                         f"WHERE S.name_sql='{r_name}' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
-            result_all = pd.read_sql(query, conn)       # download training history
-        global_vals.engine_ali.dispose()
-
-    # remove duplicate samples from running twice when testing
-    result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number','group'], keep='last')
-    result_all = result_all.drop(['cv_number'], axis=1)
-
-    # combine cross validation results by mode
-    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'group']).apply(pd.DataFrame.mode).reset_index(drop=True)
-    result_all = result_all.dropna(how='any')
-
-    return result_all
-
-def select_best_group(testing_period=None):
+def calc_score(testing_period=None):
     ''' select group with historically high prediction accuracy '''
 
-    try:
-        df = pd.read_csv('result_all_df.csv')
-    except:
-        df = download_stock_pred()
-        df.to_csv('result_all_df.csv', index=False)
+    # download best factors
+    f = download_stock_pred_multi('pca_mse_moretree', False, False)
+    f = f.loc[(f['group_code']=='USD')&(f['alpha']=='extra')].set_index(['period_end'])[['max_factor','min_factor']]
+
+    # download membership table
+    with global_vals.engine_ali.connect() as conn:
+        mem = pd.read_sql(f"SELECT * FROM {global_vals.membership_table}_weekavg WHERE \"group\"='USD'", conn)  # download training history
+    global_vals.engine_ali.dispose()
 
 
     # test selection process based on last testing_period
@@ -215,5 +184,5 @@ def download_ratios():
     return ratio_tf
 
 if __name__ == "__main__":
-    download_ratios()
+    calc_score()
 
