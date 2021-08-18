@@ -98,7 +98,6 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
 
     return index_ret, index_ret_org
 
-
 def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='median', change=True):
     ''' download the aggregated value of all original ratios by each group '''
 
@@ -232,9 +231,9 @@ class load_data:
 
         # calculate y for all factors
         # self.factor_list = self.x_col_dict['factor']
-        self.all_y_col = ["y_"+x for x in self.factor_list]
+        all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
         # self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
-        self.main[self.all_y_col] = self.main.groupby(['group'])[self.factor_list].shift(-1)
+        self.main[all_y_col] = self.main.groupby(['group'])[self.x_col_dict['factor']].shift(-1)
         # self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         print(self.main)
 
@@ -306,17 +305,17 @@ class load_data:
         arr_test_cut_median = pd.DataFrame(arr_test_cut).replace(range(qcut_q), median)[0].values
         return arr_cut_median, arr_test_cut_median
 
-    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change, y_col):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
-        if test_change:
-            y_col = self.all_y_col_change
-        else:
-            y_col = self.all_y_col
+        # if test_change:
+        #     y_col = self.all_y_col_change
+        # else:
+        #     y_col = self.all_y_col
 
         null_col = self.train.isnull().sum()
         null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
-        y_col = [x for x in y_col if x not in null_col]
+        y_col = ['y_' + x for x in y_col if x not in null_col]
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
@@ -426,8 +425,9 @@ class load_data:
         self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change)
-        self.train = self.train.dropna(subset=y_col).reset_index(drop=True)      # remove training sample with NaN Y
+        self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change, y_type)
+        # self.train = self.train.dropna(subset=y_col, how='all').reset_index(drop=True)      # remove training sample with NaN Y
+        self.train = self.train.dropna(subset=y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
 
         if use_pca>0:
             all_cols = [x for v in self.x_col_dict.values() for x in v]
@@ -488,7 +488,9 @@ class load_data:
                 # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
 
             y_col_cut = [x+'_cut' for x in y_col]
-            return df.filter(x_col).values, df[y_col].values, df[y_col_cut].values, df.filter(x_col).columns.to_list()     # Assuming using all factors
+
+            return df.filter(x_col).values, np.nan_to_num(df[y_col].values,0), np.nan_to_num(df[y_col_cut].values), \
+                   df.filter(x_col).columns.to_list()     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)

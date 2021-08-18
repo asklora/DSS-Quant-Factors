@@ -15,9 +15,11 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, a
 
 from preprocess.load_data import load_data
 import global_vals
+from results_analysis.lgbm_pred_merge_rotate import download_stock_pred
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [100, 300, 500]),
+    'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
+    # 'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
     'max_depth': hp.choice('max_depth', [8, 32, 64]),
     'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [5, 50]),
@@ -80,13 +82,14 @@ def eval_regressor(space):
               'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
-        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
-        test_df = test_df.dropna(how='any')
+        # test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
+        # test_df = test_df.dropna(how='any')
         result_test = {
-            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
-            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
-            'r2_test': r2_score(test_df['actual'], test_df['pred'])}
-        result['test_len'] = len(test_df)
+            'mae_test': mean_absolute_error(sample_set['test_y'], Y_test_pred),
+            'mse_test': mean_squared_error(sample_set['test_y'], Y_test_pred),
+            # 'r2_test': r2_score(sample_set['test_y'], Y_test_pred)
+        }
+        # result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:  # for real_prediction -> no calculation
         print(e)
@@ -153,7 +156,7 @@ def eval_classifier(space):
 
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
-    sql_result['y_type'] = data.y_col
+    # sql_result['y_type'] = data.y_col
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
@@ -213,15 +216,15 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_mse_allx'
+    sql_result['name_sql'] = 'pca_tryaddx_'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    n_splits=1
+    n_splits = 1
     defined_cut_bins = []
-    group_code_list = ['JPY','EUR','USD','HKD']
-    # group_code_list = ['HKD']
-    use_pca = True
+    # group_code_list = ['JPY','EUR','USD','HKD']
+    group_code_list = ['USD']
+    use_pca = 0.6
     use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -242,30 +245,38 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
-    sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode='v2')  # load_data (class) STEP 1
+    sql_result['y_type'] = y_type = data.factor_list[:12]       # random forest model predict all factor at the same time
+    # sql_result['y_type'] = []       # random forest model predict all factor at the same time
+    # other_y = [x for x in data.x_col_dict['factor'] if x not in sql_result['y_type']]
+    other_y = data.factor_list[:13]
+
     # sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
+    r_mean = 0
+
     i=1
-    while i<10:
-        sql_result['name_sql'] += f'{i}'
+    for y in other_y:
+        sql_result['name_sql'] = f'pca_trylessx_{i}'
+        # sql_result['y_type'].append(y)
+        if i>1:
+            sql_result['y_type'].remove(y)
+        print(sql_result['y_type'])
         i += 1
-        for tree_type in ['rf','extra']:
+    # if 1==1:
+        for tree_type in ['extra']:
             sql_result['tree_type'] = tree_type
             for group_code in group_code_list:
                 sql_result['group_code'] = group_code
                 data.split_group(group_code)  # load_data (class) STEP 2
-                print(sql_result['y_type'])
                 for testing_period in reversed(testing_period_list):
                     sql_result['testing_period'] = testing_period
-                    backtest = testing_period not in testing_period_list[0:4]
                     load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
                                         'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
                                         'use_median': use_median, 'use_pca':use_pca, 'n_splits':n_splits}
                     try:
                         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-
                         # # write stock_pred for the best hyperopt records to sql
                         # if (write_cutbins) & (args.objective == 'multiclass'):
                         #     cut_bins_df = data.cut_bins_df
@@ -277,7 +288,6 @@ if __name__ == "__main__":
                         #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
                         #         cut_bins_df.drop(['index'], axis=1).to_sql(global_vals.processed_cutbins_table, **extra)
                         #     global_vals.engine_ali.dispose()
-
                         cv_number = 1  # represent which cross-validation sets
                         for train_index, valid_index in cv:  # roll over 5 cross validation set
                             sql_result['cv_number'] = cv_number
@@ -309,3 +319,12 @@ if __name__ == "__main__":
                     except Exception as e:
                         print(testing_period, e)
                         continue
+        r = download_stock_pred(4, sql_result['name_sql'], False, False)
+        if r_mean < (r['max_ret'][0] - r['min_ret'][0]):
+            r_mean = r['max_ret'][0] - r['min_ret'][0]
+        else:
+            print(y, sql_result['y_type'])
+            # if i > 1:
+            # sql_result['y_type'].remove(y)
+            sql_result['y_type'].append(y)
+            print(sql_result['y_type'])
