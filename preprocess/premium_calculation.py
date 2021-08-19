@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
-from sqlalchemy.sql.sqltypes import TIMESTAMP
+from sqlalchemy.sql.sqltypes import BOOLEAN, TIMESTAMP
 from sqlalchemy import create_engine
 import global_vals
 import datetime as dt
@@ -31,7 +31,8 @@ results_dtypes = dict(
     period_end=DATE,
     factor_name=TEXT,
     stock_return_y=DOUBLE_PRECISION,
-    last_update=TIMESTAMP
+    last_update=TIMESTAMP,
+    trim_outlier=BOOLEAN
 )
 
 to_sql_params = {'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 8192}
@@ -265,7 +266,7 @@ def insert_prem_and_membership_for_group(*args):
             print(e)
             return series.map(lambda _: np.nan)
 
-    gp_type, group, tbl_suffix, factor_list = args
+    gp_type, group, tbl_suffix, factor_list, trim_outlier_ = args
     print(f'      ------------------------> Start calculating factor premium - [{group}] Partition')
 
     thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -283,6 +284,10 @@ def insert_prem_and_membership_for_group(*args):
             raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
 
         df = df.loc[~df['ticker'].str.startswith('.')].copy()
+
+        if trim_outlier_:
+            df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
+
         df = df.melt(
             id_vars=['ticker', 'period_end', 'stock_return_y'],
             value_vars=factor_list,
@@ -304,6 +309,8 @@ def insert_prem_and_membership_for_group(*args):
         
         prem['last_update'] = last_update
         membership['last_update'] = last_update
+
+        prem['trim_outlier'] = trim_outlier_
         
         print(f'      ------------------------> Start writing membership and factor premium - [{group}] Partition')
         with thread_engine_ali.connect() as conn:
@@ -316,7 +323,7 @@ def insert_prem_and_membership_for_group(*args):
     thread_engine_ali.dispose()
     return True
 
-def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False):
+def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False, trim_outlier_=False):
 
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
@@ -358,7 +365,7 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
 
     with mp.Pool(processes=3) as pool:
         # all_groups = [('curr', 'KRW')]
-        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list) for x in all_groups])
+        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
     
     return res
 
@@ -370,9 +377,10 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
+    # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True)
+    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
+    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()
 
