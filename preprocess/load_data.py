@@ -11,6 +11,10 @@ import global_vals
 # from scipy.fft import fft, fftfreq, rfft, rfftfreq
 from sqlalchemy import text
 from sklearn.decomposition import PCA
+from sklearn.svm import LinearSVC
+from sklearn import linear_model
+
+from sklearn.feature_selection import SelectFromModel
 import matplotlib.pyplot as plt
 from datetime import datetime
 
@@ -159,7 +163,8 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
                 conditions.append('trim_outlier')
             else:
                 conditions.append('not trim_outlier')
-            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}{tbl_suffix_extra} WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
+            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}{tbl_suffix_extra} '
+                             f'WHERE {" AND ".join(conditions)} AND not(trim_outlier);', conn, chunksize=10000)
             df = pd.concat(df, axis=0, ignore_index=True)
             df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
             df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
@@ -260,13 +265,14 @@ class load_data:
 
         self.group_name = group_name
 
-        # if group_name == 'currency':
-        #     self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
-        # elif group_name == 'industry':
-        #     self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
-        # elif group_name in curr_list:
-        #     self.group = self.main.loc[self.main['group']==group_name]
-        self.group = self.main.loc[self.main['group']==group_name]
+        if group_name == 'currency':
+            self.group = self.main.loc[self.main['group'].isin(curr_list)]          # train on industry partition factors
+        elif group_name == 'industry':
+            self.group = self.main.loc[~self.main['group'].str.len()!=3]          # train on currency partition factors
+        elif group_name in curr_list:
+            self.group = self.main.loc[self.main['group']==group_name]
+        else:
+            self.group = self.main.loc[self.main['group'].isin(group_name.split(','))]
 
         print(self.group)
 
@@ -442,9 +448,8 @@ class load_data:
         # self.train = self.train.dropna(subset=y_col, how='all').reset_index(drop=True)      # remove training sample with NaN Y
         self.train = self.train.dropna(subset=y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
 
-        if use_pca>0:
-            all_cols = [x for v in self.x_col_dict.values() for x in v]
-
+        if use_pca>0.1:
+            # all_cols = [x for v in self.x_col_dict.values() for x in v]
             # use PCA on each pillar factors
             # for p in ['quality','value','momentum']:
             #     pillar_cols = [x for x in all_cols if any([col in x for col in self.x_col_dict[p]])]
@@ -458,10 +463,8 @@ class load_data:
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=use_pca).fit(pca_arma_df)
-
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-
             # df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']).reset_index()
             # df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
             # df['group'] = self.group_name
@@ -472,7 +475,6 @@ class load_data:
             #     df.to_sql(global_vals.processed_pca_table, **extra)
             # global_vals.engine_ali.dispose()
             # raise Exception
-
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
@@ -486,6 +488,19 @@ class load_data:
             self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
             arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['mi_pca'])
+
+        elif use_pca>0:
+            all_input = self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma'] + \
+                        self.x_col_dict['index']+self.x_col_dict['macro']
+            pca_arma_df = StandardScaler().fit_transform(self.train[all_input].fillna(0))
+            pca_arma_df_y = np.nan_to_num(self.train[y_col].values,0)
+            w = np.array(range(len(pca_arma_df))) / len(pca_arma_df)
+            w = np.tanh(w - 0.5) + 0.5
+            arma_pca = linear_model.Lasso(alpha=use_pca).fit(pca_arma_df, pca_arma_df_y, sample_weight=w)
+            # x = np.sum(arma_pca.coef_, axis=0)
+            # x1 = np.sum(arma_pca.coef_, axis=0)!=0
+            self.x_col_dict['arma_pca'] = list(np.array(all_input)[np.sum(arma_pca.coef_, axis=0)!=0])
+            self.x_col_dict['mi_pca'] = []
 
         def divide_set(df):
             ''' split x, y from main '''

@@ -229,7 +229,7 @@ if __name__ == "__main__":
     defined_cut_bins = []
     group_code_list = ['EUR','USD','HKD']
     # group_code_list = ['HKD']
-    use_pca = 0.6
+    use_pca = 0.0075
     use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -262,14 +262,14 @@ if __name__ == "__main__":
     r_mean = 0
 
     i=1
-    for y in other_y:
-        sql_result['name_sql'] = f'pca_trylessx_{i}'
-        # sql_result['y_type'].append(y)
-        if i>1:
-            sql_result['y_type'].remove(y)
-        print(sql_result['y_type'])
-        i += 1
-    # if 1==1:
+    # for y in other_y:
+    #     sql_result['name_sql'] = f'pca_trylessx_{i}'
+    #     sql_result['y_type'].append(y)
+        # if i>1:
+        #     sql_result['y_type'].remove(y)
+        # print(sql_result['y_type'])
+        # i += 1
+    if 1==1:
         for tree_type in ['extra']:
             sql_result['tree_type'] = tree_type
             for group_code in group_code_list:
