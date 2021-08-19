@@ -17,15 +17,15 @@ from preprocess.load_data import load_data
 import global_vals
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [100, 300, 500]),
+    'n_estimators': hp.choice('n_estimators', [5, 10, 100, 500]),
     'max_depth': hp.choice('max_depth', [8, 32, 64]),
-    'min_samples_split': hp.choice('min_samples_split', [5, 25, 100]),
-    'min_samples_leaf': hp.choice('min_samples_leaf', [5, 50]),
-    'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 0.1]),
-    'max_features': hp.choice('max_features',[0.3, 0.5, 0.8]),
+    'min_samples_split': hp.choice('min_samples_split', [5, 10, 50, 100]),
+    'min_samples_leaf': hp.choice('min_samples_leaf', [5, 10, 50]),
+    'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 5e-2, 1e-1]),
+    'max_features': hp.choice('max_features',[0.5, 0.7, 0.9]),
     'min_impurity_decrease': 0,
-    'max_samples': hp.choice('max_samples',[0.6, 0.9]),
-    'ccp_alpha': hp.choice('ccp_alpha',[0, 0.001]),
+    'max_samples': hp.choice('max_samples',[0.5, 0.7, 0.9]),
+    'ccp_alpha': hp.choice('ccp_alpha',[0, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]),
     'n_jobs': -1,
     # 'random_state': 666
 }
@@ -80,7 +80,7 @@ def eval_regressor(space):
               'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
-        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
+        test_df = pd.DataFrame({'actual':sample_set['test_y'].flatten(), 'pred': Y_test_pred.flatten()})
         test_df = test_df.dropna(how='any')
         result_test = {
             'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
@@ -179,23 +179,25 @@ def HPOT(space, max_evals):
     if sql_result['objective'] in ['mae', 'mse', 'friedman_mse']:
         hpot['best_score'] = 10000  # record best training (min mae_valid) in each hyperopt
         best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+        tbl_suffix = '_rf_reg'
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_reg", **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_reg", **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_rf_class", **extra)
+            hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(f"{global_vals.result_score_table}{tbl_suffix}", **extra)
+            hpot['best_stock_feature'].to_sql(f"{global_vals.feature_importance_table}{tbl_suffix}", **extra)
         global_vals.engine_ali.dispose()
 
     elif sql_result['objective'] in ['gini','entropy']:
         hpot['best_score'] = 0  # record best training (max accuracy_valid) in each hyperopt
         best = fmin(fn=eval_classifier, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+        tbl_suffix = '_rf_class'
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            hpot['best_stock_df'].to_sql(global_vals.result_pred_table+"_rf_class", **extra)
-            pd.DataFrame(hpot['all_results']).to_sql(global_vals.result_score_table+"_rf_class", **extra)
-            hpot['best_stock_feature'].to_sql(global_vals.feature_importance_table+"_rf_class", **extra)
+            hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
+            pd.DataFrame(hpot['all_results']).to_sql(f"{global_vals.result_score_table}{tbl_suffix}", **extra)
+            hpot['best_stock_feature'].to_sql(f"{global_vals.feature_importance_table}{tbl_suffix}", **extra)
         global_vals.engine_ali.dispose()
 
     print('===== best eval ===== ', best)
@@ -208,18 +210,19 @@ if __name__ == "__main__":
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--mode', default='default', type=str)
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_mse_allx'
+    sql_result['name_sql'] = 'pca_mse_allx_v2'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
     n_splits=1
     defined_cut_bins = []
-    group_code_list = ['JPY','EUR','USD','HKD']
+    group_code_list = ['EUR','USD','HKD']
     # group_code_list = ['HKD']
     use_pca = True
     use_median = False
@@ -242,7 +245,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode=args.mode)  # load_data (class) STEP 1
     sql_result['y_type'] = y_type = data.factor_list       # random forest model predict all factor at the same time
     # sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
@@ -304,7 +307,7 @@ if __name__ == "__main__":
                             print(data.x_col)
                             sql_result['neg_factor'] = ','.join(data.neg_factor)
                             print(group_code, testing_period, len(sample_set['train_yy_final']))
-                            HPOT(space, max_evals=10)  # start hyperopt
+                            HPOT(space, max_evals=20)  # start hyperopt
                             cv_number += 1
                     except Exception as e:
                         print(testing_period, e)
