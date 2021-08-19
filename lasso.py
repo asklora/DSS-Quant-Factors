@@ -53,13 +53,12 @@ def eval_regressor():
               }
 
     try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
-        test_df = pd.DataFrame({'actual':sample_set['test_y'], 'pred': Y_test_pred})
-        test_df = test_df.dropna(how='any')
         result_test = {
-            'mae_test': mean_absolute_error(test_df['actual'], test_df['pred']),
-            'mse_test': mean_squared_error(test_df['actual'], test_df['pred']),
-            'r2_test': r2_score(test_df['actual'], test_df['pred'])}
-        result['test_len'] = len(test_df)
+            'mae_test': mean_absolute_error(sample_set['test_y'], Y_test_pred),
+            'mse_test': mean_squared_error(sample_set['test_y'], Y_test_pred),
+            # 'r2_test': r2_score(test_df['actual'], test_df['pred'])
+        }
+        # result['test_len'] = len(test_df)
         result.update(result_test)
     except Exception as e:  # for real_prediction -> no calculation
         print(e)
@@ -90,7 +89,11 @@ def to_list_importance(model):
     df['name'] = data.x_col     # column names
     # x = model.coef_
     # print(np.sum(model.coef_, axis=0))
-    df['split'] = list(np.sum(model.coef_, axis=0))
+    try:
+        df['split'] = list(np.sum(model.coef_, axis=0))
+    except:
+        df['split'] = list(model.coef_)
+
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
 
@@ -115,18 +118,18 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lasso_multipca'
+    sql_result['name_sql'] = 'newpre_pca'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    group_code_list = ['EUR','JPY','USD','HKD']
+    group_code_list = ['USD']
     qcut_q = 0
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.001
+    sql_result['alpha'] = 0.01
     sql_result['l1_ratio'] = 1
-    # use_pca = 0.6
+    use_pca = 0.4
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -146,16 +149,18 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg)  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode='v2')  # load_data (class) STEP 1
     factors_to_test = data.factor_list       # random forest model predict all factor at the same time
     # factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
 
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
-    print(sql_result['y_type'])
-    for a in [0.4, 0.2, 0.8]:
-        sql_result['use_pca'] = use_pca = a
+    # print(sql_result['y_type'])
+    for a in [0.2, 0.4, 0.6, 0.8]:
+        sql_result['use_pca'] = a
+    # for y in factors_to_test:
+    #     sql_result['y_type'] = [y]
         for group_code in group_code_list:
             sql_result['group_code'] = group_code
             data.split_group(group_code)  # load_data (class) STEP 2

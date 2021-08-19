@@ -9,20 +9,20 @@ import re
 
 import global_vals
 
-model = 'rf'
-r_name = 'pca_neg_bnewtryx_'
+model = 'rf_reg'
+r_name = 'final'
 
 def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ''' download training history and training prediction from DB '''
 
-    if model == 'rf':
-        y_type = 'P.y_type'
-    elif model == 'lgbm':
+    if 'lgbm' in model:
         y_type = 'S.y_type'
+    else:
+        y_type = 'P.y_type'
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.name_sql as alpha FROM {global_vals.result_pred_table}_{model}_reg P "
-                     f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
+        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.use_pca as alpha FROM {global_vals.result_pred_table}_{model} P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql like '{iter_name}%' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
@@ -104,8 +104,8 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
 
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.tree_type as alpha, S.name_sql, S.neg_factor "
-                     f"FROM {global_vals.result_pred_table}_{model}_reg P "
-                     f"INNER JOIN {global_vals.result_score_table}_{model}_reg S ON S.finish_timing = P.finish_timing "
+                     f"FROM {global_vals.result_pred_table}_{model} P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql like '{iter_name}%' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
@@ -146,6 +146,8 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
     result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
     result_all_comb.iloc[:,5:] = result_all_comb.iloc[:,5:].astype(float)
+    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
+    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
 
     if save_xls:
         writer = pd.ExcelWriter(f'score/#{model}_consol_pred_{iter_name}.xlsx')
@@ -154,9 +156,6 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
         result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
         pd.pivot_table(result_all, index=['alpha', 'group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
         writer.save()
-
-    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
-    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
 
     if plot_consol:
         num_alpha = len(result_all_comb['alpha'].unique())
@@ -269,7 +268,7 @@ def download_stock_pred_many_iters(iter_name, save_xls=True, plot_consol=True):
 
 def compare_all():
     with global_vals.engine_ali.connect() as conn:
-        name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_{model}_reg', conn)['name_sql'].to_list()
+        name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_{model}', conn)['name_sql'].to_list()
     global_vals.engine_ali.dispose()
 
     df_list = []
@@ -280,8 +279,7 @@ def compare_all():
         df_list.append(df)
 
     all = pd.concat(df_list, axis=0)
-    all.to_csv('all.csv', index=False)
-    exit(1)
+    all.to_csv('all_lasso.csv', index=False)
 
 if __name__ == "__main__":
     # compare_all()

@@ -10,6 +10,7 @@ membership_table = "factor_membership"
 result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_result_score"
 feature_importance_table = "factor_result_importance"
+production_factor_rank_table = "factor_result_pred_prod"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

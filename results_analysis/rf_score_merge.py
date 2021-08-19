@@ -61,5 +61,20 @@ def download_stock_pred():
     pd.concat(df_list,axis=0).filter(['group_code','y_type','train','valid','test']).to_excel(writer, sheet_name='best_each_valid', index=False)
     writer.save()
 
+def new_download():
+
+    with global_vals.engine_ali.connect() as conn:
+        query = text(f''' SELECT * FROM
+                          (SELECT *, ROW_NUMBER() OVER (PARTITION BY name_sql, y_type, group_code, testing_period ORDER BY accuracy_valid DESC) rank
+                          FROM factor_result_score_rf_class WHERE name_sql in ('pca_trim','pca_trimnot', 'pca_trimnot1')) a 
+                          WHERE a.rank = 1''')
+        df = pd.read_sql(query, conn)       # download training history
+    global_vals.engine_ali.dispose()
+
+    df[['accuracy_train','accuracy_valid','accuracy_test']] = df[['accuracy_train','accuracy_valid','accuracy_test']].astype(float)
+    df = df.groupby(['name_sql']).mean()
+    print(df)
+
 if __name__ == "__main__":
-    download_stock_pred()
+    # download_stock_pred()
+    new_download()

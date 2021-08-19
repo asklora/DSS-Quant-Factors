@@ -9,7 +9,7 @@ import re
 
 import global_vals
 
-r_name = 'lasso_multipca'
+r_name = 'newpre_pca'
 # r_name = 'lastweekavg_pca_en2'
 
 iter_name = r_name
@@ -50,7 +50,7 @@ def download_stock_pred():
 
     result_all_comb = pd.DataFrame(ret_dict).transpose().reset_index()
     result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
-    result_all_comb.iloc[:,6:] = result_all_comb.iloc[:,6:].astype(float)
+    result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
 
     writer = pd.ExcelWriter(f'score/#lasso_pred_{iter_name}.xlsx')
     result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
@@ -151,6 +151,22 @@ def download_stock_pred_multi():
         k+=1
     plt.savefig(f'score/#lasso_pred_{iter_name}.png')
     # plt.show()
+
+def compare_all():
+    with global_vals.engine_ali.connect() as conn:
+        name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_lasso', conn)['name_sql'].to_list()
+    global_vals.engine_ali.dispose()
+
+    df_list = []
+    for i in name_sql:
+        print(i)
+        df = download_stock_pred(1/3, i, False, False).reset_index()
+        df['name_sql'] = i
+        df_list.append(df)
+
+    all = pd.concat(df_list, axis=0)
+    all.to_csv('all.csv', index=False)
+    exit(1)
 
 if __name__ == "__main__":
 
