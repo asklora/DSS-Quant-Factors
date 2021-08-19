@@ -17,7 +17,9 @@ import statsmodels.api as sm
 from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
-    factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
+    # factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
+    df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
+    factors_bi = factors = factors_avg = pd.pivot_table(df, index=['period_end','group'], columns=['factor_name'], values='premium').reset_index()
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
@@ -473,8 +475,10 @@ def dist_all_train_test():
 
     fig = plt.figure(figsize=(16, 16), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
 
-    first_testing = dt.date(2017,9,24)
+    first_testing = dt.datetime(2017,9,24)
     factor_list = formula.loc[formula['factors'],'name'].to_list()
+
+    factors_bi['period_end'] = pd.to_datetime(factors_bi['period_end'])
 
     factors_bi['group_code'] = factors_bi['group'].str.len()
     factors_bi_train = factors_bi.loc[factors_bi['period_end']<first_testing]
@@ -541,8 +545,9 @@ def pillar_corr():
 def select_by_cum_ret():
 
     df = factors.loc[factors['group']=='USD']
-    train = df.loc[df['period_end']<=dt.date(2017,8,31)]
-    test = df.loc[df['period_end']>dt.date(2017,8,31)]
+    testing_period = dt.date(2017,8,31)
+    train = df.loc[df['period_end']<=testing_period]
+    test = df.loc[df['period_end']>testing_period]
 
     def select_cumprod(df):
         rk = pd.DataFrame(index=col_list)
@@ -560,7 +565,7 @@ def select_by_cum_ret():
 
     # test.to_csv('test.csv')
     df = pd.merge(train, test, left_index=True, right_index=True, suffixes=['_train','_test'])
-    df.to_csv('train.csv')
+    df.to_csv('eda/train.csv')
 
     print(train, test)
 
@@ -569,20 +574,20 @@ def plot_usd_trend():
 
 if __name__ == "__main__":
     # correl_fama_website()
-    eda_missing()
-    eda_correl()
-    eda_vif()
-    plot_autocorrel()
+    # eda_missing()
+    # eda_correl()
+    # eda_vif()
+    # plot_autocorrel()
     # plot_trend()
 
-    sharpe_ratio()
-    test_if_persistent()
-    average_absolute_mean()
+    # sharpe_ratio()
+    # test_if_persistent()
+    # average_absolute_mean()
 
     # check_smb()
 
     # dist_all()
-    dist_all_train_test()
+    # dist_all_train_test()
 
     # plot_usd_trend()
 
