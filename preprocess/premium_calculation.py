@@ -278,6 +278,10 @@ def insert_prem_and_membership_for_group(*args):
                 df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE SUBSTR(icb_code, 1, {icb_num}) = '{group}';", conn)
 
         df = df.dropna(subset=['stock_return_y','ticker'])
+
+        if len(df) == 0:
+            raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
+
         df = df.loc[~df['ticker'].str.startswith('.')].copy()
         df = df.melt(
             id_vars=['ticker', 'period_end', 'stock_return_y'],
