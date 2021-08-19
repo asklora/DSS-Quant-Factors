@@ -222,7 +222,16 @@ class load_data:
         2. convert x with standardization, y with qcut '''
 
     def __init__(self, use_biweekly_stock=False, stock_last_week_avg=False, update_since=None, mode='default'):
-        ''' combine all possible data to be used '''
+        ''' combine all possible data to be used 
+        
+        Parameters
+        ----------
+        use_biweekly_stock : bool, optional
+        stock_last_week_avg : bool, optional
+        update_since : bool, optional
+        mode : {default 'default', 'v2', 'v2_trim'}, optional
+        
+        '''
 
         # define self objects
         self.sample_set = {}
