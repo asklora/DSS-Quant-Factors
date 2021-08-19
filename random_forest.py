@@ -215,21 +215,21 @@ if __name__ == "__main__":
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--mode', default='v2', type=str)
+    parser.add_argument('--mode', default='v2_trim', type=str)
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_tryaddx_'
+    sql_result['name_sql'] = 'pca_trimnew1'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
     n_splits = 1
     defined_cut_bins = []
-    group_code_list = ['EUR','USD','HKD']
+    group_code_list = ['USD']
     # group_code_list = ['HKD']
-    use_pca = 0.0075
+    use_pca = 0.6
     use_median = False
 
     # --------------------------------- Define Variables ------------------------------------------
@@ -251,10 +251,10 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode=args.mode)  # load_data (class) STEP 1
-    sql_result['y_type'] = y_type = data.factor_list[:12]       # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type = data.factor_list[:10]       # random forest model predict all factor at the same time
     # sql_result['y_type'] = []       # random forest model predict all factor at the same time
     # other_y = [x for x in data.x_col_dict['factor'] if x not in sql_result['y_type']]
-    other_y = data.factor_list[:13]
+    # other_y = data.factor_list[:13]
 
     # sql_result['y_type'] = y_type = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(y_type), y_type, "=====")
@@ -319,17 +319,17 @@ if __name__ == "__main__":
                             print(data.x_col)
                             sql_result['neg_factor'] = ','.join(data.neg_factor)
                             print(group_code, testing_period, len(sample_set['train_yy_final']))
-                            HPOT(space, max_evals=20)  # start hyperopt
+                            HPOT(space, max_evals=10)  # start hyperopt
                             cv_number += 1
                     except Exception as e:
                         print(testing_period, e)
                         continue
-        r = download_stock_pred(4, sql_result['name_sql'], False, False)
-        if r_mean < (r['max_ret'][0] - r['min_ret'][0]):
-            r_mean = r['max_ret'][0] - r['min_ret'][0]
-        else:
-            print(y, sql_result['y_type'])
-            # if i > 1:
-            # sql_result['y_type'].remove(y)
-            sql_result['y_type'].append(y)
-            print(sql_result['y_type'])
+        # r = download_stock_pred(4, sql_result['name_sql'], False, False)
+        # if r_mean < (r['max_ret'][0] - r['min_ret'][0]):
+        #     r_mean = r['max_ret'][0] - r['min_ret'][0]
+        # else:
+        #     print(y, sql_result['y_type'])
+        #     # if i > 1:
+        #     # sql_result['y_type'].remove(y)
+        #     sql_result['y_type'].append(y)
+        #     print(sql_result['y_type'])

@@ -158,13 +158,13 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
             df = pd.read_sql(f'SELECT * FROM {factor_table_name}{tbl_suffix} WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
             df = pd.concat(df, axis=0, ignore_index=True)
             df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
-        elif mode == 'v2':
+        elif 'v2' in mode:
             if mode == 'v2_trim':
                 conditions.append('trim_outlier')
             else:
                 conditions.append('not trim_outlier')
             df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}{tbl_suffix_extra} '
-                             f'WHERE {" AND ".join(conditions)} AND not(trim_outlier);', conn, chunksize=10000)
+                             f'WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
             df = pd.concat(df, axis=0, ignore_index=True)
             df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
             df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
