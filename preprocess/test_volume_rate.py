@@ -9,8 +9,9 @@ from pandas.tseries.offsets import MonthEnd
 from scipy.stats import skew
 
 df = pd.read_csv('tri_z.csv')
-# df.loc[df['ticker']=='AAPL.O'].to_csv('tri_z_aapl.csv', index=False)
-
+df_s = df.loc[(df['ticker']=='0981.HK')&(df['volume_rate_z']>2)]
+df_s['trading_day'] = pd.to_datetime(df['trading_day']).dt.strftime('%Y-%m')
+print(df_s['trading_day'].unique())
 print(df.describe())
 
 with global_vals.engine_ali.connect() as conn:
@@ -21,8 +22,6 @@ df = df.merge(uni, on=['ticker'])
 
 inf_df = df.loc[df['volume_rate_z']==-np.inf]
 df = df.replace([np.inf, -np.inf], np.nan)
-
-df.sort_values(by=['volume_rate_z'], ascending=False).head(100).to_csv('tri_z_top.csv', index=False)
 
 import matplotlib.pyplot as plt
 plt.hist(df['volume_rate_z'], bins=100)

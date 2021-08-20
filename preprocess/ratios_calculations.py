@@ -184,8 +184,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     tri['volume_1w'] = tri['volume'].rolling(7, min_periods=1).mean()
     tri.loc[tri.groupby('ticker').head(6).index, ['volume_1w']] = np.nan
 
-    tri['volume_1m'] = tri['volume'].rolling(30, min_periods=1).mean()
-    tri.loc[tri.groupby('ticker').head(29).index, ['volume_1m']] = np.nan
+    tri['volume_1m'] = tri['volume'].rolling(91, min_periods=1).mean()
+    tri.loc[tri.groupby('ticker').head(90).index, ['volume_3m']] = np.nan
 
     tri['volume_rate'] = tri['volume_1w']/tri['volume_1m']
     tri['volume_rate_mean'] = tri['volume_rate'].rolling(365*5, min_periods=1).mean()
