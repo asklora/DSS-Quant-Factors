@@ -4,18 +4,18 @@ from sqlalchemy import text
 
 import global_vals
 
-r_name = 'pca_combinecur'
+r_name = 'pca_trimold2'
 fi_table_name = 'rf_class'
 score_table_name = 'rf_reg'
 
 iter_name = r_name#.split('_')[-1]
 use_pca = False
 
-def feature_importance(use_pca):
+def feature_importance(use_pca=False):
     ''' donwload results from results_lightgbm '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.*, S.use_pca as alpha, S.y_type, S.cv_number, S.group_code as group, S.testing_period FROM {global_vals.feature_importance_table}_{fi_table_name} P "
+        query = text(f"SELECT P.*, CONCAT(S.tree_type,'',S.use_pca) as alpha, S.y_type, S.cv_number, S.group_code as group, S.testing_period FROM {global_vals.feature_importance_table}_{fi_table_name} P "
                      f"INNER JOIN {global_vals.result_score_table}_{score_table_name} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql='{r_name}'")
         df = pd.read_sql(query, conn)       # download training history

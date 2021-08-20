@@ -196,7 +196,10 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # if price_sample == 'last_week_avg':
     tri = tri.sort_values(['ticker','trading_day'])
     tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
+    tri['volume'] = tri['volume'].rolling(7, min_periods=1).mean()
     tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
+    tri.loc[tri.groupby('ticker').head(6).index, ['volume']] = np.nan
+
     # elif price_sample == 'last_day':
     #     pass
     # else:

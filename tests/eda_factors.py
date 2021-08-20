@@ -18,7 +18,7 @@ from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
     # factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
-    df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
+    df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2 WHERE trim_outlier', conn)
     factors_bi = factors = factors_avg = pd.pivot_table(df, index=['period_end','group'], columns=['factor_name'], values='premium').reset_index()
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
@@ -581,13 +581,13 @@ if __name__ == "__main__":
     # plot_trend()
 
     # sharpe_ratio()
-    # test_if_persistent()
+    test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
 
     # dist_all()
-    # dist_all_train_test()
+    dist_all_train_test()
 
     # plot_usd_trend()
 

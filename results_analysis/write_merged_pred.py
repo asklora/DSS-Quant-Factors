@@ -14,15 +14,16 @@ def download_stock_pred(q, iter_name):
     ''' organize production / last period prediction and write weight to DB '''
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, P.y_type, P.group as group_code, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_rf_reg P "
+        query = text(f"SELECT P.pred, P.actual, P.y_type, P.group as group_code, S.neg_factor, S.testing_period, S.cv_number FROM {global_vals.result_pred_table}_rf_reg P "
                      f"INNER JOIN {global_vals.result_score_table}_rf_reg S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql like '{iter_name}%' ORDER BY S.finish_timing")
+                     f"WHERE S.name_sql like '{iter_name}%' and tree_type ='rf' and use_pca = 0.2 ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
     result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'cv_number'], keep='last')
     result_all = result_all.loc[result_all['testing_period']==result_all['testing_period'].max()]   # keep only last testing i.e. for production
+    neg_factor = result_all[['group_code','neg_factor']].drop_duplicates().set_index('group_code')['neg_factor'].to_dict()
 
     # use average predictions from different validation sets
     result_all = result_all.groupby(['testing_period','y_type','group_code'])['pred'].mean().unstack()
@@ -32,10 +33,14 @@ def download_stock_pred(q, iter_name):
 
     # set format of the sql table
     result_all.columns = ['period_end','factor_name','group','factor_weight']
-    result_all['factor_name'] = result_all['factor_name'].str[2:]
+    # result_all['factor_name'] = result_all['factor_name'].str[2:]
     result_all['period_end'] = result_all['period_end'] + MonthEnd(1)
     result_all['factor_weight'] = result_all['factor_weight'].astype(int)
+    result_all['long_large'] = False
     result_all['last_update'] = dt.datetime.now()
+
+    for k, v in neg_factor.items():
+        result_all.loc[(result_all['group']==k)&(result_all['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
     with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
@@ -45,5 +50,5 @@ def download_stock_pred(q, iter_name):
     global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":
-    download_stock_pred(3, 'pca_mse_moretree123')
+    download_stock_pred(3, 'pca_trimold2')
 

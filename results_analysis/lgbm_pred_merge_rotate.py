@@ -10,7 +10,7 @@ import re
 import global_vals
 
 model = 'rf_reg'
-r_name = 'final'
+r_name = 'pca_trimold2'
 
 def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ''' download training history and training prediction from DB '''
@@ -21,7 +21,7 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
         y_type = 'P.y_type'
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, S.use_pca as alpha FROM {global_vals.result_pred_table}_{model} P "
+        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, CONCAT(S.tree_type,'',S.use_pca) as alpha FROM {global_vals.result_pred_table}_{model} P "
                      f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql like '{iter_name}%' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
@@ -94,10 +94,11 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
 
     return result_all_comb.groupby(['group_code','alpha']).mean()
 
+iter_name = 'pca_mse_allx'
 def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     ''' download training history and training prediction from DB '''
 
-    if model == 'rf':
+    if model == 'rf_reg':
         y_type = 'P.y_type'
     elif model == 'lgbm':
         y_type = 'S.y_type'
@@ -112,7 +113,7 @@ def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
 
     # remove duplicate samples from running twice when testing
     df = result_all.drop_duplicates(subset=['name_sql', 'group_code', 'testing_period', 'y_type', 'alpha'], keep='last')
-    df['pred'] = df.groupby(['group_code', 'testing_period', 'alpha', 'iter'])['pred'].rank().values
+    # df['pred_rank'] = df.groupby(['group_code', 'testing_period', 'alpha', 'iter'])['pred'].rank().values
 
     # list out negative premiums
     df_neg = df[['group_code', 'testing_period', 'neg_factor']].drop_duplicates()
@@ -265,7 +266,7 @@ def download_stock_pred_many_iters(iter_name, save_xls=True, plot_consol=True):
         plt.savefig(f'score/#{model}_consol_pred_{iter_name}.png')
     # plt.show()
 
-
+model = 'rf_reg'
 def compare_all():
     with global_vals.engine_ali.connect() as conn:
         name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_{model}', conn)['name_sql'].to_list()
@@ -274,16 +275,16 @@ def compare_all():
     df_list = []
     for i in name_sql:
         print(i)
-        df = download_stock_pred(1/3, i, False, False).reset_index()
+        df = download_stock_pred(4, i, False, False).reset_index()
         df['name_sql'] = i
         df_list.append(df)
 
     all = pd.concat(df_list, axis=0)
-    all.to_csv('all_lasso.csv', index=False)
+    all.to_csv('all_rf.csv', index=False)
 
 if __name__ == "__main__":
     # compare_all()
-    download_stock_pred(4, iter_name=r_name)
+    download_stock_pred(1/3, iter_name=r_name)
     # download_stock_pred_multi(iter_name)
     # download_stock_pred_many_iters(r_name)
 

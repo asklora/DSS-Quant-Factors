@@ -9,7 +9,7 @@ import re
 
 import global_vals
 
-r_name = 'newpre_pca'
+r_name = 'lasso_multipca1'
 # r_name = 'lastweekavg_pca_en2'
 
 iter_name = r_name

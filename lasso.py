@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'newpre_pca'
+    sql_result['name_sql'] = 'lasso_multipca1'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     use_median = False
     n_splits = 1
     test_change = False
-    sql_result['alpha'] = 0.01
+    sql_result['alpha'] = 0.001
     sql_result['l1_ratio'] = 1
     use_pca = 0.4
 
@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode='v2')  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode='default')  # load_data (class) STEP 1
     factors_to_test = data.factor_list       # random forest model predict all factor at the same time
     # factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
     # print(sql_result['y_type'])
-    for a in [0.2, 0.4, 0.6, 0.8]:
+    for a in [0.2, 0.4]:
         sql_result['use_pca'] = a
     # for y in factors_to_test:
     #     sql_result['y_type'] = [y]
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             for testing_period in testing_period_list:
                 sql_result['testing_period'] = testing_period
                 load_data_params = {'qcut_q': qcut_q, 'y_type': sql_result['y_type'], 'valid_method': valid_method,
-                                    'use_median': use_median, 'n_splits': n_splits, 'test_change': test_change, 'use_pca': use_pca}
+                                    'use_median': use_median, 'n_splits': n_splits, 'test_change': test_change, 'use_pca': sql_result['use_pca']}
                 try:
                     sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                     print(list(data.x_col))
