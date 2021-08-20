@@ -180,6 +180,25 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
 
+    # calculate hot stock
+    tri['volume_1w'] = tri['volume'].rolling(7, min_periods=1).mean()
+    tri.loc[tri.groupby('ticker').head(6).index, ['volume_1w']] = np.nan
+
+    tri['volume_1m'] = tri['volume'].rolling(30, min_periods=1).mean()
+    tri.loc[tri.groupby('ticker').head(29).index, ['volume_1m']] = np.nan
+
+    tri['volume_rate'] = tri['volume_1w']/tri['volume_1m']
+    tri['volume_rate_mean'] = tri['volume_rate'].rolling(365*5, min_periods=1).mean()
+    tri['volume_rate_std'] = tri['volume_rate'].rolling(365*5, min_periods=1).std()
+    tri.loc[tri.groupby('ticker').head(365*5-1).index, ['volume_rate_mean','volume_rate_std']] = np.nan
+
+    tri['volume_rate_z'] = (tri['volume_rate'] - tri['volume_rate_mean']) / tri['volume_rate_std']
+
+    tri[['trading_day', 'ticker', 'volume', 'volume_rate_z']].to_csv('tri_z.csv', index=False)
+    exit(1)
+
+    print(tri)
+
     count_jpy(tri)
 
     print(f'      ------------------------> Calculate skewness ')
@@ -629,5 +648,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
-                          use_cached=True, save=True, update=False)
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+                          use_cached=True, save=False, update=False)

@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lasso_multipca1'
+    sql_result['name_sql'] = 'lasso_multialpha'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     test_change = False
     sql_result['alpha'] = 0.001
     sql_result['l1_ratio'] = 1
-    use_pca = 0.4
+    sql_result['use_pca'] = 0.6
 
     # --------------------------------- Define Variables ------------------------------------------
 
@@ -157,8 +157,8 @@ if __name__ == "__main__":
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
     # print(sql_result['y_type'])
-    for a in [0.2, 0.4]:
-        sql_result['use_pca'] = a
+    for a in [1]:
+        sql_result['alpha'] = a
     # for y in factors_to_test:
     #     sql_result['y_type'] = [y]
         for group_code in group_code_list:
