@@ -654,7 +654,8 @@ with t0a as (
         trading_day,
         currency_code
     from master_ohlcvtr
-    where volume is not null ),
+    where volume is not null
+    and currency_code not in ('TWD')),
 t0b as (
     select
         *,
