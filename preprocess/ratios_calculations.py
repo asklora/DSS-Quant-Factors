@@ -663,12 +663,12 @@ t0b as (
     from t0a ),
 t0c as (
     select
-        min(trading_day) "trading_day_since"
+        currency_code, trading_day "trading_day_since"
     from t0b
     where trading_day_rank = 90+1 ),
 t1 as (
     select
-        currency_code,
+        m.currency_code,
         m.trading_day,
         ticker,
         volume,
@@ -676,7 +676,7 @@ t1 as (
         avg(volume) over(partition by ticker order by m.trading_day rows between 89 preceding and current row) "volume_3m",  -- 3m = 90 days
         rank() over(partition by ticker order by m.trading_day desc) "trading_day_rank"
     from master_ohlcvtr as m
-    cross join t0c
+    inner join t0c on m.currency_code = t0c.currency_code
     where volume is not null
     and m.trading_day >= t0c.trading_day_since ),
 t2 as (
