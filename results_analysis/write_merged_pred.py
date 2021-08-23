@@ -1,14 +1,19 @@
 from sqlalchemy import text
-import matplotlib.pyplot as plt
+from sqlalchemy.dialects.postgresql.base import DATE, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
 from pandas.tseries.offsets import MonthEnd
-import numpy as np
-import os
-import re
 
 import global_vals
+
+stock_pred_dtypes = dict(
+    period_end=DATE,
+    factor=TEXT,
+    group=TEXT,
+    factor_weight=INTEGER,
+    long_large=BOOLEAN,
+    last_update=TIMESTAMP
+)
 
 def download_stock_pred(q, iter_name):
     ''' organize production / last period prediction and write weight to DB '''
@@ -43,7 +48,7 @@ def download_stock_pred(q, iter_name):
         result_all.loc[(result_all['group']==k)&(result_all['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
     with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-        extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
         conn.execute(f"DELETE FROM {global_vals.production_factor_rank_table} "
                      f"WHERE period_end='{dt.datetime.strftime(result_all['period_end'][0], '%Y-%m-%d')}'")   # remove same period prediction if exists
         result_all.sort_values(['group','factor_weight']).to_sql(global_vals.production_factor_rank_table, **extra)
