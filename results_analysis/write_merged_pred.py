@@ -72,8 +72,17 @@ def download_stock_pred(q, iter_name, rank_along_testing_history=True, keep_last
 
     with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
-        conn.execute(f"DELETE FROM {global_vals.production_factor_rank_table} "
-                     f"WHERE period_end='{dt.datetime.strftime(result_all['period_end'][0], '%Y-%m-%d')}'")   # remove same period prediction if exists
+
+        if keep_last_period:
+            # remove same period prediction if exists
+            latest_period_end = dt.datetime.strftime(result_all['period_end'][0], r'%Y-%m-%d')
+            delete_query = f"DELETE FROM {global_vals.production_factor_rank_table} WHERE period_end='{latest_period_end}';"
+        else:
+            delete_query = f"DELETE FROM {global_vals.production_factor_rank_table} WHERE true;"
+
+        conn.execute(delete_query)
+        print(delete_query)
+
         result_all.sort_values(['group','factor_weight']).to_sql(global_vals.production_factor_rank_table, **extra)
     global_vals.engine_ali.dispose()
 
