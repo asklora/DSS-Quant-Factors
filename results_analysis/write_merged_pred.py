@@ -28,7 +28,8 @@ stock_pred_dtypes = dict(
 
 def download_stock_pred(
         q,
-        iter_name,
+        model,
+        name_sql,
         rank_along_testing_history=True,
         keep_last_period=True,
         return_summary=False,
@@ -39,7 +40,7 @@ def download_stock_pred(
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, S.testing_period as period_end, S.cv_number FROM {global_vals.result_pred_table}_rf_reg P "
                      f"INNER JOIN {global_vals.result_score_table}_rf_reg S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql like '{iter_name}%' and tree_type ='rf' and use_pca = 0.2 ORDER BY S.finish_timing")
+                     f"WHERE S.name_sql like '{name_sql}%' and tree_type ='rf' and use_pca = 0.2 ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
     global_vals.engine_ali.dispose()
 
@@ -86,7 +87,7 @@ def download_stock_pred(
     result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
 
     if save_xls:
-        writer = pd.ExcelWriter(f'score/#{model}_pred_{iter_name}.xlsx')
+        writer = pd.ExcelWriter(f'score/#{model}_pred_{name_sql}.xlsx')
         result_all_comb.groupby(['group']).mean().to_excel(writer, sheet_name='average')
         result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
         pd.pivot_table(result_all, index=['group', 'period_end'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
@@ -109,7 +110,7 @@ def download_stock_pred(
             if k==1:
                 plt.legend(['best','average','worse'])
             k+=1
-        plt.savefig(f'score/#{model}_pred_{iter_name}.png')
+        plt.savefig(f'score/#{model}_pred_{name_sql}.png')
         plt.close()
 
     result_all = result_all.dropna(axis=0, subset=['factor_weight'])
