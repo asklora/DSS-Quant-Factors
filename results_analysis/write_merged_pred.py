@@ -18,7 +18,8 @@ stock_pred_dtypes = dict(
     group=TEXT,
     factor_weight=INTEGER,
     long_large=BOOLEAN,
-    last_update=TIMESTAMP
+    last_update=TIMESTAMP,
+    pred_rank_same_time_and_group=INTEGER
 )
 
 
@@ -62,6 +63,7 @@ def download_stock_pred(
         q_ = np.linspace(0., 1., q)
     
     result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_)-1), duplicates='drop'))
+    result_all['pred_rank_same_time_and_group'] = result_all.groupby(level=['period_end', 'group'])['pred'].rank().fillna(-1).astype(int)
 
     def get_summary_stats_in_group(g):
         ret_dict = {}
