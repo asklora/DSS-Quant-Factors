@@ -184,7 +184,6 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
 
-
     # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
@@ -341,8 +340,9 @@ class load_data:
         sharpe = self.train[y_col].mean(axis=0)
         self.neg_factor = list(sharpe[sharpe<0].index)
         # neg_factor = self.x_col_dict['neg_factor']
-        self.train[self.neg_factor] = -self.train[self.neg_factor]
-        self.test[self.neg_factor] = -self.test[self.neg_factor]
+        reverse_input_list = [x for i in self.neg_factor for x in self.train.columns if i[2:] in x]
+        self.train[reverse_input_list] = -self.train[reverse_input_list]
+        self.test[reverse_input_list] = -self.test[reverse_input_list]
 
         if qcut_q > 0:
 

@@ -18,16 +18,16 @@ import global_vals
 from results_analysis.lgbm_pred_merge_rotate import download_stock_pred
 
 space = {
-    'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
+    'n_estimators': hp.choice('n_estimators', [50, 100, 200]),
     # 'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
     'max_depth': hp.choice('max_depth', [8, 32, 64]),
-    'min_samples_split': hp.choice('min_samples_split', [5, 10, 50, 100]),
+    'min_samples_split': hp.choice('min_samples_split', [5, 50, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [5, 10, 50]),
-    'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 5e-2, 1e-1]),
+    'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2]),
     'max_features': hp.choice('max_features',[0.5, 0.7, 0.9]),
     'min_impurity_decrease': 0,
-    'max_samples': hp.choice('max_samples',[0.5, 0.7, 0.9]),
-    'ccp_alpha': hp.choice('ccp_alpha',[0, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]),
+    # 'max_samples': hp.choice('max_samples',[0.7, 0.9]),
+    # 'ccp_alpha': hp.choice('ccp_alpha',[0, 1e-3]),
     'n_jobs': -1,
     # 'random_state': 666
 }
@@ -122,47 +122,39 @@ def eval_classifier(space):
     sql_result['finish_timing'] = dt.datetime.now()
     Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(space)
 
-    result = {}
-    for i in range(Y_test_pred.shape[1]):
-        result[sql_result['y_type'][i]] = {'accuracy_train': accuracy_score(sample_set['train_yy_final'][i], Y_train_pred[i]),
-                  'accuracy_valid': accuracy_score(sample_set['valid_y_final'][i], Y_valid_pred[i])}
+    result = {'accuracy_train': accuracy_score(sample_set['train_yy_final'].flatten(), Y_train_pred.flatten()),
+              'accuracy_valid': accuracy_score(sample_set['valid_y_final'].flatten(), Y_valid_pred.flatten())}
 
-        try:        # for backtesting -> calculate accuracy for testing set
-            test_df = pd.DataFrame({'actual':sample_set['test_y_final'][i], 'pred': Y_test_pred[i]})
-            test_df = test_df.dropna(how='any')
-            result_test = {
-                'accuracy_test': accuracy_score(test_df['actual'], test_df['pred']),
-                # 'precision_test': precision_score(test_df['actual'], test_df['pred'], average='micro'),
-                # 'recall_test': recall_score(test_df['actual'], test_df['pred'], average='micro'),
-                # 'f1_test': f1_score(test_df['actual'], test_df['pred'], average='micro')
-            }
-            result[sql_result['y_type'][i]]['test_len'] = len(test_df)
-            result[sql_result['y_type'][i]].update(result_test)
-        except Exception as e:     # for real_prediction -> no calculation
-            print('ERROR on: ', e)
-            pass
+    try:  # for backtesting -> calculate MAE/MSE/R2 for testing set
+        result_test = {
+            'accuracy_test': accuracy_score(sample_set['test_y_final'][0], Y_test_pred[0]),
+        }
+        # result['test_len'] = len(test_df)
+        result.update(result_test)
+    except Exception as e:  # for real_prediction -> no calculation
+        print(e)
+        pass
 
-    result_comb = {k: i.tolist() for k, i in pd.DataFrame(result).transpose().to_dict(orient='series').items()}
-
-    sql_result.update(result_comb)  # update result of model
-    sql_result['accuracy_valid_mean'] = np.mean(result_comb['accuracy_valid'])
+    sql_result.update(result)  # update result of model
 
     hpot['all_results'].append(sql_result.copy())
 
-    if sql_result['accuracy_valid_mean'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
-        hpot['best_score'] = sql_result['accuracy_valid_mean']
+    if sql_result['accuracy_valid'] > hpot['best_score']:   # update best_mae to the lowest value for Hyperopt
+        hpot['best_score'] = sql_result['accuracy_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
-    return 1 - np.mean(result_comb['accuracy_valid'])
+    return 1 - result['accuracy_valid']
 
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
-    # sql_result['y_type'] = data.y_col
+    if len(sql_result['y_type']) != len(data.y_col):
+        sql_result['y_type'] = [x[2:] for x in data.y_col]
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
     df['actual'] = sample_set['test_y_final'].flatten(order='F')       # also write actual qcut to BD
+    df['actual_exact'] = sample_set['test_y'].flatten(order='F')       # also write actual qcut to BD
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -214,18 +206,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
-    parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--mode', default='v2_trim', type=str)
+    parser.add_argument('--qcut_q', default=10, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--mode', default='default', type=str)
+
     args = parser.parse_args()
     sql_result = vars(args)     # data write to DB TABLE lightgbm_results
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_trimnew1'
+    sql_result['name_sql'] = 'pca_top16_qcut10'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    n_splits = 1
+    n_splits = 5
     defined_cut_bins = []
     group_code_list = ['USD']
     # group_code_list = ['HKD']
@@ -251,7 +244,7 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode=args.mode)  # load_data (class) STEP 1
-    sql_result['y_type'] = y_type = data.factor_list[:10]       # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type = data.factor_list[:16]       # random forest model predict all factor at the same time
     # sql_result['y_type'] = []       # random forest model predict all factor at the same time
     # other_y = [x for x in data.x_col_dict['factor'] if x not in sql_result['y_type']]
     # other_y = data.factor_list[:13]
@@ -269,8 +262,10 @@ if __name__ == "__main__":
         #     sql_result['y_type'].remove(y)
         # print(sql_result['y_type'])
         # i += 1
-    if 1==1:
-        for tree_type in ['extra']:
+
+    for use_pca in [0.2]:
+        sql_result['use_pca'] = use_pca
+        for tree_type in ['rf']:
             sql_result['tree_type'] = tree_type
             for group_code in group_code_list:
                 sql_result['group_code'] = group_code
@@ -279,7 +274,7 @@ if __name__ == "__main__":
                     sql_result['testing_period'] = testing_period
                     load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'],
                                         'valid_method': valid_method, 'defined_cut_bins': defined_cut_bins,
-                                        'use_median': use_median, 'use_pca':use_pca, 'n_splits':n_splits}
+                                        'use_median': use_median, 'use_pca':sql_result['use_pca'], 'n_splits':n_splits}
                     try:
                         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
                         # # write stock_pred for the best hyperopt records to sql
