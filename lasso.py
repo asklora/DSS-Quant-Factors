@@ -79,6 +79,7 @@ def to_sql_prediction(Y_test_pred):
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
     df['actual'] = sample_set['test_y_final'].flatten(order='F')       # also write actual qcut to BD
+    df['actual_exact'] = sample_set['test_y'].flatten(order='F')       # also write actual qcut to BD
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -118,14 +119,15 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'lasso_multialpha'
+    sql_result['name_sql'] = 'lasso_cut10'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
     group_code_list = ['USD']
-    qcut_q = 0
+    qcut_q = 10
     use_median = False
     n_splits = 1
+    mode = 'default'
     test_change = False
     sql_result['alpha'] = 0.001
     sql_result['l1_ratio'] = 1
@@ -149,7 +151,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode='default')  # load_data (class) STEP 1
+    data = load_data(use_biweekly_stock=use_biweekly_stock, stock_last_week_avg=stock_last_week_avg, mode=mode)  # load_data (class) STEP 1
     factors_to_test = data.factor_list       # random forest model predict all factor at the same time
     # factors_to_test = ['vol_0_30','book_to_price','earnings_yield','market_cap_usd']
     print(f"===== test on y_type", len(factors_to_test), factors_to_test, "=====")
@@ -157,7 +159,7 @@ if __name__ == "__main__":
     # for f in factors_to_test:
     sql_result['y_type'] = factors_to_test
     # print(sql_result['y_type'])
-    for a in [1]:
+    for a in [0, 0.001, 0.1, 1]:
         sql_result['alpha'] = a
     # for y in factors_to_test:
     #     sql_result['y_type'] = [y]

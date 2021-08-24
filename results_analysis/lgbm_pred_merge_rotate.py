@@ -6,11 +6,12 @@ import datetime as dt
 import numpy as np
 import os
 import re
+import seaborn as sns
 
 import global_vals
 
 model = 'rf_reg'
-r_name = 'pca_trimold2'
+r_name = 'pca_top16_q10_mse_tv'
 
 def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ''' download training history and training prediction from DB '''
@@ -21,7 +22,8 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
         y_type = 'P.y_type'
 
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, CONCAT(S.tree_type,'',S.use_pca) as alpha FROM {global_vals.result_pred_table}_{model} P "
+        query = text(f"SELECT P.pred, P.actual_exact as actual, {y_type}, P.group as group_code, S.testing_period, S.cv_number, CONCAT(S.tree_type,'',S.use_pca) as alpha "
+                     f"FROM {global_vals.result_pred_table}_{model} P "
                      f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql like '{iter_name}%' AND P.actual IS NOT NULL ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn)       # download training history
@@ -29,9 +31,19 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
 
     # remove duplicate samples from running twice when testing
     result_all = result_all.drop_duplicates(subset=['group_code', 'testing_period', 'y_type', 'alpha', 'cv_number'], keep='last')
-    result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha']).mean().reset_index()
+
+    if 'class' in model:
+        result_all_final = pd.DataFrame(result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha']).apply(pd.DataFrame.mode)['pred'].dropna().reset_index(level=-1, drop=True))
+        result_all_final['actual'] = result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha'])['actual'].mean()
+        result_all = result_all_final.reset_index()
+    else:
+        result_all = result_all.groupby(['group_code', 'testing_period', 'y_type', 'alpha']).mean().reset_index()
 
     result_all_avg = result_all.groupby(['testing_period','group_code'])['actual'].mean().reset_index()
+
+    # plt.plot(result_all.groupby(['pred'])['actual'].mean())
+    # plt.show()
+    # exit(1)
 
     corr_dict = {}
     for name, g in result_all.groupby([ 'alpha', 'y_type', 'group_code']):
@@ -41,7 +53,10 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ret_dict = {}
     for name, g in result_all.groupby(['group_code', 'testing_period', 'alpha']):
         ret_dict[name] = {}
-        if q<1:
+        if 'class' in model:
+            max_g = g.loc[g['pred']==g['pred'].max()]
+            min_g = g.loc[g['pred']==g['pred'].min()]
+        elif q<1:
             max_g = g.loc[g['pred']>g['pred'].quantile(q=1-q)]
             min_g = g.loc[g['pred']<g['pred'].quantile(q=q)]
         else:
@@ -59,6 +74,9 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     result_all_comb.columns = ['group_code', 'testing_period', 'alpha'] + result_all_comb.columns.to_list()[3:]
     result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
 
+    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
+    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
+
     if save_xls:
         writer = pd.ExcelWriter(f'score/#{model}_pred_{iter_name}.xlsx')
         result_all_comb.groupby(['group_code','alpha']).mean().to_excel(writer, sheet_name='average')
@@ -67,15 +85,12 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
         pd.pivot_table(result_all, index=['alpha', 'group_code', 'testing_period'], columns=['y_type'], values=['pred','actual']).to_excel(writer, sheet_name='all')
         writer.save()
 
-    result_all_comb = result_all_comb.merge(result_all_avg, on=['group_code', 'testing_period'])
-    print(result_all_comb.groupby(['group_code', 'alpha']).mean())
-
     if save_plot:
         num_alpha = len(result_all_comb['alpha'].unique())
         num_group = len(result_all_comb['group_code'].unique())
         fig = plt.figure(figsize=(num_group*8, num_alpha*4), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
         k=1
-        for name, g in result_all_comb.groupby(['alpha','group_code']):
+        for name, g in result_all_comb.groupby(['group_code']):
             ax = fig.add_subplot(num_alpha, num_group, k)
             g[['max_ret','actual','min_ret']] = np.cumprod(g[['max_ret','actual','min_ret']] + 1, axis=0)
             plot_df = g.set_index(['testing_period'])[['max_ret','actual','min_ret']]
@@ -94,7 +109,7 @@ def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
 
     return result_all_comb.groupby(['group_code','alpha']).mean()
 
-iter_name = 'pca_mse_allx'
+# iter_name = 'pca_mse_allx'
 def download_stock_pred_multi(iter_name, save_xls=True, plot_consol=True):
     ''' download training history and training prediction from DB '''
 
@@ -266,7 +281,7 @@ def download_stock_pred_many_iters(iter_name, save_xls=True, plot_consol=True):
         plt.savefig(f'score/#{model}_consol_pred_{iter_name}.png')
     # plt.show()
 
-model = 'rf_reg'
+# model = 'rf_reg'
 def compare_all():
     with global_vals.engine_ali.connect() as conn:
         name_sql = pd.read_sql(f'SELECT DISTINCT name_sql from {global_vals.result_score_table}_{model}', conn)['name_sql'].to_list()
@@ -282,9 +297,33 @@ def compare_all():
     all = pd.concat(df_list, axis=0)
     all.to_csv('all_rf.csv', index=False)
 
+def plot_corr_all_results():
+    with global_vals.engine_ali.connect() as conn:
+        query = text(f"SELECT P.pred, P.actual, P.y_type, S.name_sql, P.group as group_code, S.testing_period, S.cv_number, CONCAT(S.tree_type,'',S.use_pca) as alpha FROM {global_vals.result_pred_table}_{model} P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
+                     f"WHERE P.actual IS NOT NULL and S.name_sql is not null ORDER BY S.finish_timing")
+        result_all = pd.read_sql(query, conn)       # download training history
+    global_vals.engine_ali.dispose()
+
+    df = result_all[['pred','actual','name_sql']].dropna(how='any')
+    print(df.describe())
+    df = df.loc[df['name_sql'].isin(['pca_v2tryaddx_1'])]
+    c = df.groupby('name_sql').corr()
+    print(c)
+
+    # Get Unique continents
+    color_labels = df['name_sql'].unique()
+
+    # Finally use the mapped values
+    plt.scatter(df['pred'], df['actual'])
+    plt.show()
+
+    exit(1)
+
 if __name__ == "__main__":
     # compare_all()
     download_stock_pred(1/3, iter_name=r_name)
     # download_stock_pred_multi(iter_name)
     # download_stock_pred_many_iters(r_name)
+    # plot_corr_all_results()
 
