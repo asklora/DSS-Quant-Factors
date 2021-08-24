@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql.base import TEXT, INTEGER, DATE, DOUBLE_PRECISION
 import global_vals
 import datetime as dt
 from datetime import datetime
@@ -180,22 +181,23 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
 
-    # calculate hot stock
-    tri['volume_1w'] = tri['volume'].rolling(7, min_periods=1).mean()
-    tri.loc[tri.groupby('ticker').head(6).index, ['volume_1w']] = np.nan
+    # calculate hot stock (USE calc_stock_hotness INSTEAD)
 
-    tri['volume_1m'] = tri['volume'].rolling(91, min_periods=1).mean()
-    tri.loc[tri.groupby('ticker').head(90).index, ['volume_3m']] = np.nan
+    # tri['volume_1w'] = tri.groupby('ticker')['volume'].rolling(7, min_periods=1).mean()
+    # tri.loc[tri.groupby('ticker').head(6).index, ['volume_1w']] = np.nan
 
-    tri['volume_rate'] = tri['volume_1w']/tri['volume_1m']
-    tri['volume_rate_mean'] = tri['volume_rate'].rolling(365*5, min_periods=1).mean()
-    tri['volume_rate_std'] = tri['volume_rate'].rolling(365*5, min_periods=1).std()
-    tri.loc[tri.groupby('ticker').head(365*5-1).index, ['volume_rate_mean','volume_rate_std']] = np.nan
+    # tri['volume_1m'] = tri.groupby('ticker')['volume'].rolling(91, min_periods=1).mean()
+    # tri.loc[tri.groupby('ticker').head(90).index, ['volume_3m']] = np.nan
 
-    tri['volume_rate_z'] = (tri['volume_rate'] - tri['volume_rate_mean']) / tri['volume_rate_std']
+    # tri['volume_rate'] = tri['volume_1w']/tri['volume_1m']
+    # tri['volume_rate_mean'] = tri.groupby('ticker')['volume_rate'].rolling(365*5, min_periods=1).mean()
+    # tri['volume_rate_std'] = tri.groupby('ticker')['volume_rate'].rolling(365*5, min_periods=1).std()
+    # tri.loc[tri.groupby('ticker').head(365*5-1).index, ['volume_rate_mean','volume_rate_std']] = np.nan
 
-    tri[['trading_day', 'ticker', 'volume', 'volume_rate_z']].to_csv('tri_z.csv', index=False)
-    exit(1)
+    # tri['volume_rate_z'] = (tri['volume_rate'] - tri['volume_rate_mean']) / tri['volume_rate_std']
+
+    # tri[['trading_day', 'ticker', 'volume', 'volume_rate_z']].to_csv('tri_z.csv', index=False)
+    # exit(1)
 
     print(tri)
 
@@ -644,6 +646,90 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         print(f'      ------------------------> Finish writing {db_table_name} table ')
 
     return df, stocks_col, formula
+
+def calc_stock_hotness(return_result=False):
+    stock_hotness_sql = '''
+with t0a as (
+    select distinct
+        trading_day,
+        currency_code
+    from master_ohlcvtr
+    where volume is not null
+    and currency_code not in ('TWD')),
+t0b as (
+    select
+        *,
+        rank() over(partition by currency_code order by trading_day desc) "trading_day_rank"
+    from t0a ),
+t0c as (
+    select
+        currency_code, trading_day "trading_day_since"
+    from t0b
+    where trading_day_rank = 90+1 ),
+t1 as (
+    select
+        m.currency_code,
+        m.trading_day,
+        ticker,
+        volume,
+        avg(volume) over(partition by ticker order by m.trading_day rows between 6 preceding and current row) "volume_1w",   -- 1w =  7 days
+        avg(volume) over(partition by ticker order by m.trading_day rows between 89 preceding and current row) "volume_3m",  -- 3m = 90 days
+        rank() over(partition by ticker order by m.trading_day desc) "trading_day_rank"
+    from master_ohlcvtr as m
+    inner join t0c on m.currency_code = t0c.currency_code
+    where volume is not null
+    and m.trading_day >= t0c.trading_day_since ),
+t2 as (
+    select
+        currency_code,
+        trading_day,
+        avg(volume_1w / volume_3m) "volume_rate_mean"
+    from t1
+    where t1.trading_day_rank = 1
+    group by currency_code, trading_day ),
+t3 as (
+    select
+        t1.currency_code,
+        t1.trading_day,
+        avg(power(t1.volume_1w / t1.volume_3m - t2.volume_rate_mean, 2)) "volume_rate_var"
+    from t1
+    left join t2
+    on t1.currency_code = t2.currency_code and t1.trading_day = t2.trading_day
+    where t1.trading_day_rank = 1
+    group by t1.currency_code, t1.trading_day )
+
+select
+    t1.trading_day,
+    t1.ticker,
+    (t1.volume_1w / t1.volume_3m - t2.volume_rate_mean) / sqrt(t3.volume_rate_var) "volume_rate_z"
+from t1
+left join t2
+on t1.currency_code = t2.currency_code and t1.trading_day = t2.trading_day
+left join t3
+on t1.currency_code = t3.currency_code and t1.trading_day = t3.trading_day
+where t1.trading_day_rank = 1
+and volume_rate_var != 0;'''
+
+    stock_hotness_dtypes = dict(
+        trading_day=DATE,
+        ticker=TEXT,
+        volume_rate_z=DOUBLE_PRECISION)
+
+    with global_vals.engine_prod.connect() as conn_prod, global_vals.engine_ali.connect() as conn_ali:
+        df = pd.read_sql(stock_hotness_sql, con=conn_prod, chunksize=10000)
+        df = pd.concat(df, axis=0, ignore_index=True)
+
+        df.to_sql(
+            'universe_hotness',
+            con=conn_ali,
+            chunksize=10000,
+            dtype=stock_hotness_dtypes,
+            index=False,
+            if_exists='replace',
+            method='multi')
+
+    if return_result:
+        return df
 
 
 if __name__ == "__main__":
