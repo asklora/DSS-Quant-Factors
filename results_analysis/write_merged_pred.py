@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
 import numpy as np
+import argparse
 
 from pandas.core.reshape.tile import qcut
 import global_vals
@@ -62,8 +63,6 @@ def download_stock_pred(
     elif isinstance(q, int):
         # create equal-sized bins between 0 and 1 inclusively
         q_ = np.linspace(0., 1., q)
-    else:
-        raise Exception('q is either >= .5 or not a numeric')
     
     result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_)-1), duplicates='drop'))
 
@@ -154,5 +153,37 @@ def download_stock_pred(
 
 
 if __name__ == "__main__":
-    download_stock_pred(1/3, 'pca_trimold2', rank_along_testing_history=True, keep_last_period=True, save_plot=True, return_summary=True)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-q', type=float, default=1/3)
+    parser.add_argument('--model', type=str, required=True)
+    parser.add_argument('--name-sql', type=str, required=True)
+
+    parser.add_argument('--rank-in-same-t', action='store_false', help='rank_along_testing_history = False')
+    parser.add_argument('--keep-all', action='store_false', help='keep_last = False')
+    parser.add_argument('--save-plot', action='store_true', help='save_plot = True')
+    parser.add_argument('--save-xls', action='store_true', help='save_xls = True')
+    parser.add_argument('--return-summary', action='store_true', help='return_summary = True')
+
+    args = parser.parse_args()
+
+    if args.q.is_integer():
+        q = int(args.q)
+    elif args.q < .5:
+        q = args.q
+    else:
+        raise Exception('q is either >= .5 or not a numeric')
+
+    # Example
+    # download_stock_pred(1/3, 'rf_reg', 'pca_trimold2', rank_along_testing_history=True, keep_last_period=True, save_plot=True, return_summary=True)
+
+    download_stock_pred(
+        q,
+        args.model,
+        args.name_sql,
+        rank_along_testing_history=args.rank_in_same_t,
+        keep_last_period=args.keep_all,
+        save_plot=args.save_plot,
+        save_xls=args.save_xls,
+        return_summary=args.return_summary)
 
