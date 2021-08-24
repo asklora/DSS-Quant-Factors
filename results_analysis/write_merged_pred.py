@@ -109,6 +109,7 @@ def download_stock_pred(
         plt.savefig(f'score/#{model}_pred_{name_sql}.png')
         plt.close()
 
+    result_all = result_all.drop(['pred', 'actual'], axis=1)
     result_all = result_all.dropna(axis=0, subset=['factor_weight'])
 
     if return_summary:
@@ -143,7 +144,7 @@ def download_stock_pred(
         
             conn.execute(delete_query)
         
-        result_all.drop(['pred', 'actual'], axis=1).sort_values(['group','factor_weight']).to_sql(global_vals.production_factor_rank_table, **extra)
+        result_all.sort_values(['group','factor_weight']).to_sql(global_vals.production_factor_rank_table, **extra)
 
     if return_summary:
         return factor_rank, rank_count
