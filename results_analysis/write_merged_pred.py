@@ -12,10 +12,6 @@ from pandas.tseries.offsets import MonthEnd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 
 
-model = 'rf_reg'
-r_name = 'pca_trimold2'
-
-
 stock_pred_dtypes = dict(
     period_end=DATE,
     factor_name=TEXT,
@@ -157,8 +153,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
-    parser.add_argument('--model', type=str, required=True)
-    parser.add_argument('--name-sql', type=str, required=True)
+    parser.add_argument('--model', type=str, default='rf_reg')
+    parser.add_argument('--name-sql', type=str, default='pca_trimold2')
 
     parser.add_argument('--rank-in-same-t', action='store_false', help='rank_along_testing_history = False')
     parser.add_argument('--keep-all', action='store_false', help='keep_last = False')
