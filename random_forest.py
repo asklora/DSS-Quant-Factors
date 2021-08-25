@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 import pandas as pd
 from dateutil.relativedelta import relativedelta
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
+from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
 from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
 from tqdm import tqdm
@@ -24,15 +24,15 @@ space = {
     'min_samples_split': hp.choice('min_samples_split', [5, 50, 100]),
     'min_samples_leaf': hp.choice('min_samples_leaf', [5, 10, 50]),
     'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2]),
-    'max_features': hp.choice('max_features',[0.5, 0.7, 0.9]),
+    'max_features': hp.choice('max_features',[0.7, 0.9]),
     'min_impurity_decrease': 0,
     # 'max_samples': hp.choice('max_samples',[0.7, 0.9]),
-    # 'ccp_alpha': hp.choice('ccp_alpha',[0, 1e-3]),
-    'n_jobs': -1,
-    # 'random_state': 666
+    'ccp_alpha': hp.choice('ccp_alpha',[0, 1e-3]),
+    # 'n_jobs': -1,
+    'random_state': 666
 }
 
-def rf_train(space):
+def rf_train(space, rerun):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
     params = space.copy()
@@ -42,6 +42,7 @@ def rf_train(space):
     sql_result.update(params)
 
     params['bootstrap'] = False
+    # params['verbose'] = 2
 
     if args.objective in ['gini','entropy']:        # Classification problem
         if args.tree_type == 'extra':
@@ -54,7 +55,12 @@ def rf_train(space):
         elif args.tree_type == 'rf':
             regr = RandomForestRegressor(criterion=args.objective, **params)
 
-    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'], sample_weight=sample_set['weight'])
+    if rerun:
+        rerun_x = np.concatenate((sample_set['train_xx'],sample_set['valid_x']), axis=0)
+        rerun_y = np.concatenate((sample_set['train_yy_final'],sample_set['valid_y_final']), axis=0)
+        regr.fit(rerun_x, rerun_y)
+    else:
+        regr.fit(sample_set['train_xx'], sample_set['train_yy_final'], sample_weight=sample_set['weight'])
 
     # prediction on all sets
     Y_train_pred = regr.predict(sample_set['train_xx'])
@@ -65,14 +71,14 @@ def rf_train(space):
 
     return Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df
 
-def eval_regressor(space):
+def eval_regressor(space, rerun=False):
     ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model
     -------------------------------------------------
     This part haven't been modified for multi-label questions purpose
     '''
 
     sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(space)
+    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(space, rerun=rerun)
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
@@ -107,9 +113,9 @@ def eval_regressor(space):
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
     if sql_result['objective'] == 'mae':
-        return result['mse_valid']
-    elif sql_result['objective'] == 'mse':
         return result['mae_valid']
+    elif sql_result['objective'] == 'mse':
+        return result['mse_valid']
     else:
         NameError('Objective not evaluated!')
 
@@ -178,6 +184,13 @@ def HPOT(space, max_evals):
         best = fmin(fn=eval_regressor, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
         tbl_suffix = '_rf_reg'
 
+        # rerun
+        # while rerun == True:
+        best_space = space_eval(space, best)
+        eval_regressor(best_space, rerun=True)
+            # if result['mae_valid'] > hpot['best_score']:
+            #     break
+
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
@@ -206,7 +219,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--tree_type', default='extra')
     parser.add_argument('--objective', default='mse')
-    parser.add_argument('--qcut_q', default=10, type=int)  # Default: Low, Mid, High
+    parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='default', type=str)
 
     args = parser.parse_args()
@@ -214,11 +227,11 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Config ------------------------------------------
 
-    sql_result['name_sql'] = 'pca_top16_qcut10'
+    sql_result['name_sql'] = 'pca_top16_mse_rerun_tv3_68'
     use_biweekly_stock = False
     stock_last_week_avg = True
     valid_method = 'chron'
-    n_splits = 5
+    n_splits = 3
     defined_cut_bins = []
     group_code_list = ['USD']
     # group_code_list = ['HKD']
@@ -263,7 +276,7 @@ if __name__ == "__main__":
         # print(sql_result['y_type'])
         # i += 1
 
-    for use_pca in [0.2]:
+    for use_pca in [0.6, 0.8]:
         sql_result['use_pca'] = use_pca
         for tree_type in ['rf']:
             sql_result['tree_type'] = tree_type
@@ -314,7 +327,7 @@ if __name__ == "__main__":
                             print(data.x_col)
                             sql_result['neg_factor'] = ','.join(data.neg_factor)
                             print(group_code, testing_period, len(sample_set['train_yy_final']))
-                            HPOT(space, max_evals=10)  # start hyperopt
+                            HPOT(space, max_evals=20)  # start hyperopt
                             cv_number += 1
                     except Exception as e:
                         print(testing_period, e)
