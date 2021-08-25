@@ -7,7 +7,7 @@ import argparse
 from pandas.core.reshape.tile import qcut
 import global_vals
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql.base import DATE, TEXT, INTEGER, BOOLEAN, TIMESTAMP
+from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from pandas.tseries.offsets import MonthEnd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 
@@ -17,6 +17,7 @@ stock_pred_dtypes = dict(
     factor_name=TEXT,
     group=TEXT,
     factor_weight=INTEGER,
+    pred_z=DOUBLE_PRECISION,
     long_large=BOOLEAN,
     last_update=TIMESTAMP,
     pred_rank_same_time_and_group=INTEGER
@@ -62,6 +63,9 @@ def download_stock_pred(
         # create equal-sized bins between 0 and 1 inclusively
         q_ = np.linspace(0., 1., q)
     
+    result_all = result_all.join(result_all.groupby(level=groupby_keys)['pred'].agg(['mean', 'std']), on='group', how='left')
+    result_all['pred_z'] = (result_all['pred'] - result_all['mean']) / result_all['std']
+    result_all = result_all.drop(['mean', 'std'], axis=1)
     result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_)-1), duplicates='drop'))
     result_all['pred_rank_same_time_and_group'] = result_all.groupby(level=['period_end', 'group'])['pred'].rank().fillna(-1).astype(int)
 
