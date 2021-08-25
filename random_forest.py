@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 import pandas as pd
 from dateutil.relativedelta import relativedelta
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
+from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
 from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
 from tqdm import tqdm
@@ -34,7 +34,7 @@ rf_space = {
 
 hpot = {}
 
-def rf_train(rf_space):
+def rf_train(rf_space, rerun):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
     main = sys.modules["__main__"]
@@ -112,10 +112,10 @@ def to_sql_prediction(Y_test_pred):
 
     main = sys.modules["__main__"]
     main.sql_result['y_type'] = [x[2:] for x in main.data.y_col]
-    df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=main.sql_result['y_type'])
+    df = pd.DataFrame(Y_test_pred, index=main.data.test['group'].to_list(), columns=main.sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
-    df['actual'] = sample_set['test_y_final'].flatten(order='F')       # also write actual qcut to BD
+    df['actual'] = main.sample_set['test_y_final'].flatten(order='F')       # also write actual qcut to BD
     df['finish_timing'] = [main.sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return df
 
@@ -140,9 +140,11 @@ def rf_HPOT(rf_space, max_evals):
 
     trials = Trials()
     best = fmin(fn=eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
-    tbl_suffix = '_rf_reg'
+    best_space = space_eval(rf_space, best)
+    eval_regressor(best_space, rerun=True)
 
     # write score/prediction/feature to DB
+    tbl_suffix = '_prod'
     with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
         hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
