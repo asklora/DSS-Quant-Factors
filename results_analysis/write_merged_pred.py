@@ -148,7 +148,7 @@ def download_stock_pred(
         
             conn.execute(delete_query)
         
-        result_all.sort_values(['group','factor_weight']).to_sql(global_vals.production_factor_rank_table, **extra)
+        result_all.sort_values(['group','pred_z']).to_sql(global_vals.production_factor_rank_table, **extra)
 
     if return_summary:
         return factor_rank, rank_count
