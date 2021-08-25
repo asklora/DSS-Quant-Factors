@@ -11,7 +11,7 @@ import seaborn as sns
 import global_vals
 
 model = 'rf_reg'
-r_name = 'pca_top16_q10_mse_tv'
+r_name = 'pca_top16_q3_mse_rerun_tv3'
 
 def download_stock_pred(q, iter_name, save_xls=True, save_plot=True):
     ''' download training history and training prediction from DB '''

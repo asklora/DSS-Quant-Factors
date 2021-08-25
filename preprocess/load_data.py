@@ -540,7 +540,7 @@ class load_data:
         elif valid_method == "chron":       # split validation set by chronological order
             gkf = []
             for n in range(1, n_splits+1):
-                valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
+                valid_period = testing_period - relativedelta(years=n)   # using last 2 year samples as valid set
                 test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
                 train_index = self.train.loc[self.train['period_end'] < valid_period].index.to_list()
                 gkf.append((train_index, test_index))
