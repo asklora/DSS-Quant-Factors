@@ -175,7 +175,7 @@ def to_list_importance(rf):
     df['finish_timing'] = [sql_result['finish_timing']] * len(df)      # use finish time to distinguish dup pred
     return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
 
-def HPOT(space, max_evals):
+def rf_HPOT(space, max_evals):
     ''' use hyperopt on each set '''
 
     hpot['all_results'] = []
@@ -319,7 +319,7 @@ if __name__ == "__main__":
                             print(data.x_col)
                             sql_result['neg_factor'] = ','.join(data.neg_factor)
                             print(group_code, testing_period, len(sample_set['train_yy_final']))
-                            HPOT(space, max_evals=10)  # start hyperopt
+                            rf_HPOT(space, max_evals=10)  # start hyperopt
                             cv_number += 1
                     except Exception as e:
                         print(testing_period, e)
