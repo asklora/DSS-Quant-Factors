@@ -449,32 +449,24 @@ class load_data:
         self.train = self.train.dropna(subset=y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
 
         if use_pca>0.1:
-            # all_cols = [x for v in self.x_col_dict.values() for x in v]
-            # use PCA on each pillar factors
-            # for p in ['quality','value','momentum']:
-            #     pillar_cols = [x for x in all_cols if any([col in x for col in self.x_col_dict[p]])]
-            #     fit_pca = PCA(n_components=0.6).fit(self.train[pillar_cols].fillna(0))
-            #     train_trans = fit_pca.transform(self.train[pillar_cols].fillna(0))
-            #     self.x_col_dict[f'{p}_pca'] = [f'{p}_{i}' for i in range(1, train_trans.shape[1] + 1)]
-            #     self.train = add_arr_col(self.train, train_trans, self.x_col_dict[f'{p}_pca'])
-            #     test_trans = fit_pca.transform(self.train[pillar_cols].fillna(0).fillna(0))
-            #     self.test = add_arr_col(self.test, test_trans, self.x_col_dict[f'{p}_pca'])
 
             # use PCA on all ARMA inputs
             pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
             arma_pca = PCA(n_components=use_pca).fit(pca_arma_df)
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            # df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']).reset_index()
-            # df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
-            # df['group'] = self.group_name
-            # df['testing_period'] = testing_period
-            #
-            # with global_vals.engine_ali.connect() as conn:
-            #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-            #     df.to_sql(global_vals.processed_pca_table, **extra)
-            # global_vals.engine_ali.dispose()
-            # raise Exception
+            df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']).reset_index()
+            df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
+            df['group'] = self.group_name
+            df['testing_period'] = testing_period
+
+            with global_vals.engine_ali.connect() as conn:
+                extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+                conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
+                             f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
+                df.to_sql(global_vals.processed_pca_table, **extra)
+            global_vals.engine_ali.dispose()
+
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
@@ -490,6 +482,7 @@ class load_data:
             self.test = add_arr_col(self.test, arr, self.x_col_dict['mi_pca'])
 
         elif use_pca>0:
+
             all_input = self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma'] + \
                         self.x_col_dict['index']+self.x_col_dict['macro']
             pca_arma_df = StandardScaler().fit_transform(self.train[all_input].fillna(0))

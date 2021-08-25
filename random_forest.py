@@ -38,34 +38,36 @@ def rf_train(rf_space, rerun):
     ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
     main = sys.modules["__main__"]
-    sql_result = main.sql_result
     sample_set = main.sample_set
 
     params = rf_space.copy()
     for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
         params[k] = int(params[k])
-    print('===== hyperrf_space =====', params)
-    sql_result.update(params)
-
+    main.sql_result.update(params)
     params['bootstrap'] = False
 
-    if sql_result['tree_type'] == 'extra':
-        regr = ExtraTreesRegressor(criterion=sql_result['objective'], **params)
-    elif sql_result['tree_type'] == 'rf':
-        regr = RandomForestRegressor(criterion=sql_result['objective'], **params)
+    if main.sql_result['tree_type'] == 'extra':
+        regr = ExtraTreesRegressor(criterion=main.sql_result['objective'], **params)
+    elif main.sql_result['tree_type'] == 'rf':
+        regr = RandomForestRegressor(criterion=main.sql_result['objective'], **params)
 
-    regr.fit(sample_set['train_xx'], sample_set['train_yy_final'])
+    if rerun:
+        rerun_x = np.concatenate((sample_set['train_xx'], sample_set['valid_x']), axis=0)
+        rerun_y = np.concatenate((sample_set['train_yy_final'], sample_set['valid_y_final']), axis=0)
+        regr.fit(rerun_x, rerun_y)
+    else:
+        regr.fit(sample_set['train_xx'], sample_set['train_yy_final'])
 
     # prediction on all sets
     Y_train_pred = regr.predict(sample_set['train_xx'])
     Y_valid_pred = regr.predict(sample_set['valid_x'])
     Y_test_pred = regr.predict(sample_set['test_x'])
 
-    sql_result['feature_importance'], feature_importance_df = to_list_importance(regr)
+    main.sql_result['feature_importance'], feature_importance_df = to_list_importance(regr)
 
     return Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df
 
-def eval_regressor(rf_space):
+def eval_regressor(rf_space, rerun=False):
     ''' train & evaluate LightGBM on given rf_space by hyperopt trials with Regressiong model
     -------------------------------------------------
     This part haven't been modified for multi-label questions purpose
@@ -73,24 +75,21 @@ def eval_regressor(rf_space):
 
     main = sys.modules["__main__"]
     sample_set = main.sample_set
-
     main.sql_result['finish_timing'] = dt.datetime.now()
-    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(rf_space)
+
+    Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(rf_space, rerun)
+
+    if len(sample_set['test_y'])==0:    # for the actual prediction iteration
+        sample_set['test_y'] = np.zeros(Y_test_pred)
 
     result = {'mae_train': mean_absolute_error(sample_set['train_yy'], Y_train_pred),
               'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),
               'mse_train': mean_squared_error(sample_set['train_yy'], Y_train_pred),
               'mse_valid': mean_squared_error(sample_set['valid_y'], Y_valid_pred),
               'r2_train': r2_score(sample_set['train_yy'], Y_train_pred),
-              'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred)}
-
-    try:    # for backtesting -> calculate MAE/MSE/R2 for testing set
-        result_test = {'mae_test': mean_absolute_error(sample_set['test_y'], Y_test_pred),
-                       'mse_test': mean_squared_error(sample_set['test_y'], Y_test_pred)}
-        result.update(result_test)
-    except Exception as e:  # for real_prediction -> no calculation
-        print(e)
-        pass
+              'r2_valid': r2_score(sample_set['valid_y'], Y_valid_pred),
+              'mae_test': mean_absolute_error(sample_set['test_y'], Y_test_pred),
+              'mse_test': mean_squared_error(sample_set['test_y'], Y_test_pred)}
 
     main.sql_result.update(result)  # update result of model
     hpot['all_results'].append(main.sql_result.copy())
@@ -140,6 +139,7 @@ def rf_HPOT(rf_space, max_evals):
 
     trials = Trials()
     best = fmin(fn=eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+
     best_space = space_eval(rf_space, best)
     eval_regressor(best_space, rerun=True)
 
@@ -151,3 +151,4 @@ def rf_HPOT(rf_space, max_evals):
         pd.DataFrame(hpot['all_results']).to_sql(f"{global_vals.result_score_table}{tbl_suffix}", **extra)
         hpot['best_stock_feature'].to_sql(f"{global_vals.feature_importance_table}{tbl_suffix}", **extra)
     global_vals.engine_ali.dispose()
+
