@@ -16,6 +16,7 @@ from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn import linear_model
 from preprocess.load_data import load_data
 import global_vals
+import itertools
 
 sql_result = {}
 sample_set = {}
@@ -27,7 +28,10 @@ def lasso_train():
 
     sql_result['finish_timing'] = dt.datetime.now()
 
-    clf = linear_model.ElasticNet(alpha=sql_result['alpha'], l1_ratio=sql_result['l1_ratio']).fit(sample_set['train_x'], sample_set['train_y_final'])
+    if sql_result['alpha'] == 0:
+        clf = linear_model.LinearRegression().fit(sample_set['train_x'], sample_set['train_y_final'])
+    else:
+        clf = linear_model.ElasticNet(alpha=sql_result['alpha'], l1_ratio=sql_result['l1_ratio']).fit(sample_set['train_x'], sample_set['train_y_final'])
     Y_train_pred = clf.predict(sample_set['train_x'])   # prediction on all sets
     Y_test_pred = clf.predict(sample_set['test_x'])
 
@@ -62,6 +66,7 @@ def eval_regressor():
 def to_sql_prediction(Y_test_pred):
     ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
+    sql_result['y_type'] = [x[2:] for x in data.y_col]
     df = pd.DataFrame(Y_test_pred, index=data.test['group'].to_list(), columns=sql_result['y_type'])
     df = df.unstack().reset_index(drop=False)
     df.columns = ['y_type', 'group', 'pred']
@@ -80,19 +85,25 @@ def to_list_importance(model):
 def start_lasso(testing_period_list, group_code_list, y_type):
     ''' running grid search on lasso and save best results to DB as benchmark'''
 
+    sql_result['name_sql'] = f"prod_{dt.datetime.strftime(dt.datetime.today(),'%Y%m%d')}"
     sql_result['y_type'] = y_type
-    alpha_list = [0, 0.0001, 0.001, 0.005]
-    use_pca_list = [0, 0.2, 0.4, 0.6]
-    l1_ratio_list = [0, 0.5, 1]
+    sql_result['cv_number'] = 1
 
-    for testing_period, group_code in zip(testing_period_list, group_code_list):
+    alpha_list = [0.0001, 0.001, 0.005, 0]
+    use_pca_list = [0.2, 0.4, 0.6, 0]
+    l1_ratio_list = [0.5, 1, 0]
+
+    for testing_period, group_code in itertools.product(testing_period_list, group_code_list):
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
+        print(testing_period, group_code)
         data.split_group(group_code)  # load_data (class) STEP 2
 
         hpot['best_score'] = 10000
         hpot['all_results'] = []
-        for alpha, use_pca, l1_ratio in zip(alpha_list, use_pca_list, l1_ratio_list):
+        for alpha, use_pca, l1_ratio in itertools.product(alpha_list, use_pca_list, l1_ratio_list):
+            if (alpha==0) & (l1_ratio !=0):     # for linear regression only test on different PCA
+                continue
             sql_result['alpha'] = alpha
             sql_result['use_pca'] = use_pca
             sql_result['l1_ratio'] = l1_ratio
@@ -105,6 +116,20 @@ def start_lasso(testing_period_list, group_code_list, y_type):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
             sample_set['weight'] = np.array(range(len(sample_set['train_y'])))/len(sample_set['train_y'])
             sample_set['weight'] = np.tanh(sample_set['weight']-0.5)+0.5
+            sql_result['neg_factor'] = ','.join(data.neg_factor)
+
+            # with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+            #     pd.DataFrame(sql_result).to_sql('neg_factor', **extra)
+            # global_vals.engine_ali.dispose()
+            # break
+
             eval_regressor()
+
+if __name__ == '__main__':
+    testing_period_list = pd.date_range(dt.datetime(2017,8,31),dt.datetime(2021,6,30),freq='m')
+    group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
+    y_type = pd.read_sql('SELECT name from factor_formula_ratios WHERE factors', global_vals.engine_ali.connect())['name'].to_list()
+    start_lasso(testing_period_list, group_code_list, y_type)
 
 

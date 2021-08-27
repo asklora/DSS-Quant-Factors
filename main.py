@@ -17,7 +17,9 @@ from preprocess.load_data import load_data
 from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
 from random_forest import rf_HPOT, rf_space
+from results_analysis.write_merged_pred import download_stock_pred
 from lasso import start_lasso
+import itertools
 import global_vals
 
 if __name__ == "__main__":
@@ -71,7 +73,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    for testing_period, group_code, tree_type in zip(testing_period_list, group_code_list, tree_type_list):
+    for testing_period, group_code, tree_type in itertools.product(testing_period_list, group_code_list, tree_type_list):
         sql_result['tree_type'] = tree_type
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
@@ -104,4 +106,11 @@ if __name__ == "__main__":
             cv_number += 1
 
     # --------------------------------- Results Analysis ------------------------------------------
-
+    download_stock_pred(
+            q=1/3,
+            model='rf_reg',
+            name_sql=sql_result['name_sql'],
+            keep_all_history=True,
+            save_plot=True,
+            save_xls=True,
+        )

@@ -26,29 +26,50 @@ def download_stock_pred(
         q,
         model,
         name_sql,
-        rank_along_testing_history=True,
+        # rank_along_testing_history=True,
         keep_all_history=True,
-        return_summary=False,
+        # return_summary=False,
         save_xls=False,
         save_plot=False):
     ''' organize production / last period prediction and write weight to DB '''
 
+    # --------------------------------- Download Predictions ------------------------------------------
+    if 'rf' in model:
+        other_group_col = ['tree_type','use_pca']
+    elif 'lasso' in model:
+        other_group_col = ['use_pca','l1_ratio','alpha']
+
     with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, S.testing_period as period_end, S.cv_number FROM {global_vals.result_pred_table}_rf_reg P "
-                     f"INNER JOIN {global_vals.result_score_table}_rf_reg S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql like '{name_sql}%' and tree_type ='rf' and use_pca = 0.6 ORDER BY S.finish_timing")
-        result_all = pd.read_sql(query, conn)       # download training history
+
+        # neg_factor = pd.read_sql('SELECT DISTINCT testing_period, group_code, neg_factor FROM neg_factor', conn)
+        # df = pd.read_sql('SELECT * FROM factor_result_score_lasso_prod', conn)
+        #
+        # df = df.merge(neg_factor, on=['testing_period', 'group_code'], how='left')
+        # print(df.isnull().sum())
+        # extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
+        # df.to_sql('factor_result_score_lasso_prod', **extra)
+
+        query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, "
+                     f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
+                     f"FROM {global_vals.result_pred_table}_{model} P "
+                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
+                     f"WHERE S.name_sql like '{name_sql}%' ORDER BY S.finish_timing")
+        result_all = pd.read_sql(query, conn, chunksize=10000)
+        result_all = pd.concat(result_all, axis=0, ignore_index=True)       # download training history
+
     global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
-    result_all = result_all.drop_duplicates(subset=['group', 'period_end', 'factor_name', 'cv_number'], keep='last')
+    result_all = result_all.drop_duplicates(subset=['group', 'period_end', 'factor_name', 'cv_number']+other_group_col, keep='last')
     result_all['period_end'] = pd.to_datetime(result_all['period_end'])
 
-    neg_factor = result_all[['group','neg_factor']].drop_duplicates().set_index('group')['neg_factor'].to_dict()
+    neg_factor = result_all[['group','neg_factor']].drop_duplicates().set_index('group')['neg_factor'].to_dict()    # negative value columns
+    result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
 
     # use average predictions from different validation sets
-    result_all = result_all.groupby(['period_end','factor_name','group'])[['pred', 'actual']].mean()
-    result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()
+    result_all = result_all.groupby(['period_end','factor_name','group']+other_group_col)[['pred', 'actual']].mean()
+
+    # --------------------------------- Add Rank & Evaluation Metrics ------------------------------------------
 
     # if rank_along_testing_history:          # rank across all testing history
     groupby_keys = ['group']
@@ -83,13 +104,17 @@ def download_stock_pred(
 
         return pd.Series(ret_dict)
 
-    result_all_comb = result_all.groupby(level=['group', 'period_end']).apply(get_summary_stats_in_group)
+    result_all_comb = result_all.groupby(level=['group', 'period_end']+other_group_col).apply(get_summary_stats_in_group)
     result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
-    result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'period_end'])
+    result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'period_end']).reset_index()
+    result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
+    print(result_all_comb_mean)
+
+    # --------------------------------- Save Local Evaluation ------------------------------------------
 
     if save_xls:    # save local for evaluation
-        writer = pd.ExcelWriter(f'score/#{model}_pred_{name_sql}.xlsx')
-        result_all_comb.groupby(['group']).mean().to_excel(writer, sheet_name='average')
+        writer = pd.ExcelWriter(f'#{model}_pred_{name_sql}.xlsx')
+        result_all_comb_mean.to_excel(writer, sheet_name='average', index=False)
         result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
         pd.pivot_table(result_all, index=['group', 'period_end'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
         writer.save()
@@ -109,20 +134,28 @@ def download_stock_pred(
             if k==1:
                 plt.legend(['best','average','worse'])
             k+=1
-        plt.savefig(f'score/#{model}_pred_{name_sql}.png')
+        plt.savefig(f'#{model}_pred_{name_sql}.png')
         plt.close()
 
-    result_all = result_all.drop(['pred', 'actual'], axis=1)
-    result_all = result_all.dropna(axis=0, subset=['factor_weight'])
+    # ------------------------ Select Best Config (among other_group_col) ------------------------------
 
-    # count rank rank for debugging
-    factor_rank = result_all['factor_weight'].unstack()
-    rank_count = result_all.droplevel('factor_name', axis=0)['factor_weight'].reset_index().value_counts()
+    result_all_comb_mean['net_ret'] = result_all_comb_mean['max_ret'] - result_all_comb_mean['min_ret']
+    result_all_comb_mean_best = result_all_comb_mean.sort_values(['net_ret']).groupby(['group']).last()[other_group_col].reset_index()
+    print(result_all_comb_mean_best)
+
+    result_all = result_all.dropna(axis=0, subset=['factor_weight'])[['pred_z','factor_weight']].reset_index()
+    result_all = result_all.merge(result_all_comb_mean_best, on=['group']+other_group_col, how='right')
+
+    # --------------------------------- Save Prod Table to DB ------------------------------------------
+
+    # count rank for debugging
+    # factor_rank = result_all.set_index(['period_end','factor_name','group'])['factor_weight'].unstack()
+    rank_count = result_all.groupby(['group','period_end'])['factor_weight'].apply(pd.value_counts)
     rank_count = rank_count.unstack().fillna(0)
-
-    result_all = result_all.reset_index()
+    print(rank_count)
 
     # prepare table to write to DB
+
     if keep_all_history:        # keep only last testing i.e. for production
         period_list = result_all['period_end'].unique()
         tbl_suffix = '_history'
@@ -131,38 +164,43 @@ def download_stock_pred(
         tbl_suffix = ''
 
     for period in period_list:
-        result_all = result_all.loc[result_all['period_end']==period].reset_index(drop=True).copy()
+        print(period)
+        result_col = ['group','period_end','factor_name','pred_z','factor_weight']
+        df = result_all.loc[result_all['period_end']==period, result_col].copy().reset_index(drop=True)
 
         # basic info
-        result_all['period_end'] = result_all['period_end'] + MonthEnd(1)
-        result_all['factor_weight'] = result_all['factor_weight'].astype(int)
-        result_all['long_large'] = False
-        result_all['last_update'] = dt.datetime.now()
+        df['period_end'] = df['period_end'] + MonthEnd(1)
+        df['factor_weight'] = df['factor_weight'].astype(int)
+        df['long_large'] = False
+        df['last_update'] = dt.datetime.now()
 
         for k, v in neg_factor.items():     # write neg_factor i.e. label factors
-            result_all.loc[(result_all['group']==k)&(result_all['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
+            df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table + tbl_suffix): # remove same period prediction if exists
+                if keep_all_history:
+                    delete_query_history = f"DELETE FROM {global_vals.production_factor_rank_table}{tbl_suffix} WHERE period_end='{latest_period_end}';"
+                    latest_period_end = dt.datetime.strftime(period, r'%Y-%m-%d')
+                    conn.execute(delete_query_history)
+
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
+            df.sort_values(['group','pred_z']).to_sql(global_vals.production_factor_rank_table+tbl_suffix, **extra)
 
-            # remove same period prediction if exists
-            if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table+tbl_suffix):
-                latest_period_end = dt.datetime.strftime(result_all['period_end'][0], r'%Y-%m-%d')
-                delete_query = f"DELETE FROM {global_vals.production_factor_rank_table}{tbl_suffix} WHERE period_end='{latest_period_end}';"
-                conn.execute(delete_query)
+            if (period==result_all['period_end'].max()):  # if keep_all_history also write to prod table
+                extra['if_exists'] = 'replace'
+                df.sort_values(['group', 'pred_z']).to_sql(global_vals.production_factor_rank_table, **extra)
 
-            result_all.sort_values(['group','pred_z']).to_sql(global_vals.production_factor_rank_table+tbl_suffix, **extra)
         global_vals.engine_ali.dispose()
 
-        return factor_rank, rank_count
-
+        # return factor_rank, rank_count
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name-sql', type=str, default='pca_top16_mse_rerun_tv3')
+    parser.add_argument('--name_sql', type=str, default='pca_top16_mse_rerun_tv3')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
