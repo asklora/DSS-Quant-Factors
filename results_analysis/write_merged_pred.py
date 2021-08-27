@@ -105,6 +105,7 @@ def download_stock_pred(
         return pd.Series(ret_dict)
 
     result_all_comb = result_all.groupby(level=['group', 'period_end']+other_group_col).apply(get_summary_stats_in_group)
+    result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('period_end')<result_all_comb.index.get_level_values('period_end').max()]
     result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
     result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'period_end']).reset_index()
     result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
@@ -120,20 +121,27 @@ def download_stock_pred(
         writer.save()
 
     if save_plot:    # save local for evaluation
-        num_group = len(result_all_comb.index.get_level_values('group').unique())
-        fig = plt.figure(figsize=(num_group*8, 4), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
+        result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
+        num_group = len(result_all_comb['group'].unique())
+        num_other_group = len(result_all_comb['other_group'].unique())
+        fig = plt.figure(figsize=(num_group*8, num_other_group*4), dpi=120, constrained_layout=True)  # create figure for test & train boxplot
         k=1
-        for name, g in result_all_comb.groupby(level=['group']):
-            ax = fig.add_subplot(1, num_group, k)
+        for name, g in result_all_comb.groupby(['other_group', 'group']):
+            ax = fig.add_subplot(num_other_group, num_group, k)
             g[['max_ret','actual','min_ret']] = (g[['max_ret','actual','min_ret']] + 1).cumprod(axis=0)
-            plot_df = g.droplevel(['group'])[['max_ret','actual','min_ret']]
+            plot_df = g[['max_ret','actual','min_ret']]
             ax.plot(plot_df)
             for i in range(3):
                 ax.annotate(plot_df.iloc[-1, i].round(2), (plot_df.index[-1], plot_df.iloc[-1, i]), fontsize=10)
-            ax.set_xlabel(name, fontsize=20)
+            if k % num_group == 1:
+                ax.set_ylabel(name[0], fontsize=20)
+            if k > (num_other_group-1)*num_group:
+                ax.set_xlabel(name[1], fontsize=20)
             if k==1:
                 plt.legend(['best','average','worse'])
             k+=1
+        plt.ylabel('-'.join(other_group_col))
+        plt.xlabel('group')
         plt.savefig(f'#{model}_pred_{name_sql}.png')
         plt.close()
 
@@ -155,7 +163,6 @@ def download_stock_pred(
     print(rank_count)
 
     # prepare table to write to DB
-
     if keep_all_history:        # keep only last testing i.e. for production
         period_list = result_all['period_end'].unique()
         tbl_suffix = '_history'
@@ -180,8 +187,8 @@ def download_stock_pred(
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table + tbl_suffix): # remove same period prediction if exists
                 if keep_all_history:
+                    latest_period_end = dt.datetime.strftime(df['period_end'][0], r'%Y-%m-%d')
                     delete_query_history = f"DELETE FROM {global_vals.production_factor_rank_table}{tbl_suffix} WHERE period_end='{latest_period_end}';"
-                    latest_period_end = dt.datetime.strftime(period, r'%Y-%m-%d')
                     conn.execute(delete_query_history)
 
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}

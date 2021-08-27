@@ -89,9 +89,9 @@ def start_lasso(testing_period_list, group_code_list, y_type):
     sql_result['y_type'] = y_type
     sql_result['cv_number'] = 1
 
-    alpha_list = [0.0001, 0.001, 0.005, 0]
+    alpha_list = [0, 0.001, 0.005]
     use_pca_list = [0.2, 0.4, 0.6, 0]
-    l1_ratio_list = [0.5, 1, 0]
+    l1_ratio_list = [1]
 
     for testing_period, group_code in itertools.product(testing_period_list, group_code_list):
         sql_result['testing_period'] = testing_period
@@ -127,8 +127,9 @@ def start_lasso(testing_period_list, group_code_list, y_type):
             eval_regressor()
 
 if __name__ == '__main__':
-    testing_period_list = pd.date_range(dt.datetime(2017,8,31),dt.datetime(2021,6,30),freq='m')
+    testing_period_list = pd.date_range(dt.datetime(2017,8,31), dt.datetime(2021,6,30),freq='m')
     group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
+    # group_code_list = ['HKD','EUR']
     y_type = pd.read_sql('SELECT name from factor_formula_ratios WHERE factors', global_vals.engine_ali.connect())['name'].to_list()
     start_lasso(testing_period_list, group_code_list, y_type)
 

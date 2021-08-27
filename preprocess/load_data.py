@@ -248,11 +248,8 @@ class load_data:
             mode=mode)    # combine all data
 
         # calculate y for all factors
-        # self.factor_list = self.x_col_dict['factor']
         all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
-        # self.all_y_col_change = ["y_change_"+x for x in self.factor_list]
         self.main[all_y_col] = self.main.groupby(['group'])[self.x_col_dict['factor']].shift(-1)
-        # self.main[self.all_y_col_change] = (self.main[self.all_y_col].values-self.main[self.factor_list].values)/(np.abs(self.main[self.factor_list])).values
         print(self.main)
 
     def split_group(self, group_name=None):
@@ -260,8 +257,6 @@ class load_data:
 
         curr_list = ['KRW','GBP','HKD','EUR','CNY','USD','TWD','JPY','SGD'] #
         # curr_list = ['GBP','HKD','EUR','USD'] #
-
-        # curr_list = ['USD'] # 'TWD','JPY','SGD'
 
         self.group_name = group_name
 
@@ -276,45 +271,6 @@ class load_data:
 
         print(self.group)
 
-        # self.cross_factors = self.important_cross_factor(group_name)
-
-    def important_cross_factor(self, group_name):
-        ''' figure the top 3 most important cross factors '''
-
-        with global_vals.engine_ali.connect() as conn:
-            query = text(
-                f"SELECT P.*, S.cv_number, S.group_code, S.testing_period, S.y_type FROM {global_vals.feature_importance_table}_lgbm_class P "
-                f"INNER JOIN {global_vals.result_score_table}_lgbm_class S ON S.finish_timing = P.finish_timing "
-                f"WHERE S.name_sql='lastweekavg_timevalid_unbalance'")
-            df = pd.read_sql(query, conn)  # download training history
-            formula = pd.read_sql(f'SELECT name, rank, x_col FROM {global_vals.formula_factors_table}', conn)
-        global_vals.engine_ali.dispose()
-
-        df['max'] = df.groupby(['cv_number', 'group_code', 'testing_period', 'y_type'])['split'].transform(np.nanmax)
-        df['split'] = df['split'] / df['max']
-
-        # filter cross factors only
-        x_col = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()
-        df = df.loc[df['name'].isin(x_col)]
-
-        # find the most important factor for industry / currency partition
-        df1 = df.loc[df['group_code'] == group_name].groupby(['name', 'y_type'])['split'].mean().unstack()
-        dic = {}
-        for col in df1.columns.to_list():
-            dic[col] = list(df1[col].sort_values(ascending=False).index)[:4]
-
-        return dic
-
-    def corr_cross_factor(self, df, y_type, top_n=5):
-        ''' figure the top 3 most important cross factors '''
-
-        # all_x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro']
-        all_x_col = self.x_col_dict['factor']
-        df = df[['y_'+y_type] + all_x_col].corr()['y_'+y_type]
-        dic = {y_type:list(df.sort_values(ascending=False).index)[1:top_n]} # the 1st one would be y itself
-        print('Correlation ', dic)
-        return dic
-
     def y_replace_median(self, qcut_q, arr, arr_cut, arr_test, arr_test_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
 
@@ -326,11 +282,6 @@ class load_data:
 
     def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change, y_col):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
-
-        # if test_change:
-        #     y_col = self.all_y_col_change
-        # else:
-        #     y_col = self.all_y_col
 
         null_col = self.train.isnull().sum()
         null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
@@ -391,40 +342,21 @@ class load_data:
         start = testing_period - relativedelta(years=20)    # train df = 20*12 months
 
         # factor with ARMA history as X5
-        if use_pca>0:
-            arma_col = self.x_col_dict['factor']        # if using pca, all history first
-        elif len(y_type) == 1:
-            try:
-                corr_df = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)]
-                self.cross_factors = self.corr_cross_factor(corr_df, y_type[0])
-                arma_col = self.cross_factors[y_type[0]]
-                # arma_col = self.important_cross_factor(self.group_name)
-            except Exception as e:
-                print(e)
-                arma_col = y_type
-        else:
-            arma_col = y_type  # for RF: add AR for all y_type predicted at the same time
-
-        arma_col = self.x_col_dict['factor']        # if using pca, all history first
+        arma_col = self.x_col_dict['factor'] + self.x_col_dict['index'] + self.x_col_dict['macro'] # if using pca, all history first
 
         # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         self.x_col_dict['ar'] = []
         for i in [1,2]:
             ar_col = [f"ar_{x}_{i}m" for x in arma_col]
             current_group[ar_col] = current_group.groupby(['group'])[arma_col].shift(i)
-            self.x_col_dict['ar'].extend(ar_col)    # add AR variables name to x_col
+            self.x_col_dict['ar'].extend(ar_col)      # add AR variables name to x_col
 
         # 2. Calculate the moving average for predicted Y
-        if use_pca==0:
-            arma_col = y_type  # add MA for all y_type predicted at the same time
-
-        arma_col = self.x_col_dict['factor']  # if using pca, all history first
-
         ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
         ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
-        current_group = pd.concat([current_group,ma_q,ma_y], axis=1)
+        current_group = pd.concat([current_group, ma_q, ma_y], axis=1)
         self.x_col_dict['ma'] = []
         for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
             current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
@@ -433,10 +365,7 @@ class load_data:
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 
-        if test_change:
-            y_col = ['y_change_'+x for x in y_type]
-        else:
-            y_col = ['y_'+x for x in y_type]
+        y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
         # self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
@@ -448,41 +377,43 @@ class load_data:
         # self.train = self.train.dropna(subset=y_col, how='all').reset_index(drop=True)      # remove training sample with NaN Y
         self.train = self.train.dropna(subset=y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
 
-        if use_pca>0.1:
+        if use_pca>0.1:  # if using feature selection with PCA
+
+            arma_factor = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if f in x]
+            arma_mi = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['index'] + self.x_col_dict['macro'] if f in x]
 
             # use PCA on all ARMA inputs
-            pca_arma_df = self.train[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0)
+            pca_arma_df = self.train[self.x_col_dict['factor']+arma_factor].fillna(0)
             arma_pca = PCA(n_components=use_pca).fit(pca_arma_df)
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']).reset_index()
+            df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+arma_factor).reset_index()
             df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
             df['group'] = self.group_name
             df['testing_period'] = testing_period
 
-            with global_vals.engine_ali.connect() as conn:
-                extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-                conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
-                             f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-                df.to_sql(global_vals.processed_pca_table, **extra)
-            global_vals.engine_ali.dispose()
+            # with global_vals.engine_ali.connect() as conn:
+            #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            #     conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
+            #                  f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
+            #     df.to_sql(global_vals.processed_pca_table, **extra)
+            # global_vals.engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
-            arr = arma_pca.transform(self.test[self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma']].fillna(0))
+            arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
 
             # use PCA on all index/macro inputs
-            pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1)
+            pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1)
             mi_pca = PCA(n_components=0.9).fit(pca_mi_df)
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
 
             self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
-            arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']].fillna(-1))
+            arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['mi_pca'])
 
-        elif use_pca>0:
-
+        elif use_pca>0:     # if using feature selection with LASSO (alpha=l1)
             all_input = self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma'] + \
                         self.x_col_dict['index']+self.x_col_dict['macro']
             pca_arma_df = StandardScaler().fit_transform(self.train[all_input].fillna(0))
@@ -490,24 +421,15 @@ class load_data:
             w = np.array(range(len(pca_arma_df))) / len(pca_arma_df)
             w = np.tanh(w - 0.5) + 0.5
             arma_pca = linear_model.Lasso(alpha=use_pca).fit(pca_arma_df, pca_arma_df_y, sample_weight=w)
-            # x = np.sum(arma_pca.coef_, axis=0)
-            # x1 = np.sum(arma_pca.coef_, axis=0)!=0
             self.x_col_dict['arma_pca'] = list(np.array(all_input)[np.sum(arma_pca.coef_, axis=0)!=0])
             self.x_col_dict['mi_pca'] = []
 
         def divide_set(df):
             ''' split x, y from main '''
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca'] + ["org_"+x for x in y_type]
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] + ["org_"+x for x in y_type]
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['arma_pca'] +  self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
-            # x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['index'] +  self.x_col_dict['macro'] + ["org_"+x for x in y_type]
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
                     + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca>0:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
-                # x_col = self.x_col_dict['quality_pca'] + self.x_col_dict['value_pca'] + self.x_col_dict['momentum_pca'] + self.x_col_dict['mi_pca']
-
             y_col_cut = [x+'_cut' for x in y_col]
 
             return df.filter(x_col).values, np.nan_to_num(df[y_col].values,0), np.nan_to_num(df[y_col_cut].values), \
@@ -557,7 +479,7 @@ if __name__ == '__main__':
     # exit(1)
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2021,5,30)
+    testing_period = dt.datetime(2021,5,31)
     y_type = ['vol_0_30']
     group_code = 'industry'
 

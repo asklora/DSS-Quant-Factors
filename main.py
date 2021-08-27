@@ -64,12 +64,12 @@ if __name__ == "__main__":
     sql_result['name_sql'] = 'prod_' + dt.datetime.strftime(dt.datetime.now(), '%Y-%m-%d')
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
-    sql_result['testing_period'] = y_type = data.factor_list[:16] # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 
     # --------------------------------- Run Lasso Benchmark -------------------------------------
 
-    start_lasso(testing_period_list, group_code_list, y_type)
+    # start_lasso(testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
 
@@ -77,8 +77,8 @@ if __name__ == "__main__":
         sql_result['tree_type'] = tree_type
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
-
-        start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
+        data.split_group(group_code)
+        # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
         load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
                             'use_median': False, 'use_pca': args.use_pca, 'n_splits': args.n_splits}

@@ -79,6 +79,10 @@ def eval_regressor(rf_space, rerun=False):
 
     Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = rf_train(rf_space, rerun)
 
+    if rerun: # save prediction bins for training as well
+        p = np.linspace(0, 1, 10)
+        main.sql_result['train_bins'] = np.quantile(Y_train_pred, p)
+
     if len(sample_set['test_y'])==0:    # for the actual prediction iteration
         sample_set['test_y'] = np.zeros(Y_test_pred)
 

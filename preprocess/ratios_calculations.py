@@ -329,7 +329,7 @@ def fill_all_given_date(result, ref):
 def download_clean_worldscope_ibes(save):
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vals.engine.connect() as conn:
         print(f'#################################################################################################')
         query_ws = f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null'
         query_ibes = f'SELECT * FROM {global_vals.ibes_data_table}'
@@ -341,7 +341,7 @@ def download_clean_worldscope_ibes(save):
         ibes = pd.concat(ibes, axis=0, ignore_index=True)
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
         universe = pd.concat(universe, axis=0, ignore_index=True)
-    global_vals.engine_ali.dispose()
+    global_vals.engine.dispose()
 
     def drop_dup(df):
         ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
