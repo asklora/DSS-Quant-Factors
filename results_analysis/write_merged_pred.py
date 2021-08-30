@@ -40,23 +40,13 @@ def download_stock_pred(
         other_group_col = ['use_pca','l1_ratio','alpha']
 
     with global_vals.engine_ali.connect() as conn:
-
-        # neg_factor = pd.read_sql('SELECT DISTINCT testing_period, group_code, neg_factor FROM neg_factor', conn)
-        # df = pd.read_sql('SELECT * FROM factor_result_score_lasso_prod', conn)
-        #
-        # df = df.merge(neg_factor, on=['testing_period', 'group_code'], how='left')
-        # print(df.isnull().sum())
-        # extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
-        # df.to_sql('factor_result_score_lasso_prod', **extra)
-
-        query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, "
+        query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, S.train_bins, "
                      f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                      f"FROM {global_vals.result_pred_table}_{model} P "
                      f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                      f"WHERE S.name_sql like '{name_sql}%' ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn, chunksize=10000)
         result_all = pd.concat(result_all, axis=0, ignore_index=True)       # download training history
-
     global_vals.engine_ali.dispose()
 
     # remove duplicate samples from running twice when testing
@@ -207,7 +197,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default='pca_top16_mse_rerun_tv3')
+    parser.add_argument('--name_sql', type=str, default='prod_20210830')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')

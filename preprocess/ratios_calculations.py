@@ -32,14 +32,18 @@ def get_tri(save=True, update=False, currency=None):
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
-        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}')
+        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
+        market_cap_anchor = pd.read_sql(f'SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_day DESC) '
+                                        f'rank FROM {global_vals.eikon_mktcap_table}) a WHERE a.rank = 1;', conn_ali).iloc[:,:-1]
         if save:
             tri.to_csv('cache_tri.csv', index=False)
             eikon_price.to_csv('cache_eikon_price.csv', index=False)
-            
-    return tri, eikon_price
+            market_cap_anchor.to_csv('cache_market_cap_anchor.csv', index=False)
+    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
+    return tri, eikon_price, market_cap_anchor
 
 def fill_all_day(result):
     ''' Fill all the weekends between first / last day and fill NaN'''
@@ -124,33 +128,21 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         try:
             tri = pd.read_csv('cache_tri.csv', low_memory=False)
             eikon_price = pd.read_csv('cache_eikon_price.csv', low_memory=False)
+            market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv', low_memory=False)
         except Exception as e:
             print(e)
             print(f'#################################################################################################')
             print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
-            tri, eikon_price = get_tri(save=save)
+            tri, eikon_price, market_cap_anchor = get_tri(save=save)
     else:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
-        tri, eikon_price = get_tri(save=save, update=update)
-
-    with global_vals.engine_ali.connect() as conn:
-        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
-        universe = pd.concat(universe, axis=0, ignore_index=True)
-        print(f'#################################################################################################')
-    global_vals.engine_ali.dispose()
-
-    tri = tri.loc[tri['ticker'].str[-2:] == '.T']
+        tri, eikon_price, market_cap_anchor = get_tri(save=save, update=update)
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
-
-    def count_jpy(df):
-        print(df.isnull().sum())
-        print(len(df))
-
-    count_jpy(eikon_price)
+    market_cap_anchor['trading_day'] = pd.to_datetime(market_cap_anchor['trading_day'], format='%Y-%m-%d')
 
     # find first tri from DSS as anchor
     tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
@@ -159,19 +151,14 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
 
     # find anchor close price (adj.)
-    eikon_price['anchor_close'] = eikon_price['close']
-    eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'anchor_close'] = np.nan
-    eikon_price.update(eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].fillna(method='bfill'))
+    eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'anchor_close'] = eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'close']
+    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].apply(lambda x: x.bfill().ffill())
 
     # calculate tri based on EIKON close price data
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
 
-    count_jpy(eikon_price)
-
     # merge DSS & EIKON data
     tri = tri.merge(eikon_price, on=['ticker','trading_day'], how='outer', suffixes=['','_eikon']).sort_values(by=['ticker','trading_day'])
-    # tri = tri.set_index(['ticker','trading_day'])
-    # eikon_price = eikon_price.set_index(['ticker','trading_day'])
     value_col = ['open','high','low','close','tri','volume']
     for col in value_col:
         tri[col] = tri[col].fillna(tri[col+'_eikon'])  # update missing tri (i.e. prior history) with EIKON tri calculated
@@ -179,8 +166,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
-
-    count_jpy(tri)
 
     print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
@@ -200,16 +185,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
     tri.loc[tri.groupby('ticker').head(6).index, ['volume']] = np.nan
 
-    # elif price_sample == 'last_day':
-    #     pass
-    # else:
-    #     raise ValueError("Invalid price_sample method. Expecting 'last_week_avg' or 'last_day' got ", price_sample)
-
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
-
-    count_jpy(tri)
 
     print(f'      ------------------------> Sample interval using [{sample_interval}] ')
     if sample_interval == 'monthly':
@@ -218,6 +196,14 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
         tri = resample_to_biweekly(tri, date_col='trading_day')  # Resample to bi-weekly stock tri
     else:
         raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
+
+    # update market_cap/market_cap_usd refer to tri for each period
+    tri = tri.merge(market_cap_anchor, on=['ticker','trading_day'], how='left')
+    tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
+    tri[['anchor_tri','market_cap','market_cap_usd']] = tri.groupby('ticker')[['anchor_tri','market_cap','market_cap_usd']].apply(lambda x: x.ffill().bfill())
+    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
+    tri['market_cap_usd'] = tri['market_cap_usd']/tri['anchor_tri']*tri['tri']
+    tri = tri.drop(['anchor_tri'], axis=1)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
     print(f'      ------------------------> Calculate stock returns ')
@@ -236,22 +222,12 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     tri["stock_return_r6_2"] = (tri["tri_1mb"] / tri["tri_6mb"]) - 1
     tri["stock_return_r12_7"] = (tri["tri_6mb"] / tri["tri_12mb"]) - 1
 
-    # tri = tri.dropna(subset=['stock_return_y'])         # dropna is ok because stock return data should be always available since IPO
     tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
-
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
 
     if save:
         tri.to_csv('cache_tri_ratio.csv', index=False)
 
-    # if price_sample == 'last_week_avg':
-    #     with global_vals.engine_ali.connect() as conn:
-    #         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-    #         df = tri.drop(['close'], axis=1)
-    #         df.columns = ['ticker', 'period_end'] + df.columns.to_list()[2:]   # rename column trading_day to period_end
-    #         df.to_sql(global_vals.processed_stock_table, **extra)
-    #         print(f'      ------------------------> Finish writing {global_vals.processed_stock_table} table ')
-    #     global_vals.engine_ali.dispose()
     return tri, stock_col
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
@@ -379,30 +355,6 @@ def download_clean_worldscope_ibes(save):
 
     return ws, ibes, universe
 
-def download_eikon_others(save):
-    ''' download new eikon data from DB and pivot '''
-
-    with global_vals.engine_ali.connect() as conn:
-        print(f'#################################################################################################')
-        print(f'      ------------------------> Download eikon data from {global_vals.eikon_other_table}')
-        ek = pd.read_sql(f'select * from {global_vals.eikon_other_table} WHERE ticker is not null', conn, chunksize=10000)  # quarterly records
-        ek = pd.concat(ek, axis=0, ignore_index=True)
-    global_vals.engine_ali.dispose()
-
-    ek = ek.drop_duplicates()
-    fields = list(set(ek['fields'].to_list()))
-    ek = ek.pivot_table(index=['ticker','period_end'], columns=['fields'], values=['value'])
-    ek.columns = ek.columns.droplevel(0)
-    ek = ek.reset_index(drop=False)
-    ek['period_end'] = ek['period_end'] + MonthEnd(0)
-
-    ek[fields] = ek[fields]*1e3     # Eikon downloads in million -> worldscope in thousands
-
-    if save:
-        ek.to_csv('cache_ek.csv', index=False)
-
-    return ek
-
 def check_duplicates(df, name=''):
     df1 = df.drop_duplicates(subset=['period_end','ticker'])
     if df.shape != df1.shape:
@@ -449,32 +401,6 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + period_end
     check_duplicates(ibes, 'ibes')
 
-    # 5. Local file for Market Cap (to be uploaded) - from Eikon
-    market_cap_table = global_vals.eikon_mktcap_table
-    if sample_interval == 'biweekly':
-        market_cap_table += '_weekly'
-
-    with global_vals.engine_ali.connect() as conn:
-        market_cap = pd.read_sql(f'SELECT * FROM {market_cap_table}', conn, chunksize=10000)
-        market_cap = pd.concat(market_cap, axis=0, ignore_index=True)
-    global_vals.engine_ali.dispose()
-    market_cap['period_end'] = pd.to_datetime(market_cap['period_end'], format='%Y-%m-%d')
-    market_cap = fill_all_given_date(market_cap, tri)   # align to dates of stock_return
-    check_duplicates(market_cap, 'market_cap')
-
-    # 6. Fundamental variables - from Eikon
-    if use_cached:
-        try:
-            ek = pd.read_csv('cache_ek.csv')
-            ek['period_end'] = pd.to_datetime(ek['period_end'])
-        except Exception as e:
-            print(e)
-            ek = download_eikon_others(save)
-    else:
-        ek = download_eikon_others(save)
-    ek = fill_all_given_date(ek, tri)
-    check_duplicates(ek, 'ek')
-
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
         replace({'10102010':'101021','10102015':'101022','10102020':'101023','10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
@@ -483,12 +409,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
-
     df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
     df = df.merge(ibes, on=['ticker', 'period_end'], how='left')
-    df = df.merge(market_cap, on=['ticker', 'period_end'], how='left')
-    df = df.merge(ek, on=['ticker', 'period_end'], how='left')
-
     df = df.sort_values(by=['ticker', 'period_end'])
 
     # Update close price to adjusted value
@@ -550,8 +472,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save, update)
 
     with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn, chunksize=10000)  # ratio calculation used
+        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table} WHERE x_col', conn, chunksize=10000)  # ratio calculation used
         formula = pd.concat(formula, axis=0, ignore_index=True)
+    global_vals.engine_ali.dispose()
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
@@ -629,5 +552,5 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 if __name__ == "__main__":
 
-    calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='biweekly',
+    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                           use_cached=True, save=True, update=False)

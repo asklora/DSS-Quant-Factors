@@ -50,7 +50,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
 
     group_code_list = ['USD', 'EUR', 'HKD']
-    group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
+    # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.4, 0.6, 0.8]
 
@@ -71,10 +71,12 @@ if __name__ == "__main__":
 
     # --------------------------------- Run Lasso Benchmark -------------------------------------
 
-    # start_lasso(testing_period_list, group_code_list, y_type)
+    start_lasso(data, testing_period_list, group_code_list, y_type)
+    exit(1)
 
     # --------------------------------- Model Training ------------------------------------------
-    for iter in range(10):
+    for iter in range(1):
+
         for testing_period, group_code, tree_type, use_pca in itertools.product(testing_period_list, group_code_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type
             sql_result['testing_period'] = testing_period

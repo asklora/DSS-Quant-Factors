@@ -28,10 +28,10 @@ def download_clean_macros(main_df, use_biweekly_stock):
     print(f'#################################################################################################')
     print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vals.engine.connect() as conn:
         macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
-        vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}_weekly', conn)
-    global_vals.engine_ali.dispose()
+        # vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}_weekly', conn)
+    global_vals.engine.dispose()
 
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
@@ -54,8 +54,8 @@ def download_clean_macros(main_df, use_biweekly_stock):
     df_date_list = main_df['period_end'].drop_duplicates().sort_values()
     macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
                           how='outer').sort_values(['period_end'])
-    vix["period_end"] = pd.to_datetime(vix["period_end"])
-    macros = macros.merge(vix, on=['period_end'], how='outer').sort_values(by=['period_end'])
+    # vix["period_end"] = pd.to_datetime(vix["period_end"])
+    # macros = macros.merge(vix, on=['period_end'], how='outer').sort_values(by=['period_end'])
     macros = macros.fillna(method='ffill')
     macros = macros.loc[macros['period_end'].isin(df_date_list)]
 
@@ -64,7 +64,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
                                           right_on=['name']).drop(['name'], axis=1).set_index(['type', 'group']).transpose()
     macros_org = macros_org.stack(level=1).reset_index()
     macros_org.columns = ['period_end'] + macros_org.columns.to_list()[1:]
-    macros_org = macros_org.merge(macros[['period_end','fred_data','.VIX']], on=['period_end'], how='left')
+    macros_org = macros_org.merge(macros.filter(['period_end','fred_data','.VIX']), on=['period_end'], how='left')
     macros_org = macros_org.fillna(macros_org.groupby(['period_end']).transform(np.nanmean))
     macros_org.columns = ['period_end','group'] + [ 'mkt_'+ x for x in macros_org.columns.to_list()[2:]]
 
@@ -95,35 +95,12 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
-    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r12_7','stock_return_r6_2', 'vol_30_90']].unstack()
+    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r12_7','stock_return_r6_2', 'vol_0_30']].unstack()
     index_ret.columns = [f'{x[1]}_{x[0][0]}{x[0][-1]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
     return index_ret, index_ret_org
-
-def download_org_ratios(use_biweekly_stock, stock_last_week_avg, method='median', change=True):
-    ''' download the aggregated value of all original ratios by each group '''
-
-    db_table = global_vals.processed_group_ratio_table
-    if stock_last_week_avg:
-        db_table += '_weekavg'
-    elif use_biweekly_stock:
-        db_table += '_biweekly'
-
-    with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f"SELECT * FROM {db_table} WHERE method = '{method}'", conn)
-    global_vals.engine_ali.dispose()
-    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')
-    field_col = df.columns.to_list()[2:-1]
-
-    if change:  # calculate the change of original ratio from T-1 -> T0
-        df[field_col] = df[field_col]/df.sort_values(['period_end']).groupby(['group'])[field_col].shift(1)-1
-        df[field_col] = df[field_col].apply(trim_outlier)
-
-    df.columns = df.columns.to_list()[:2] + ['org_'+x for x in field_col] + [df.columns.to_list()[-1]]
-
-    return df.iloc[:,:-1]
 
 def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_since=None, mode='default'):
     ''' combine factor premiums with ratios '''
@@ -179,7 +156,6 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
     x_col = {}
     factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
     x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
-    x_col['neg_factor'] = formula.loc[formula['long_large'], 'name'].to_list()         # x_col remove highly correlated variables
 
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
@@ -206,11 +182,6 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
     df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
-
-    # 3. (Removed) Add original ratios variables
-    # org_df = download_org_ratios(use_biweekly_stock, stock_last_week_avg)
-    # x_col['org'] = org_df.columns.to_list()[2:]           # add index variables name to x_col
-    # df = df.merge(org_df, on=['group', 'period_end'], how='left')
     df = df.merge(macros_org, on=['group', 'period_end'], how='left')
     df = df.merge(index_ret_org, on=['group', 'period_end'], how='left')
 
