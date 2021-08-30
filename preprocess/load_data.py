@@ -59,16 +59,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
     macros = macros.fillna(method='ffill')
     macros = macros.loc[macros['period_end'].isin(df_date_list)]
 
-    # create macros mapped to each currency
-    macros_org = macros.set_index('period_end').transpose().merge(macro_map, left_index=True,
-                                          right_on=['name']).drop(['name'], axis=1).set_index(['type', 'group']).transpose()
-    macros_org = macros_org.stack(level=1).reset_index()
-    macros_org.columns = ['period_end'] + macros_org.columns.to_list()[1:]
-    macros_org = macros_org.merge(macros.filter(['period_end','fred_data','.VIX']), on=['period_end'], how='left')
-    macros_org = macros_org.fillna(macros_org.groupby(['period_end']).transform(np.nanmean))
-    macros_org.columns = ['period_end','group'] + [ 'mkt_'+ x for x in macros_org.columns.to_list()[2:]]
-
-    return macros.drop(['trading_day','data'], axis=1), macros_org
+    return macros.drop(['trading_day','data'], axis=1)
 
 def download_index_return(use_biweekly_stock, stock_last_week_avg):
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
@@ -88,10 +79,6 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
         index_ret = pd.read_sql(f"SELECT * FROM {db_table_name} WHERE ticker like '.%%'", conn)
     global_vals.engine_ali.dispose()
 
-    index_ret_org = index_ret.loc[index_ret['ticker']!='.HSLI',
-                                  ['currency_code','period_end','vol_0_30','stock_return_r1_0']]
-    index_ret_org.columns = ['group','period_end'] + ['mkt_' + x for x in index_ret_org.columns.to_list()[2:]]
-
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
@@ -100,7 +87,7 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
 
-    return index_ret, index_ret_org
+    return index_ret
 
 def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_since=None, mode='default'):
     ''' combine factor premiums with ratios '''
@@ -160,18 +147,15 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
 
-
     # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
-    macros, macros_org = download_clean_macros(df, use_biweekly_stock)
+    macros = download_clean_macros(df, use_biweekly_stock)
     x_col['macro'] = macros.columns.to_list()[1:]              # add macros variables name to x_col
-    x_col['macro_pivot'] = macros_org.columns.to_list()[2:]              # add macros variables name to x_col
 
     # 2. Add index return variables
-    index_ret, index_ret_org = download_index_return(use_biweekly_stock, stock_last_week_avg)
+    index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
     x_col['index'] = index_ret.columns.to_list()[1:]           # add index variables name to x_col
-    x_col['index_pivot'] = index_ret_org.columns.to_list()[2:]              # add macros variables name to x_col
 
     # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
     # Therefore, we should also know other data (macro/index/group fundamental) as at T1
@@ -182,8 +166,6 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
         non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
 
     df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
-    df = df.merge(macros_org, on=['group', 'period_end'], how='left')
-    df = df.merge(index_ret_org, on=['group', 'period_end'], how='left')
 
     # make up for all missing date in df
     indexes = pd.MultiIndex.from_product([df['group'].unique(), df['period_end'].unique()], names=['group', 'period_end']).to_frame().reset_index(drop=True)
@@ -397,8 +379,7 @@ class load_data:
 
         def divide_set(df):
             ''' split x, y from main '''
-            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] \
-                    + self.x_col_dict['index_pivot'] + self.x_col_dict['macro'] + self.x_col_dict['index']
+            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca>0:
                 x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
             y_col_cut = [x+'_cut' for x in y_col]

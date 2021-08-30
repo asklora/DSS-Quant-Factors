@@ -30,7 +30,7 @@ if __name__ == "__main__":
     # parser.add_argument('--tree_type', default='rf')
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--mode', default='v2', type=str)
+    parser.add_argument('--mode', default='default', type=str)
     # parser.add_argument('--n_splits', default=3, type=int)
     # parser.add_argument('--use_pca', default=0.6, type=float)
     args = parser.parse_args()
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # --------------------------------- Prepare Training Set -------------------------------------
 
     sql_result = vars(args)  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = 'prod_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
     sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
@@ -71,8 +71,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Run Lasso Benchmark -------------------------------------
 
-    start_lasso(data, testing_period_list, group_code_list, y_type)
-    exit(1)
+    # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
     for iter in range(1):

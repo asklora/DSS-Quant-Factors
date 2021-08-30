@@ -98,7 +98,7 @@ class lasso_bm:
 
         ret = []
         for i in range(3):
-            ret.append(actual[(pred >= bins[i]) & (pred < bins[i+1])])
+            ret.append(np.mean(actual[(pred >= bins[i]) & (pred < bins[i+1])]))
 
         return ret
 
@@ -177,9 +177,9 @@ def lasso_HPOT(data):
     hpot_lasso['all_results'] = []
     hpot_lasso['best_score'] = 10000  # record best training (min mae_valid) in each hyperopt
 
-    lasso_space = {'alpha': hp.choice('alpha', [0, 0.001, 0.005, 0.0001]),
-                   'use_pca': hp.choice('use_pca', [0.2, 0.4, 0.6, 0.8, 0]),
-                   'l1_ratio': hp.choice('l1_ratio', [0, 0.5, 1])}
+    lasso_space = {'alpha': hp.choice('alpha', [0.001, 0.005, 0.0001]),
+                   'use_pca': hp.choice('use_pca', [0.2, 0.4, 0.6, 0.8]),
+                   'l1_ratio': hp.choice('l1_ratio', [0.5, 1])}
 
     trials = Trials()
     best = fmin(fn=lasso_bm(data).load_data_lasso, space=lasso_space, algo=tpe.suggest, max_evals=10, trials=trials)

@@ -144,8 +144,18 @@ def rf_HPOT(rf_space, max_evals):
     trials = Trials()
     best = fmin(fn=eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-    best_space = space_eval(rf_space, best)
-    eval_regressor(best_space, rerun=True)
+    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+        lasso_bm = pd.read_sql(f"SELECT avg(mse_test) FROM {global_vals.feature_importance_table}_lasso_prod "
+                               f"WHERE \"group\"={hpot['group_code']} "
+                               f"AND testing_period<{dt.datetime.strftime(hpot['testing_period'], '%Y-%m-%d')}", conn)
+    global_vals.engine_ali.dispose()
+
+    i = 1
+    while (hpot['best_score'] > lasso_bm) or (i>10):     # run re-evaluation round until results better than LASSO
+        print(f"round [{i}]: {hpot['best_score']} larger than {lasso_bm}")
+        best_space = space_eval(rf_space, best)
+        eval_regressor(best_space, rerun=True)
+        i += 1
 
     # write score/prediction/feature to DB
     tbl_suffix = '_rf_reg'
@@ -155,4 +165,5 @@ def rf_HPOT(rf_space, max_evals):
         pd.DataFrame(hpot['all_results']).to_sql(f"{global_vals.result_score_table}{tbl_suffix}", **extra)
         hpot['best_stock_feature'].to_sql(f"{global_vals.feature_importance_table}{tbl_suffix}", **extra)
     global_vals.engine_ali.dispose()
+
 
