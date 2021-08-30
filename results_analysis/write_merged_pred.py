@@ -26,7 +26,7 @@ def download_stock_pred(
         q,
         model,
         name_sql,
-        # rank_along_testing_history=True,
+        rank_type='self',
         keep_all_history=True,
         # return_summary=False,
         save_xls=False,

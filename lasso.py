@@ -15,6 +15,7 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, a
 from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn import linear_model
 from preprocess.load_data import load_data
+from random_forest import eval_test_return
 import global_vals
 import sys
 import itertools
@@ -87,21 +88,6 @@ class lasso_bm:
 
         return Y_train_pred, Y_valid_pred, Y_test_pred
 
-    def test_return(self, actual, pred, Y_train_pred=[]):
-        ''' test return based on test / train set quantile bins '''
-
-        p = np.linspace(0, 1, 4)
-        if len(Y_train_pred)>0:
-            bins = np.quantile(Y_train_pred, p)
-        else:
-            bins = np.quantile(pred, p)
-
-        ret = []
-        for i in range(3):
-            ret.append(np.mean(actual[(pred >= bins[i]) & (pred < bins[i+1])]))
-
-        return ret
-
     def eval_regressor(self, rerun):
         ''' train & evaluate LightGBM on given space by hyperopt trials with Regressiong model '''
 
@@ -110,7 +96,7 @@ class lasso_bm:
         p = np.linspace(0, 1, 10)
         train_bins = np.quantile(Y_train_pred, p)
 
-        ret = self.test_return(sample_set['test_y'], Y_test_pred, Y_train_pred)
+        ret = eval_test_return(sample_set['test_y'], Y_test_pred, Y_train_pred)
 
         if rerun:
             result = {'mae_train': mean_absolute_error(sample_set['train_y'], Y_train_pred),
