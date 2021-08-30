@@ -261,10 +261,10 @@ def update_period_end(ws):
 
     print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vals.engine.connect() as conn:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
         universe = pd.concat(universe, axis=0, ignore_index=True)
-    global_vals.engine_ali.dispose()
+    global_vals.engine.dispose()
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 

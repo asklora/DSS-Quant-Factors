@@ -81,7 +81,7 @@ def eval_regressor(rf_space, rerun=False):
 
     if rerun: # save prediction bins for training as well
         p = np.linspace(0, 1, 10)
-        main.sql_result['train_bins'] = np.quantile(Y_train_pred, p)
+        main.sql_result['train_bins'] = list(np.quantile(Y_train_pred, p))
 
     if len(sample_set['test_y'])==0:    # for the actual prediction iteration
         sample_set['test_y'] = np.zeros(Y_test_pred)
@@ -148,7 +148,7 @@ def rf_HPOT(rf_space, max_evals):
     eval_regressor(best_space, rerun=True)
 
     # write score/prediction/feature to DB
-    tbl_suffix = '_prod'
+    tbl_suffix = '_rf_reg'
     with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
         hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
