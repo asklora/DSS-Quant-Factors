@@ -59,7 +59,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
     macros = macros.fillna(method='ffill')
     macros = macros.loc[macros['period_end'].isin(df_date_list)]
 
-    return macros.drop(['trading_day','data'], axis=1)
+    return macros.drop(['trading_day'], axis=1)
 
 def download_index_return(use_biweekly_stock, stock_last_week_avg):
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
