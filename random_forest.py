@@ -46,9 +46,9 @@ def rf_train(rf_space, rerun):
     main.sql_result.update(params)
     params['bootstrap'] = False
 
-    if main.sql_result['tree_type'] == 'extra':
+    if 'extra' in main.sql_result['tree_type']:
         regr = ExtraTreesRegressor(criterion=main.sql_result['objective'], **params)
-    elif main.sql_result['tree_type'] == 'rf':
+    elif 'rf' in main.sql_result['tree_type']:
         regr = RandomForestRegressor(criterion=main.sql_result['objective'], **params)
 
     if rerun:
@@ -83,9 +83,10 @@ def eval_test_return(actual, pred, Y_train_pred=[]):
     ret = []
     factor_name = []
     for i in range(3):
-        ret.append(np.mean(actual[(pred >= bins[i]) & (pred < bins[i+1])]))
-
-        factor_name.append([x[2:] for x in main.data.y_col][(pred >= bins[i]) & (pred < bins[i+1])])
+        ret.append(np.mean(actual[(pred >= bins[i]) & (pred <= bins[i+1])]))
+        f = np.array([x[2:] for x in main.data.y_col])
+        f_mask = np.reshape((pred >= bins[i]) & (pred < bins[i+1]), (len(f),))
+        factor_name.append(f[f_mask])
 
     return ret, factor_name[2]
 
@@ -104,6 +105,8 @@ def eval_regressor(rf_space, rerun=False):
     if rerun: # save prediction bins for training as well
         p = np.linspace(0, 1, 10)
         main.sql_result['train_bins'] = list(np.quantile(Y_train_pred, p))
+        main.sql_result['train_mean'] = np.nanmean(Y_train_pred.flatten())
+        main.sql_result['train_std'] = np.nanstd(Y_train_pred.flatten())
 
     if len(sample_set['test_y'])==0:    # for the actual prediction iteration
         sample_set['test_y'] = np.zeros(Y_test_pred)
@@ -191,11 +194,11 @@ def rf_HPOT(rf_space, max_evals):
 
     print('==============> BM mse_train', str(lasso_bm*100)[:6])
 
-    i = 1
-    while (main.sql_result['mse_train'] > lasso_bm) and (i<10):     # run re-evaluation round until results better than LASSO
-        best_space = space_eval(rf_space, best)
-        eval_regressor(best_space, rerun=True)
-        i += 1
+    # i = 1
+    # while (main.sql_result['mse_train'] > lasso_bm) and (i<):     # run re-evaluation round until results better than LASSO
+    best_space = space_eval(rf_space, best)
+    eval_regressor(best_space, rerun=True)
+        # i += 1
 
     # write score/prediction/feature to DB
     tbl_suffix = '_rf_reg'
