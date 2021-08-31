@@ -35,20 +35,21 @@ if __name__ == "__main__":
     parser.add_argument('--mode', default='default', type=str)
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
-    # parser.add_argument('--use_pca', default=0.6, type=float)
+    parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
     args = parser.parse_args()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    # calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-    #                       use_cached=False, save=False, update=False)
-    # if args.mode == 'default':
-    #     calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=True, update=False)
-    # elif args.mode == 'v2':
-    #     calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
-    # elif args.mode == 'v2_trim':
-    #     calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
-    # else:
-    #     raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
+    if args.recalc_premium:
+        calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+                              use_cached=False, save=False, update=False)
+        if args.mode == 'default':
+            calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=True, update=False)
+        elif args.mode == 'v2':
+            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
+        elif args.mode == 'v2_trim':
+            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+        else:
+            raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -68,6 +69,7 @@ if __name__ == "__main__":
     sql_result = vars(args)  # data write to DB TABLE lightgbm_results
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
+    sql_result.pop('recalc_premium')
     sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
