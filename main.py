@@ -33,21 +33,22 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='default', type=str)
-    # parser.add_argument('--n_splits', default=3, type=int)
+    parser.add_argument('--backtest_period', default=46, type=int)
+    parser.add_argument('--n_splits', default=3, type=int)
     # parser.add_argument('--use_pca', default=0.6, type=float)
     args = parser.parse_args()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=False, update=False)
-    if args.mode == 'default':
-        calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=True, update=False)
-    elif args.mode == 'v2':
-        calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
-    elif args.mode == 'v2_trim':
-        calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
-    else:
-        raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
+    # calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
+    #                       use_cached=False, save=False, update=False)
+    # if args.mode == 'default':
+    #     calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=True, update=False)
+    # elif args.mode == 'v2':
+    #     calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
+    # elif args.mode == 'v2_trim':
+    #     calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+    # else:
+    #     raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -58,14 +59,16 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     last_test_date = dt.date.today() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
-    backtest_period = 46
+    backtest_period = args.backtest_period
     testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
                            - relativedelta(days=1) for i in range(0, backtest_period + 1)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
     sql_result = vars(args)  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{args.mode}1_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result.pop('backtest_period')
+    sql_result.pop('n_splits')
+    sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
     sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
@@ -87,7 +90,7 @@ if __name__ == "__main__":
             # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
             load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
-                                'use_median': False, 'use_pca': args.use_pca, 'n_splits': 3}
+                                'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
             sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
             cv_number = 1  # represent which cross-validation sets
 
