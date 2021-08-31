@@ -18,6 +18,8 @@ from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
 from random_forest import rf_HPOT, rf_space
 from results_analysis.write_merged_pred import download_stock_pred
+from results_analysis.score_back_testing import score_history
+
 from lasso import start_lasso
 import itertools
 import global_vals
@@ -118,3 +120,4 @@ if __name__ == "__main__":
             save_plot=True,
             save_xls=True,
         )
+    score_history()     # calculate score with DROID v2 method & evaluate

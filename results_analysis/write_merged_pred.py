@@ -65,11 +65,11 @@ def download_stock_pred(
     q_ = [0., q, 1.-q, 1.]
 
     # rank within current testing_period
-    groupby_keys = ['group','period_end']
+    groupby_keys = ['group','period_end'] + other_group_col
     result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_) - 1), duplicates='drop'))
 
     # calculate pred_z using mean & std of all predictions in entire testing history
-    groupby_keys = ['group']
+    groupby_keys = ['group'] + other_group_col
     result_all = result_all.join(result_all.groupby(level=groupby_keys)['pred'].agg(['mean', 'std']), on=groupby_keys, how='left')
     result_all['pred_z'] = (result_all['pred'] - result_all['mean']) / result_all['std']
     result_all = result_all.drop(['mean', 'std'], axis=1)
@@ -136,7 +136,7 @@ def download_stock_pred(
     # ------------------------ Select Best Config (among other_group_col) ------------------------------
 
     result_all_comb_mean['net_ret'] = result_all_comb_mean['max_ret'] - result_all_comb_mean['min_ret']
-    result_all_comb_mean_best = result_all_comb_mean.sort_values(['net_ret']).groupby(['group']).last()[other_group_col].reset_index()
+    result_all_comb_mean_best = result_all_comb_mean.sort_values(['max_ret']).groupby(['group']).last()[other_group_col].reset_index()
     print(result_all_comb_mean_best)
 
     result_all = result_all.dropna(axis=0, subset=['factor_weight'])[['pred_z','factor_weight']].reset_index()

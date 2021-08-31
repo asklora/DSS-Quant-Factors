@@ -543,6 +543,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 100000}
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
+        ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
         print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
         print(f'      ------------------------> Finish writing {db_table_name} table ')
