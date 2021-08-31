@@ -111,7 +111,7 @@ def eval_regressor(rf_space, rerun=False):
     if len(sample_set['test_y'])==0:    # for the actual prediction iteration
         sample_set['test_y'] = np.zeros(Y_test_pred)
 
-    ret, best_factor = eval_test_return(sample_set['test_y'], Y_test_pred, Y_train_pred)
+    ret, best_factor = eval_test_return(sample_set['test_y'], Y_test_pred, Y_test_pred)
     if rerun:
         result = {'mae_train': mean_absolute_error(sample_set['train_y'], Y_train_pred),
                   'mae_valid': mean_absolute_error(sample_set['valid_y'], Y_valid_pred),

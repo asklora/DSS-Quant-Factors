@@ -197,7 +197,6 @@ if __name__ == "__main__":
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
     parser.add_argument('--name_sql', type=str, default='default1_20210830')
-    parser.add_argument('--rank_along', type=str, default='current')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
@@ -221,7 +220,6 @@ if __name__ == "__main__":
         q,
         args.model,
         args.name_sql,
-        rank_along=args.rank_along,
         keep_all_history=args.keep_all_history,
         save_plot=args.save_plot,
         save_xls=args.save_xls,

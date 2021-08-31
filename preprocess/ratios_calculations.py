@@ -546,7 +546,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
         print(f'      ------------------------> Finish writing {db_table_name} table ')
-
     return df, stocks_col, formula
 
 
