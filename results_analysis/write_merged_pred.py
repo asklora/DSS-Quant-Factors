@@ -55,7 +55,6 @@ def download_stock_pred(
 
     neg_factor = result_all[['group','neg_factor']].drop_duplicates().set_index('group')['neg_factor'].to_dict()    # negative value columns
     result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
-    train_bins_df = result_all[['group','period_end','train_bins','train_mean','train_std']+other_group_col].drop_duplicates()
 
     # use average predictions from different validation sets
     result_all = result_all.groupby(['period_end','factor_name','group']+other_group_col)[['pred', 'actual']].mean()
@@ -66,27 +65,13 @@ def download_stock_pred(
         q = q/len(result_all['factor_name'].unique())
     q_ = [0., q, 1.-q, 1.]
 
+    # rank within current testing_period
+    groupby_keys = ['group','period_end']
+    result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_) - 1), duplicates='drop'))
+
     # calculate pred_z using mean & std of all predictions in entire testing history
-    def calc_pred_z(result_all, groupby_keys):
-        result_all = result_all.join(result_all.groupby(level=groupby_keys)['pred'].agg(['mean', 'std']), on=groupby_keys,how='left')
-        result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_) - 1), duplicates='drop'))
-        return result_all
-
-    if rank_along == 'current':             # rank within current testing_period
-        groupby_keys = ['group','period_end']
-        result_all = calc_pred_z(result_all, groupby_keys)
-    elif rank_along == 'test_hist':         # rank across all testing history
-        groupby_keys = ['group']
-        result_all = calc_pred_z(result_all, groupby_keys)
-    elif rank_along == 'train_hist':        # rank using training history predictions
-        train_bins_df[['train_lb', 'train_ub']] = train_bins_df['train_bins'].str[1:-1].str.split(',', expand=True).astype(
-            float).values[:, [round(x*train_bins_df.shape[1]) for x in q_[1:-1]]]
-        result_all = result_all.reset_index().merge(train_bins_df, on=['group', 'period_end'] + other_group_col, how='left')
-        result_all['factor_weight'] = np.select([result_all['pred'] < result_all['train_lb'], result_all['pred'] > result_all['train_ub']], [0, 2], 1)
-        result_all[['mean']] = result_all[['train_mean']]
-        result_all[['std']] = result_all[['train_std']]
-        result_all = result_all.set_index(['group', 'factor_name', 'period_end'] + other_group_col)
-
+    groupby_keys = ['group']
+    result_all = result_all.join(result_all.groupby(level=groupby_keys)['pred'].agg(['mean', 'std']), on=groupby_keys, how='left')
     result_all['pred_z'] = (result_all['pred'] - result_all['mean']) / result_all['std']
     result_all = result_all.drop(['mean', 'std'], axis=1)
 
@@ -183,7 +168,6 @@ def download_stock_pred(
         df['period_end'] = df['period_end'] + MonthEnd(1)
         df['factor_weight'] = df['factor_weight'].astype(int)
         df['long_large'] = False
-        df['rank_along'] = rank_along
         df['last_update'] = dt.datetime.now()
 
         for k, v in neg_factor.items():     # write neg_factor i.e. label factors
