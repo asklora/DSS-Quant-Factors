@@ -5,6 +5,7 @@ from pandas.tseries.offsets import MonthEnd
 
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupShuffleSplit
 from preprocess.premium_calculation import calc_premium_all, trim_outlier
 import global_vals
@@ -42,7 +43,7 @@ def download_clean_macros(main_df, use_biweekly_stock):
 
     # combine macros & vix data
     macros["period_end"] = pd.to_datetime(macros["trading_day"])
-    print(num_col)
+    # print(num_col)
 
     # create map for macros (currency + type of data)
     macro_map = pd.DataFrame()
@@ -203,7 +204,7 @@ class load_data:
         # calculate y for all factors
         all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
         self.main[all_y_col] = self.main.groupby(['group'])[self.x_col_dict['factor']].shift(-1)
-        print(self.main)
+        # print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
@@ -288,7 +289,8 @@ class load_data:
 
         return y_col
 
-    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca):
+    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca,
+                         write_pca_component=False):
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
@@ -336,31 +338,37 @@ class load_data:
             arma_mi = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['index'] + self.x_col_dict['macro'] if f in x]
 
             # use PCA on all ARMA inputs
+            arma_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=use_pca))])
             pca_arma_df = self.train[self.x_col_dict['factor']+arma_factor].fillna(0)
-            arma_pca = PCA(n_components=use_pca).fit(pca_arma_df)
+            arma_pca = arma_pipe.fit(pca_arma_df)
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor']+arma_factor).reset_index()
-            df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
-            df['group'] = self.group_name
-            df['testing_period'] = testing_period
+            print(f"      ------------------------> After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
 
-            # with global_vals.engine_ali.connect() as conn:
-            #     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-            #     conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
-            #                  f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-            #     df.to_sql(global_vals.processed_pca_table, **extra)
-            # global_vals.engine_ali.dispose()
+            # write PCA components to DB
+            if write_pca_component:
+                df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor'] + arma_factor).reset_index()
+                df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
+                df['group'] = self.group_name
+                df['testing_period'] = testing_period
+                with global_vals.engine_ali.connect() as conn:
+                    extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+                    conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
+                                 f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
+                    df.to_sql(global_vals.processed_pca_table, **extra)
+                global_vals.engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
 
             # use PCA on all index/macro inputs
+            mi_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=use_pca))])
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1)
-            mi_pca = PCA(n_components=0.9).fit(pca_mi_df)
+            mi_pca = mi_pipe.fit(pca_mi_df)
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
+            print(f"      ------------------------> After {use_pca} PCA [Macros]: {len(self.x_col_dict['mi_pca'])}")
 
             self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
             arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1))

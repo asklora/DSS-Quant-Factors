@@ -26,6 +26,8 @@ import global_vals
 
 if __name__ == "__main__":
 
+    start_time = dt.datetime.now()
+
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
@@ -36,7 +38,16 @@ if __name__ == "__main__":
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
+    parser.add_argument('--debug', action='store_false')
     args = parser.parse_args()
+
+    # --------------------------------------- Schedule for Production --------------------------------
+    if args.debug:
+        td = dt.datetime.today()
+        ystd = td - relativedelta(days=1)
+        if (ystd.strftime("%A") != 'Sunday') or (td.day==1):
+            print('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_premium:
@@ -126,3 +137,7 @@ if __name__ == "__main__":
             save_xls=True,
         )
     score_history()     # calculate score with DROID v2 method & evaluate
+
+    end_time = dt.datetime.now()
+
+    print(start_time, end_time, end_time-start_time)

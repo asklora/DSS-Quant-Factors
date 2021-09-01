@@ -122,8 +122,6 @@ def resample_to_biweekly(df, date_col):
 def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     ''' Calcualte monthly stock return '''
 
-    engine = global_vals.engine
-
     if use_cached:
         try:
             tri = pd.read_csv('cache_tri.csv', low_memory=False)
@@ -151,8 +149,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
 
     # find anchor close price (adj.)
-    eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'anchor_close'] = eikon_price.loc[eikon_price['anchor_tri'].isnull(), 'close']
-    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].apply(lambda x: x.bfill().ffill())
+    eikon_price = eikon_price.sort_values(['ticker','trading_day'])
+    eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'anchor_close'] = eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'close']
+    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].ffill().bfill()
 
     # calculate tri based on EIKON close price data
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
@@ -166,6 +165,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
+    tri = tri.sort_values(['ticker','trading_day'])
 
     print(f'      ------------------------> Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
@@ -178,12 +178,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
 
     # resample tri using last week average as the proxy for monthly tri
     print(f'      ------------------------> Stock price using [{price_sample}] ')
-    # if price_sample == 'last_week_avg':
-    tri = tri.sort_values(['ticker','trading_day'])
-    tri['tri'] = tri['tri'].rolling(7, min_periods=1).mean()
-    tri['volume'] = tri['volume'].rolling(7, min_periods=1).mean()
-    tri.loc[tri.groupby('ticker').head(6).index, ['tri']] = np.nan
-    tri.loc[tri.groupby('ticker').head(6).index, ['volume']] = np.nan
+    tri[['tri','volume']] = tri.groupby("ticker")[['tri','volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
@@ -380,6 +375,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
+    x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['period_end'], ascending=False).head(100)
+
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
@@ -552,4 +549,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
 
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=True, update=False)
+                          use_cached=True, save=False, update=False)
