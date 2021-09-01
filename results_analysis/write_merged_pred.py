@@ -98,6 +98,7 @@ def download_stock_pred(
     result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'period_end']).reset_index()
     result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
     print(result_all_comb_mean)
+    print(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
 
     # --------------------------------- Save Local Evaluation ------------------------------------------
 
