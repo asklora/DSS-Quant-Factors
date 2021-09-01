@@ -404,7 +404,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # Use 6-digit ICB code in industry groups
     universe['icb_code'] = universe['icb_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
         replace({'10102010':'101021','10102015':'101022','10102020':'101023','10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
-    print(universe['icb_code'].unique())
+    # print(universe['icb_code'].unique())
     universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
@@ -464,7 +464,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     if use_cached:
         try:
             df = pd.read_csv('cache_all_data.csv', low_memory=False, dtype={"icb_code": str})
-            stocks_col = pd.read_csv('cache_stocks_col.csv', low_memory=False).iloc[:,0].to_list()
+            stocks_col = pd.read_csv('cache_stocks_col.csv', low_memory=False).iloc[:, 0].to_list()
         except Exception as e:
             print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
@@ -544,9 +544,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 100000}
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
         ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
-        print(ddf.shape)
         ddf.to_sql(db_table_name, **extra)
-        print(f'      ------------------------> Finish writing {db_table_name} table ')
+        print(f'      ------------------------> Finish writing {db_table_name} table ', ddf.shape)
     return df, stocks_col, formula
 
 
