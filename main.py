@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
-    sql_result = vars(args)  # data write to DB TABLE lightgbm_results
+    sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
