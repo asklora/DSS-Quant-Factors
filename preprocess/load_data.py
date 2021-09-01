@@ -242,8 +242,8 @@ class load_data:
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
-        sharpe = self.train[y_col].mean(axis=0)
-        self.neg_factor = list(sharpe[sharpe<0].index)
+        m = self.train[y_col].mean(axis=0)
+        self.neg_factor = list(m[m<0].index)
         # neg_factor = self.x_col_dict['neg_factor']
         self.train[self.neg_factor] = -self.train[self.neg_factor]
         self.test[self.neg_factor] = -self.test[self.neg_factor]

@@ -32,7 +32,7 @@ def get_tri(save=True, update=False, currency=None):
             query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
-        print(f'#      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
+        print(f'      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
         market_cap_anchor = pd.read_sql(f'SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_day DESC) '
@@ -490,9 +490,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         n = 1
         while n < len(x):
             if x[n] == '+':
-                temp += df[x[n+1]]
+                temp += np.nan_to_num(df[x[n + 1]],0)
             elif x[n] == '-':
-                temp -= df[x[n+1]]
+                temp -= np.nan_to_num(df[x[n + 1]],0)
             elif x[n] == '*':
                 temp *= df[x[n + 1]]
             else:

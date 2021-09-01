@@ -167,11 +167,11 @@ def download_stock_pred(
         # basic info
         df['period_end'] = df['period_end'] + MonthEnd(1)
         df['factor_weight'] = df['factor_weight'].astype(int)
-        df['long_large'] = False
+        df['long_large'] = True
         df['last_update'] = dt.datetime.now()
 
         for k, v in neg_factor.items():     # write neg_factor i.e. label factors
-            df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
+            df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = False
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table + tbl_suffix): # remove same period prediction if exists
