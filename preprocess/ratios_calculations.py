@@ -525,7 +525,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     print(f'      ------------------------> Calculate dividing ratios ')
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
-        df[r['name']] = df[r['field_num']] / df[r['field_denom']]
+        df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
 
     # drop records with no stock_return_y & any ratios
     df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')

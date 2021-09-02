@@ -38,11 +38,11 @@ if __name__ == "__main__":
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
-    parser.add_argument('--debug', action='store_false')
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
     # --------------------------------------- Schedule for Production --------------------------------
-    if args.debug:
+    if not args.debug:
         td = dt.datetime.today()
         ystd = td - relativedelta(days=1)
         if (ystd.strftime("%A") != 'Sunday') or (td.day==1):
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=True, save=False, update=False)
+                              use_cached=False, save=False, update=False)
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
         elif args.mode == 'v2':
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(10):
+    for i in range(3):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period
