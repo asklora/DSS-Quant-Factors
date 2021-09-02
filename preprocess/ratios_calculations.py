@@ -487,9 +487,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         n = 1
         while n < len(x):
             if x[n] == '+':
-                temp += np.nan_to_num(df[x[n + 1]],0)
+                temp += df[x[n + 1]].replace(np.nan, 0)
             elif x[n] == '-':
-                temp -= np.nan_to_num(df[x[n + 1]],0)
+                temp -= df[x[n + 1]].replace(np.nan, 0)
             elif x[n] == '*':
                 temp *= df[x[n + 1]]
             else:
@@ -514,6 +514,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
             orient='records'):  # minus calculation for ratios
+        print('Calculating:', r['name'])
         if r['name'][-2:] == 'yr':
             df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
             df.loc[df.groupby('ticker').head(period_yr).index, r['name']] = np.nan
@@ -525,6 +526,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     print(f'      ------------------------> Calculate dividing ratios ')
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
+        print('Calculating:', r['name'])
         df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
 
     # drop records with no stock_return_y & any ratios
