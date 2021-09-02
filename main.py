@@ -3,8 +3,6 @@ from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomF
 import numpy as np
 import argparse
 import pandas as pd
-from os import path
-import sys
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
@@ -147,9 +145,4 @@ if __name__ == "__main__":
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)
 
-    # --------------------------------- Rewrite AI Score ------------------------------------------
-
-    sys.path.append(path.dirname(os.getcwd())+'/DROID_V2.1')
-    from ingestion.data_from_dsws import update_fundamentals_quality_value
-    update_fundamentals_quality_value()
 
