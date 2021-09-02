@@ -3,6 +3,8 @@ from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomF
 import numpy as np
 import argparse
 import pandas as pd
+from os import path
+import sys
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
@@ -61,6 +63,9 @@ if __name__ == "__main__":
             calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
+
+    end_time = dt.datetime.now()
+    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -140,5 +145,11 @@ if __name__ == "__main__":
     score_history()     # calculate score with DROID v2 method & evaluate
 
     end_time = dt.datetime.now()
-
     print(start_time, end_time, end_time-start_time)
+
+    # --------------------------------- Rewrite AI Score ------------------------------------------
+
+    sys.path.append(path.dirname(os.getcwd())+'/DROID_V2.1')
+    from ingestion.data_from_dsws import update_fundamentals_quality_value
+    update_fundamentals_quality_value()
+
