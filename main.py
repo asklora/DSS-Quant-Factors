@@ -62,6 +62,9 @@ if __name__ == "__main__":
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
+    end_time = dt.datetime.now()
+    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
+
     # --------------------------------- Different Configs -----------------------------------------
 
     group_code_list = ['USD', 'EUR', 'HKD']
