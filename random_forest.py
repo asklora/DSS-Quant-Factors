@@ -196,8 +196,8 @@ def rf_HPOT(rf_space, max_evals):
 
     # i = 1
     # while (main.sql_result['mse_train'] > lasso_bm) and (i<):     # run re-evaluation round until results better than LASSO
-    best_space = space_eval(rf_space, best)
-    eval_regressor(best_space, rerun=True)
+    # best_space = space_eval(rf_space, best)
+    # eval_regressor(best_space, rerun=True)
         # i += 1
 
     # write score/prediction/feature to DB

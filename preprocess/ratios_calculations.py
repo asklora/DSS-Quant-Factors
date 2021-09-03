@@ -10,30 +10,27 @@ from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(save=True, update=False, currency=None):
+def get_tri(save=True, currency=None):
     if not isinstance(save, bool):
         raise Exception("Parameter 'save' must be a bool")
-    if not isinstance(update, bool):
-        raise Exception("Parameter 'update' must be a bool")
     # if not isinstance(currency, str):
     #     raise Exception("Parameter 'currency' must be a str")
 
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
-        conditions = []
+        print(f'#################################################################################################')
+        print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
+        conditions = ["True"]
         if currency:
             conditions.append(f"currency_code = '{currency}'")
-        if update:
-            trading_day_cutoff = (dt.datetime.today() - relativedelta(months=1)).strftime('%Y-%m-%d')
-            conditions.append(f"trading_day > '{trading_day_cutoff}'")
-        if conditions:
-            query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
-                         f"FROM {global_vals.stock_data_table} WHERE {' AND '.join(conditions)}")
-        else:
-            query = text(f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume FROM {global_vals.stock_data_table}")
+        query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
+                     f"FROM {global_vals.stock_data_table_tri} T "
+                     f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
+                     f"WHERE {' AND '.join(conditions)}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
+
         print(f'      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
-        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table}_daily_final ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
+        eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table} ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
         market_cap_anchor = pd.read_sql(f'SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_day DESC) '
                                         f'rank FROM {global_vals.eikon_mktcap_table}) a WHERE a.rank = 1;', conn_ali).iloc[:,:-1]
@@ -119,7 +116,7 @@ def resample_to_biweekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
+def calc_stock_return(price_sample, sample_interval, use_cached, save):
     ''' Calcualte monthly stock return '''
 
     if use_cached:
@@ -129,13 +126,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
             market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv', low_memory=False)
         except Exception as e:
             print(e)
-            print(f'#################################################################################################')
-            print(f'#      ------------------------> Download stock data from {global_vals.stock_data_table}')
             tri, eikon_price, market_cap_anchor = get_tri(save=save)
     else:
-        print(f'#################################################################################################')
-        print(f'      ------------------------> Download stock data from {global_vals.stock_data_table}')
-        tri, eikon_price, market_cap_anchor = get_tri(save=save, update=update)
+        tri, eikon_price, market_cap_anchor = get_tri(save=save)
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
@@ -151,7 +144,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     # find anchor close price (adj.)
     eikon_price = eikon_price.sort_values(['ticker','trading_day'])
     eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'anchor_close'] = eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'close']
-    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].ffill().bfill()
+    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].bfill()
 
     # calculate tri based on EIKON close price data
     eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
@@ -162,6 +155,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save, update):
     for col in value_col:
         tri[col] = tri[col].fillna(tri[col+'_eikon'])  # update missing tri (i.e. prior history) with EIKON tri calculated
     tri = tri[['ticker','trading_day'] + value_col]
+
+    # x = tri.loc[tri['ticker']=='AAPL.O'].sort_values(by=['trading_day'], ascending=False)
 
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
@@ -368,14 +363,14 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
             stocks_col = tri.select_dtypes("float").columns
         except Exception as e:
             print(e)
-            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save, update)
+            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
     else:
-        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save, update)
+        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
-    x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['period_end'], ascending=False).head(100)
+    # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['period_end'], ascending=False).head(100)
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
@@ -551,4 +546,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
 
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=False, update=False)
+                          use_cached=True, save=False)

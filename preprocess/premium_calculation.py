@@ -103,13 +103,9 @@ def calc_group_premium_fama(name, g, factor_list):
         # m1 = x1.mean()
         # x2 = g.loc[g[f'{f}_cut'] == 2]
         # m2 = x2.mean()
-        premium[f] = g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()
+        premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
-
-def calc_group_premium_msci():
-    '''  calculate factor premium = inverse of factor value * returns '''
-    return 1
 
 def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update=False):
     ''' calculate factor premium for different configurations:
@@ -297,7 +293,7 @@ def insert_prem_and_membership_for_group(*args):
 
         # Calculate small minus big
         prem = quantile_mean_returns.pivot(['period_end', 'factor_name'], ['quantile_group']).droplevel(0, axis=1)
-        prem = (prem[2] - prem[0]).dropna().rename('premium').reset_index()
+        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
         membership = df[['ticker', 'period_end', 'factor_name', 'quantile_group']].reset_index(drop=True)
 
         prem['group'] = group

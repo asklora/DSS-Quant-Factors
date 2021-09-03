@@ -16,14 +16,15 @@ production_score_current = "universe_rating" # in DROID v2 DB
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
-worldscope_quarter_summary_table = "data_worldscope_summary"
+worldscope_quarter_summary_table = "data_worldscope_summary_test"
 ibes_data_table = "data_ibes_monthly"
 macro_data_table = "data_macro_monthly"
-stock_data_table = "master_ohlcvtr"
+stock_data_table_ohlc = "data_dss"
+stock_data_table_tri = "data_dsws"
 eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
 eikon_vix_table = "data_factor_eikon_vix"
-eikon_price_table = "data_factor_eikon_price"
+eikon_price_table = "data_factor_eikon_price_daily_final"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"
