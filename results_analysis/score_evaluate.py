@@ -33,9 +33,9 @@ def plot_dist_score(df, filename):
             ax = fig.add_subplot(num_score, num_cur, k)
             ax.hist(g[col], bins=20)
             if k % num_cur == 1:
-                ax.set_ylabel(name, fontsize=20)
+                ax.set_ylabel(col, fontsize=20)
             if k > (num_score-1)*num_cur:
-                ax.set_xlabel(col, fontsize=20)
+                ax.set_xlabel(name, fontsize=20)
             k+=1
     plt.savefig(f'#score_dist_{filename}.png')
 
@@ -51,9 +51,9 @@ def plot_dist_dlp_score(df, filename):
             ax = fig.add_subplot(num_score, num_cur, k)
             ax.hist(g[col], bins=10)
             if k % num_cur == 1:
-                ax.set_ylabel(name, fontsize=20)
+                ax.set_ylabel(col, fontsize=20)
             if k > (num_score-1)*num_cur:
-                ax.set_xlabel(col, fontsize=20)
+                ax.set_xlabel(name, fontsize=20)
             k+=1
     plt.savefig(f'#score_dist_dlp_{filename}.png')
 
