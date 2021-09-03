@@ -23,6 +23,8 @@ import global_vals
 
 if __name__ == "__main__":
 
+    start_time = dt.datetime.now()
+
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
@@ -33,12 +35,21 @@ if __name__ == "__main__":
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+
+    # --------------------------------------- Schedule for Production --------------------------------
+    if not args.debug:
+        td = dt.datetime.today()
+        ystd = td - relativedelta(days=1)
+        if (ystd.strftime("%A") != 'Sunday') or (td.day==1):
+            print('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=True, save=False, update=False)
+                              use_cached=False, save=False, update=False)
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
         elif args.mode == 'v2':
@@ -47,6 +58,9 @@ if __name__ == "__main__":
             calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
+
+    end_time = dt.datetime.now()
+    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -63,10 +77,11 @@ if __name__ == "__main__":
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
-    sql_result = vars(args)  # data write to DB TABLE lightgbm_results
+    sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
+    sql_result.pop('debug')
     sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
@@ -78,7 +93,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(10):
+    for i in range(3):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period
@@ -123,3 +138,8 @@ if __name__ == "__main__":
             save_xls=True,
         )
     score_history()     # calculate score with DROID v2 method & evaluate
+
+    end_time = dt.datetime.now()
+    print(start_time, end_time, end_time-start_time)
+
+

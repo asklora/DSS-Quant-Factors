@@ -103,7 +103,7 @@ def calc_group_premium_fama(name, g, factor_list):
         # m1 = x1.mean()
         # x2 = g.loc[g[f'{f}_cut'] == 2]
         # m2 = x2.mean()
-        premium[f] = g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()
+        premium[f] = g.loc[g[f'{f}_cut'] == 2, 'stock_return_y'].mean()-g.loc[g[f'{f}_cut'] == 0, 'stock_return_y'].mean()
 
     return premium, g.filter(['ticker','period_end']+cut_col)
 
@@ -140,7 +140,7 @@ def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update
     df = df.dropna(subset=['stock_return_y','ticker'])       # remove records without next month return -> not used to calculate factor premium
     df = df.loc[~df['ticker'].str.startswith('.')]   # remove index e.g. ".SPX" from factor calculation
 
-    factor_list = formula['name'].to_list()                           # factor = all variabales
+    factor_list = formula.loc[formula['x_col'], 'name'].to_list()                           # factor = all variabales
 
     return df, factor_list
 
@@ -168,10 +168,6 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
         results = {}
         target_cols = factor_list + ['ticker', 'period_end', i, 'stock_return_y']
         for name, g in df[target_cols].groupby(['period_end', i]):
-            # if name[0]!=dt.datetime(2019,12,31):
-            #     continue
-            # if name[1] != 'USD':
-            #     continue
             results[name] = {}
             results[name], member_g = calc_group_premium_fama(name, g, factor_list)
             member_g['group'] = name[1]
@@ -301,7 +297,7 @@ def insert_prem_and_membership_for_group(*args):
 
         # Calculate small minus big
         prem = quantile_mean_returns.pivot(['period_end', 'factor_name'], ['quantile_group']).droplevel(0, axis=1)
-        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
+        prem = (prem[2] - prem[0]).dropna().rename('premium').reset_index()
         membership = df[['ticker', 'period_end', 'factor_name', 'quantile_group']].reset_index(drop=True)
 
         prem['group'] = group
