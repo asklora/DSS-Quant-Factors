@@ -187,4 +187,3 @@ def score_history():
 
 if __name__ == "__main__":
     score_history()
-    # score_eval()
