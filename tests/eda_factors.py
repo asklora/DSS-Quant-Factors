@@ -18,13 +18,13 @@ from sklearn.manifold import TSNE
 
 with global_vals.engine_ali.connect() as conn:
     # factors_bi = factors = factors_avg = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2', conn)
-    df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_weekavg_v2 WHERE trim_outlier', conn)
-    factors_bi = factors = factors_avg = pd.pivot_table(df, index=['period_end','group'], columns=['factor_name'], values='premium').reset_index()
+    factors_bi = factors = df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_monthly', conn)
+    # factors_bi = factors = factors_avg = pd.pivot_table(df, index=['period_end','group'], columns=['factor_name'], values='premium').reset_index()
     formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
 global_vals.engine_ali.dispose()
 
 x_list = list(set(formula.loc[formula['x_col'],'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
-col_list = formula['name'].to_list()
+col_list = list(set(formula['name'].to_list()) & (set(factors.columns.to_list())))
 factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
 # factors.to_csv('eda/test_factor_premium.csv', index=False)
@@ -63,8 +63,9 @@ def correl_fama_website():
     #     sub_df = df[['period_end', website_factor[i], our_factor[i]]].set_index('period_end')
 
 def eda_missing():
-    df = factors.filter(col_list).isnull().sum()/len(factors)
-    df.sort_values(ascending=False).to_csv('eda/missing.csv')
+    df = factors.groupby(["group"])[col_list].apply(lambda x : x.isnull().sum()/len(x))
+    # df = df/len(factors)
+    df.to_csv('eda/missing.csv')
     # plt.hist(df)
     # plt.savefig('eda/missing.png')
 
@@ -574,20 +575,20 @@ def plot_usd_trend():
 
 if __name__ == "__main__":
     # correl_fama_website()
-    # eda_missing()
+    eda_missing()
     # eda_correl()
     # eda_vif()
     # plot_autocorrel()
     # plot_trend()
 
     # sharpe_ratio()
-    test_if_persistent()
+    # test_if_persistent()
     # average_absolute_mean()
 
     # check_smb()
 
     # dist_all()
-    dist_all_train_test()
+    # dist_all_train_test()
 
     # plot_usd_trend()
 
@@ -600,4 +601,4 @@ if __name__ == "__main__":
 
     # pillar_corr()
 
-    select_by_cum_ret()
+    # select_by_cum_ret()
