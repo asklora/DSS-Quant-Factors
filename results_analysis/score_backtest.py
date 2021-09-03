@@ -57,44 +57,37 @@ def score_history():
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)
 
+    fundamentals = fundamentals.dropna(subset=["currency_code",'period_end'], how='any')
+
     # trim outlier to +/- 2 std
     calculate_column_score = []
     for column in calculate_column:
-        try:
-            if fundamentals[column].notnull().sum():
-                column_score = column + "_score"
-                fundamentals[column_score] = fundamentals.groupby(["currency_code",'period_end'])[column].transform(
-                    lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
-                calculate_column_score.append(column_score)
-        except Exception as e:
-            print(e)
-            continue
+        if fundamentals[column].notnull().sum():
+            column_score = column + "_score"
+            fundamentals[column_score] = fundamentals.groupby(["currency_code",'period_end'])[column].transform(
+                lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
+            calculate_column_score.append(column_score)
+
     print(calculate_column_score)
 
     # apply robust scaler
     calculate_column_robust_score = []
     for column in calculate_column:
-        try:
-            column_score = column + "_score"
-            column_robust_score = column + "_robust_score"
-            fundamentals[column_robust_score] = fundamentals.groupby(["currency_code",'period_end'])[column_score].transform(
-                lambda x: robust_scale(x))
-            calculate_column_robust_score.append(column_robust_score)
-        except Exception as e:
-            print(e)
+        column_score = column + "_score"
+        column_robust_score = column + "_robust_score"
+        fundamentals[column_robust_score] = fundamentals.groupby(["currency_code",'period_end'])[column_score].transform(
+            lambda x: robust_scale(x))
+        calculate_column_robust_score.append(column_robust_score)
 
     # apply maxmin scaler on Currency / Industry
     for column in calculate_column:
-        try:
-            column_robust_score = column + "_robust_score"
-            column_minmax_currency_code = column + "_minmax_currency_code"
-            df_currency_code = fundamentals[["currency_code", column_robust_score, 'period_end']]
-            df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
-            fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
-                lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
-            fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
-        except Exception as e:
-            print(e)
+        column_robust_score = column + "_robust_score"
+        column_minmax_currency_code = column + "_minmax_currency_code"
+        df_currency_code = fundamentals[["currency_code", column_robust_score, 'period_end']]
+        df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
+        fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
+            lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
+        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
 
     # apply quantile transformation on before scaling scores
     try:
@@ -109,18 +102,23 @@ def score_history():
         print(e)
 
     # plot min/max distribution
-    n = round(len(calculate_column)**0.5)+1
+    n = len(calculate_column)
     for name, g in fundamentals.groupby('currency_code'):
-        fig = plt.figure(figsize=(n*4, n*4), dpi=120, constrained_layout=True)
+        fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
         k=1
         for col in calculate_column:
-            ax = fig.add_subplot(n, n, k)
-            try:
-                ax.hist(g[col+"_minmax_currency_code"], bins=20)
-            except:
-                pass
-            ax.set_xlabel(f'{col}')
-            k+=1
+            for i in ['','_score','_robust_score','_minmax_currency_code','_quantile_currency_code']:
+                ax = fig.add_subplot(n, 5, k)
+                try:
+                    ax.hist(g[col+i], bins=20)
+                except:
+                    pass
+                if k % 5 == 1:
+                    ax.set_ylabel(col, fontsize=20)
+                if k > (n - 1) * 5:
+                    ax.set_xlabel(i, fontsize=20)
+                k+=1
+        plt.suptitle(name, fontsize=30)
         fig.savefig(f'minmax_{name}.png')
         plt.close(fig)
 
@@ -165,8 +163,11 @@ def score_history():
     for col in list(fundamentals_factors_scores_col) + ['ai_score']:
         for cur in ['USD','HKD','EUR']:
             ax = fig.add_subplot(5, 3, k)
-            df = fundamentals.loc[fundamentals['currency_code']==cur, col]
-            ax.hist(df, bins=20)
+            try:
+                df = fundamentals.loc[fundamentals['currency_code']==cur, col]
+                ax.hist(df, bins=20)
+            except:
+                pass
             if k % 3 == 1:
                 ax.set_ylabel(col, fontsize=20)
             if k > (5-1)*3:
