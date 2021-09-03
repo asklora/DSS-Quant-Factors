@@ -28,7 +28,6 @@ eikon_price_table = "data_factor_eikon_price_daily_final"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"
-processed_stock_table = "processed_stock_weekavg"
 factor_premium_table = "processed_factor_premium"
 processed_group_ratio_table = "processed_group_ratio"
 processed_cutbins_table = "processed_cutbins"

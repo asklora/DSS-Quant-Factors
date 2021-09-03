@@ -18,7 +18,7 @@ def score_history():
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
         factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
         universe = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table}', conn)
-        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_weekavg "
+        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
                                          f"WHERE (period_end>'2017-08-30') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
     global_vals.engine_ali.dispose()

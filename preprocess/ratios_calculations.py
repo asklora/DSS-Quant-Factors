@@ -531,7 +531,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     if sample_interval == 'biweekly':
         db_table_name += '_biweekly'
     elif price_sample == 'last_week_avg':
-        db_table_name += '_weekavg'
+        db_table_name += '_monthly'
 
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:

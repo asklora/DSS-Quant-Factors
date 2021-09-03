@@ -18,7 +18,7 @@ from itertools import starmap
 from .auto import auto_arima_lite
 
 
-def get_latest_factor_premium(factors=None, fillna_value=0, factor_tbl="processed_factor_premium_weekavg"):
+def get_latest_factor_premium(factors=None, fillna_value=0, factor_tbl="processed_factor_premium_monthly"):
     print(f"Fill na with {fillna_value}")
     with engine_ali.connect() as conn:
         prem = pd.read_sql(f"SELECT * FROM {factor_tbl}", conn).drop("len", axis=1)

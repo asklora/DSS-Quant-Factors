@@ -72,7 +72,7 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
     if use_biweekly_stock:
         db_table_name = global_vals.processed_ratio_table + '_biweekly'
     elif stock_last_week_avg:
-        db_table_name = global_vals.processed_ratio_table + '_weekavg'
+        db_table_name = global_vals.processed_ratio_table + '_monthly'
     else:
         db_table_name = global_vals.processed_ratio_table
 
@@ -105,7 +105,7 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
         tbl_suffix = '_biweekly'
         print(f'      ------------------------> Use biweekly ratios')
     elif stock_last_week_avg:
-        tbl_suffix = '_weekavg'
+        tbl_suffix = '_monthly'
         print(f'      ------------------------> Replace stock return with last week average returns')
     else:
         tbl_suffix = ''

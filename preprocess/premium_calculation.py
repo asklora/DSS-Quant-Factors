@@ -126,7 +126,7 @@ def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update
             df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_biweekly", conn)
         elif stock_last_week_avg:
             print(f'      ------------------------> Replace stock return with last week average returns')
-            df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_weekavg", conn)
+            df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly", conn)
         else:
             df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}", conn)
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
@@ -199,8 +199,8 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     factor_table = global_vals.factor_premium_table
     member_table = global_vals.membership_table
     if stock_last_week_avg:
-        factor_table += '_weekavg'
-        member_table += '_weekavg'
+        factor_table += '_monthly'
+        member_table += '_monthly'
     elif use_biweekly_stock:
         factor_table += '_biweekly'
         member_table += '_biweekly'
@@ -334,7 +334,7 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
         tbl_suffix = '_biweekly'
         print(f'      ------------------------> Use biweekly ratios')
     elif stock_last_week_avg:
-        tbl_suffix = '_weekavg'
+        tbl_suffix = '_monthly'
         print(f'      ------------------------> Replace stock return with last week average returns')
     else:
         tbl_suffix = ''
