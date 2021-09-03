@@ -23,6 +23,9 @@ def score_history():
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
     global_vals.engine_ali.dispose()
 
+    x = fundamentals_score.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
+
+
     # pred_mean = pd.pivot_table(pred_mean, index=['ticker'], columns=['y_type'], values='final_pred')
     # pred_mean.columns = ['ai_value_'+x for x in pred_mean.columns]
     # fundamentals_score = fundamentals_score.merge(pred_mean, on=['ticker','period_end'])
@@ -87,7 +90,7 @@ def score_history():
         df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
         fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
             lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
-        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
+        # fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
 
     # apply quantile transformation on before scaling scores
     try:
@@ -100,6 +103,10 @@ def score_history():
         fundamentals = fundamentals.merge(tmp, how='left', on='ticker')
     except Exception as e:
         print(e)
+
+    x = fundamentals.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
+
+    # fundamentals['column_minmax_currency_code'] =
 
     # plot min/max distribution
     n = len(calculate_column)

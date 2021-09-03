@@ -37,6 +37,7 @@ def plot_dist_score(df, filename):
             if k > (num_score-1)*num_cur:
                 ax.set_xlabel(name, fontsize=20)
             k+=1
+    plt.suptitle(filename, fontsize=30)
     plt.savefig(f'#score_dist_{filename}.png')
 
 def plot_dist_dlp_score(df, filename):
@@ -55,6 +56,7 @@ def plot_dist_dlp_score(df, filename):
             if k > (num_score-1)*num_cur:
                 ax.set_xlabel(name, fontsize=20)
             k+=1
+    plt.suptitle(filename, fontsize=30)
     plt.savefig(f'#score_dist_dlp_{filename}.png')
 
 def score_eval(fundamentals, name=''):
