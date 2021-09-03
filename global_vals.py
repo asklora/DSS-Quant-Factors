@@ -11,6 +11,8 @@ result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_result_score"
 feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_pred_prod"
+production_score_history = "data_fundamental_score_history_testing"
+production_score_current = "universe_rating" # in DROID v2 DB
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

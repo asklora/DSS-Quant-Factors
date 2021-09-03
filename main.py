@@ -7,18 +7,15 @@ from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
 from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
-from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
-    recall_score, f1_score
 
 from preprocess.load_data import load_data
 from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
 from random_forest import rf_HPOT, rf_space
 from results_analysis.write_merged_pred import download_stock_pred
-from results_analysis.score_back_testing import score_history
+from results_analysis.score_backtest import score_history
 
 from lasso import start_lasso
 import itertools

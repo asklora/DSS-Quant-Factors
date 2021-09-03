@@ -9,6 +9,7 @@ from preprocess.premium_calculation import trim_outlier
 import global_vals
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
+from results_analysis.score_evaluate import read_score_and_eval
 
 def score_history():
     ''' calculate score with DROID v2 method & evaluate '''
@@ -179,48 +180,10 @@ def score_history():
 
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        fundamentals[label_col + score_col].to_sql('data_fundamental_score_history_testing', **extra)
+        fundamentals[label_col + score_col].to_sql(global_vals.production_score_history, **extra)
     global_vals.engine_ali.dispose()
 
-    score_eval()
-
-def score_eval(name=''):
-    ''' evaluate score history with 1) descirbe, 2) score 10-qcut mean ret, 3) per period change '''
-    score_col = ['ai_score','fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
-    writer = pd.ExcelWriter(f'score_eval_{name}.xlsx')
-
-    with global_vals.engine_ali.connect() as conn:
-        fundamentals = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col)} FROM data_fundamental_score_history_clair", conn)
-    global_vals.engine_ali.dispose()
-
-    # 1. Score describe
-    for name, g in fundamentals.groupby(['currency_code']):
-        df = g.describe().transpose()
-        df['std'] = df.std()
-        df.to_excel(writer, sheet_name=f'describe_{name}')
-
-    # 2. Test 10-qcut return
-    def score_ret_mean(score_col='ai_score', group_col='currency_code'):
-        if group_col=='':
-            fundamentals['currency_code'] = 'cross'
-            group_col = 'currency_code'
-        fundamentals['score_qcut'] = fundamentals.groupby([group_col])[score_col].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
-        mean_ret = pd.pivot_table(fundamentals, index=[group_col], columns=['score_qcut'], values='stock_return_y')
-        mean_ret['count'] = fundamentals.groupby([group_col])[score_col].count()
-        return mean_ret.transpose()
-
-    for i in score_col:
-        score_ret_mean(i).to_excel(writer, sheet_name=f'ret_{i}')
-    score_ret_mean('ai_score','').to_excel(writer, sheet_name='ret_cross')
-
-    # 3. Ticker Score Single-Period Change
-    fundamentals = fundamentals.sort_values(by=['ticker','period_end'])
-    fundamentals['ai_score_last'] = fundamentals.groupby(['ticker'])['ai_score'].shift(1)
-    fundamentals['ai_score_change'] = fundamentals['ai_score'] - fundamentals['ai_score_last']
-    df = fundamentals.groupby(['ticker'])['ai_score_change'].agg(['mean','std'])
-    df.to_excel(writer, sheet_name='score_change')
-
-    writer.save()
+    read_score_and_eval()       # evaluate score calculated
 
 if __name__ == "__main__":
     score_history()
