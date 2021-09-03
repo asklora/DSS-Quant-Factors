@@ -363,7 +363,7 @@ class load_data:
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
 
             # use PCA on all index/macro inputs
-            mi_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=0.8))])
+            mi_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=0.6))])
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1)
             mi_pca = mi_pipe.fit(pca_mi_df)
             mi_trans = mi_pca.transform(pca_mi_df)
