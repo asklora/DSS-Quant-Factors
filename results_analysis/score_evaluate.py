@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import global_vals
 
 dlp_col = ['wts_rating', 'dlp_1m']
-score_col = ['fundamentals_momentum', 'fundamentals_quality', 'fundamentals_value', 'ai_score']
+score_col = ['fundamentals_momentum', 'fundamentals_quality', 'fundamentals_value','fundamentals_extra', 'ai_score']
 
 def read_score_and_eval():
     ''' Read current & historic ai_score and evaluate return & distribution '''

@@ -90,7 +90,7 @@ def score_history():
         df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
         fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
             lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
-        # fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
+        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
 
     # apply quantile transformation on before scaling scores
     try:
