@@ -3,6 +3,7 @@ from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomF
 import numpy as np
 import argparse
 import pandas as pd
+import gc
 from dateutil.relativedelta import relativedelta
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
@@ -142,6 +143,8 @@ def eval_regressor(rf_space, rerun=False):
         hpot['best_score'] = result['mae_valid']
         hpot['best_stock_df'] = to_sql_prediction(Y_test_pred)
         hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
+
+    gc.collect()
 
     if rerun:
         print(f"RERUN --> {str(result['mse_train']*100)[:6]}, {str(result['mse_test']*100)[:6]}, {str(result['net_ret'])[:6]}, {best_factor}")
