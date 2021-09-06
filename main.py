@@ -42,7 +42,7 @@ if __name__ == "__main__":
     if not args.debug:
         td = dt.datetime.today()
         ystd = td - relativedelta(days=1)
-        if (ystd.strftime("%A") != 'Sunday') or (td.day==1):
+        if (ystd.weekday() != 6) or (td.day==1):
             print('Not start: Factor model only run on the next day after first Sunday every month! ')
             exit(0)
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # , 'EUR', 'HKD'
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.4, 0.6, 0.8]
+    use_pca_list = [0.8]
 
     # create date list of all testing period
     last_test_date = dt.date.today() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(3):
+    for i in range(1):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period
