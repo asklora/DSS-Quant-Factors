@@ -10,14 +10,14 @@ def read_score_and_eval():
     ''' Read current & historic ai_score and evaluate return & distribution '''
 
     with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
-        score_current = pd.read_sql(f"SELECT S.ticker, currency_code, {', '.join(dlp_col + score_col)} FROM {global_vals.production_score_current} S "
-                                    f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker WHERE currency_code is not null", conn)
+        # score_current = pd.read_sql(f"SELECT S.ticker, currency_code, {', '.join(dlp_col + score_col)} FROM {global_vals.production_score_current} S "
+        #                             f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker WHERE currency_code is not null", conn)
         score_history = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col)} FROM {global_vals.production_score_history} WHERE currency_code is not null", conn_ali)
     global_vals.engine_ali.dispose()
     global_vals.engine.dispose()
 
-    plot_dist_dlp_score(score_current, 'current')
-    plot_dist_score(score_current, 'current')
+    # plot_dist_dlp_score(score_current, 'current')
+    # plot_dist_score(score_current, 'current')
     plot_dist_score(score_history, 'history')
     score_eval(score_history)
 

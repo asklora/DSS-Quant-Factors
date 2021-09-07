@@ -93,16 +93,13 @@ def score_history():
         fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
 
     # apply quantile transformation on before scaling scores
-    try:
-        tmp = fundamentals.melt(['ticker', 'currency_code'], calculate_column)
-        tmp['quantile_transformed'] = tmp.groupby(['currency_code', 'variable','period_end'])['value'].transform(
-            lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
-        tmp = tmp[['ticker', 'variable', 'quantile_transformed']]
-        tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
-        tmp = tmp.pivot(['ticker'], ['variable']).droplevel(0, axis=1)
-        fundamentals = fundamentals.merge(tmp, how='left', on='ticker')
-    except Exception as e:
-        print(e)
+    tmp = fundamentals.melt(['ticker', 'currency_code','period_end'], calculate_column)
+    tmp['quantile_transformed'] = tmp.groupby(['currency_code', 'variable','period_end'])['value'].transform(
+        lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
+    tmp = tmp[['ticker', 'variable','period_end', 'quantile_transformed']]
+    tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
+    tmp = tmp.pivot(['ticker', 'period_end'], ['variable']).reset_index()
+    fundamentals = fundamentals.merge(tmp, how='left', on=['ticker', 'period_end'])
 
     x = fundamentals.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
 
@@ -133,16 +130,15 @@ def score_history():
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
     fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
 
-    # calculate ai_score by each currency_code (i.e. group) for each of 3 pillar
+    # calculate ai_score by each currency_code (i.e. group) for each of [Value, Quality, Momentum]
     for (group, pillar_name), g in factor_rank.groupby(['group', 'pillar']):
-        print(f"Calculate Fundamentals [{pillar_name}] in group [{group}]")
         sub_g = g.loc[(g['factor_weight'] == 2) | (g['factor_weight'].isnull())]  # use all rank=2 (best class)
         if len(sub_g) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
             sub_g = g.loc[g.nlargest(1, columns=['pred_z']).index.union(g.loc[g['factor_weight'].isnull()].index)]
-
         score_col = [f'{x}_{y}_currency_code' for x, y in
                      sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
         score_col += [x for x in sub_g.loc[sub_g['scaler'].isnull(), 'factor_name']]
+        print(f"Calculate Fundamentals [{pillar_name}] in group [{group}] with [{', '.join(score_col)}]")
         fundamentals.loc[fundamentals['currency_code'] == group, f"fundamentals_{pillar_name}"] = fundamentals[
             score_col].mean(axis=1)
 
