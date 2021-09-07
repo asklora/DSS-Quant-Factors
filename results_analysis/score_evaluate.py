@@ -18,7 +18,7 @@ def read_score_and_eval():
 
     # plot_dist_dlp_score(score_current, 'current')
     # plot_dist_score(score_current, 'current')
-    plot_dist_score(score_history, 'history')
+    # plot_dist_score(score_history, 'history')
     score_eval(score_history)
 
 def plot_dist_score(df, filename):

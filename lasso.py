@@ -96,7 +96,7 @@ class lasso_bm:
         p = np.linspace(0, 1, 10)
         train_bins = np.quantile(Y_train_pred, p)
 
-        ret = eval_test_return(sample_set['test_y'], Y_test_pred, Y_train_pred)
+        ret, ret_col = eval_test_return(sample_set['test_y'], Y_test_pred, Y_train_pred)
 
         if rerun:
             result = {'mae_train': mean_absolute_error(sample_set['train_y'], Y_train_pred),

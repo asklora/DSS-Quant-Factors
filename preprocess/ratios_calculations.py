@@ -7,6 +7,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 from scipy.stats import skew
+from utils import record_table_update_time
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
@@ -539,6 +540,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
         ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
         ddf.to_sql(db_table_name, **extra)
+        record_table_update_time(db_table_name, conn)
         print(f'      ------------------------> Finish writing {db_table_name} table ', ddf.shape)
     return df, stocks_col, formula
 

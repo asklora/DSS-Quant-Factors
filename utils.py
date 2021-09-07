@@ -1,3 +1,7 @@
+import global_vals
+import datetime as dt
+import pandas as pd
+
 def remove_tables_with_suffix(engine, suffix):
     '''
     Remove all tables in db engine with names ending with the value of `suffix`.
@@ -15,3 +19,15 @@ def remove_tables_with_suffix(engine, suffix):
                 print(cmd)
     else:
         print("Do not remove any tables because the suffix is an empty string.")
+
+def record_table_update_time(tb_name, conn):
+    ''' record last update time in table '''
+    update_time = dt.datetime.now()
+    try:
+        query = f"DELETE FROM {global_vals.update_time_table} WHERE index='{tb_name}';"
+        conn.execute(query)
+    except Exception as e:
+        print(e)
+    extra = {'con': conn, 'index': False, 'if_exists': 'append'}
+    pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index().to_sql(global_vals.update_time_table, **extra)
+

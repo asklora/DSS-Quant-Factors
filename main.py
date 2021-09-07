@@ -28,12 +28,16 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--tree_type', default='rf')
+    parser.add_argument('--tree_type', default='rf', type=str)
+    parser.add_argument('--use_pca', default=0.6, type=float)
+    parser.add_argument('--group_code', default='USD', type=str)
+
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='default', type=str)
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
+    parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
@@ -49,7 +53,7 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=False)
+                              use_cached=True, save=True)
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
         elif args.mode == 'v2':
@@ -64,10 +68,10 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
 
-    group_code_list = ['USD'] # , 'EUR', 'HKD'
+    group_code_list = [args.group_code] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
-    tree_type_list = ['rf']
-    use_pca_list = [0.8]
+    tree_type_list = [args.tree_type]
+    use_pca_list = [args.use_pc]
 
     # create date list of all testing period
     last_test_date = dt.date.today() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
@@ -80,11 +84,14 @@ if __name__ == "__main__":
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
-        sql_result['name_sql'] += f'_debug'
+        sql_result['name_sql'] += f'_debug1'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
     sql_result.pop('debug')
+    sql_result.pop('tree_type')
+    sql_result.pop('use_pca')
+
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
     sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
@@ -92,7 +99,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Run Lasso Benchmark -------------------------------------
 
-    # start_lasso(data, testing_period_list, group_code_list, y_type)
+    start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
     for i in range(1):

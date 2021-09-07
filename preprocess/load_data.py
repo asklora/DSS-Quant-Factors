@@ -19,6 +19,10 @@ from sklearn.feature_selection import SelectFromModel
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+from multiprocessing import Pool
+def process_image(name):
+    sci=fits.open('{}.fits'.format(name))
+
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
     return pd.concat([df.reset_index(drop=True), add_df], axis=1)
@@ -356,6 +360,7 @@ class load_data:
                     conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
                                  f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
                     df.to_sql(global_vals.processed_pca_table, **extra)
+                    pd.DataFrame({global_vals.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vals.update_time_table, **extra)
                 global_vals.engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])

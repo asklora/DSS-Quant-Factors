@@ -29,7 +29,6 @@ rf_space = {
     'min_impurity_decrease': 0,
     # 'max_samples': hp.choice('max_samples',[0.7, 0.9]),
     'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
-    'n_jobs': -1,
     # 'random_state': 666
 }
 
@@ -46,6 +45,7 @@ def rf_train(rf_space, rerun):
         params[k] = int(params[k])
     main.sql_result.update(params)
     params['bootstrap'] = False
+    params['n_jobs'] = main.sql_result['n_jobs']
 
     if 'extra' in main.sql_result['tree_type']:
         regr = ExtraTreesRegressor(criterion=main.sql_result['objective'], **params)
@@ -138,6 +138,7 @@ def eval_regressor(rf_space, rerun=False):
 
     main.sql_result.update(result)  # update result of model
     hpot['all_results'].append(main.sql_result.copy())
+    hpot['all_results'][-1].pop('n_jobs')
 
     if (result['mae_valid'] < hpot['best_score']) or (rerun): # update best_mae to the lowest value for Hyperopt
         hpot['best_score'] = result['mae_valid']

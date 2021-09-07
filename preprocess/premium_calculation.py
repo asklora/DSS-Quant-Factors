@@ -10,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 from preprocess.ratios_calculations import calc_factor_variables
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.dialects.postgresql import INTEGER
-from utils import remove_tables_with_suffix
+from utils import remove_tables_with_suffix, record_table_update_time
 import multiprocessing as mp
 import time
 
@@ -140,7 +140,7 @@ def get_premium_data(use_biweekly_stock=False, stock_last_week_avg=False, update
 
     return df, factor_list
 
-def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False):
+def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False):
     ''' calculate factor premium for each currency_code / icb_code(6-digit) for each month '''
 
     df, factor_list = get_premium_data(use_biweekly_stock, stock_last_week_avg, update=False)
@@ -149,7 +149,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     all_member_df = []      # record member_df *2 (cur + ind)
     all_results_df = []     # record results_df *2
 
-    group_list = ['currency_code', 'icb_code']
+    group_list = ['currency_code'] # 'icb_code'
 
     if icb_num != 6:
         df['icb_code'] = df['icb_code'].str[:icb_num]
@@ -212,23 +212,13 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
         final_results_df.to_sql(factor_table, **extra, dtype=results_dtypes)
+        record_table_update_time(factor_table, conn)
         print(f'      ------------------------> Finish writing factor premium table ')
         if save_membership:
             final_member_df.to_sql(member_table, **extra, dtype=mem_dtypes)
+            record_table_update_time(member_table, conn)
             print(f'      ------------------------> Finish writing factor membership table ')
     global_vals.engine_ali.dispose()
-
-def write_local_csv_to_db():
-
-    final_member_df = pd.read_csv('membership.csv', low_memory=False)
-    final_results_df = pd.read_csv('factor_premium.csv')
-
-    with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':1000}
-        final_results_df.to_sql(global_vals.factor_premium_table, **extra)
-        final_member_df.to_sql(global_vals.membership_table, **extra)
-    global_vals.engine_ali.dispose()
-
 
 def insert_prem_and_membership_for_group(*args):
     def qcut(series):
@@ -308,11 +298,16 @@ def insert_prem_and_membership_for_group(*args):
         with thread_engine_ali.connect() as conn:
             membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
             prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=results_dtypes, **to_sql_params)
+        record_table_update_time(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", conn)
+        record_table_update_time(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
     except Exception as e:
         print(e)
         thread_engine_ali.dispose()
         return False
     thread_engine_ali.dispose()
+
+
+
     return True
 
 def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False, trim_outlier_=False):
@@ -351,7 +346,7 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
         all_icb = list(set(all_icb))
         all_curr = []
 
-    all_groups = [('curr', curr) for curr in all_curr] + [('icb', icb) for icb in all_icb]
+    all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
 
     print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
 
@@ -370,9 +365,9 @@ if __name__ == "__main__":
     start = datetime.now()
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
-    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
+    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
-    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()
 

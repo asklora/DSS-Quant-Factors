@@ -195,8 +195,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
-    parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default='default_20210903_debug')
+    parser.add_argument('--model', type=str, default='lasso_prod')
+    parser.add_argument('--name_sql', type=str, default='prod_20210907')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
