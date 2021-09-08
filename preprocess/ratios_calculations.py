@@ -223,15 +223,18 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
-def update_period_end(ws):
+def update_period_end(ws=None):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
 
     print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
-    with global_vals.engine.connect() as conn:
+    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
         universe = pd.concat(universe, axis=0, ignore_index=True)
+        eikon_report_date = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_date', conn_ali, chunksize=10000)
+        eikon_report_date = pd.concat(eikon_report_date, axis=0, ignore_index=True)
     global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
@@ -246,14 +249,19 @@ def update_period_end(ws):
 
     # find last fiscal year end for each company (ticker)
     ws['fiscal_year_end'] = ws['fiscal_year_end'].replace(['MAR','JUN','SEP','DEC'], ['0331','0630','0930','1231'])
-    ws['last_year_end'] = (ws['year'].astype(int)- 1).astype(str) + ws['fiscal_year_end']
+    ws['last_year_end'] = (ws['year'].astype(int)-1).astype(str) + ws['fiscal_year_end']
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
     # find period_end for each record (row)
     ws['period_end'] = ws.apply(lambda x: x['last_year_end'] + MonthEnd(x['frequency_number']*3), axis=1)
 
     # Update report_date with the updated period_end
-    ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'])
+    ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'], how='left')
+    ws = ws.merge(eikon_report_date, on=['ticker','period_end'], suffixes=('_ws',''), how='left')
+
+    x = ws.loc[ws['report_date'].isnull() & ws['report_date_ws'].notnull()]
+
+    ws['report_date'] = ws['report_date'].fillna(ws['report_date_ws'])
     ws['report_date'] = ws['report_date'].mask(ws['report_date']<ws['period_end'], np.nan) + MonthEnd(0)
     ws['report_date'] = ws['report_date'].mask(ws['frequency_number']!=4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))
     ws['report_date'] = ws['report_date'].mask(ws['frequency_number']==4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))     # assume all report issued within 3 months
@@ -546,6 +554,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 
 if __name__ == "__main__":
-
+    # update_period_end()
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=False)
+                          use_cached=False, save=False)

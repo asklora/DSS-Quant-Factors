@@ -36,7 +36,7 @@ def download_stock_pred(
     if 'rf' in model:
         other_group_col = ['tree_type','use_pca']
     elif 'lasso' in model:
-        other_group_col = ['use_pca','l1_ratio','alpha']
+        other_group_col = ['name_sql']
 
     with global_vals.engine_ali.connect() as conn:
         query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.neg_factor, S.train_bins, "
@@ -53,6 +53,10 @@ def download_stock_pred(
     result_all['period_end'] = pd.to_datetime(result_all['period_end'])
 
     neg_factor = result_all[['group','neg_factor']].drop_duplicates().set_index('group')['neg_factor'].to_dict()    # negative value columns
+    # for (name,t), g in result_all.groupby(['group', 'period_end']):
+    #     if name!='USD':
+    #         continue
+    #     print(g.mean())
     result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
 
     # use average predictions from different validation sets

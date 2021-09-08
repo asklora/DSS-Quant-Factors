@@ -368,6 +368,7 @@ class load_data:
             self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
 
             # use PCA on all index/macro inputs
+            arma_mi = []
             mi_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=0.6))])
             pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1)
             mi_pca = mi_pipe.fit(pca_mi_df)
@@ -388,13 +389,14 @@ class load_data:
             w = np.tanh(w - 0.5) + 0.5
             arma_pca = linear_model.Lasso(alpha=use_pca).fit(pca_arma_df, pca_arma_df_y, sample_weight=w)
             self.x_col_dict['arma_pca'] = list(np.array(all_input)[np.sum(arma_pca.coef_, axis=0)!=0])
+            print(f"      ------------------------> After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
             self.x_col_dict['mi_pca'] = []
 
         def divide_set(df):
             ''' split x, y from main '''
             x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['macro'] + self.x_col_dict['index']
             if use_pca>0:
-                x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
+                x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']#+['fred_data','usgdp','usinter3']
             y_col_cut = [x+'_cut' for x in y_col]
 
             return df.filter(x_col).values, np.nan_to_num(df[y_col].values,0), np.nan_to_num(df[y_col_cut].values), \

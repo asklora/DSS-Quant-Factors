@@ -365,9 +365,9 @@ if __name__ == "__main__":
     start = datetime.now()
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
-    calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
-    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
+    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
+    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()
 

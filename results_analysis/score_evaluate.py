@@ -81,7 +81,10 @@ def score_eval(fundamentals, name=''):
         return mean_ret.transpose()
 
     for i in score_col:
-        score_ret_mean(i).to_excel(writer, sheet_name=f'ret_{i}')
+        df = score_ret_mean(i)
+        df.to_excel(writer, sheet_name=f'ret_{i}')
+        if i == 'ai_score':
+            print(df)
     score_ret_mean('ai_score','').to_excel(writer, sheet_name='ret_cross')
 
     # 3. Ticker Score Single-Period Change

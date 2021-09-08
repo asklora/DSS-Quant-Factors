@@ -138,18 +138,17 @@ def score_history():
         score_col = [f'{x}_{y}_currency_code' for x, y in
                      sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
         score_col += [x for x in sub_g.loc[sub_g['scaler'].isnull(), 'factor_name']]
-        print(f"Calculate Fundamentals [{pillar_name}] in group [{group}] with [{', '.join(score_col)}]")
+        print(f"Calculate Fundamentals [{pillar_name}] in group [{group}] with [{', '.join(set(score_col))}]")
         fundamentals.loc[fundamentals['currency_code'] == group, f"fundamentals_{pillar_name}"] = fundamentals[
             score_col].mean(axis=1)
 
     # calculate ai_score by each currency_code (i.e. group) for "Extra" pillar
     for group, g in factor_rank.groupby('group'):
-        print(f"Calculate Fundamentals [extra] in group [{group}]")
         sub_g = g.loc[(g['factor_weight'] == 2) & (g['pred_z'] >= 1)]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
-
         if len(sub_g) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
+            print(f"Calculate Fundamentals [extra] in group [{group}] with [{', '.join(set(score_col))}]")
         else:
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = 0.
 
