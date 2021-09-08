@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--mode', default='v2_trim', type=str)
+    parser.add_argument('--mode', default='v2', type=str)
     parser.add_argument('--backtest_period', default=46, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.8]
+    use_pca_list = [0.4, 0.6, 0.8]
 
     # create date list of all testing period
     last_test_date = dt.date.today() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
-        sql_result['name_sql'] += f'_debuglasso'
+        sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(3):
+    for i in range(1):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period

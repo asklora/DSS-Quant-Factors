@@ -64,6 +64,12 @@ def score_eval(fundamentals, name=''):
 
     writer = pd.ExcelWriter(f'#score_eval_history_{name}.xlsx')
 
+    best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all')['stock_return_y'].mean()).reset_index()
+    avg = fundamentals.groupby(['period_end', 'currency_code']).mean().reset_index()
+    best_10 = best_10.merge(avg, on=['period_end', 'currency_code']).sort_values(['currency_code','period_end'])
+    best_10[[0,'stock_return_y']] = best_10.groupby(['currency_code']).apply(lambda x: (x[[0,'stock_return_y']]+1).cumprod(axis=0))
+    best_10.to_excel(writer, sheet_name=f'best10')
+
     # 1. Score describe
     for name, g in fundamentals.groupby(['currency_code']):
         df = g.describe().transpose()
