@@ -17,15 +17,22 @@ def score_history():
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
         factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
-        universe = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table}', conn)
+        universe = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active', conn)
         fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
                                          f"WHERE (period_end>'2017-08-30') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
     global_vals.engine_ali.dispose()
 
-    x = fundamentals_score.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
+    # universe_ticker = set(universe['ticker'].to_list())
+    # ratio_ticker = set(fundamentals_score['ticker'].to_list())
+    # both_exist_ticker = set(universe_ticker) & ratio_ticker
+    # print(universe_ticker - both_exist_ticker)
+    # print(ratio_ticker - both_exist_ticker)
 
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
+    print(len(set(fundamentals_score['ticker'].to_list())))
 
+    # x = fundamentals_score.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
     # pred_mean = pd.pivot_table(pred_mean, index=['ticker'], columns=['y_type'], values='final_pred')
     # pred_mean.columns = ['ai_value_'+x for x in pred_mean.columns]
     # fundamentals_score = fundamentals_score.merge(pred_mean, on=['ticker','period_end'])
@@ -101,39 +108,35 @@ def score_history():
     tmp = tmp.pivot(['ticker', 'period_end'], ['variable']).reset_index()
     fundamentals = fundamentals.merge(tmp, how='left', on=['ticker', 'period_end'])
 
-    x = fundamentals.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
-
-    # fundamentals['column_minmax_currency_code'] =
-
     # plot min/max distribution
-    # n = len(calculate_column)
-    # for name, g in fundamentals.groupby('currency_code'):
-    #     fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
-    #     k=1
-    #     for col in calculate_column:
-    #         for i in ['','_score','_robust_score','_minmax_currency_code']:#,'_quantile_currency_code']:
-    #             ax = fig.add_subplot(n, 5, k)
-    #             try:
-    #                 ax.hist(g[col+i], bins=20)
-    #             except:
-    #                 pass
-    #             if k % 5 == 1:
-    #                 ax.set_ylabel(col, fontsize=20)
-    #             if k > (n - 1) * 5:
-    #                 ax.set_xlabel(i, fontsize=20)
-    #             k+=1
-    #     plt.suptitle(name, fontsize=30)
-    #     fig.savefig(f'minmax_{name}.png')
-    #     plt.close(fig)
+    n = len(calculate_column)
+    for name, g in fundamentals.groupby('currency_code'):
+        fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
+        k=1
+        for col in calculate_column:
+            for i in ['','_score','_robust_score','_minmax_currency_code', '_quantile_currency_code']:
+                ax = fig.add_subplot(n, 5, k)
+                try:
+                    ax.hist(g[col+i], bins=20)
+                except:
+                    pass
+                if k % 5 == 1:
+                    ax.set_ylabel(col, fontsize=20)
+                if k > (n - 1) * 5:
+                    ax.set_xlabel(i, fontsize=20)
+                k+=1
+        plt.suptitle(name, fontsize=30)
+        fig.savefig(f'minmax_{name}.png')
+        plt.close(fig)
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
     fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
 
     # calculate ai_score by each currency_code (i.e. group) for each of [Value, Quality, Momentum]
-    for (group, pillar_name), g in factor_rank.groupby(['group', 'pillar']):
+    for (pillar_name, group), g in factor_rank.groupby(['pillar','group']):
         sub_g = g.loc[(g['factor_weight'] == 2) | (g['factor_weight'].isnull())]  # use all rank=2 (best class)
-        if len(sub_g) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
+        if len(sub_g.dropna()) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
             sub_g = g.loc[g.nlargest(1, columns=['pred_z']).index.union(g.loc[g['factor_weight'].isnull()].index)]
         score_col = [f'{x}_{y}_currency_code' for x, y in
                      sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
@@ -158,25 +161,6 @@ def score_history():
     print("Calculate AI Score")
     fundamentals["ai_score"] = (fundamentals["fundamentals_value"] + fundamentals["fundamentals_quality"] + \
                                 fundamentals["fundamentals_momentum"] + fundamentals["fundamentals_extra"]) / 4
-
-    # plot score distribution
-    # fig = plt.figure(figsize=(12, 20), dpi=120, constrained_layout=True)
-    # k=1
-    # for col in list(fundamentals_factors_scores_col) + ['ai_score']:
-    #     for cur in ['USD','HKD','EUR']:
-    #         ax = fig.add_subplot(5, 3, k)
-    #         try:
-    #             df = fundamentals.loc[fundamentals['currency_code']==cur, col]
-    #             ax.hist(df, bins=20)
-    #         except:
-    #             pass
-    #         if k % 3 == 1:
-    #             ax.set_ylabel(col, fontsize=20)
-    #         if k > (5-1)*3:
-    #             ax.set_xlabel(cur, fontsize=20)
-    #         k+=1
-    # fig.savefig(f'score_dist.png')
-    # plt.close()
 
     score_col = ['ai_score','fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
     label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']

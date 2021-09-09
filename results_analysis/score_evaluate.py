@@ -9,17 +9,39 @@ score_col = ['fundamentals_momentum', 'fundamentals_quality', 'fundamentals_valu
 def read_score_and_eval():
     ''' Read current & historic ai_score and evaluate return & distribution '''
 
+    global score_col
+
     with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
-        # score_current = pd.read_sql(f"SELECT S.ticker, currency_code, {', '.join(dlp_col + score_col)} FROM {global_vals.production_score_current} S "
-        #                             f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker WHERE currency_code is not null", conn)
+        score_current = pd.read_sql(f"SELECT S.ticker, currency_code, {', '.join(dlp_col + score_col)} FROM {global_vals.production_score_current} S "
+                                    f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker WHERE currency_code is not null", conn)
         score_history = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col)} FROM {global_vals.production_score_history} WHERE currency_code is not null", conn_ali)
     global_vals.engine_ali.dispose()
     global_vals.engine.dispose()
 
-    # plot_dist_dlp_score(score_current, 'current')
-    # plot_dist_score(score_current, 'current')
-    # plot_dist_score(score_history, 'history')
+    score_history_current = score_history.loc[score_history['period_end']==score_history['period_end'].max()]
+    score_history_current[score_col] = score_history_current.groupby(['currency_code'])[score_col].rank()
+    score_current[score_col] = score_current.groupby(['currency_code'])[score_col].rank()
+    score_history_current = score_history_current.merge(score_current, on=['ticker'], suffixes=('_test','_prod'))
+    x = score_history_current.corr()
+
+    score_current['ai_score_unscaled'] = score_current[score_col[:-1]].mean(axis=1)
+    score_col += ['ai_score_unscaled']
+
+    save_description(score_current, 'current')
+    save_description_period(score_history, 'history')
+
+    plot_dist_dlp_score(score_current, 'current')
+    plot_dist_score(score_current, 'current')
+    plot_dist_score(score_history, 'history')
     score_eval(score_history)
+
+def save_description(df, filename):
+    df = df.groupby(['currency_code']).agg(['min','mean', 'median', 'max', 'std']).transpose()
+    print(df)
+    df.to_csv(f'describe_{filename}.csv')
+
+def save_description_period(df, filename):
+    df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std']).to_csv(f'describe_period_{filename}.csv')
 
 def plot_dist_score(df, filename):
     ''' Plot distribution (currency, score)  for all AI score compositions '''
