@@ -16,7 +16,7 @@ production_score_current = "universe_rating" # in DROID v2 DB
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
-worldscope_quarter_summary_table = "data_worldscope_summary_test"
+worldscope_quarter_summary_table = "data_worldscope_summary"
 ibes_data_table = "data_ibes_monthly"
 macro_data_table = "data_macro_monthly"
 stock_data_table_ohlc = "data_dss"

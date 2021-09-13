@@ -232,6 +232,7 @@ def update_period_end(ws):
         universe = pd.concat(universe, axis=0, ignore_index=True)
     global_vals.engine.dispose()
 
+    ws = ws.dropna(subset=['year'])
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
     ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end

@@ -1,62 +1,224 @@
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 from sqlalchemy import text
 import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
+from preprocess.ratios_calculations import check_duplicates, fill_all_day, update_period_end
 from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
+def get_tri(save=True, conditions=None):
+    ''' get stock related data from DSS & DSWS '''
 
-def get_tri(save=True, currency='USD'):
+    print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
+    with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
+        query_tri = f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
+        query_tri += f"FROM {global_vals.stock_data_table_ohlc} C "
+        query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vals.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
+        query_tri += f"WHERE {' AND '.join(conditions)}"
+        tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
+        tri = pd.concat(tri, axis=0, ignore_index=True)
 
-    with global_vals.engine.connect() as conn_droid:
-        print(f'#################################################################################################')
-        print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
+        query_mkt = f"SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_day DESC) rank "
+        query_mkt += f"FROM {global_vals.eikon_mktcap_table}) a WHERE a.rank = 1;"
+        market_cap_anchor = pd.read_sql(query_mkt, conn_ali).iloc[:,:-1]
+    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
+
+    # update market_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
+    tri = tri.merge(market_cap_anchor, on=['ticker','trading_day'], how='left')
+    tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
+    tri[['anchor_tri','market_cap','market_cap_usd']] = tri.groupby('ticker')[['anchor_tri','market_cap','market_cap_usd']].apply(lambda x: x.ffill().bfill())
+    tri[['anchor_tri']] = tri['anchor_tri']/tri['tri']
+    tri[['market_cap','market_cap_usd','tac']] = tri[['market_cap','market_cap_usd','close']].div(tri['anchor_tri'], axis=0)
+    tri = tri.drop(['anchor_tri'], axis=1)
+
+    if save:
+        tri.to_csv('dcache_tri.csv', index=False)
+        market_cap_anchor.to_csv('dcache_market_cap_anchor.csv', index=False)
+
+    return tri
+
+def get_worldscope(save=True, conditions=None):
+    ''' get fundamental data related data from Worldscope '''
+
+    conditions.append("ticker IS NOT NULL")
+    with global_vals.engine.connect() as conn:
+        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
+        query_ws = f'SELECT * FROM {global_vals.worldscope_quarter_summary_table} '
+        query_ws += f"WHERE {' AND '.join(conditions)}"
+        ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
+        ws = pd.concat(ws, axis=0, ignore_index=True)
+        query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vals.ibes_data_table} '
+        query_ibes += f"WHERE {' AND '.join(conditions)}"
+        ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
+        ibes = pd.concat(ibes, axis=0, ignore_index=True)
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn)
+    global_vals.engine.dispose()
+
+    def drop_dup(df):
+        ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
+
+        print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+        df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
+        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
+        return df.drop('count', axis=1)
+
+    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
+
+    def fill_missing_ws(ws):
+        ''' fill in missing values by calculating with existing data '''
+
+        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
+        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
+        ws['fn_18308'] = ws['fn_18308'].fillna(ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
+        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
+        return ws
+
+    ws = fill_missing_ws(ws)        # selectively fill some missing fields
+    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
+
+    # label period_end with month end of trading_day (update_date)
+    ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
+    ws = ws.drop(['period_end'], axis=1)
+
+    print(list(universe['currency_code'].unique()))
+    universe['currency_code'] = universe['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
+    universe['icb_code'] = pd.to_numeric(universe['icb_code'], errors='coerce')
+
+    if save:
+        ws.to_csv('dcache_ws.csv', index=False)
+        ibes.to_csv('dcache_ibes.csv', index=False)
+        universe.to_csv('dcache_universe.csv', index=False)
+
+    return ws, ibes, universe
+
+class combine_tri_worldscope:
+    ''' combine tri & worldscope raw data '''
+
+    def __init__(self, use_cached, save, currency=None, ticker=None):
         conditions = ["True"]
         if currency:
             conditions.append(f"currency_code = '{currency}'")
-        query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
-                     f"FROM {global_vals.stock_data_table_tri} T "
-                     f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
-                     f"WHERE {' AND '.join(conditions)}")
-        tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
-        tri = pd.concat(tri, axis=0, ignore_index=True)
-        if save:
-            tri.to_csv('cache_tri.csv', index=False)
-    global_vals.engine.dispose()
-    return tri
+        if ticker:
+            # conditions.append(f"ticker = '{ticker}'")
+            conditions.append(f"ticker in ('AAPL.O','0992.HK')")
+    
+        # 1. Stock return/volatility/volume
+        if use_cached:
+            try:
+                tri = pd.read_csv('dcache_tri_ratio.csv', low_memory=False)
+            except Exception as e:
+                print(e)
+                tri = get_tri(save, conditions)
+        else:
+            tri = get_tri(save, conditions)
+    
+        # 2. Fundamental financial data - from Worldscope
+        # 3. Consensus forecasts - from I/B/E/S
+        # 4. Universe
+        if use_cached:
+            try:
+                ws = pd.read_csv('dcache_ws.csv')
+                ibes = pd.read_csv('dcache_ibes.csv')
+                universe = pd.read_csv('dcache_universe.csv')
+            except Exception as e:
+                print(e)
+                ws, ibes, universe = get_worldscope(save, conditions)
+        else:
+            ws, ibes, universe = get_worldscope(save, conditions)
+    
+        # change to datetime
+        tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+        ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+        ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
+    
+        # Merge all table and convert to daily basis
+        tri = fill_all_day(tri)
+        tri[['market_cap','market_cap_usd','tac']] = tri.groupby(['ticker'])[['market_cap','market_cap_usd','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
+        self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
+        self.df = pd.merge(self.df, universe, on=['ticker'], how='left')
+    
+        self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
+        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code'])
+    
+        # Fill NaN in fundamental records with interpolate + tri with ffill
+        self.df[self.nonmom_factor] = self.df.groupby(['ticker'])[self.nonmom_factor].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
 
-def fill_all_day(result):
-    ''' Fill all the weekends between first / last day and fill NaN'''
+    def calculate_final_results(self, interval=7):
+        ''' calculate period average / change / skew / tri '''
 
-    # Construct indexes for all day between first/last day * all ticker used
-    df = result[["ticker", "trading_day"]].copy()
-    df.trading_day = pd.to_datetime(df['trading_day'])
-    result.trading_day = pd.to_datetime(result['trading_day'])
-    df = df.sort_values(by=['trading_day'], ascending=True)
-    daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1], freq='D')
-    indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', 'trading_day'])
+        arr = reshape_by_interval(self.df.copy(), interval)
+        cols = self.df.columns.to_list()
+    
+        # create label array (ticker, trading_day - period_end)
+        arr_label = arr[:,:,-1, [cols.index('ticker'), cols.index('trading_day')]]
+        arr_curind = arr[:,:,-1, [cols.index('currency_code'), cols.index('icb_code')]]
+    
+        # factor for changes (change over time) + factor for average (point in time)
+        change_idx = [cols.index(x) for x in self.change_factor]
+        average_idx = [cols.index(x) for x in self.avg_factor]
+    
+        arr_change = get_avg_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
+        arr_average = get_average(arr[:,:,:,average_idx])[:,:,0,:]      # calculate average in this period
+        arr_skew = get_skew(np.expand_dims(arr[:,:,:,cols.index('tri')], 3))    # calculate tri skew
+        arr_skew = np.expand_dims(arr_skew, 2)
+        arr_vol = get_rogers_satchell(arr[:,:,:,cols.index('open'):(cols.index('close')+1)])    # calculate tri volatility
+    
+        # concat all array & columns name
+        final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_change, arr_average, arr_curind), axis=2)
+        self.final_col = ['ticker','trading_day', 'vol', 'skew'] + ['change_'+x for x in self.change_factor] + \
+                         ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
+    
+        return final_arr
 
-    # Insert weekend/before first trading date to df
-    df = df.set_index(['ticker', 'trading_day']).reindex(indexes).reset_index()
-    df = df.sort_values(by=['ticker', 'trading_day'], ascending=True)
-    result = df.merge(result, how="left", on=["ticker", "trading_day"])
+    def get_results(self):
+        ''' calculate all arr for different period '''
 
+        arr_dict = {}
+        for i in [7, 30, 91, 182, 365]:
+            arr = self.calculate_final_results(i)
+            arr = np.reshape(arr, (arr.si[0]))
+
+
+        return   arr_dict
+
+def reshape_by_interval(df, interval=7):
+    ''' reshape 2D sample -> (ticker, #period, interval_length, factor) '''
+
+    # define length as int
+    num_ticker   = int(len(df['ticker'].unique()))
+    num_day      = int(len(df['trading_day'].unique()))
+    num_interval = int(interval)
+    num_period   = int(np.ceil(num_day/num_interval))
+    num_factor   = int(df.shape[1])
+
+    arr = np.reshape(df.values, (num_ticker, num_day, num_factor), order='C')       # reshape to (ticker, period_end, interval)
+    arr = np.pad(arr, ((0,0), (0, int(num_period*num_interval-num_day)), (0,0)), mode='constant', constant_values=np.nan)   # fill for dates
+    arr = np.reshape(arr, (num_ticker, num_period, num_interval, num_factor), order='C')    # reshape to different interval partition
+
+    return arr
+
+def get_skew(tri):
+    ''' Calculate return skewness '''
+
+    returns = get_change(tri)[:,:,:,0]
+    log_returns = np.log(returns)
+    result = stats.skew(log_returns, axis=-1, nan_policy='omit')
     return result
 
-def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
-    ''' Calculate roger satchell volatility:
-        daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
-        annualized = sqrt(daily*256)
-    '''
+def get_rogers_satchell(arr, days_in_year=256):
+    ''' Calculate return volatility '''
 
-    open_data, high_data, low_data, close_data = tri['open'].values, tri['high'].values, tri['low'].values, tri[
-        'close'].values
+    arr = arr.astype(np.float)
+    open_data, high_data, low_data, close_data = arr[:,:,:,0], arr[:,:,:,1], arr[:,:,:,2], arr[:,:,:,3]
 
-    # Calculate daily volatility
     hc_ratio = np.divide(high_data, close_data)
     log_hc_ratio = np.log(hc_ratio.astype(float))
     ho_ratio = np.divide(high_data, open_data)
@@ -68,340 +230,49 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
     input1 = np.multiply(log_hc_ratio, log_ho_ratio)
     input2 = np.multiply(log_lo_ratio, log_lc_ratio)
-    sum_ = np.add(input1, input2)
-
-    # Calculate annualize volatility
-    for end in list_of_start_end:
-        name_col = f'vol_{end}'
-        tri[name_col] = sum_
-        tri[name_col] = tri.groupby('ticker')[name_col].rolling(end, min_periods=1).mean().reset_index(drop=1)
-        tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x * days_in_year))
-        tri.loc[tri.groupby('ticker').head(end - 1).index, name_col] = np.nan  # y-1 ~ y0
-
-    return tri
-
-def get_skew(tri, list_of_start_end):
-    ''' Calculate past 1yr daily return skewness '''
-    # Calculate annualize volatility
-
-    for end in list_of_start_end:
-        skew_col = f'skew_{end}'
-        tri[skew_col] = tri['tri'] / tri.groupby('ticker')['tri'].shift(1) - 1  # update tri to 1d before (i.e. all stock ret up to 1d before)
-        tri[skew_col] = tri[skew_col].rolling(end, min_periods=1).skew()
-        tri.loc[tri.groupby('ticker').head(end-1).index, skew_col] = np.nan  # y-1 ~ y0
-
-    return tri
-
-def get_return_volume(tri, list_of_start_end):
-    ''' Calculate past 1yr daily return skewness '''
-    # Calculate annualize volatility
-
-    for end in list_of_start_end:
-
-        # resample tri using average of 1/4 of period as the proxy for monthly tri
-        avg_period = round(end/4, 0)
-        tri[['tri', 'volume']] = tri.groupby("ticker")[['tri', 'volume']].rolling(avg_period, min_periods=1).mean().reset_index(drop=1)
-        tri[[f'tri_a{end}', f'volume_a{end}']] = tri.groupby('ticker')[['tri', 'volume']].shift(-end)     # Calculate monthly return (Y) + R6,2 + R12,7
-        tri[[f'tri_a{end}', f'volume_a{end}']] = tri.groupby('ticker')[['tri', 'volume']].shift(end)
-
-        tri[[f'tri_a{end}', f'volume_a{end}']] = (tri[[f'tri_a{end}', f'volume_a{end}']] / tri[['tri', 'volume']]) - 1
-        tri[[f'tri_a{end}', f'volume_a{end}']] = (tri[['tri', 'volume']] / tri[[f'tri_b{end}', f'volume_b{end}']]) - 1
-
-    return tri.drop(['tri', 'volume'], axis=1)
-
-def calc_stock_return(use_cached, save):
-    ''' Calcualte monthly stock return '''
-
-    if use_cached:
-        try:
-            tri = pd.read_csv('cache_tri.csv', low_memory=False)
-        except Exception as e:
-            print(e)
-            tri = get_tri(save=save)
-    else:
-        tri = get_tri(save=save)
-
-    # merge stock return from DSS & from EIKON (i.e. longer history)
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    tri = tri.replace(0, np.nan)            # Remove all 0 since total_return_index not supposed to be 0
-    tri = fill_all_day(tri)                 # Add NaN record of tri for weekends
-    tri = tri.sort_values(['ticker','trading_day'])
-    list_of_start_end = [7, 14, 30, 91, 182, 365]      # descriptive ratio using 1w / 2w / 1m / 1q / 1y
-
-    print(f'      ------------------------> Calculate skewness ')
-    tri = get_skew(tri, list_of_start_end)    # Calculate past 1 year skewness
-
-    # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-    print(f'      ------------------------> Calculate RS volatility ')
-    tri = get_rogers_satchell(tri, list_of_start_end)
-    tri = tri.drop(['open', 'high', 'low'], axis=1)
-
-    # Fill forward (-> holidays/weekends) + backward (<- first trading price)
-    cols = tri.select_dtypes(float).columns.to_list()
-    tri[cols] = tri.groupby('ticker')[cols].fillna(method='ffill')
-
-    print(f'      ------------------------> Calculate stock returns ')
-    tri = get_return_volume(tri, list_of_start_end)
-
-    stock_col = tri.select_dtypes('float').columns  # all numeric columns
-
-    if save:
-        tri.to_csv('cache_tri_ratio.csv', index=False)
-
-    return tri, stock_col
-
-# -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
-
-def update_period_end(ws):
-    ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
-
-    print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
-
-    with global_vals.engine.connect() as conn:
-        universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
-        universe = pd.concat(universe, axis=0, ignore_index=True)
-    global_vals.engine.dispose()
-
-    ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
-
-    ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end
-
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y-%m-%d')
-
-    # dataframe for original period - report_date matching
-    ws_report_date_remap = ws[['ticker','period_end','report_date']]
-    ws = ws.drop(['report_date'], axis=1)
-
-    # find last fiscal year end for each company (ticker)
-    ws['fiscal_year_end'] = ws['fiscal_year_end'].replace(['MAR','JUN','SEP','DEC'], ['0331','0630','0930','1231'])
-    ws['last_year_end'] = (ws['year'].astype(int)- 1).astype(str) + ws['fiscal_year_end']
-    ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
-
-    # find period_end for each record (row)
-    ws['period_end'] = ws.apply(lambda x: x['last_year_end'] + MonthEnd(x['frequency_number']*3), axis=1)
-
-    # Update report_date with the updated period_end
-    ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'])
-    ws['report_date'] = ws['report_date'].mask(ws['report_date']<ws['period_end'], np.nan) + MonthEnd(0)
-    ws['report_date'] = ws['report_date'].mask(ws['frequency_number']!=4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))
-    ws['report_date'] = ws['report_date'].mask(ws['frequency_number']==4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))     # assume all report issued within 3 months
-
-    ws['period_end'] = ws['report_date']        # align worldscope data with stock return using report date
-    ws = ws.loc[ws[global_vals.date_column]<dt.datetime.today()]
-
-    return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end','report_date'], axis=1)
-
-def fill_all_given_date(result, ref):
-    ''' Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling '''
-
-    # Construct indexes for all date / ticker used in ref (reference dataframe)
-    try:
-        result['period_end'] = result['trading_day']  # rename trading to period_end for later merge with other df
-        result = result.drop(['trading_day'], axis=1)
-    except Exception as e:
-        print("No need to convert column name 'trading_day' to 'period_end'", e)
-
-    result['period_end'] = pd.to_datetime(result['period_end'], format='%Y-%m-%d')
-    date_list = ref['trading_day'].unique()
-    ticker_list = ref['ticker'].unique()
-    indexes = pd.MultiIndex.from_product([ticker_list, date_list],
-                                         names=['ticker', 'period_end']).to_frame(index=False, name=['ticker', 'period_end'])
-    print(f"      ------------------------> Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
-
-    # Insert weekend/before first trading date to df
-    indexes['period_end'] = pd.to_datetime(indexes['period_end'])
-    result = result.merge(indexes, on=['ticker', 'period_end'], how='outer')
-    result = result.sort_values(by=['ticker', 'period_end'], ascending=True)
-    result.update(result.groupby(['ticker']).fillna(method='ffill'))        # fill forward for date
-
-    result = result.loc[(result['period_end'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
-    result = result.drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
+    sum = np.add(input1, input2)
+    rogers_satchell_var = np.nanmean(sum, axis=2, keepdims=True)
+    result = np.sqrt(rogers_satchell_var * days_in_year)
 
     return result
 
-def download_clean_worldscope_ibes(save):
-    ''' download all data for factor calculate & LGBM input (except for stock return) '''
+def get_change(arr):
+    ''' Calculate daily change'''
+    arr = arr.astype(np.float)
+    arr_roll = np.roll(arr, shift=1, axis=1)
+    arr_roll[:,0,:,:] = np.nan
+    return arr / arr_roll - 1
 
-    with global_vals.engine.connect() as conn:
-        print(f'#################################################################################################')
-        query_ws = f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null'
-        query_ibes = f'SELECT * FROM {global_vals.ibes_data_table}'
-        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
-        ws = pd.concat(ws, axis=0, ignore_index=True)
-        print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
-        ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
-        ibes = pd.concat(ibes, axis=0, ignore_index=True)
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
-        universe = pd.concat(universe, axis=0, ignore_index=True)
-    global_vals.engine.dispose()
+def get_average(arr):
+    ''' Calculate daily change'''
+    arr = arr.astype(np.float)
+    return np.nanmean(arr, axis=2, keepdims=True)
 
-    def drop_dup(df):
-        ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
+def get_avg_change(arr):
+    ''' Calculate period change with the average of change on last (1/4) of total period '''
 
-        print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+    arr = arr.astype(np.float)
+    avg_period = round(arr.shape[2]/4, 0)
+    sample_arr = arr[:, :, int(arr.shape[2]-avg_period):, :]
+    arr_mean = np.nanmean(sample_arr, axis=2, keepdims=True)
+    arr_roll = np.roll(arr_mean, shift=1, axis=1)
+    arr_roll[:,0,:,:] = np.nan
 
-        df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
-        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
-        return df.drop('count', axis=1)
+    return arr_mean / arr_roll - 1
 
-    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
+# -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
-    def fill_missing_ws(ws):
-        ''' fill in missing values by calculating with existing data '''
-
-        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
-
-        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
-        ws['fn_18308'] = ws['fn_18308'].fillna(
-            ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
-        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
-
-        return ws
-
-    ws = fill_missing_ws(ws)        # selectively fill some missing fields
-    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
-
-    # label period_end with month end of trading_day (update_date)
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-
-    if save:
-        ws.to_csv('cache_ws.csv', index=False)
-        ibes.to_csv('cache_ibes.csv', index=False)
-        universe.to_csv('cache_universe.csv', index=False)
-
-    return ws, ibes, universe
-
-def check_duplicates(df, name=''):
-    df1 = df.drop_duplicates(subset=['period_end','ticker'])
-    if df.shape != df1.shape:
-        raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
-
-def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=True, update=False):
-    ''' This part do the following:
-        1. import all data from DB refer to other functions
-        2. combined stock_return, worldscope, ibes, macroeconomic tables '''
-
-    # 1. Stock return/volatility/volume
-    if use_cached:
-        try:
-            tri = pd.read_csv('cache_tri_ratio.csv', low_memory=False)
-            stocks_col = tri.select_dtypes("float").columns
-        except Exception as e:
-            print(e)
-            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
-    else:
-        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
-
-    tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    check_duplicates(tri, 'tri')
-
-    # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['period_end'], ascending=False).head(100)
-
-    # 2. Fundamental financial data - from Worldscope
-    # 3. Consensus forecasts - from I/B/E/S
-    # 4. Universe
-    if use_cached:
-        try:
-            ws = pd.read_csv('cache_ws.csv')
-            ibes = pd.read_csv('cache_ibes.csv')
-            universe = pd.read_csv('cache_universe.csv')
-        except Exception as e:
-            print(e)
-            ws, ibes, universe = download_clean_worldscope_ibes(save)
-    else:
-        ws, ibes, universe = download_clean_worldscope_ibes(save)
-
-    # align worldscope / ibes data with stock return date (monthly/biweekly)
-    ws = fill_all_given_date(ws, tri)
-    ibes = fill_all_given_date(ibes, tri)
-
-    check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + period_end
-    check_duplicates(ibes, 'ibes')
-
-    # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
-        replace({'10102010':'101021','10102015':'101022','10102020':'101023','10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
-    # print(universe['icb_code'].unique())
-    universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
-
-    # Combine all data for table (1) - (6) above
-    print(f'      ------------------------> Merge all dataframes ')
-    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
-    df = df.merge(ibes, on=['ticker', 'period_end'], how='left')
-    df = df.sort_values(by=['ticker', 'period_end'])
-
-    # Update close price to adjusted value
-    def adjust_close(df):
-        ''' using market cap to adjust close price for stock split, ...'''
-
-        print(f'      ------------------------> Adjust closing price with market cap ')
-
-        df = df[['ticker','period_end','market_cap','close']].dropna(how='any')
-        df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
-        df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
-        df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
-
-        return df[['ticker','period_end','close']]
-
-    df.update(adjust_close(df))
-
-    # Forward fill for fundamental data
-    cols = df.select_dtypes('float').columns.to_list()
-    if fill_method == 'fill_all':           # e.g. Quarterly June -> Monthly July/Aug
-        df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
-    elif fill_method == 'fill_monthly':     # e.g. only 1 June -> 30 June
-        df.update(df.groupby(['ticker', 'period_end'])[cols].fillna(method='ffill'))
-    else:
-        raise ValueError("Invalid fill_method. Expecting 'fill_all' or 'fill_monthly' got ", fill_method)
-
-    if sample_interval == 'monthly':
-        df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
-    elif sample_interval == 'biweekly':
-        df = resample_to_biweekly(df, date_col='period_end')  # Resample to monthly stock tri
-    else:
-        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
-
-    df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
-
-    if save:
-        df.to_csv('cache_all_data.csv')  # for debug
-        pd.DataFrame(stocks_col).to_csv('cache_stocks_col.csv', index=False)  # for debug
-
-    check_duplicates(df, 'final')
-    return df, stocks_col
-
-def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True, update=True):
+def calc_factor_variables(df):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    if update:  # update for the latest month (not using cachec & not save locally)
-        use_cached = False
-        save = False
-
-    if use_cached:
-        try:
-            df = pd.read_csv('cache_all_data.csv', low_memory=False, dtype={"icb_code": str})
-            stocks_col = pd.read_csv('cache_stocks_col.csv', low_memory=False).iloc[:, 0].to_list()
-        except Exception as e:
-            print(e)
-            df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
-    else:
-        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save, update)
-
     with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table} WHERE x_col', conn, chunksize=10000)  # ratio calculation used
-        formula = pd.concat(formula, axis=0, ignore_index=True)
+        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_descriptive', conn)  # ratio calculation used
     global_vals.engine_ali.dispose()
 
-    print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
-
     # Prepare for field requires add/minus
-    add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
-    add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
+    add_minus_fields = formula[['field_num', 'field_denom']].to_numpy().flatten()
+    add_minus_fields = [i for i in filter(None, list(set(add_minus_fields))) if any(['-' in i, '+' in i, '*' in i])]
 
     for i in add_minus_fields:
         x = [op.strip() for op in i.split()]
@@ -426,25 +297,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     old_name = formula.loc[keep_original_mask, 'field_num'].to_list()
     df[new_name] = df[old_name]
 
-    # b) Time series ratios (Calculate 1m change first)
-    print(f'      ------------------------> Calculate time-series ratio ')
-    if sample_interval == 'monthly':
-        period_yr = 12
-        period_q = 3
-    elif sample_interval == 'biweekly':
-        period_yr = 24
-        period_q = 6
-
-    for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
-            orient='records'):  # minus calculation for ratios
-        print('Calculating:', r['name'])
-        if r['name'][-2:] == 'yr':
-            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
-            df.loc[df.groupby('ticker').head(period_yr).index, r['name']] = np.nan
-        elif r['name'][-1] == 'q':
-            df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_q) - 1
-            df.loc[df.groupby('ticker').head(period_q).index, r['name']] = np.nan
-
     # c) Divide ratios
     print(f'      ------------------------> Calculate dividing ratios ')
     for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
@@ -452,26 +304,14 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         print('Calculating:', r['name'])
         df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
 
-    # drop records with no stock_return_y & any ratios
-    df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
+    mom_factor = formula.loc[formula['pillar']=='momentum', 'name'].to_list()
+    nonmom_factor = formula.loc[formula['pillar']!='momentum', 'name'].to_list()
+    change_factor = formula.loc[formula['period_change'], 'name'].to_list()
+    avg_factor = formula.loc[formula['period_average'], 'name'].to_list()
 
-    db_table_name = global_vals.processed_ratio_table
-    if sample_interval == 'biweekly':
-        db_table_name += '_biweekly'
-    elif price_sample == 'last_week_avg':
-        db_table_name += '_weekavg'
-
-    # save calculated ratios to DB
-    with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 100000}
-        ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
-        ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
-        ddf.to_sql(db_table_name, **extra)
-        print(f'      ------------------------> Finish writing {db_table_name} table ', ddf.shape)
-    return df, stocks_col, formula
-
+    return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=False)
+    dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
+    print(dict.keys())
+    # calc_factor_variables(use_cached=True, save=False)

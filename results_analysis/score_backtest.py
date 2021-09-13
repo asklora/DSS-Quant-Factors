@@ -60,53 +60,40 @@ def score_history():
     # trim outlier to +/- 2 std
     calculate_column_score = []
     for column in calculate_column:
-        try:
-            if fundamentals[column].notnull().sum():
-                column_score = column + "_score"
-                fundamentals[column_score] = fundamentals.groupby(["currency_code",'period_end'])[column].transform(
-                    lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
-                calculate_column_score.append(column_score)
-        except Exception as e:
-            print(e)
-            continue
+        column_score = column + "_score"
+        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end'])[column].transform(
+            lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
+        calculate_column_score.append(column_score)
     print(calculate_column_score)
 
     # apply robust scaler
     calculate_column_robust_score = []
     for column in calculate_column:
-        try:
-            column_score = column + "_score"
-            column_robust_score = column + "_robust_score"
-            fundamentals[column_robust_score] = fundamentals.groupby(["currency_code",'period_end'])[column_score].transform(
-                lambda x: robust_scale(x))
-            calculate_column_robust_score.append(column_robust_score)
-        except Exception as e:
-            print(e)
+        column_score = column + "_score"
+        column_robust_score = column + "_robust_score"
+        fundamentals[column_robust_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end'])[column_score].transform(
+            lambda x: robust_scale(x))
+        calculate_column_robust_score.append(column_robust_score)
 
     # apply maxmin scaler on Currency / Industry
     for column in calculate_column:
-        try:
-            column_robust_score = column + "_robust_score"
-            column_minmax_currency_code = column + "_minmax_currency_code"
-            df_currency_code = fundamentals[["currency_code", column_robust_score, 'period_end']]
-            df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
-            fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
-                lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
-            fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
-        except Exception as e:
-            print(e)
+        column_robust_score = column + "_robust_score"
+        column_minmax_currency_code = column + "_minmax_currency_code"
+        df_currency_code = fundamentals[["currency_code", column_robust_score, 'period_end']]
+        df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
+        fundamentals[column_minmax_currency_code] = df_currency_code.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end']).score.transform(
+            lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
+        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
+
 
     # apply quantile transformation on before scaling scores
-    try:
-        tmp = fundamentals.melt(['ticker', 'currency_code'], calculate_column)
-        tmp['quantile_transformed'] = tmp.groupby(['currency_code', 'variable','period_end'])['value'].transform(
-            lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
-        tmp = tmp[['ticker', 'variable', 'quantile_transformed']]
-        tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
-        tmp = tmp.pivot(['ticker'], ['variable']).droplevel(0, axis=1)
-        fundamentals = fundamentals.merge(tmp, how='left', on='ticker')
-    except Exception as e:
-        print(e)
+    tmp = fundamentals.melt(['ticker', 'currency_code','period_end'], calculate_column)
+    tmp['quantile_transformed'] = tmp.dropna(subset=['currency_code', 'variable','period_end']).groupby(['currency_code', 'variable','period_end'])['value'].transform(
+        lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
+    tmp = tmp[['ticker', 'period_end', 'variable', 'quantile_transformed']]
+    tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
+    tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1)
+    fundamentals = fundamentals.merge(tmp, how='left', on='ticker')
 
     # plot min/max distribution
     n = round(len(calculate_column)**0.5)+1
