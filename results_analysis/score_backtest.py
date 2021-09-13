@@ -103,28 +103,26 @@ def score_history():
 
     x = fundamentals.groupby('currency_code').apply(lambda x: x.isnull().sum()/len(x))
 
-    # fundamentals['column_minmax_currency_code'] =
-
     # plot min/max distribution
-    # n = len(calculate_column)
-    # for name, g in fundamentals.groupby('currency_code'):
-    #     fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
-    #     k=1
-    #     for col in calculate_column:
-    #         for i in ['','_score','_robust_score','_minmax_currency_code']:#,'_quantile_currency_code']:
-    #             ax = fig.add_subplot(n, 5, k)
-    #             try:
-    #                 ax.hist(g[col+i], bins=20)
-    #             except:
-    #                 pass
-    #             if k % 5 == 1:
-    #                 ax.set_ylabel(col, fontsize=20)
-    #             if k > (n - 1) * 5:
-    #                 ax.set_xlabel(i, fontsize=20)
-    #             k+=1
-    #     plt.suptitle(name, fontsize=30)
-    #     fig.savefig(f'minmax_{name}.png')
-    #     plt.close(fig)
+    n = len(calculate_column)
+    for name, g in fundamentals.groupby('currency_code'):
+        fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
+        k=1
+        for col in calculate_column:
+            for i in ['','_score','_robust_score','_minmax_currency_code']:#,'_quantile_currency_code']:
+                ax = fig.add_subplot(n, 5, k)
+                try:
+                    ax.hist(g[col+i], bins=20)
+                except:
+                    pass
+                if k % 5 == 1:
+                    ax.set_ylabel(col, fontsize=20)
+                if k > (n - 1) * 5:
+                    ax.set_xlabel(i, fontsize=20)
+                k+=1
+        plt.suptitle(name, fontsize=30)
+        fig.savefig(f'minmax_{name}.png')
+        plt.close(fig)
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
@@ -160,23 +158,23 @@ def score_history():
                                 fundamentals["fundamentals_momentum"] + fundamentals["fundamentals_extra"]) / 4
 
     # plot score distribution
-    # fig = plt.figure(figsize=(12, 20), dpi=120, constrained_layout=True)
-    # k=1
-    # for col in list(fundamentals_factors_scores_col) + ['ai_score']:
-    #     for cur in ['USD','HKD','EUR']:
-    #         ax = fig.add_subplot(5, 3, k)
-    #         try:
-    #             df = fundamentals.loc[fundamentals['currency_code']==cur, col]
-    #             ax.hist(df, bins=20)
-    #         except:
-    #             pass
-    #         if k % 3 == 1:
-    #             ax.set_ylabel(col, fontsize=20)
-    #         if k > (5-1)*3:
-    #             ax.set_xlabel(cur, fontsize=20)
-    #         k+=1
-    # fig.savefig(f'score_dist.png')
-    # plt.close()
+    fig = plt.figure(figsize=(12, 20), dpi=120, constrained_layout=True)
+    k=1
+    for col in list(fundamentals_factors_scores_col) + ['ai_score']:
+        for cur in ['USD','HKD','EUR']:
+            ax = fig.add_subplot(5, 3, k)
+            try:
+                df = fundamentals.loc[fundamentals['currency_code']==cur, col]
+                ax.hist(df, bins=20)
+            except:
+                pass
+            if k % 3 == 1:
+                ax.set_ylabel(col, fontsize=20)
+            if k > (5-1)*3:
+                ax.set_xlabel(cur, fontsize=20)
+            k+=1
+    fig.savefig(f'score_dist.png')
+    plt.close()
 
     score_col = ['ai_score','fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
     label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']

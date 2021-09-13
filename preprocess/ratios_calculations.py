@@ -21,8 +21,9 @@ def get_tri(save=True, currency=None):
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
         conditions = ["True"]
+        # conditions = ["T.ticker='2896.HK'"]
         if currency:
-            conditions.append(f"currency_code = '{currency}'")
+            conditions.append(f"T.currency_code = '{currency}'")
         query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
                      f"FROM {global_vals.stock_data_table_tri} T "
                      f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
@@ -259,8 +260,6 @@ def update_period_end(ws=None):
     ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'], how='left')
     ws = ws.merge(eikon_report_date, on=['ticker','period_end'], suffixes=('_ws',''), how='left')
 
-    x = ws.loc[ws['report_date'].isnull() & ws['report_date_ws'].notnull()]
-
     ws['report_date'] = ws['report_date'].fillna(ws['report_date_ws'])
     ws['report_date'] = ws['report_date'].mask(ws['report_date']<ws['period_end'], np.nan) + MonthEnd(0)
     ws['report_date'] = ws['report_date'].mask(ws['frequency_number']!=4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))
@@ -292,9 +291,9 @@ def fill_all_given_date(result, ref):
     indexes['period_end'] = pd.to_datetime(indexes['period_end'])
     result = result.merge(indexes, on=['ticker', 'period_end'], how='outer')
     result = result.sort_values(by=['ticker', 'period_end'], ascending=True)
-    # x = result.loc[result['ticker']=='AAPL.O']
+    x = result.loc[result['ticker']=='2869.HK']
     result.update(result.groupby(['ticker']).fillna(method='ffill'))        # fill forward for date
-    # x = result.loc[result['ticker']=='AAPL.O']
+    x = result.loc[result['ticker']=='2869.HK']
 
     result = result.loc[(result['period_end'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
     result = result.drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
