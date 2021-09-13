@@ -45,9 +45,7 @@ if __name__ == "__main__":
     # --------------------------------------- Schedule for Production --------------------------------
     if not args.debug:
         td = dt.datetime.today()
-        ystd = td - relativedelta(days=1)
-        print(ystd.weekday(), td.day)
-        if (ystd.weekday() != 6) or (td.day==1) or (td.day >= 8):
+        if (td.day >= 7):
             print('Not start: Factor model only run on the next day after first Sunday every month! ')
             exit(0)
 
