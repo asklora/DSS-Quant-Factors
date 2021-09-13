@@ -16,9 +16,10 @@ def get_tri(save=True, conditions=None):
 
     print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
-        query_tri = f"SELECT ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
+        query_tri = f"SELECT C.ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
         query_tri += f"FROM {global_vals.stock_data_table_ohlc} C "
         query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vals.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
+        query_tri += f"INNER JOIN (SELECT ticker, currency_code FROM {global_vals.dl_value_universe_table}) U ON U.ticker = C.ticker "
         query_tri += f"WHERE {' AND '.join(conditions)}"
         tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
@@ -39,25 +40,26 @@ def get_tri(save=True, conditions=None):
 
     if save:
         tri.to_csv('dcache_tri.csv', index=False)
-        market_cap_anchor.to_csv('dcache_market_cap_anchor.csv', index=False)
 
     return tri
 
 def get_worldscope(save=True, conditions=None):
     ''' get fundamental data related data from Worldscope '''
 
-    conditions.append("ticker IS NOT NULL")
+    ws_conditions = ["C.ticker IS NOT NULL"]
+    if conditions:
+        ws_conditions.extend(conditions)
+
     with global_vals.engine.connect() as conn:
         print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        query_ws = f'SELECT * FROM {global_vals.worldscope_quarter_summary_table} '
-        query_ws += f"WHERE {' AND '.join(conditions)}"
+        query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vals.worldscope_quarter_summary_table} C '
+        query_ws += f"INNER JOIN (SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}) U ON U.ticker = C.ticker "
+        query_ws += f"WHERE {' AND '.join(ws_conditions)}"
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
-        query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vals.ibes_data_table} '
-        query_ibes += f"WHERE {' AND '.join(conditions)}"
+        query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vals.ibes_data_table} WHERE ticker IS NOT NULL'
         ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
         ibes = pd.concat(ibes, axis=0, ignore_index=True)
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn)
     global_vals.engine.dispose()
 
     def drop_dup(df):
@@ -85,17 +87,14 @@ def get_worldscope(save=True, conditions=None):
     # label period_end with month end of trading_day (update_date)
     ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws = ws.drop(['period_end'], axis=1)
-
-    print(list(universe['currency_code'].unique()))
-    universe['currency_code'] = universe['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
-    universe['icb_code'] = pd.to_numeric(universe['icb_code'], errors='coerce')
+    ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
+    ws['icb_code'] = pd.to_numeric(ws['icb_code'], errors='coerce')
 
     if save:
         ws.to_csv('dcache_ws.csv', index=False)
         ibes.to_csv('dcache_ibes.csv', index=False)
-        universe.to_csv('dcache_universe.csv', index=False)
 
-    return ws, ibes, universe
+    return ws, ibes
 
 class combine_tri_worldscope:
     ''' combine tri & worldscope raw data '''
@@ -103,15 +102,14 @@ class combine_tri_worldscope:
     def __init__(self, use_cached, save, currency=None, ticker=None):
         conditions = ["True"]
         if currency:
-            conditions.append(f"currency_code = '{currency}'")
+            conditions.append("currency_code in ({})".format(','.join(['\''+x+'\'' for x in currency])))
         if ticker:
-            # conditions.append(f"ticker = '{ticker}'")
-            conditions.append(f"ticker in ('AAPL.O','0992.HK')")
+            conditions.append("C.ticker in ({})".format(','.join(['\''+x+'\'' for x in ticker])))
     
         # 1. Stock return/volatility/volume
         if use_cached:
             try:
-                tri = pd.read_csv('dcache_tri_ratio.csv', low_memory=False)
+                tri = pd.read_csv('dcache_tri.csv', low_memory=False)
             except Exception as e:
                 print(e)
                 tri = get_tri(save, conditions)
@@ -125,12 +123,11 @@ class combine_tri_worldscope:
             try:
                 ws = pd.read_csv('dcache_ws.csv')
                 ibes = pd.read_csv('dcache_ibes.csv')
-                universe = pd.read_csv('dcache_universe.csv')
             except Exception as e:
                 print(e)
-                ws, ibes, universe = get_worldscope(save, conditions)
+                ws, ibes = get_worldscope(save, conditions)
         else:
-            ws, ibes, universe = get_worldscope(save, conditions)
+            ws, ibes = get_worldscope(save, conditions)
     
         # change to datetime
         tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
@@ -142,14 +139,14 @@ class combine_tri_worldscope:
         tri[['market_cap','market_cap_usd','tac']] = tri.groupby(['ticker'])[['market_cap','market_cap_usd','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
         self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
         self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
-        self.df = pd.merge(self.df, universe, on=['ticker'], how='left')
-    
+
         self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
         self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code'])
     
         # Fill NaN in fundamental records with interpolate + tri with ffill
         self.df[self.nonmom_factor] = self.df.groupby(['ticker'])[self.nonmom_factor].apply(pd.DataFrame.interpolate, limit_direction='forward')
         self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
+        self.df[['currency_code','icb_code']] = self.df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
 
     def calculate_final_results(self, interval=7):
         ''' calculate period average / change / skew / tri '''
@@ -178,15 +175,15 @@ class combine_tri_worldscope:
     
         return final_arr
 
-    def get_results(self):
+    def get_results(self, list_of_interval=[7, 14, 30, 91, 182, 365]):
         ''' calculate all arr for different period '''
 
         arr_dict = {}
-        for i in [7, 30, 91, 182, 365]:
+        for i in list_of_interval:
             arr = self.calculate_final_results(i)
-            arr = np.reshape(arr, (arr.si[0]))
-
-
+            arr = np.reshape(arr, (arr.shape[0]*arr.shape[1], arr.shape[2]))
+            arr_dict[i] = pd.DataFrame(arr, columns=self.final_col)
+            print(arr_dict[i])
         return   arr_dict
 
 def reshape_by_interval(df, interval=7):
@@ -200,7 +197,7 @@ def reshape_by_interval(df, interval=7):
     num_factor   = int(df.shape[1])
 
     arr = np.reshape(df.values, (num_ticker, num_day, num_factor), order='C')       # reshape to (ticker, period_end, interval)
-    arr = np.pad(arr, ((0,0), (0, int(num_period*num_interval-num_day)), (0,0)), mode='constant', constant_values=np.nan)   # fill for dates
+    arr = np.pad(arr, ((0,0), (int(num_period*num_interval-num_day),0), (0,0)), mode='constant', constant_values=np.nan)   # fill for dates
     arr = np.reshape(arr, (num_ticker, num_period, num_interval, num_factor), order='C')    # reshape to different interval partition
 
     return arr
@@ -299,7 +296,7 @@ def calc_factor_variables(df):
 
     # c) Divide ratios
     print(f'      ------------------------> Calculate dividing ratios ')
-    for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
+    for r in formula.dropna(subset=['field_num','field_denom'], how='any').loc[(formula['field_num'] != formula['field_denom'])].to_dict(
             orient='records'):  # minus calculation for ratios
         print('Calculating:', r['name'])
         df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
@@ -312,6 +309,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
-    print(dict.keys())
-    # calc_factor_variables(use_cached=True, save=False)
+    # dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
+    # print(dict.keys())
+
+    get_worldscope(True)

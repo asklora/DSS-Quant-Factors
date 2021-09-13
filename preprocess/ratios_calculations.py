@@ -5,7 +5,7 @@ import global_vals
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd
+from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
@@ -240,28 +240,27 @@ def update_period_end(ws):
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y-%m-%d')
 
-    # dataframe for original period - report_date matching
-    ws_report_date_remap = ws[['ticker','period_end','report_date']]
-    ws = ws.drop(['report_date'], axis=1)
-
     # find last fiscal year end for each company (ticker)
     ws['fiscal_year_end'] = ws['fiscal_year_end'].replace(['MAR','JUN','SEP','DEC'], ['0331','0630','0930','1231'])
     ws['last_year_end'] = (ws['year'].astype(int)- 1).astype(str) + ws['fiscal_year_end']
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
-    # find period_end for each record (row)
-    ws['period_end'] = ws.apply(lambda x: x['last_year_end'] + MonthEnd(x['frequency_number']*3), axis=1)
-
     # Update report_date with the updated period_end
-    ws = ws.merge(ws_report_date_remap, on=['ticker','period_end'])
-    ws['report_date'] = ws['report_date'].mask(ws['report_date']<ws['period_end'], np.nan) + MonthEnd(0)
-    ws['report_date'] = ws['report_date'].mask(ws['frequency_number']!=4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))
-    ws['report_date'] = ws['report_date'].mask(ws['frequency_number']==4, ws['report_date'].fillna(ws['period_end'] + MonthEnd(3)))     # assume all report issued within 3 months
+    with global_vals.engine_ali.connect() as conn_ali:
+        eikon_report_date = pd.read_sql(f'SELECT * FROM {global_vals.eikon_report_date_table}', conn_ali, chunksize=10000)
+        eikon_report_date = pd.concat(eikon_report_date, axis=0, ignore_index=True)
+    global_vals.engine_ali.dispose()
 
-    ws['period_end'] = ws['report_date']        # align worldscope data with stock return using report date
-    ws = ws.loc[ws[global_vals.date_column]<dt.datetime.today()]
+    ws = ws.merge(eikon_report_date, on=['ticker', 'period_end'], suffixes=('', '_ek'), how='left')
 
-    return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end','report_date'], axis=1)
+    ws['report_date'] = ws['report_date'].fillna(ws['report_date_ek'])
+    ws['period_end'] = ws['period_end'].mask(ws['report_date'] < ws['period_end'], ws['report_date'] + QuarterEnd(-1))
+    ws['report_date'] = ws['report_date'].fillna(ws['period_end'] + QuarterEnd(1))
+
+    ws['period_end'] = ws['report_date']
+    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
+
+    return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end','report_date','report_date_ek'], axis=1)
 
 def fill_all_given_date(result, ref):
     ''' Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling '''
@@ -293,6 +292,15 @@ def fill_all_given_date(result, ref):
 
     return result
 
+def drop_dup(df, col='period_end'):
+    ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
+
+    print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+
+    df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
+    df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
+    return df.drop('count', axis=1)
+
 def download_clean_worldscope_ibes(save):
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
@@ -309,15 +317,6 @@ def download_clean_worldscope_ibes(save):
         universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
         universe = pd.concat(universe, axis=0, ignore_index=True)
     global_vals.engine.dispose()
-
-    def drop_dup(df):
-        ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
-
-        print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
-
-        df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
-        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
-        return df.drop('count', axis=1)
 
     ws = drop_dup(ws)  # drop duplicate and retain the most complete record
 

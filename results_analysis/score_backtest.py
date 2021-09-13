@@ -87,13 +87,13 @@ def score_history():
 
 
     # apply quantile transformation on before scaling scores
-    tmp = fundamentals.melt(['ticker', 'currency_code','period_end'], calculate_column)
+    tmp = fundamentals.melt(['ticker', 'currency_code', 'period_end'], calculate_column)
     tmp['quantile_transformed'] = tmp.dropna(subset=['currency_code', 'variable','period_end']).groupby(['currency_code', 'variable','period_end'])['value'].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
     tmp = tmp[['ticker', 'period_end', 'variable', 'quantile_transformed']]
     tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
-    tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1)
-    fundamentals = fundamentals.merge(tmp, how='left', on='ticker')
+    tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1).reset_index()
+    fundamentals = fundamentals.merge(tmp, how='left', on=['ticker','period_end'])
 
     # plot min/max distribution
     n = round(len(calculate_column)**0.5)+1
@@ -118,8 +118,8 @@ def score_history():
     # calculate ai_score by each currency_code (i.e. group) for each of 3 pillar
     for (group, pillar_name), g in factor_rank.groupby(['group', 'pillar']):
         print(f"Calculate Fundamentals [{pillar_name}] in group [{group}]")
-        sub_g = g.loc[(g['factor_weight'] == 2) | (g['factor_weight'].isnull())]  # use all rank=2 (best class)
-        if len(sub_g) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
+        sub_g = g.loc[(g['factor_weight'] == 2)|(g['factor_weight'].isnull())]  # use all rank=2 (best class)
+        if len(sub_g.dropna(subset=['pred_z'])) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
             sub_g = g.loc[g.nlargest(1, columns=['pred_z']).index.union(g.loc[g['factor_weight'].isnull()].index)]
 
         score_col = [f'{x}_{y}_currency_code' for x, y in
@@ -133,7 +133,7 @@ def score_history():
         print(f"Calculate Fundamentals [extra] in group [{group}]")
         sub_g = g.loc[(g['factor_weight'] == 2) & (g['pred_z'] >= 1)]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
 
-        if len(sub_g) > 0:  # if no factor rank=2, don't add any factor into extra pillar
+        if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
         else:
