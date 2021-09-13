@@ -72,12 +72,10 @@ def score_history():
     # trim outlier to +/- 2 std
     calculate_column_score = []
     for column in calculate_column:
-        if fundamentals[column].notnull().sum():
-            column_score = column + "_score"
-            fundamentals[column_score] = fundamentals.groupby(["currency_code",'period_end'])[column].transform(
-                lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
-            calculate_column_score.append(column_score)
-
+        column_score = column + "_score"
+        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end'])[column].transform(
+            lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
+        calculate_column_score.append(column_score)
     print(calculate_column_score)
 
     # apply robust scaler
@@ -85,7 +83,7 @@ def score_history():
     for column in calculate_column:
         column_score = column + "_score"
         column_robust_score = column + "_robust_score"
-        fundamentals[column_robust_score] = fundamentals.groupby(["currency_code",'period_end'])[column_score].transform(
+        fundamentals[column_robust_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end'])[column_score].transform(
             lambda x: robust_scale(x))
         calculate_column_robust_score.append(column_robust_score)
 
@@ -95,18 +93,19 @@ def score_history():
         column_minmax_currency_code = column + "_minmax_currency_code"
         df_currency_code = fundamentals[["currency_code", column_robust_score, 'period_end']]
         df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
-        fundamentals[column_minmax_currency_code] = df_currency_code.groupby(["currency_code",'period_end']).score.transform(
+        fundamentals[column_minmax_currency_code] = df_currency_code.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end']).score.transform(
             lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
         fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
 
+
     # apply quantile transformation on before scaling scores
-    tmp = fundamentals.melt(['ticker', 'currency_code','period_end'], calculate_column)
-    tmp['quantile_transformed'] = tmp.groupby(['currency_code', 'variable','period_end'])['value'].transform(
+    tmp = fundamentals.melt(['ticker', 'currency_code', 'period_end'], calculate_column)
+    tmp['quantile_transformed'] = tmp.dropna(subset=['currency_code', 'variable','period_end']).groupby(['currency_code', 'variable','period_end'])['value'].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
-    tmp = tmp[['ticker', 'variable','period_end', 'quantile_transformed']]
+    tmp = tmp[['ticker', 'period_end', 'variable', 'quantile_transformed']]
     tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
-    tmp = tmp.pivot(['ticker', 'period_end'], ['variable']).reset_index()
-    fundamentals = fundamentals.merge(tmp, how='left', on=['ticker', 'period_end'])
+    tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1).reset_index()
+    fundamentals = fundamentals.merge(tmp, how='left', on=['ticker','period_end'])
 
     # plot min/max distribution
     n = len(calculate_column)
@@ -136,7 +135,7 @@ def score_history():
     # calculate ai_score by each currency_code (i.e. group) for each of [Value, Quality, Momentum]
     for (pillar_name, group), g in factor_rank.groupby(['pillar','group']):
         sub_g = g.loc[(g['factor_weight'] == 2) | (g['factor_weight'].isnull())]  # use all rank=2 (best class)
-        if len(sub_g.dropna()) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
+        if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             sub_g = g.loc[g.nlargest(1, columns=['pred_z']).index.union(g.loc[g['factor_weight'].isnull()].index)]
         score_col = [f'{x}_{y}_currency_code' for x, y in
                      sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
@@ -148,7 +147,7 @@ def score_history():
     # calculate ai_score by each currency_code (i.e. group) for "Extra" pillar
     for group, g in factor_rank.groupby('group'):
         sub_g = g.loc[(g['factor_weight'] == 2) & (g['pred_z'] >= 1)]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
-        if len(sub_g) > 0:  # if no factor rank=2, don't add any factor into extra pillar
+        if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
             print(f"Calculate Fundamentals [extra] in group [{group}] with [{', '.join(set(score_col))}]")
