@@ -13,11 +13,12 @@ class score_eval:
         score_col = ['fundamentals_momentum', 'fundamentals_quality', 'fundamentals_value', 'fundamentals_extra', 'ai_score']
 
         with global_vals.engine_ali.connect() as conn_ali:
-            score_history = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col_history)} FROM {global_vals.production_score_history} WHERE currency_code is not null", conn_ali)
+            score_history = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col)} "
+                                        f"FROM {global_vals.production_score_history} WHERE currency_code is not null", conn_ali)
         global_vals.engine_ali.dispose()
 
         save_description_history(score_history)
-        plot_dist_score(score_history, 'history', score_col_history)
+        plot_dist_score(score_history, 'history', score_col)
         qcut_eval(score_col, score_history, name='')
 
     def test_current(self):
@@ -37,27 +38,37 @@ class score_eval:
         global_vals.engine.dispose()
 
         score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
-        score_col += ['ai_score_unscaled']
+        score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
+        score_col += ['ai_score_unscaled', 'ai_score2_unscaled']
 
-        # save_top25(score_current)           # 1. save top 25 portfolio
-        # save_description(score_current, )
-        # plot_dist_score(score_current, 'current', score_col)
+        # 1. test rank
+        c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
+        c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
+        if (c1<0.9) or (c2<0.9):
+            raise ValueError("================ ERROR: ai_score before & after scaler correlation is < 0.9 ==================")
+
+        # 1. save descriptive csv
+        save_topn_ticker(score_current)
+        save_description(score_current)
+
+        # 2. save descriptive plot
+        plot_dist_score(score_current, 'current', score_col)
         plot_minmax_factor(pillar_current)
 
-    def test_corr(self):
-
-        score_history_current = score_history.loc[score_history['period_end']==score_history['period_end'].max()]
-        score_history_current[score_col_history] = score_history_current.groupby(['currency_code'])[score_col_history].rank()
-        score_current[score_col_current] = score_current.groupby(['currency_code'])[score_col_current].rank()
-        score_history_current = score_history_current.merge(score_current, on=['ticker'], suffixes=('_test','_prod'))
-        x = score_history_current.corr()
+    # def test_corr(self):
+    #
+    #     score_history_current = score_history.loc[score_history['period_end']==score_history['period_end'].max()]
+    #     score_history_current[score_col_history] = score_history_current.groupby(['currency_code'])[score_col_history].rank()
+    #     score_current[score_col_current] = score_current.groupby(['currency_code'])[score_col_current].rank()
+    #     score_history_current = score_history_current.merge(score_current, on=['ticker'], suffixes=('_test','_prod'))
+    #     x = score_history_current.corr()
 
 def save_topn_ticker(df, n=25):
     ''' save stock details for top 25 in each score '''
 
     df = df.loc[df['currency_code'].isin(['HKD','USD'])]
 
-    writer = pd.ExcelWriter(f'#ai_score_top25.xlsx')
+    writer = pd.ExcelWriter(f'#ai_score_top{n}.xlsx')
 
     for i in ['wts_rating', 'dlp_1m', 'ai_score', 'ai_score2']:
         idx = df.groupby(['currency_code'])[i].nlargest(n).index.get_level_values(1)
@@ -114,27 +125,27 @@ def plot_minmax_factor(df_dict):
 
         cols = g.set_index("index").columns.to_list()
         score_idx = [cols.index(x) for x in cols if re.match("^fundamentals_", x)]+[len(cols)]
-        score_name = [x for x in cols if re.match("^fundamentals_", x)]
 
         n = np.max([j-i for i, j in zip(score_idx[:-1], score_idx[1:])])
 
-        fig = plt.figure(figsize=(20, n * 4), dpi=120, constrained_layout=True)
-        for name, idx in zip(score_name, score_idx[1:]):
-            k = 1
-            for col in cols:
-                ax = fig.add_subplot(n, 4, k)
-                try:
-                    ax.hist(g[col], bins=20)
-                except:
-                    ax.plot(g[col])
-                ax.set_xlabel(col, fontsize=10)
-                if k == idx:
-                    k = idx+1
-                else:
-                    k += 1
+        fig = plt.figure(figsize=(n * 4, 20), dpi=120, constrained_layout=True)
+        k=1
+        row=0
+        for col in cols:
+            ax = fig.add_subplot(4, n, k)
+            try:
+                ax.hist(g[col], bins=20)
+            except:
+                ax.plot(g[col])
+            ax.set_xlabel(col, fontsize=20)
+            if cols.index(col)+1 in score_idx[1:]:
+                row+=1
+                k=row*n+1
+            else:
+                k += 1
 
         plt.suptitle(cur, fontsize=30)
-        fig.savefig(f'#score_minmax_{name}.png')
+        fig.savefig(f'#score_minmax_{cur}.png')
         plt.close(fig)
 
 def qcut_eval(score_col, fundamentals, name=''):
