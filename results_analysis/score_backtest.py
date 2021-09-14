@@ -107,27 +107,6 @@ def score_history():
     tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1).reset_index()
     fundamentals = fundamentals.merge(tmp, how='left', on=['ticker','period_end'])
 
-    # plot min/max distribution
-    n = len(calculate_column)
-    for name, g in fundamentals.groupby('currency_code'):
-        fig = plt.figure(figsize=(20, n*4), dpi=120, constrained_layout=True)
-        k=1
-        for col in calculate_column:
-            for i in ['','_score','_robust_score','_minmax_currency_code', '_quantile_currency_code']:
-                ax = fig.add_subplot(n, 5, k)
-                try:
-                    ax.hist(g[col+i], bins=20)
-                except:
-                    pass
-                if k % 5 == 1:
-                    ax.set_ylabel(col, fontsize=20)
-                if k > (n - 1) * 5:
-                    ax.set_xlabel(i, fontsize=20)
-                k+=1
-        plt.suptitle(name, fontsize=30)
-        fig.savefig(f'minmax_{name}.png')
-        plt.close(fig)
-
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
     fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
