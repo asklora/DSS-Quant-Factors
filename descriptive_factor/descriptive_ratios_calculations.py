@@ -136,6 +136,9 @@ class combine_tri_worldscope:
     
         # Merge all table and convert to daily basis
         tri = fill_all_day(tri)
+        tri[['volume_1w']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
+        tri[['volume_3m']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
+        tri[['volume_1w3m']] = (tri['volume_1w']/tri['volume_3m']).values
         tri[['market_cap','market_cap_usd','tac']] = tri.groupby(['ticker'])[['market_cap','market_cap_usd','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
         self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
         self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
