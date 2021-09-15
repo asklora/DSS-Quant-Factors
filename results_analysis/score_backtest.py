@@ -9,7 +9,7 @@ from preprocess.premium_calculation import trim_outlier
 import global_vals
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
-from results_analysis.score_evaluate import read_score_and_eval
+from results_analysis.score_evaluate import score_eval
 
 def score_history():
     ''' calculate score with DROID v2 method & evaluate '''
@@ -148,7 +148,10 @@ def score_history():
         fundamentals[label_col + score_col].to_sql(global_vals.production_score_history, **extra)
     global_vals.engine_ali.dispose()
 
-    read_score_and_eval()       # evaluate score calculated
+    # evaluate score calculated
+    eval = score_eval()
+    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    eval.test_history()     # test on (history) <-global_vals.production_score_history
 
 if __name__ == "__main__":
     score_history()
