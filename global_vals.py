@@ -37,6 +37,7 @@ processed_pca_table = 'processed_pca'
 
 # TABLE names - preprocess formula
 formula_factors_table = "factor_formula_ratios"
+update_time_table = "factor_table_update_time"
 
 # COLUMN names - preprocess
 ticker_column = "ticker"

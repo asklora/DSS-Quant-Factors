@@ -10,15 +10,16 @@ import numpy as np
 
 def get_least_corr_important_factors():
 
-    df = combine_tri_worldscope(use_cached=True, save=True, currency=['USD']).get_results(list_of_interval=[30])[30]
-    df.dropna(subset=['change_tri_fillna']).to_csv('factor_30_sample.csv')
+    # df = combine_tri_worldscope(use_cached=True, save=True, currency=['USD']).get_results(list_of_interval=[30])[30]
+    # df.dropna(subset=['change_tri_fillna']).to_csv('factor_30_sample.csv')
 
-    # df = pd.read_csv('factor_30_sample.csv')
-    c = df.corr()
-    c.unstack().to_csv('factor_30_corr.csv')
+    df = pd.read_csv('factor_30_sample.csv')
+    # c = df.corr()
+    # c.unstack().to_csv('factor_30_corr.csv')
     return df
 
 def test_cluster(method='kmean'):
+    ''
 
     cols = ['ticker', 'trading_day', 'avg_market_cap_usd','avg_earnings_yield','avg_volume','vol','change_assets','icb_code','change_tri_fillna']
     df = get_least_corr_important_factors()[cols]
