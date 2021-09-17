@@ -100,7 +100,10 @@ class combine_tri_worldscope:
     ''' combine tri & worldscope raw data '''
 
     def __init__(self, use_cached, save, currency=None, ticker=None):
+
         conditions = ["True"]
+        self.save = save
+
         if currency:
             conditions.append("currency_code in ({})".format(','.join(['\''+x+'\'' for x in currency])))
         if ticker:
@@ -169,14 +172,24 @@ class combine_tri_worldscope:
         arr_average = get_average(arr[:,:,:,average_idx])[:,:,0,:]      # calculate average in this period
         arr_skew = get_skew(np.expand_dims(arr[:,:,:,cols.index('tri')], 3))    # calculate tri skew
         arr_skew = np.expand_dims(arr_skew, 2)
+        arr_tri_momentum = arr_change[:,1:,self.change_factor.index('tri_fillna')]/arr_change[:,:-1,self.change_factor.index('tri_fillna')]
+        arr_tri_momentum = np.pad(arr_tri_momentum, ((0,0), (1,0)), mode='constant', constant_values=np.nan)
+        arr_tri_momentum = np.expand_dims(arr_tri_momentum, 2)
         arr_vol = get_rogers_satchell(arr[:,:,:,cols.index('open'):(cols.index('close')+1)])    # calculate tri volatility
     
         # concat all array & columns name
-        final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_change, arr_average, arr_curind), axis=2)
-        self.final_col = ['ticker','trading_day', 'vol', 'skew'] + ['change_'+x for x in self.change_factor] + \
+        final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_tri_momentum, arr_change, arr_average, arr_curind), axis=2)
+        self.final_col = ['ticker','trading_day', 'vol', 'skew','ret_momentum'] + ['change_'+x for x in self.change_factor] + \
                          ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
     
         return final_arr
+
+    def read_cache(self, list_of_interval):
+        ''' read cache csv if use_cache = True '''
+
+        for i in list_of_interval:
+            df = pd.read_csv(f'dcache_sample_{i}.csv')
+        return df
 
     def get_results(self, list_of_interval=[7, 14, 30, 91, 182, 365]):
         ''' calculate all arr for different period '''
@@ -187,7 +200,11 @@ class combine_tri_worldscope:
             arr = np.reshape(arr, (arr.shape[0]*arr.shape[1], arr.shape[2]))
             arr_dict[i] = pd.DataFrame(arr, columns=self.final_col)
             print(arr_dict[i])
-        return   arr_dict
+
+            if self.save:
+                arr_dict[i].dropna(subset=['change_tri_fillna']).to_csv(f'dcache_sample_{i}.csv', index=False)
+
+        return arr_dict
 
 def reshape_by_interval(df, interval=7):
     ''' reshape 2D sample -> (ticker, #period, interval_length, factor) '''
@@ -312,7 +329,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    # dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
-    # print(dict.keys())
+    dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
+    print(dict.keys())
 
-    get_worldscope(True)
+    # get_worldscope(True)
