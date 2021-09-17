@@ -125,6 +125,7 @@ def plot_minmax_factor(df_dict):
 
         cols = g.set_index("index").columns.to_list()
         score_idx = [cols.index(x) for x in cols if re.match("^fundamentals_", x)]+[len(cols)]
+        g[cols] = g[cols].apply(pd.to_numeric, errors='coerce')
 
         n = np.max([j-i for i, j in zip(score_idx[:-1], score_idx[1:])])
 
