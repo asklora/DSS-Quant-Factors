@@ -16,7 +16,6 @@ from descriptive_factor.descriptive_ratios_calculations import combine_tri_world
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
 
 import itertools
 from collections import Counter
@@ -25,11 +24,8 @@ import scipy.spatial
 
 from sklearn import metrics
 from s_dbw import S_Dbw
-from jqmcvi import base
-from descriptive_factor.ratio_cluster_metrics import *
-
-import sklearn
-print(sklearn.__version__)
+# from jqmcvi import base
+from descriptive_factor.fuzzy_metrics import *
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
@@ -55,7 +51,7 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91]):
                 list_of_interval_redo.append(i)
 
     if len(list_of_interval_redo)>0:
-        prinr(f'-----------------------------> No local cache for {list_of_interval_redo} -> Process')
+        print(f'-----------------------------> No local cache for {list_of_interval_redo} -> Process')
         df_dict = combine_tri_worldscope(use_cached=True, save=True, currency=['USD']).get_results(list_of_interval_redo)
         for k, df in df_dict:
             corr_df[k] = calc_corr_csv(df)
@@ -154,8 +150,10 @@ class test_cluster:
 
         self.label_cols = ['ticker', 'trading_day']
         self.cols = ['avg_market_cap_usd', 'avg_ebitda_to_ev', 'vol', 'change_tri_fillna', 'icb_code']
-        self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, ' \
-                    'avg_interest_to_earnings, change_earnings, change_ebtda, avg_div_payout, avg_ni_to_cfo, avg_roe'.split(', ')
+        self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+                    'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
+                    'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
+        # self.cols = self.df.select_dtypes(float).columns.to_list()
 
         self.clustering_metrics1 = [
             metrics.calinski_harabasz_score,
@@ -163,20 +161,36 @@ class test_cluster:
             metrics.silhouette_score,
             S_Dbw,
         ]
-        self.clustering_metrics2 = [base.dunn]
+        # self.clustering_metrics2 = [base.dunn]
+        self.clustering_metrics_fuzzy = [
+            partition_coefficient,
+            xie_beni_index,
+            fukuyama_sugeno_index,
+            fuzzy_hypervolume,
+            beringer_hullermeier_index,
+            bouguessa_wang_sun_index,
+        ]
 
-        self.trim_outlier()
+        # x = x.describe()
+        self.trim_outlier_std()
+        # x = x.describe()
+
         # self.plot_scatter_hist(self.df, self.cols)
 
-    def trim_outlier(self):
+    def trim_outlier_std(self):
         ''' trim outlier on testing sets '''
 
         def trim_scaler(x):
             x = np.clip(x, np.nanmean(x)-2*np.nanstd(x), np.nanmean(x)+2*np.nanstd(x))
-            return robust_scale(x)
+            # x = np.clip(x, np.percentile(x, 0.10), np.percentile(x, 0.90))
+            x = robust_scale(x)
+            return x
 
-        for col in self.cols[2:-1]:
-            self.df[col] = trim_scaler(self.df[col])
+        for col in self.cols:
+            if col != 'icb_code':
+                x = trim_scaler(self.df[col])
+                x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
+                self.df[col] = x
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -191,7 +205,7 @@ class test_cluster:
             print(f'-----------------> add {lst.index[0]}')
 
             # testing on different cluster methods
-            results = self.test_method(cluster_method, iter_conditions_dict)
+            results = self.test_method(cluster_method, iter_conditions_dict, save_csv=False)
             results['factors'] = ', '.join(self.cols)
             all_results.append(results)
 
@@ -199,7 +213,31 @@ class test_cluster:
         all_results.to_csv(f'stepwise_cluster_{cluster_method.__name__}.csv', index=False)
 
     def pillar_test_method(self, cluster_method, iter_conditions_dict):
-        pass
+        ''' test cluster using features manually classified to 4 pillar '''
+
+        with global_vals.engine_ali.connect() as conn:
+            uni = pd.read_sql(f'SELECT name, pillar FROM {global_vals.formula_factors_table}_descriptive', conn)
+        global_vals.engine_ali.dispose()
+
+        all_results = []
+        for p, g in uni.groupby(['pillar']):
+
+            # pillar columns
+            p_cols = g['name'].to_list()
+            cols = ['avg_'+x for x in p_cols] + ['change_'+x for x in p_cols] + p_cols
+            self.cols = self.df.filter(cols).columns.to_list()
+            print(self.cols)
+
+            # testing on different cluster methods
+            # results = self.test_method(cluster_method, iter_conditions_dict, save_csv=False)
+
+            results = self.get_cluster(cluster_method, iter_conditions_dict, suffixes=p)
+
+        #     results['pillar'] = p
+        #     all_results.append(results)
+        #
+        # all_results = pd.concat(all_results, axis=0)
+        # all_results.to_csv(f'pillar_cluster_{cluster_method.__name__}.csv', index=False)
 
     def test_method(self, cluster_method, iter_conditions_dict, save_csv=True):
         ''' test conditions on different conditions of cluster methods '''
@@ -209,7 +247,6 @@ class test_cluster:
         # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
         X = self.df[self.cols].values
         X = np.nan_to_num(X, -1)
-        X = StandardScaler().fit_transform(X)
 
         m = {}
         condition_values = list(iter_conditions_dict.values())
@@ -217,24 +254,41 @@ class test_cluster:
 
         for element in itertools.product(*condition_values):
             kwargs = dict(zip(condition_keys, list(element)))
+
+            # if fuzzy clustering
             if cluster_method.__name__ == 'FCM':
                 model = cluster_method(**kwargs)
                 model.fit(X)
+
+                y = model.predict(X)
+                u = model.soft_predict(X)
+                v = model.centers
+
+                centre_df = pd.DataFrame(v, columns=self.cols)
+
+                # calculate matrics
+                m[element] = {}
+                m[element]['count'] = Counter(y)
+                for i in self.clustering_metrics_fuzzy:
+                    m[element][i.__name__] = i(X, u, v.T, kwargs['m'])
+                print(element, m[element])
+
+            # if crisp clustering
             else:
                 model = cluster_method(**kwargs).fit(X)
-            try:
-                y = model.predict(X)
-            except:
-                y = model.labels_
+                try:
+                    y = model.predict(X)
+                except:
+                    y = model.labels_
 
-            # calculate matrics
-            m[element] = {}
-            m[element]['count'] = Counter(y)
-            for i in self.clustering_metrics1:
-                m[element][i.__name__] = i(X, y)
-            for i in self.clustering_metrics2:
-                m[element][i.__name__] = i([X[y==k] for k in set(y)])
-            print(element, m[element])
+                # calculate matrics
+                m[element] = {}
+                m[element]['count'] = Counter(y)
+                for i in self.clustering_metrics1:
+                    m[element][i.__name__] = i(X, y)
+                # for i in self.clustering_metrics2:
+                #     m[element][i.__name__] = i([X[y==k] for k in set(y)])
+                print(element, m[element])
 
         results = pd.DataFrame(m).transpose()
         results.index = results.index.set_names(condition_keys)
@@ -242,15 +296,16 @@ class test_cluster:
 
         if save_csv:
             results.to_csv(f'cluster_{cluster_method.__name__}.csv', index=False)
+
         return results
 
-    def get_cluster(self, cluster_method, kwargs):
+    def get_cluster(self, cluster_method, kwargs, suffixes='', save_csv=True):
         ''' write cluster results to csv '''
 
         # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
-        results = self.df.groupby(['ticker']).last()
-        X = results.iloc[:,2:].values
-        X = np.nan_to_num(X, -99.9)
+        results = self.df[self.cols]
+        X = results.values
+        X = np.nan_to_num(X, -1)
         X = StandardScaler().fit_transform(X)
 
         if cluster_method.__name__ == 'FCM':
@@ -264,9 +319,14 @@ class test_cluster:
         except:
             results['cluster'] = model.labels_
 
-        results.to_csv(f'result_cluster_{cluster_method.__name__}.csv')
-        plot_pca_scatter_hist(results, cluster_method.__name__)
-        plot_scatter_hist(results, self.cols, cluster_method.__name__)
+        # x1 = model.predict(X)
+        # x2 = model.soft_predict(X)
+
+        if save_csv:
+            results.to_csv(f'result_cluster_{cluster_method.__name__}.csv')
+
+        plot_scatter_hist(results, self.cols, cluster_method.__name__, suffixes=suffixes)
+        # plot_pca_scatter_hist(results, cluster_method.__name__)
 
         if cluster_method.__name__ == 'AgglomerativeClustering':
             plot_dendrogram(model, truncate_mode='level', p=3)
@@ -274,39 +334,34 @@ class test_cluster:
 
 # -------------------------------- Plot Cluster -----------------------------------------------
 
-def plot_scatter_hist(df, cols, cluster_method):
-    n = len(cols)-2
+def plot_scatter_hist(df, cols, cluster_method, suffixes):
+
+    n = len(cols)
     fig = plt.figure(figsize=(n * 4, n * 4), dpi=60, constrained_layout=True)
     k=1
-    for v1 in cols[2:]:
-        for v2 in cols[2:]:
-            if cols.index(v2) > cols.index(v1):
-                print(v1, v2)
-                ax = fig.add_subplot(n, n, k)
-                if v1==v2:
-                    ax.hist(df[v1], bins=20)
-                    ax.set_xlabel(v1)
-                else:
-                    plt_color = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown',
-                                 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
-                    colors = dict(zip(list(df['cluster'].unique()), plt_color[:df['cluster'].max()+1]))
-                    ax.scatter(df[v1], df[v2], c=list(df['cluster'].map(colors).values))
-                    ax.set_xlabel(v1)
-                    ax.set_ylabel(v2)
+    for v1 in cols:
+        for v2 in cols:
+            print(v1, v2)
+            ax = fig.add_subplot(n, n, k)
+            if v1==v2:
+                ax.hist(df[v1], bins=20)
+                ax.set_xlabel(v1)
             else:
-                pass
+                plt_color = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown',
+                             'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+                colors = dict(zip(list(df['cluster'].unique()), plt_color[:df['cluster'].max()+1]))
+                ax.scatter(df[v1], df[v2], c=list(df['cluster'].map(colors).values), alpha=.5)
+                ax.set_xlabel(v1)
+                ax.set_ylabel(v2)
             k+=1
 
-    cm = plt.get_cmap('viridis')
-    img = Image.fromarray((cm(fig)[:, :, :3] * 255).astype(np.uint8))
-    img.show()
-    img.savefig(f'cluster_selected_{cluster_method}.png')
+    fig.savefig(f'cluster_selected_{cluster_method}_{suffixes}.png')
     plt.close(fig)
     
 def plot_pca_scatter_hist(df, cluster_method):
 
-    X = np.nan_to_num(df.apply(pd.to_numeric, errors='coerce').values[:,1:-1], -99.9)
-    X = StandardScaler().fit_transform(X)
+    X = np.nan_to_num(df.apply(pd.to_numeric, errors='coerce').values[:,1:-1], -1)
+    # X = StandardScaler().fit_transform(X)
 
     pca = PCA(n_components=None).fit(X)  # calculation Cov matrix is embeded in PCA
     print(pca.explained_variance_ratio_)
@@ -358,17 +413,20 @@ if __name__ == "__main__":
     # data.test_method(DBSCAN, {'min_samples': [1], 'eps': list(np.arange(0.5, 2, 0.5))})
     # data.test_method(AgglomerativeClustering, {'n_clusters': list(range(3,11)), 'linkage':['ward']}) #  'complete', 'average',
     # data.test_method(GaussianMixture, {'n_components': list(range(3,11))})
-    # data.test_method(FCM, {'n_clusters': list(range(5,10))})
+    # data.test_method(FCM, {'n_clusters': list(range(5,10)), 'm':list(np.arange(1.25, 2.01, 0.25))})
 
     # data.stepwise_test_method(GaussianMixture, {'n_components': list(range(3, 11))})
     # data.stepwise_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
+    data.stepwise_test_method(FCM, {'n_clusters': list(range(5, 20, 2)), 'm':list(np.arange(1.25, 2.01, 0.25))})
 
     # data.pillar_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
+    # data.pillar_test_method(FCM, {'n_clusters': list(range(5,10)), 'm':list(np.arange(1.25, 2.01, 0.25))})
+    # data.pillar_test_method(FCM, {'n_clusters': 9, 'm': 1.5})
 
     # data.get_cluster(DBSCAN, {'min_samples': 1, 'eps': 0.5})
     # data.get_cluster(AgglomerativeClustering, {'linkage': 'ward', 'n_clusters': 9, 'compute_distances': True}) #  'complete', 'average',
     # data.get_cluster(MeanShift, {'bandwidth': [None]})
     # data.get_cluster(GaussianMixture, {'n_components': 9})
-    data.get_cluster(FCM, {'n_clusters': 10})
+    # data.get_cluster(FCM, {'n_clusters': 9, 'm': 1.25})
 
 
