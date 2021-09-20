@@ -2,7 +2,7 @@ from slack_sdk import WebClient
 import logging
 
 SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
-channel = "#factor_message_test"
+channel = "#factor_message"
 logger = logging.getLogger(__name__)
 
 def report_to_slack(message):
