@@ -140,9 +140,9 @@ class PFA(object):
 
 class test_cluster:
 
-    def __init__(self, last=True):
+    def __init__(self, last=True, testing_interval=91):
 
-        testing_interval = 91
+        self.testing_interval = testing_interval
 
         sample_df, corr_df = prep_factor_dateset(list_of_interval=[testing_interval])
         self.df = sample_df[testing_interval]
@@ -167,10 +167,11 @@ class test_cluster:
         ]
         # self.clustering_metrics2 = [base.dunn]
         self.clustering_metrics_fuzzy = [
-            partition_coefficient,
+            # partition_coefficient,
             xie_beni_index,
-            fukuyama_sugeno_index,
-            # fuzzy_hypervolume,
+            # fukuyama_sugeno_index,
+            # cluster_center_var,
+            fuzzy_hypervolume,
             # beringer_hullermeier_index,
             # bouguessa_wang_sun_index,
         ]
@@ -190,7 +191,7 @@ class test_cluster:
             x = robust_scale(x)
             return x
 
-        for col in self.cols:
+        for col in self.df.select_dtypes(float).columns.to_list():
             if col != 'icb_code':
                 x = trim_scaler(self.df[col])
             else:
@@ -219,6 +220,100 @@ class test_cluster:
 
         all_results = pd.concat(all_results, axis=0)
         all_results.to_csv(f'stepwise_cluster_{cluster_method.__name__}.csv', index=False)
+
+    def test_FCM(self, cols, kwargs):
+
+        X = np.nan_to_num(self.df[list(cols)].values, -1)
+        model = FCM(**kwargs)
+        model.fit(X)
+
+        y = model.predict(X)
+        u = model.u
+        v = model.centers
+
+        # calculate matrics
+        m = {}
+        m['count'] = Counter(y)
+        for i in self.clustering_metrics_fuzzy:
+            m[i.__name__] = i(X, u, v.T, kwargs['m'])
+        print(m)
+        m['factors'] = ', '.join(cols)
+
+        return m
+
+    def stepwise_test_FCM(self, kwargs):
+        ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
+
+        print(self.df.shape)
+        print(self.df.describe().transpose())
+        init_cols = ['icb_code', 'vol']
+
+        # kwargs['n_clusters'] = round(len(self.df)/10)
+        print(kwargs)
+        init_xb = self.test_FCM(init_cols, kwargs)['xie_beni_index']
+        cols_tested = []
+        c = self.df.corr().unstack().abs().reset_index()
+
+        cols_list = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+                    'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
+                    'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
+
+        cols_list = ['change_tri_fillna','ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
+                     'avg_fa_turnover','change_earnings','change_assets','change_ebtda']
+
+        # for cols in itertools.combinations(cols_list, 5):
+        next_col = True
+        while next_col == True:
+            all_results = []
+            for col in cols_list:
+
+                # if len(init_cols) > 5:
+                #     least_var_cols = init_cols[np.argmin(m['cluster_center_var'])]
+                #     init_cols.remove(least_var_cols)
+                #     print(f'-----------------> remove {least_var_cols}')
+                #
+                # # add lst correlated factors
+                # lst = c.loc[(c['level_0'].isin(init_cols)) & (~c['level_1'].isin(init_cols))]
+                # lst = lst.groupby(['level_1'])[0].max().sort_values(ascending=True)
+                # init_cols.append(lst.index[0])
+                # print(f'-----------------> add {lst.index[0]}')
+                #
+                # if init_cols in cols_tested:
+                #     break
+                # else:
+                #     cols_tested.append(init_cols.copy())
+
+                # if (c1 == c2) or (c1 in init_cols) or (c2 in init_cols):
+                #     continue
+                #
+                # cols = init_cols + [c1,c2]
+
+                # testing on FCM
+                if col not in init_cols:
+                    cols = init_cols + [col]
+
+                print(f'cols: {cols}')
+                m = self.test_FCM(cols, kwargs)
+                all_results.append(m)
+                gc.collect()
+
+            all_results = pd.DataFrame(all_results)
+
+            best = all_results.nsmallest(1, 'fuzzy_hypervolume', keep='first')
+            if best['fuzzy_hypervolume'].values[0] < init_xb:
+                init_xb = best['fuzzy_hypervolume'].values[0]
+                init_cols = best['factors'].values[0].split(', ')
+            else:
+                print(init_xb, init_cols)
+                next_col = False
+
+            # if m['xie_beni_index'] < init_xb:
+            #     init_xb = m['xie_beni_index']
+            # else:
+            #     break
+
+        # all_results = pd.DataFrame(all_results)
+        # all_results.to_csv(f'stepwise_cluster_FCM_new_{self.testing_interval}_comb.csv', index=False)
 
     def pillar_test_method(self, cluster_method, iter_conditions_dict):
         ''' test cluster using features manually classified to 4 pillar '''
@@ -408,7 +503,8 @@ def plot_dendrogram(model, **kwargs):
     dendrogram(linkage_matrix, **kwargs)
 
 if __name__ == "__main__":
-    data = test_cluster()
+    data = test_cluster(testing_interval=7)
+    data.stepwise_test_FCM({'n_clusters': 20, 'm': 2})
 
     # get_most_close_ticker()
 
@@ -425,7 +521,7 @@ if __name__ == "__main__":
 
     # data.stepwise_test_method(GaussianMixture, {'n_components': list(range(3, 11))})
     # data.stepwise_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
-    data.stepwise_test_method(FCM, {'n_clusters': list(range(5, 20, 2)), 'm':list(np.arange(1.25, 2.01, 0.25))})
+
 
     # data.pillar_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
     # data.pillar_test_method(FCM, {'n_clusters': list(range(5,10)), 'm':list(np.arange(1.25, 2.01, 0.25))})
