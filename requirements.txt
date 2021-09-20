@@ -9,4 +9,5 @@ hyperopt==0.2.3
 xarray
 matplotlib
 openpyxl
-eikon
+s-dbw
+fuzzy-c-means
