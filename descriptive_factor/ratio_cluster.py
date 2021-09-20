@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+import gc
 import itertools
 from collections import Counter
 from scipy.cluster.hierarchy import dendrogram
@@ -26,6 +27,9 @@ from sklearn import metrics
 from s_dbw import S_Dbw
 # from jqmcvi import base
 from descriptive_factor.fuzzy_metrics import *
+
+import matplotlib
+print(matplotlib.__version__)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
@@ -149,10 +153,10 @@ class test_cluster:
             self.df = self.df.replace([-np.inf, np.inf], [np.nan, np.nan])
 
         self.label_cols = ['ticker', 'trading_day']
-        self.cols = ['avg_market_cap_usd', 'avg_ebitda_to_ev', 'vol', 'change_tri_fillna', 'icb_code']
-        self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
-                    'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
-                    'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
+        self.cols = ['icb_code']
+        # self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+        #             'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
+        #             'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
         # self.cols = self.df.select_dtypes(float).columns.to_list()
 
         self.clustering_metrics1 = [
@@ -166,9 +170,9 @@ class test_cluster:
             partition_coefficient,
             xie_beni_index,
             fukuyama_sugeno_index,
-            fuzzy_hypervolume,
-            beringer_hullermeier_index,
-            bouguessa_wang_sun_index,
+            # fuzzy_hypervolume,
+            # beringer_hullermeier_index,
+            # bouguessa_wang_sun_index,
         ]
 
         # x = x.describe()
@@ -189,14 +193,16 @@ class test_cluster:
         for col in self.cols:
             if col != 'icb_code':
                 x = trim_scaler(self.df[col])
-                x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
-                self.df[col] = x
+            else:
+                x = self.df[col].values
+            x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
+            self.df[col] = x
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
         all_results = []
-        while len(self.cols) != len(self.c['level_0'].unique()):
+        while len(self.cols) <= 10:
 
             # add lst correlated factors
             lst = self.c.loc[(self.c['level_0'].isin(self.cols)) & (~self.c['level_1'].isin(self.cols))]
@@ -208,6 +214,8 @@ class test_cluster:
             results = self.test_method(cluster_method, iter_conditions_dict, save_csv=False)
             results['factors'] = ', '.join(self.cols)
             all_results.append(results)
+
+            gc.collect()
 
         all_results = pd.concat(all_results, axis=0)
         all_results.to_csv(f'stepwise_cluster_{cluster_method.__name__}.csv', index=False)
@@ -261,10 +269,10 @@ class test_cluster:
                 model.fit(X)
 
                 y = model.predict(X)
-                u = model.soft_predict(X)
+                u = model.u
                 v = model.centers
 
-                centre_df = pd.DataFrame(v, columns=self.cols)
+                # centre_df = pd.DataFrame(v, columns=self.cols)
 
                 # calculate matrics
                 m[element] = {}

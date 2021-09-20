@@ -12,9 +12,9 @@ def calculate_covariances(x, u, v, m):
     covariances = np.zeros((c, d, d))
 
     for i in range(c):
-        xv = x - v[i]
-        uxv = um[i, :, np.newaxis]*xv
-        covariances[i] = np.einsum('ni,nj->ij', uxv, xv)/np.sum(um[i])
+        xv = x - v[:,i]
+        uxv = np.sum(np.matmul(um[:, i], np.matmul(xv, xv.T)))
+        covariances[i] = uxv/np.sum(um[:, i])
 
     return covariances
 
@@ -65,8 +65,8 @@ def beringer_hullermeier_index(x, u, v, m):
     n, d = x.shape
     c = v.shape[0]
 
-    d2 = pairwise_squared_distances(x, v)
-    v2 = pairwise_squared_distances(v, v)
+    d2 = pairwise_squared_distances(x, v.T)
+    v2 = pairwise_squared_distances(v, v.T)
 
     v2[v2 == 0.0] = np.inf
 
