@@ -195,6 +195,8 @@ class test_cluster:
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
+        self.cols = ['icb_code']    # step wise start with icb_code
+
         all_results = []
         while len(self.cols) != len(self.c['level_0'].unique()):
 

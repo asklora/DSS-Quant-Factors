@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import global_vals
 import re
 import datetime as dt
+from descriptive_factor.report_to_slack import file_to_slack, report_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
@@ -44,6 +45,21 @@ class score_eval:
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
+        # 0. save comparison csv
+        score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
+        score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
+        score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
+        lw_comp = save_compare(score_current, score_history_lw, score_col)
+        avg_comp = save_compare(score_current, score_history_avg, score_col)
+
+        writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
+        lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose().to_excel(writer, sheet_name='lastweek_describe (remove inf)')
+        lw_comp.to_excel(writer, sheet_name='lastweek')
+        avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose().to_excel(writer, sheet_name='average_describe (remove inf)')
+        avg_comp.to_excel(writer, sheet_name='average')
+        writer.save()
+        file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
+
         score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
         score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
         score_col += ['ai_score_unscaled', 'ai_score2_unscaled']
@@ -62,15 +78,17 @@ class score_eval:
         plot_dist_score(score_current, 'current', score_col)
         plot_minmax_factor(pillar_current)
 
-    # def test_corr(self):
-    #
-    #     score_history_current = score_history.loc[score_history['period_end']==score_history['period_end'].max()]
-    #     score_history_current[score_col_history] = score_history_current.groupby(['currency_code'])[score_col_history].rank()
-    #     score_current[score_col_current] = score_current.groupby(['currency_code'])[score_col_current].rank()
-    #     score_history_current = score_history_current.merge(score_current, on=['ticker'], suffixes=('_test','_prod'))
-    #     x = score_history_current.corr()
+        self.score_current = score_current
 
-def save_topn_ticker(df, n=25):
+def save_compare(score_cur, score_his, cols):
+    df = score_cur.set_index('ticker').merge(score_his.set_index('ticker'), left_index=True, right_index=True, how='outer', suffixes=('_cur','_his'))
+
+    # score changes
+    arr = df[[x+'_cur' for x in cols]].values / df[[x+'_his' for x in cols]].values - 1
+    r = pd.DataFrame(arr, columns=cols, index=df.index).sort_values(by='ai_score', ascending=True)
+    return r
+
+def save_topn_ticker(df, n=20):
     ''' save stock details for top 25 in each score '''
 
     df = df.loc[df['currency_code'].isin(['HKD','USD'])]
@@ -89,19 +107,28 @@ def save_topn_ticker(df, n=25):
     all_df.drop_duplicates().to_excel(writer, sheet_name='original_scores', index=False)
     writer.save()
 
+    file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')
+
 def save_description(df):
     ''' write statistics for  '''
 
     df = df.groupby(['currency_code']).agg(['min','mean', 'median', 'max', 'std','count']).transpose()
     print(df)
-    df.to_csv(f'#{suffixes}_describe_current.csv')
+
+    writer = pd.ExcelWriter(f'#{suffixes}_describe_current.xlsx')
+    df.to_excel(writer, sheet_name='Distribution Current')
+    writer.save()
+    file_to_slack(f'#{suffixes}_describe_current.xlsx', 'xlsx', f'{global_vals.production_score_current} Score Distribution')
 
 def save_description_history(df):
     ''' write statistics for description '''
 
     df = df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
     print(df)
-    df.to_csv(f'#{suffixes}_describe_history.csv')
+    writer = pd.ExcelWriter(f'#{suffixes}_describe_history.xlsx')
+    df.to_excel(writer, sheet_name='Distribution History')
+    writer.save()
+    file_to_slack(f'#{suffixes}_describe_history.xlsx', 'xlsx', f'Backtest Score Distribution')
 
 def plot_dist_score(df, filename, score_col):
     ''' Plot distribution (currency, score)  for all AI score compositions '''
@@ -124,6 +151,7 @@ def plot_dist_score(df, filename, score_col):
             continue
     plt.suptitle(filename, fontsize=30)
     plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
+    file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
 
 def plot_minmax_factor(df_dict):
     ''' plot min/max distribution '''
@@ -154,6 +182,7 @@ def plot_minmax_factor(df_dict):
 
         plt.suptitle(cur, fontsize=30)
         fig.savefig(f'#{suffixes}_score_minmax_{cur}.png')
+        file_to_slack(f'#{suffixes}_score_minmax_{cur}.png', 'png', f'{cur} Score Detailed Distribution')
         plt.close(fig)
 
 def qcut_eval(score_col, fundamentals, name=''):
@@ -166,12 +195,12 @@ def qcut_eval(score_col, fundamentals, name=''):
     best_10 = best_10.merge(avg, on=['period_end', 'currency_code']).sort_values(['currency_code','period_end'])
     best_10[[0,'stock_return_y']] = best_10.groupby(['currency_code']).apply(lambda x: (x[[0,'stock_return_y']]+1).cumprod(axis=0))
     best_10.to_excel(writer, sheet_name=f'best10')
-
-    # 1. Score describe
-    for name, g in fundamentals.groupby(['currency_code']):
-        df = g.describe().transpose()
-        df['std'] = df.std()
-        df.to_excel(writer, sheet_name=f'describe_{name}')
+    #
+    # # 1. Score describe
+    # for name, g in fundamentals.groupby(['currency_code']):
+    #     df = g.describe().transpose()
+    #     df['std'] = df.std()
+    #     df.to_excel(writer, sheet_name=f'describe_{name}')
 
     # 2. Test 10-qcut return
     def score_ret_mean(score_col='ai_score', group_col='currency_code'):
@@ -199,6 +228,8 @@ def qcut_eval(score_col, fundamentals, name=''):
 
     writer.save()
 
+    file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
+
 if __name__ == "__main__":
     score_eval().test_current()
-    # score_eval().test_history()
+    score_eval().test_history()
