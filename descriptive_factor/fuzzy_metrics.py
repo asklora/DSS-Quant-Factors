@@ -5,15 +5,16 @@ def pairwise_squared_distances(x, v):
     return scipy.spatial.distance.cdist(x, v)**2
 
 def calculate_covariances(x, u, v, m):
-    c, n = u.shape
-    d = v.shape[1]
+    c, n = u.T.shape
+    d = v.T.shape[1]
+
     um = u**m
 
     covariances = np.zeros((c, d, d))
 
     for i in range(c):
-        xv = x - v[i]
-        uxv = um[i, :, np.newaxis]*xv
+        xv = x - v[:, i]
+        uxv = um[:, i, np.newaxis]*xv
         covariances[i] = np.einsum('ni,nj->ij', uxv, xv)/np.sum(um[i])
 
     return covariances
@@ -48,6 +49,9 @@ def fukuyama_sugeno_index(x, u, v, m):
 
     return np.sum(np.matmul(um.T,d2)) - np.sum(np.matmul(um,distance_v_mean_squared))
 
+def cluster_center_var(x, u, v, m):
+    return np.nanstd(v, axis=1)
+
 def xie_beni_index(x, u, v, m):
     n = x.shape[0]
     c = v.shape[0]
@@ -65,8 +69,8 @@ def beringer_hullermeier_index(x, u, v, m):
     n, d = x.shape
     c = v.shape[0]
 
-    d2 = pairwise_squared_distances(x, v)
-    v2 = pairwise_squared_distances(v, v)
+    d2 = pairwise_squared_distances(x, v.T)
+    v2 = pairwise_squared_distances(v, v.T)
 
     v2[v2 == 0.0] = np.inf
 
