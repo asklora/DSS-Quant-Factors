@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import global_vals
 import re
+import datetime as dt
+
+suffixes = dt.datetime.today().strftime('%Y%m%d')
 
 class score_eval:
     def __init__(self):
@@ -32,6 +35,10 @@ class score_eval:
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
             query += f"WHERE currency_code is not null"
             score_current = pd.read_sql(query, conn)
+            query1 = f"SELECT currency_code, S.* FROM {global_vals.production_score_current_history} S "
+            query1 += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
+            query1 += f"WHERE currency_code is not null"
+            score_current_history = pd.read_sql(query1, conn)
             for p in filter(None, score_current['currency_code'].unique()):
                 pillar_current[p] = pd.read_sql(f"SELECT * FROM \"test_fundamental_score_details_{p}\"", conn_ali)
         global_vals.engine_ali.dispose()
@@ -68,7 +75,7 @@ def save_topn_ticker(df, n=25):
 
     df = df.loc[df['currency_code'].isin(['HKD','USD'])]
 
-    writer = pd.ExcelWriter(f'#ai_score_top{n}.xlsx')
+    writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
 
     for i in ['wts_rating', 'dlp_1m', 'ai_score', 'ai_score2']:
         idx = df.groupby(['currency_code'])[i].nlargest(n).index.get_level_values(1)
@@ -87,14 +94,14 @@ def save_description(df):
 
     df = df.groupby(['currency_code']).agg(['min','mean', 'median', 'max', 'std','count']).transpose()
     print(df)
-    df.to_csv(f'#describe_current.csv')
+    df.to_csv(f'#{suffixes}_describe_current.csv')
 
 def save_description_history(df):
     ''' write statistics for description '''
 
     df = df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
     print(df)
-    df.to_csv(f'#describe_history.csv')
+    df.to_csv(f'#{suffixes}_describe_history.csv')
 
 def plot_dist_score(df, filename, score_col):
     ''' Plot distribution (currency, score)  for all AI score compositions '''
@@ -116,7 +123,7 @@ def plot_dist_score(df, filename, score_col):
         except:
             continue
     plt.suptitle(filename, fontsize=30)
-    plt.savefig(f'#score_dist_{filename}.png')
+    plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
 
 def plot_minmax_factor(df_dict):
     ''' plot min/max distribution '''
@@ -146,13 +153,13 @@ def plot_minmax_factor(df_dict):
                 k += 1
 
         plt.suptitle(cur, fontsize=30)
-        fig.savefig(f'#score_minmax_{cur}.png')
+        fig.savefig(f'#{suffixes}_score_minmax_{cur}.png')
         plt.close(fig)
 
 def qcut_eval(score_col, fundamentals, name=''):
     ''' evaluate score history with 1) descirbe, 2) score 10-qcut mean ret, 3) per period change '''
 
-    writer = pd.ExcelWriter(f'#score_eval_history_{name}.xlsx')
+    writer = pd.ExcelWriter(f'#{suffixes}_score_eval_history_{name}.xlsx')
 
     best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all')['stock_return_y'].mean()).reset_index()
     avg = fundamentals.groupby(['period_end', 'currency_code']).mean().reset_index()
