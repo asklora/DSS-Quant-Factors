@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import global_vals
 import re
 import datetime as dt
-from descriptive_factor.report_to_slack import file_to_slack, report_to_slack
+from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
@@ -32,6 +32,9 @@ class score_eval:
                      'fundamentals_extra', 'esg', 'ai_score', 'ai_score2']
         pillar_current = {}
         with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
+            update_time = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn_ali)
+            update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
             query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
             query += f"WHERE currency_code is not null"
@@ -45,36 +48,41 @@ class score_eval:
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
-        # 0. save comparison csv
+        # 1. save comparison csv
         score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
         score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
         score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
         lw_comp = save_compare(score_current, score_history_lw, score_col)
         avg_comp = save_compare(score_current, score_history_avg, score_col)
+        lw_comp_des = lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
+        avg_comp_des = avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
 
         writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
-        lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose().to_excel(writer, sheet_name='lastweek_describe (remove inf)')
+        lw_comp_des.to_excel(writer, sheet_name='lastweek_describe (remove inf)')
         lw_comp.to_excel(writer, sheet_name='lastweek')
-        avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose().to_excel(writer, sheet_name='average_describe (remove inf)')
+        avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
         avg_comp.to_excel(writer, sheet_name='average')
         writer.save()
+
+        report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
+        report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
         file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
 
         score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
         score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
         score_col += ['ai_score_unscaled', 'ai_score2_unscaled']
 
-        # 1. test rank
-        c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
-        c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
-        if (c1<0.9) or (c2<0.9):
-            raise ValueError("================ ERROR: ai_score before & after scaler correlation is < 0.9 ==================")
+        # 2. test rank
+        # c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
+        # c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
+        # if (c1<0.9) or (c2<0.9):
+        #     raise ValueError("================ ERROR: ai_score before & after scaler correlation is < 0.9 ==================")
 
-        # 1. save descriptive csv
-        save_topn_ticker(score_current)
+        # 3. save descriptive csv
+        # save_topn_ticker(score_current)
         save_description(score_current)
 
-        # 2. save descriptive plot
+        # 4. save descriptive plot
         plot_dist_score(score_current, 'current', score_col)
         plot_minmax_factor(pillar_current)
 
@@ -118,6 +126,10 @@ def save_description(df):
     writer = pd.ExcelWriter(f'#{suffixes}_describe_current.xlsx')
     df.to_excel(writer, sheet_name='Distribution Current')
     writer.save()
+
+    for col in ['ai_score','ai_score_unscaled','ai_score2','ai_score2_unscaled']:
+        df_save = df.xs(col, level=0).round(2)
+        report_df_to_slack(f'*======== Score Distribution - {col} ========*', df_save)
     file_to_slack(f'#{suffixes}_describe_current.xlsx', 'xlsx', f'{global_vals.production_score_current} Score Distribution')
 
 def save_description_history(df):
@@ -128,7 +140,7 @@ def save_description_history(df):
     writer = pd.ExcelWriter(f'#{suffixes}_describe_history.xlsx')
     df.to_excel(writer, sheet_name='Distribution History')
     writer.save()
-    file_to_slack(f'#{suffixes}_describe_history.xlsx', 'xlsx', f'Backtest Score Distribution')
+    # file_to_slack(f'#{suffixes}_describe_history.xlsx', 'xlsx', f'Backtest Score Distribution')
 
 def plot_dist_score(df, filename, score_col):
     ''' Plot distribution (currency, score)  for all AI score compositions '''
@@ -151,7 +163,7 @@ def plot_dist_score(df, filename, score_col):
             continue
     plt.suptitle(filename, fontsize=30)
     plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
-    file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
+    # file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
 
 def plot_minmax_factor(df_dict):
     ''' plot min/max distribution '''
@@ -182,7 +194,7 @@ def plot_minmax_factor(df_dict):
 
         plt.suptitle(cur, fontsize=30)
         fig.savefig(f'#{suffixes}_score_minmax_{cur}.png')
-        file_to_slack(f'#{suffixes}_score_minmax_{cur}.png', 'png', f'{cur} Score Detailed Distribution')
+        # file_to_slack(f'#{suffixes}_score_minmax_{cur}.png', 'png', f'{cur} Score Detailed Distribution')
         plt.close(fig)
 
 def qcut_eval(score_col, fundamentals, name=''):
@@ -232,4 +244,7 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     score_eval().test_current()
-    score_eval().test_history()
+    # score_eval().test_history()
+    #TODO: check score distribution with log transform
+    #TODO: comfirm how to show APP Factors
+    #TODO: descriptive factor (check why 7/30 history worse)

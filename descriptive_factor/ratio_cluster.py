@@ -140,7 +140,7 @@ class PFA(object):
 
 class test_cluster:
 
-    def __init__(self, last=True, testing_interval=91):
+    def __init__(self, last=-1, testing_interval=91):
 
         self.testing_interval = testing_interval
 
@@ -149,7 +149,7 @@ class test_cluster:
         self.c = corr_df[testing_interval]
 
         if last:
-            self.df = self.df.groupby(['ticker']).last().reset_index()
+            self.df = self.df.groupby(['ticker']).nth(last).reset_index()
             self.df = self.df.replace([-np.inf, np.inf], [np.nan, np.nan])
 
         self.label_cols = ['ticker', 'trading_day']
@@ -177,7 +177,8 @@ class test_cluster:
         ]
 
         # x = x.describe()
-        self.trim_outlier_std()
+        # self.trim_outlier_std()
+        self.trim_outlier_quantile()
         # x = x.describe()
 
         # self.plot_scatter_hist(self.df, self.cols)
@@ -198,6 +199,12 @@ class test_cluster:
                 x = self.df[col].values
             x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
             self.df[col] = x
+
+    def trim_outlier_quantile(self):
+        ''' trim outlier on testing sets based on quantile transformation '''
+
+        cols = self.df.select_dtypes(float).columns.to_list()
+        self.df[cols] = QuantileTransformer(n_quantiles=1000).fit_transform(self.df[cols])
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -248,11 +255,14 @@ class test_cluster:
 
         print(self.df.shape)
         print(self.df.describe().transpose())
-        init_cols = ['icb_code', 'vol']
+        init_cols = ['icb_code']
 
-        # kwargs['n_clusters'] = round(len(self.df)/10)
+        if kwargs['n_clusters'] < 1:
+            kwargs['n_clusters'] = round(len(self.df)*kwargs['n_clusters'])
         print(kwargs)
         init_xb = self.test_FCM(init_cols, kwargs)['xie_beni_index']
+        if np.isnan(init_xb):
+            init_xb = 10000
         cols_tested = []
         c = self.df.corr().unstack().abs().reset_index()
 
@@ -260,7 +270,7 @@ class test_cluster:
                     'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
                     'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
 
-        cols_list = ['change_tri_fillna','ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
+        cols_list = ['vol', 'change_tri_fillna','ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
                      'avg_fa_turnover','change_earnings','change_assets','change_ebtda']
 
         # for cols in itertools.combinations(cols_list, 5):
@@ -294,6 +304,8 @@ class test_cluster:
                 if col not in init_cols:
                     cols = init_cols + [col]
 
+                # cols = ['icb_code', 'vol', 'change_assets']
+
                 print(f'cols: {cols}')
                 m = self.test_FCM(cols, kwargs)
                 all_results.append(m)
@@ -301,13 +313,15 @@ class test_cluster:
 
             all_results = pd.DataFrame(all_results)
 
-            best = all_results.nsmallest(1, 'fuzzy_hypervolume', keep='first')
-            if best['fuzzy_hypervolume'].values[0] < init_xb:
-                init_xb = best['fuzzy_hypervolume'].values[0]
+            best = all_results.nsmallest(1, 'xie_beni_index', keep='first')
+            if best['xie_beni_index'].values[0] < init_xb:
+                init_xb = best['xie_beni_index'].values[0]
                 init_cols = best['factors'].values[0].split(', ')
             else:
                 print(init_xb, init_cols)
                 next_col = False
+
+        return init_xb, init_cols
 
             # if m['xie_beni_index'] < init_xb:
             #     init_xb = m['xie_beni_index']
@@ -352,6 +366,8 @@ class test_cluster:
         # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
         X = self.df[self.cols].values
         X = np.nan_to_num(X, -1)
+
+
 
         m = {}
         condition_values = list(iter_conditions_dict.values())
@@ -505,8 +521,14 @@ def plot_dendrogram(model, **kwargs):
     dendrogram(linkage_matrix, **kwargs)
 
 if __name__ == "__main__":
-    data = test_cluster(testing_interval=7)
-    data.stepwise_test_FCM({'n_clusters': 20, 'm': 2})
+    best = {}
+    for i in range(1, 13):
+        for n in [0.01, 0.02, 0.05]:
+            data = test_cluster(last=-i, testing_interval=7)
+            best[(i,n)] = {}
+            best[(i,n)]['init_xb'], best[(i,n)]['init_cols'] = data.stepwise_test_FCM({'n_clusters': n, 'm': 2})
+
+    pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
 
     # get_most_close_ticker()
 

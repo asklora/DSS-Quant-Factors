@@ -1,10 +1,12 @@
 from sqlalchemy import text
+from scipy.stats import skew
+
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
 from dateutil.relativedelta import relativedelta
 import numpy as np
-from sklearn.preprocessing import robust_scale, minmax_scale, quantile_transform
+from sklearn.preprocessing import robust_scale, minmax_scale, quantile_transform, MinMaxScaler
 from preprocess.premium_calculation import trim_outlier
 import global_vals
 import matplotlib.pyplot as plt
@@ -69,12 +71,23 @@ def score_history():
 
     fundamentals = fundamentals.dropna(subset=["currency_code",'period_end'], how='any')
 
+    def cols_transform(x):
+        ''' transform columns using same method as Droid_v2.1 AI score calculation '''
+
+        s = skew(x)
+        if (s < -5) or (s > 5):
+            x = np.log(x + 1 - np.min(x))
+        m = np.median(x)
+        # clip_x = np.clip(x, np.percentile(x, 0.01), np.percentile(x, 0.99))
+        std = np.nanstd(x)
+        return np.clip(x, m - 2 * std, m + 2 * std)
+
     # trim outlier to +/- 2 std
     calculate_column_score = []
     for column in calculate_column:
         column_score = column + "_score"
-        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end'])[column].transform(
-            lambda x: np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x)))
+        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby([
+            "currency_code",'period_end'])[column].transform(cols_transform)
         calculate_column_score.append(column_score)
     print(calculate_column_score)
 
@@ -95,8 +108,9 @@ def score_history():
         df_currency_code = df_currency_code.rename(columns={column_robust_score: "score"})
         fundamentals[column_minmax_currency_code] = df_currency_code.dropna(subset=["currency_code",'period_end']).groupby(["currency_code",'period_end']).score.transform(
             lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
-        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(), 0.4, fundamentals[column_minmax_currency_code])
-
+        fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(),
+                                                             fundamentals[column_minmax_currency_code].mean()*0.9,
+                                                             fundamentals[column_minmax_currency_code])
 
     # apply quantile transformation on before scaling scores
     tmp = fundamentals.melt(['ticker', 'currency_code', 'period_end'], calculate_column)
@@ -131,7 +145,7 @@ def score_history():
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
             print(f"Calculate Fundamentals [extra] in group [{group}] with [{', '.join(set(score_col))}]")
         else:
-            fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = 0.
+            fundamentals.loc[fundamentals["currency_code"] == group].filter(regex="^fundamentals_").mean().mean()
 
     fundamentals_factors_scores_col = fundamentals.filter(regex='^fundamentals_').columns
     fundamentals[fundamentals_factors_scores_col] = (fundamentals[fundamentals_factors_scores_col] * 10).round(1)
@@ -140,7 +154,18 @@ def score_history():
     fundamentals["ai_score"] = (fundamentals["fundamentals_value"] + fundamentals["fundamentals_quality"] + \
                                 fundamentals["fundamentals_momentum"] + fundamentals["fundamentals_extra"]) / 4
 
-    score_col = ['ai_score','fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
+    for name, g in fundamentals.groupby(['currency_code']):
+        group_history1 = g.loc[g['ai_score'] > g['ai_score'].median(), 'ai_score'].values
+        group_history2 = g.loc[g['ai_score'] < g['ai_score'].median(), 'ai_score'].values
+        m1 = MinMaxScaler(feature_range=(5, 10)).fit(group_history1)
+        m2 = MinMaxScaler(feature_range=(0, 5)).fit(group_history2)
+        fundamentals.loc[score_current1.index, ["ai_score_scaled"]] = m1.transform(score_current1)
+        fundamentals.loc[score_current2.index, ["ai_score_scaled"]] = m2.transform(score_current2)
+    print(fundamentals[["ai_score"]].describe())
+
+    x = fundamentals.describe().transpose()
+
+    score_col = ['ai_score', 'ai_score_scaled', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
     label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']
 
     with global_vals.engine_ali.connect() as conn:
