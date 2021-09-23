@@ -136,6 +136,69 @@ class PFA(object):
         self.indices_ = [sorted(f, key=lambda x: x[1])[0][0] for f in dists.values()]
         self.features_ = X[:, self.indices_]
 
+# -------------------------------- Final Test Cluster -----------------------------------------------
+
+def final_test_FCM(arr, kwargs):
+    X = np.nan_to_num(arr, -1)
+    model = FCM(**kwargs)
+    model.fit(X)
+
+    # calculate matrics
+    m = {}
+    m['count'] = Counter(model.predict(X))
+    m['xie_beni_index'] = xie_beni_index(X, model.u, model.centers.T, kwargs['m'])
+    return m
+
+def final_test_cluster(testing_interval, test_period=[1]):
+    ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
+
+    sample_df, corr_df = prep_factor_dateset(list_of_interval=[testing_interval])
+    df = sample_df[testing_interval]
+    df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+    cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
+                 'avg_fa_turnover', 'change_earnings', 'change_assets', 'change_ebtda']
+    score_col = 'xie_beni_index'
+    kwargs = {'m': 2}
+
+    for i in test_period:      # test on multiple
+        df_last = df.groupby(['ticker']).nth(-i).reset_index()
+        df_last = trim_outlier_quantile(df_last)
+
+        cols = init_cols = ['icb_code']
+        all_results_all = []
+        while len(cols) < 5:
+            all_results = []
+            for col in cols_list:
+                if col in init_cols:
+                    continue
+                else:
+                    cols = init_cols + [col]
+                print(f'cols: {cols}')
+
+                for i in [0.01, 0.02, 0.05]:  # try n_cluster = 1/100, 1/50, 1/20 of the samples
+                    kwargs['n_clusters'] = round(len(df_last) * i)
+                    m = final_test_FCM(df_last[cols].values, kwargs)
+                    m['factors'] = ', '.join(cols)
+                    m['n_clusters'] = kwargs['n_clusters']
+                    all_results.append(m)
+                    print(all_results)
+                    gc.collect()
+
+            all_results = pd.DataFrame(all_results)
+            all_results['rank'] = all_results.groupby('n_clusters')[score_col].rank()
+            all_results_avg = all_results.groupby(['factors']).mean().reset_index()
+
+            best = all_results_avg.nsmallest(1, 'rank', keep='first')
+            init_cols = best['factors'].values[0].split(', ')
+            all_results_all.append(all_results.loc[all_results['factors']==best['factors'].values[0]])
+
+    all_results_all = pd.concat(all_results_all, axis=0)
+    all_results_all.to_csv(f'comb_best_history_{testing_interval}.csv')
+
+    best_best = all_results_all.groupby('factors').mean().reset_index().nsmallest(1, 'xie_beni_index', keep='first')
+    best_cols = best_best['factors'].values[0].split(', ')
+    print(best_cols)
+        
 # -------------------------------- Test Cluster -----------------------------------------------
 
 class test_cluster:
@@ -182,29 +245,6 @@ class test_cluster:
         # x = x.describe()
 
         # self.plot_scatter_hist(self.df, self.cols)
-
-    def trim_outlier_std(self):
-        ''' trim outlier on testing sets '''
-
-        def trim_scaler(x):
-            x = np.clip(x, np.nanmean(x)-2*np.nanstd(x), np.nanmean(x)+2*np.nanstd(x))
-            # x = np.clip(x, np.percentile(x, 0.10), np.percentile(x, 0.90))
-            x = robust_scale(x)
-            return x
-
-        for col in self.df.select_dtypes(float).columns.to_list():
-            if col != 'icb_code':
-                x = trim_scaler(self.df[col])
-            else:
-                x = self.df[col].values
-            x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
-            self.df[col] = x
-
-    def trim_outlier_quantile(self):
-        ''' trim outlier on testing sets based on quantile transformation '''
-
-        cols = self.df.select_dtypes(float).columns.to_list()
-        self.df[cols] = QuantileTransformer(n_quantiles=1000).fit_transform(self.df[cols])
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -255,30 +295,21 @@ class test_cluster:
 
         print(self.df.shape)
         print(self.df.describe().transpose())
-        init_cols = ['icb_code']
-
-        if kwargs['n_clusters'] < 1:
-            kwargs['n_clusters'] = round(len(self.df)*kwargs['n_clusters'])
-        print(kwargs)
-        init_xb = self.test_FCM(init_cols, kwargs)['xie_beni_index']
-        if np.isnan(init_xb):
-            init_xb = 10000
-        cols_tested = []
-        c = self.df.corr().unstack().abs().reset_index()
-
-        cols_list = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
-                    'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
-                    'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
+        cols = init_cols = ['icb_code']
+        score_col = 'xie_beni_index'
+        # cols_tested = []
+        # c = self.df.corr().unstack().abs().reset_index()
+        # cols_list = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+        #             'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
+        #             'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
 
         cols_list = ['vol', 'change_tri_fillna','ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
                      'avg_fa_turnover','change_earnings','change_assets','change_ebtda']
 
-        # for cols in itertools.combinations(cols_list, 5):
-        next_col = True
-        while next_col == True:
+        all_results_all = []
+        while len(cols) < 5:
             all_results = []
             for col in cols_list:
-
                 # if len(init_cols) > 5:
                 #     least_var_cols = init_cols[np.argmin(m['cluster_center_var'])]
                 #     init_cols.remove(least_var_cols)
@@ -303,25 +334,27 @@ class test_cluster:
                 # testing on FCM
                 if col not in init_cols:
                     cols = init_cols + [col]
-
-                # cols = ['icb_code', 'vol', 'change_assets']
-
+                # cols = ['icb_code', 'change_tri_fillna', 'avg_fa_turnover', 'ret_momentum','avg_ni_to_cfo','vol']
                 print(f'cols: {cols}')
-                m = self.test_FCM(cols, kwargs)
-                all_results.append(m)
-                gc.collect()
+
+                for i in [0.01, 0.02, 0.05]:  # try n_cluster = 1/100, 1/50, 1/20 of the samples
+                    kwargs['n_clusters'] = round(len(self.df) * i)
+                    m = self.test_FCM(cols, kwargs)
+                    all_results.append(m)
+                    gc.collect()
 
             all_results = pd.DataFrame(all_results)
+            all_results['rank'] = all_results[score_col].rank()
+            all_results_avg = all_results.groupby(['factors']).mean().reset_index()
 
-            best = all_results.nsmallest(1, 'xie_beni_index', keep='first')
-            if best['xie_beni_index'].values[0] < init_xb:
-                init_xb = best['xie_beni_index'].values[0]
-                init_cols = best['factors'].values[0].split(', ')
-            else:
-                print(init_xb, init_cols)
-                next_col = False
+            best = all_results_avg.nsmallest(1, score_col, keep='first')
+            init_cols = best['factors'].values[0].split(', ')
+            all_results_all.append(all_results.loc[all_results['factors']==best['factors'].values[0]])
 
-        return init_xb, init_cols
+        pd.concat(all_results_all, axis=0).to_csv(f'comb_best_history_{self.testing_interval}.csv')
+        print(init_cols, best.transpose()[1])
+
+        # return init_xb, init_cols
 
             # if m['xie_beni_index'] < init_xb:
             #     init_xb = m['xie_beni_index']
@@ -455,6 +488,33 @@ class test_cluster:
 
 # -------------------------------- Plot Cluster -----------------------------------------------
 
+def trim_outlier_std(df):
+    ''' trim outlier on testing sets '''
+
+    def trim_scaler(x):
+        x = np.clip(x, np.nanmean(x)-2*np.nanstd(x), np.nanmean(x)+2*np.nanstd(x))
+        # x = np.clip(x, np.percentile(x, 0.10), np.percentile(x, 0.90))
+        x = robust_scale(x)
+        return x
+
+    for col in df.select_dtypes(float).columns.to_list():
+        if col != 'icb_code':
+            x = trim_scaler(df[col])
+        else:
+            x = df[col].values
+        x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
+        df[col] = x
+    return df
+
+def trim_outlier_quantile(df):
+    ''' trim outlier on testing sets based on quantile transformation '''
+
+    cols = df.select_dtypes(float).columns.to_list()
+    df[cols] = QuantileTransformer(n_quantiles=1000).fit_transform(df[cols])
+    return df
+
+# -------------------------------- Plot Cluster -----------------------------------------------
+
 def plot_scatter_hist(df, cols, cluster_method, suffixes):
 
     n = len(cols)
@@ -521,14 +581,20 @@ def plot_dendrogram(model, **kwargs):
     dendrogram(linkage_matrix, **kwargs)
 
 if __name__ == "__main__":
-    best = {}
-    for i in range(1, 13):
-        for n in [0.01, 0.02, 0.05]:
-            data = test_cluster(last=-i, testing_interval=7)
-            best[(i,n)] = {}
-            best[(i,n)]['init_xb'], best[(i,n)]['init_cols'] = data.stepwise_test_FCM({'n_clusters': n, 'm': 2})
+    # best = {}
+    # for i in range(1,2):
+    #     data = test_cluster(last=-i, testing_interval=7)
+    #     best[i] = {}
+    #     best[i]['init_xb'], best[(i,n)]['init_cols'] = data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
+    # data = test_cluster(last=-1, testing_interval=91)
+    # data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
+
+    # final_test_cluster(91)
+    final_test_cluster(30)
+    final_test_cluster(7)
+
+    # pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
 
     # get_most_close_ticker()
 

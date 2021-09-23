@@ -110,16 +110,16 @@ def score_history():
             lambda x: minmax_scale(x.astype(float)) if x.notnull().sum() else np.full_like(x, np.nan))
         fundamentals[column_minmax_currency_code] = np.where(fundamentals[column_minmax_currency_code].isnull(),
                                                              fundamentals[column_minmax_currency_code].mean()*0.9,
-                                                             fundamentals[column_minmax_currency_code])
+                                                             fundamentals[column_minmax_currency_code])*10
 
     # apply quantile transformation on before scaling scores
-    tmp = fundamentals.melt(['ticker', 'currency_code', 'period_end'], calculate_column)
-    tmp['quantile_transformed'] = tmp.dropna(subset=['currency_code', 'variable','period_end']).groupby(['currency_code', 'variable','period_end'])['value'].transform(
-        lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
-    tmp = tmp[['ticker', 'period_end', 'variable', 'quantile_transformed']]
-    tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
-    tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1).reset_index()
-    fundamentals = fundamentals.merge(tmp, how='left', on=['ticker','period_end'])
+    # tmp = fundamentals.melt(['ticker', 'currency_code', 'period_end'], calculate_column)
+    # tmp['quantile_transformed'] = tmp.dropna(subset=['currency_code', 'variable','period_end']).groupby(['currency_code', 'variable','period_end'])['value'].transform(
+    #     lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=4).flatten() if x.notnull().sum() else np.full_like(x, np.nan))
+    # tmp = tmp[['ticker', 'period_end', 'variable', 'quantile_transformed']]
+    # tmp['variable'] = tmp['variable'] + '_quantile_currency_code'
+    # tmp = tmp.pivot(['ticker','period_end'], ['variable']).droplevel(0, axis=1).reset_index()
+    # fundamentals = fundamentals.merge(tmp, how='left', on=['ticker','period_end'])
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
@@ -148,22 +148,17 @@ def score_history():
             fundamentals.loc[fundamentals["currency_code"] == group].filter(regex="^fundamentals_").mean().mean()
 
     fundamentals_factors_scores_col = fundamentals.filter(regex='^fundamentals_').columns
-    fundamentals[fundamentals_factors_scores_col] = (fundamentals[fundamentals_factors_scores_col] * 10).round(1)
+    # fundamentals[fundamentals_factors_scores_col] = (fundamentals[fundamentals_factors_scores_col] * 10).round(1)
 
     print("Calculate AI Score")
     fundamentals["ai_score"] = (fundamentals["fundamentals_value"] + fundamentals["fundamentals_quality"] + \
                                 fundamentals["fundamentals_momentum"] + fundamentals["fundamentals_extra"]) / 4
 
-    for name, g in fundamentals.groupby(['currency_code']):
-        group_history1 = g.loc[g['ai_score'] > g['ai_score'].median(), 'ai_score'].values
-        group_history2 = g.loc[g['ai_score'] < g['ai_score'].median(), 'ai_score'].values
-        m1 = MinMaxScaler(feature_range=(5, 10)).fit(group_history1)
-        m2 = MinMaxScaler(feature_range=(0, 5)).fit(group_history2)
-        fundamentals.loc[score_current1.index, ["ai_score_scaled"]] = m1.transform(score_current1)
-        fundamentals.loc[score_current2.index, ["ai_score_scaled"]] = m2.transform(score_current2)
+    m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
+    fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])
     print(fundamentals[["ai_score"]].describe())
 
-    x = fundamentals.describe().transpose()
+    x = fundamentals.groupby(['currency_code']).agg(['min','mean','max','std'])
 
     score_col = ['ai_score', 'ai_score_scaled', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
     label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']

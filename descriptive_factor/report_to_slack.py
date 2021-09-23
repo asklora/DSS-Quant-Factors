@@ -22,6 +22,7 @@ def report_series_to_slack(message=None, df=None):
     if message:
         report_to_slack(message)
 
+    message = "```"
     for k, v in df.to_dict().items():
         message += f"{k.ljust(40)}{v}\n"
     message += "```"

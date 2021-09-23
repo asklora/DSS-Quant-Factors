@@ -79,7 +79,7 @@ class score_eval:
         #     raise ValueError("================ ERROR: ai_score before & after scaler correlation is < 0.9 ==================")
 
         # 3. save descriptive csv
-        # save_topn_ticker(score_current)
+        save_topn_ticker(score_current)
         save_description(score_current)
 
         # 4. save descriptive plot
