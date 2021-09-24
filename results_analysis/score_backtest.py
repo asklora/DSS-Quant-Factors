@@ -11,7 +11,7 @@ from preprocess.premium_calculation import trim_outlier
 import global_vals
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
-from results_analysis.score_evaluate import score_eval
+from score_evaluate import score_eval
 
 def score_history():
     ''' calculate score with DROID v2 method & evaluate '''
