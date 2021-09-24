@@ -15,6 +15,7 @@ import global_vals
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 import pandas as pd
 import numpy as np
+import datetime as dt
 import matplotlib.pyplot as plt
 
 import gc
@@ -33,7 +34,7 @@ print(matplotlib.__version__)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
-def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91]):
+def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
 
     sample_df = {}
     corr_df = {}
@@ -53,12 +54,14 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91]):
                 corr_df[i] = pd.read_csv(f'sample_corr_{i}.csv')
             except:
                 list_of_interval_redo.append(i)
+    else:
+        list_of_interval_redo = list_of_interval
 
     if len(list_of_interval_redo)>0:
         print(f'-----------------------------> No local cache for {list_of_interval_redo} -> Process')
-        df_dict = combine_tri_worldscope(use_cached=True, save=True, currency=['USD']).get_results(list_of_interval_redo)
-        for k, df in df_dict:
-            corr_df[k] = calc_corr_csv(df)
+        df_dict = combine_tri_worldscope(use_cached=use_cached, save=True, currency=[currency]).get_results(list_of_interval_redo)
+        # for k, df in df_dict.items():
+        #     corr_df[k] = calc_corr_csv(df)
         sample_df.update(df_dict)
 
     return sample_df, corr_df
@@ -147,58 +150,77 @@ def final_test_FCM(arr, kwargs):
     m = {}
     m['count'] = Counter(model.predict(X))
     m['xie_beni_index'] = xie_beni_index(X, model.u, model.centers.T, kwargs['m'])
+    m['fuzzy_hypervolume'] = fuzzy_hypervolume(X, model.u, model.centers.T, kwargs['m'])
     return m
 
-def final_test_cluster(testing_interval, test_period=[1]):
+def final_test_cluster(use_cached=True):
     ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
-    sample_df, corr_df = prep_factor_dateset(list_of_interval=[testing_interval])
-    df = sample_df[testing_interval]
-    df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
-    cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
+    lst_interval = [7, 30, 91]
+    test_period = range(1, 13, 1)
+    currency = ['HKD', 'USD', 'EUR', 'CNY', 'KRW', 'GBP']
+    org_cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
                  'avg_fa_turnover', 'change_earnings', 'change_assets', 'change_ebtda']
     score_col = 'xie_beni_index'
     kwargs = {'m': 2}
 
-    for i in test_period:      # test on multiple
-        df_last = df.groupby(['ticker']).nth(-i).reset_index()
-        df_last = trim_outlier_quantile(df_last)
+    for cur in currency:
+        sample_df, corr_df = prep_factor_dateset(list_of_interval=lst_interval, use_cached=use_cached, currency=cur)
+        for testing_interval in lst_interval:
+            df = sample_df[testing_interval]
+            df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+            cols_list = list(set(org_cols_list) & set(df.columns.to_list()))
+            for t in test_period:      # test on multiple
+                df_last = df.groupby(['ticker']).nth(-t).reset_index()
+                df_last = trim_outlier_quantile(df_last)
 
-        cols = init_cols = ['icb_code']
-        all_results_all = []
-        while len(cols) < 5:
-            all_results = []
-            for col in cols_list:
-                if col in init_cols:
-                    continue
-                else:
-                    cols = init_cols + [col]
-                print(f'cols: {cols}')
+                cols = init_cols = ['icb_code']
+                all_results_all = []
+                while len(cols) < 5:
+                    all_results = []
+                    for col in cols_list:
+                        if col in init_cols:
+                            continue
+                        else:
+                            cols = init_cols + [col]
+                        print(f'cols: {cols}')
 
-                for i in [0.01, 0.02, 0.05]:  # try n_cluster = 1/100, 1/50, 1/20 of the samples
-                    kwargs['n_clusters'] = round(len(df_last) * i)
-                    m = final_test_FCM(df_last[cols].values, kwargs)
-                    m['factors'] = ', '.join(cols)
-                    m['n_clusters'] = kwargs['n_clusters']
-                    all_results.append(m)
-                    print(all_results)
-                    gc.collect()
+                        for i in [0.01, 0.02, 0.05]:  # try n_cluster = 1/100, 1/50, 1/20 of the samples
+                            kwargs['n_clusters'] = round(len(df_last) * i)
+                            m = final_test_FCM(df_last[cols].values, kwargs)
+                            m['factors'] = ', '.join(cols)
+                            m['n_clusters'] = kwargs['n_clusters']
+                            all_results.append(m)
+                            print(all_results)
+                            gc.collect()
 
-            all_results = pd.DataFrame(all_results)
-            all_results['rank'] = all_results.groupby('n_clusters')[score_col].rank()
-            all_results_avg = all_results.groupby(['factors']).mean().reset_index()
+                    all_results = pd.DataFrame(all_results)
+                    all_results['rank'] = all_results.groupby('n_clusters')[score_col].rank()
+                    all_results_avg = all_results.groupby(['factors']).mean().reset_index()
 
-            best = all_results_avg.nsmallest(1, 'rank', keep='first')
-            init_cols = best['factors'].values[0].split(', ')
-            all_results_all.append(all_results.loc[all_results['factors']==best['factors'].values[0]])
+                    best = all_results_avg.nsmallest(1, 'rank', keep='first')
+                    init_cols = best['factors'].values[0].split(', ')
+                    all_results_all.append(all_results.loc[all_results['factors']==best['factors'].values[0]])
 
-    all_results_all = pd.concat(all_results_all, axis=0)
-    all_results_all.to_csv(f'comb_best_history_{testing_interval}.csv')
+                all_results_all = pd.concat(all_results_all, axis=0)
+                all_results_all.to_csv(f'comb_best_history_{testing_interval}.csv')
 
-    best_best = all_results_all.groupby('factors').mean().reset_index().nsmallest(1, 'xie_beni_index', keep='first')
-    best_cols = best_best['factors'].values[0].split(', ')
-    print(best_cols)
-        
+                best_best = all_results_all.groupby('factors').mean().reset_index().nsmallest(1, 'xie_beni_index', keep='first')
+                best_cols = best_best['factors'].values[0].split(', ')
+                print(best_cols)
+
+                with global_vals.engine_ali.connect() as conn:
+                    extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+                    r_cols = ['update_date','currency','interval','backtest_period','n_clusters','factors','xie_beni_index']
+                    all_results_all = all_results_all.loc[all_results_all['factors']==best_best['factors'].values[0]]
+                    all_results_all['update_date'] = dt.datetime.today().strftime('%Y-%m-%d')
+                    all_results_all['interval'] = testing_interval
+                    all_results_all['currency'] = cur
+                    all_results_all['backtest_period'] = t
+                    all_results_all[r_cols].to_sql(global_vals.descriptive_factor_table, **extra)
+                    print(f'----------------------> finish writing best clustered {testing_interval}')
+                global_vals.engine_ali.dispose()
+
 # -------------------------------- Test Cluster -----------------------------------------------
 
 class test_cluster:
@@ -590,9 +612,7 @@ if __name__ == "__main__":
     # data = test_cluster(last=-1, testing_interval=91)
     # data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    # final_test_cluster(91)
-    final_test_cluster(30)
-    final_test_cluster(7)
+    final_test_cluster(use_cached=False)
 
     # pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
 

@@ -19,6 +19,7 @@ production_factor_rank_table = "factor_result_pred_prod"
 production_score_history = "data_fundamental_score_history_testing"
 production_score_current = "universe_rating" # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
+descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"

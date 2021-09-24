@@ -99,7 +99,7 @@ def get_worldscope(save=True, conditions=None):
 class combine_tri_worldscope:
     ''' combine tri & worldscope raw data '''
 
-    def __init__(self, use_cached, save, currency=None, ticker=None):
+    def __init__(self, use_cached, save=True, currency=None, ticker=None):
 
         conditions = ["True"]
         self.save = save
@@ -112,7 +112,7 @@ class combine_tri_worldscope:
         # 1. Stock return/volatility/volume
         if use_cached:
             try:
-                tri = pd.read_csv('dcache_tri.csv', low_memory=False)
+                tri = pd.read_csv(f'dcache_tri_{currency[0]}.csv', low_memory=False)
             except Exception as e:
                 print(e)
                 tri = get_tri(save, conditions)
@@ -124,8 +124,8 @@ class combine_tri_worldscope:
         # 4. Universe
         if use_cached:
             try:
-                ws = pd.read_csv('dcache_ws.csv')
-                ibes = pd.read_csv('dcache_ibes.csv')
+                ws = pd.read_csv(f'dcache_ws_{currency[0]}.csv')
+                ibes = pd.read_csv(f'dcache_ibes_{currency[0]}.csv')
             except Exception as e:
                 print(e)
                 ws, ibes = get_worldscope(save, conditions)
@@ -198,7 +198,10 @@ class combine_tri_worldscope:
         for i in list_of_interval:
             arr = self.calculate_final_results(i)
             arr = np.reshape(arr, (arr.shape[0]*arr.shape[1], arr.shape[2]))
-            arr_dict[i] = pd.DataFrame(arr, columns=self.final_col)
+            df = pd.DataFrame(arr, columns=self.final_col)
+            x = df.iloc[:,2:].std()
+            print(x.to_dict())
+            arr_dict[i] = df[['ticker','trading_day']+list(x[x>0.001].index)]
             print(arr_dict[i])
 
             if self.save:
