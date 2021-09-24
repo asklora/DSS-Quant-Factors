@@ -243,8 +243,8 @@ def qcut_eval(score_col, fundamentals, name=''):
     file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
 
 if __name__ == "__main__":
-    score_eval().test_current()
-    # score_eval().test_history()
-    #TODO: check score distribution with log transform
-    #TODO: comfirm how to show APP Factors
+    eval = score_eval()
+    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    eval.test_history()     # test on (history) <-global_vals.production_score_history
+
     #TODO: descriptive factor (check why 7/30 history worse)

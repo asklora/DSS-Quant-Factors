@@ -168,11 +168,6 @@ def score_history():
         fundamentals[label_col + score_col].to_sql(global_vals.production_score_history, **extra)
     global_vals.engine_ali.dispose()
 
-    # evaluate score calculated
-    eval = score_eval()
-    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    eval.test_history()     # test on (history) <-global_vals.production_score_history
-
 if __name__ == "__main__":
     score_history()
     # score_eval()
