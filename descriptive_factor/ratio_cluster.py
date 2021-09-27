@@ -20,7 +20,7 @@ from scipy.cluster.hierarchy import dendrogram
 from sklearn import metrics
 from s_dbw import S_Dbw
 # from jqmcvi import base
-from fuzzy_metrics import *
+from descriptive_factor.fuzzy_metrics import *
 
 import matplotlib
 print(matplotlib.__version__)

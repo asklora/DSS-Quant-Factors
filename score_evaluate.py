@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import global_vals
 import re
 import datetime as dt
-from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
+from report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 SLACK = True
