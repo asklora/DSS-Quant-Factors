@@ -199,6 +199,7 @@ class combine_tri_worldscope:
             arr = self.calculate_final_results(i)
             arr = np.reshape(arr, (arr.shape[0]*arr.shape[1], arr.shape[2]))
             df = pd.DataFrame(arr, columns=self.final_col)
+            df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
             x = df.iloc[:,2:].std()
             print(x.to_dict())
             arr_dict[i] = df[['ticker','trading_day']+list(x[x>0.001].index)]
@@ -332,7 +333,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(False, False, ticker=['AAPL.O','0992.HK']).get_results()
+    dict = combine_tri_worldscope(False, False, ticker=['2005.HK']).get_results()
     print(dict.keys())
 
     # get_worldscope(True)
