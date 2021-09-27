@@ -8,17 +8,19 @@ from dateutil.relativedelta import relativedelta
 def download_from_eikon_others():
     ''' Monthly Update: download report_date from eikon '''
 
-    # with global_vals.engine.connect() as conn:
-    #     universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
-    #     tickers = list(universe['ticker'].unique())
-    # global_vals.engine.dispose()
-#
-    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
-    tickers = ['CNY=', "HKD=", "GBP=", "EUR=", "KRW="]
+    with global_vals.engine_ali.connect() as conn:
+        universe = pd.read_sql(f"SELECT DISTINCT s.currency_code FROM universe_newcode c INNER JOIN iso_currency_code s "
+                               f"ON c.nation_code = s.nation_code", conn)
+        tickers = list(universe['currency_code'].unique())
+    global_vals.engine_ali.dispose()
 
+    ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
+    # tickers = ['CNY=', "HKD=", "GBP=", "EUR=", "KRW="]
+    tickers = [x + '=' for x in tickers if x !='USD']
     step = 1
+
     end = dt.datetime.today()
-    start = dt.date(1998,1,1)
+    start = end - relativedelta(years=20)
     params = {'SDate': start.strftime('%Y-%m-%d'), 'EDate': end.strftime('%Y-%m-%d'), 'Frq': 'D'}      # params for fundemantals
     fields = ['TR.MIDPRICE', 'TR.MIDPRICE.date']
 
@@ -35,18 +37,28 @@ def download_from_eikon_others():
         df['ticker'] = df['ticker'].str[:-1]
         df['period_end'] = pd.to_datetime(df['period_end'])
 
+        df.loc[df['ticker'].isin(['GBP', 'EUR','AUD']), 'fx_rate'] = 1 / df.loc[df['ticker'].isin(['GBP', 'EUR','AUD']), 'fx_rate']
+
         # write to DB
         with global_vals.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             df.to_sql(global_vals.eikon_other_table+'_fx', **extra)
         global_vals.engine_ali.dispose()
 
+    # drop duplicates
+    with global_vals.engine_ali.connect() as conn:
+        all = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_fx', conn)
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
+        all_unique = all.drop_duplicates(keep='last')
+        all_unique.to_sql(global_vals.eikon_other_table + '_fx', **extra)
+    global_vals.engine_ali.dispose()
+
 def reverse_fmt():
     with global_vals.engine_ali.connect() as conn:
         df = pd.read_sql("SELECT * FROM {}".format(global_vals.eikon_other_table + '_fx'), conn)
     global_vals.engine_ali.dispose()
 
-    df.loc[df['ticker'].isin(['GBP','EUR']), 'fx_rate'] = 1/df.loc[df['ticker'].isin(['GBP','EUR']), 'fx_rate']
+    df.loc[df['ticker'].isin(['AUD']), 'fx_rate'] = 1/df.loc[df['ticker'].isin(['AUD']), 'fx_rate']
 
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
@@ -54,5 +66,5 @@ def reverse_fmt():
     global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":
-    # download_from_eikon_others()
-    reverse_fmt()
+    download_from_eikon_others()
+    # reverse_fmt()
