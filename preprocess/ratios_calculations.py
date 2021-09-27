@@ -175,7 +175,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     # resample tri using last week average as the proxy for monthly tri
     print(f'      ------------------------> Stock price using [{price_sample}] ')
     tri[['tri','volume']] = tri.groupby("ticker")[['tri','volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
-    tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean()
+    tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
     tri['volume'] = tri['volume'] / tri['volume_3m']
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)

@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(1):
+    for i in range(3):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period
