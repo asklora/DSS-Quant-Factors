@@ -55,4 +55,4 @@ def reverse_fmt():
 
 if __name__ == "__main__":
     # download_from_eikon_others()
-    reverse_fmt()reverse_fmt
+    reverse_fmt()
