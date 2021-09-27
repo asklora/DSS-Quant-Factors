@@ -7,7 +7,7 @@ import datetime as dt
 from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
-SLACK = False
+SLACK = True
 
 class score_eval:
     def __init__(self):
