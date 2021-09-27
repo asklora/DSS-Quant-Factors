@@ -270,6 +270,8 @@ def insert_prem_and_membership_for_group(*args):
         if trim_outlier_:
             df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
 
+        factor_list = list(set(factor_list) & set(df.columns.to_list()))
+
         df = df.melt(
             id_vars=['ticker', 'period_end', 'stock_return_y'],
             value_vars=factor_list,
@@ -296,9 +298,9 @@ def insert_prem_and_membership_for_group(*args):
         
         print(f'      ------------------------> Start writing membership and factor premium - [{group}] Partition')
         with thread_engine_ali.connect() as conn:
-            membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
+            # membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
             prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=results_dtypes, **to_sql_params)
-        record_table_update_time(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", conn)
+        # record_table_update_time(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", conn)
         record_table_update_time(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
     except Exception as e:
         print(e)
