@@ -43,21 +43,21 @@ def get_tri(save=True, currency=None):
     global_vals.engine_ali.dispose()
     return tri, eikon_price, market_cap_anchor
 
-def fill_all_day(result):
+def fill_all_day(result, date_col="trading_day"):
     ''' Fill all the weekends between first / last day and fill NaN'''
 
     # Construct indexes for all day between first/last day * all ticker used
-    df = result[["ticker", "trading_day"]].copy()
-    df.trading_day = pd.to_datetime(df['trading_day'])
-    result.trading_day = pd.to_datetime(result['trading_day'])
-    df = df.sort_values(by=['trading_day'], ascending=True)
+    df = result[["ticker", date_col]].copy()
+    df.trading_day = pd.to_datetime(df[date_col])
+    result.trading_day = pd.to_datetime(result[date_col])
+    df = df.sort_values(by=[date_col], ascending=True)
     daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1], freq='D')
-    indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', 'trading_day'])
+    indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', date_col])
 
     # Insert weekend/before first trading date to df
-    df = df.set_index(['ticker', 'trading_day']).reindex(indexes).reset_index()
-    df = df.sort_values(by=['ticker', 'trading_day'], ascending=True)
-    result = df.merge(result, how="left", on=["ticker", "trading_day"])
+    df = df.set_index(['ticker', date_col]).reindex(indexes).reset_index()
+    df = df.sort_values(by=['ticker', date_col], ascending=True)
+    result = df.merge(result, how="left", on=["ticker", date_col])
 
     return result
 
@@ -122,9 +122,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     if use_cached:
         try:
-            tri = pd.read_csv('cache_tri.csv', low_memory=False)
-            eikon_price = pd.read_csv('cache_eikon_price.csv', low_memory=False)
-            market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv', low_memory=False)
+            tri = pd.read_csv('cache_tri.csv')
+            eikon_price = pd.read_csv('cache_eikon_price.csv')
+            market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv')
         except Exception as e:
             print(e)
             tri, eikon_price, market_cap_anchor = get_tri(save=save)
@@ -192,8 +192,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     tri = tri.merge(market_cap_anchor, on=['ticker','trading_day'], how='left')
     tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
     tri[['anchor_tri','market_cap','market_cap_usd']] = tri.groupby('ticker')[['anchor_tri','market_cap','market_cap_usd']].apply(lambda x: x.ffill().bfill())
-    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
-    tri['market_cap_usd'] = tri['market_cap_usd']/tri['anchor_tri']*tri['tri']
+    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']*1000
+    tri['market_cap_usd'] = tri['market_cap_usd']/tri['anchor_tri']*tri['tri']*1000
     tri = tri.drop(['anchor_tri'], axis=1)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
@@ -363,7 +363,7 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     # 1. Stock return/volatility/volume
     if use_cached:
         try:
-            tri = pd.read_csv('cache_tri_ratio.csv', low_memory=False)
+            tri = pd.read_csv('cache_tri_ratio.csv')
             stocks_col = tri.select_dtypes("float").columns
         except Exception as e:
             print(e)
@@ -449,6 +449,46 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
     check_duplicates(df, 'final')
     return df, stocks_col
 
+def calc_fx_conversion(df):
+    """ Convert all columns to USD for factor calculation (DSS, WORLDSCOPE, IBES using different currency) """
+
+    org_cols = df.columns.to_list()     # record original columns for columns to return
+
+    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.currency_code_universe}", conn_ali)     # map ibes/ws currency for each ticker
+        fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
+        ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
+    global_vals.engine.dispose()
+    global_vals.engine_ali.dispose()
+
+    df = df.merge(curr_code, on='ticker', how='inner')
+    df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
+
+    # map fx rate for conversion for each ticker
+    fx = fill_all_day(fx, date_col='period_end')
+    fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
+    fx['period_end'] = fx['period_end'].dt.strftime("%Y-%m-%d")
+    fx = fx.set_index(['ticker', 'period_end'])['fx_rate'].to_dict()
+
+    currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
+    fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
+    for cur_col, fx_col in zip(currency_code_cols, fx_cols):
+        df = df.set_index([cur_col, 'period_end'])
+        df['index'] = df.index
+        df[fx_col] = df['index'].map(fx)
+        df = df.reset_index()
+
+    ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]     # no fx conversion for ratio items
+
+    for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
+        cols = list(set(g['model_name'].to_list()) & set(df.columns.to_list()))
+        print(f'----> [{name}] source data with fx conversion: ', cols)
+        df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
+
+    df[['close','market_cap']] = df[['close','market_cap']].div(df['fx_dss'], axis="index")  # convert close price
+
+    return df[org_cols]
+
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
                           use_cached=False, save=True, update=True):
     ''' Calculate all factor used referring to DB ratio table '''
@@ -459,8 +499,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     if use_cached:
         try:
-            df = pd.read_csv('cache_all_data.csv', low_memory=False, dtype={"icb_code": str})
-            stocks_col = pd.read_csv('cache_stocks_col.csv', low_memory=False).iloc[:, 0].to_list()
+            df = pd.read_csv('cache_all_data.csv', dtype={"icb_code": str})
+            stocks_col = pd.read_csv('cache_stocks_col.csv').iloc[:, 0].to_list()
         except Exception as e:
             print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
@@ -474,6 +514,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
+
+    # Foreign exchange conversion on absolute value items
+    df = calc_fx_conversion(df)
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -551,4 +594,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
     # update_period_end()
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=False)
+                          use_cached=False, save=False, update=False)

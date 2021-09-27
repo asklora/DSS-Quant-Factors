@@ -23,6 +23,7 @@ descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
+currency_code_universe = "universe_newcode"     # ALIBABA DB
 worldscope_quarter_summary_table = "data_worldscope_summary"
 ibes_data_table = "data_ibes_monthly"
 macro_data_table = "data_macro_monthly"
