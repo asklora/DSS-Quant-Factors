@@ -1,9 +1,14 @@
 from sqlalchemy import create_engine
+import os
+from pathlib import Path
 
 db_url_prod = "postgres://postgres:ml2021#LORA@droid-v2-prod-instance.cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres"
 db_url_droid = "postgres://postgres:ml2021#LORA@droid-v2-prod-instance.cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # currently using
 db_clair_local = 'postgresql://localhost:5432/postgres'
 db_url_alibaba = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
+
+firebase_url = "../DROID_V2.1/files/file_json/asklora-firebase.json"
+firebase_url = (Path(__file__).parent / firebase_url).resolve()
 
 # TABLE names - results
 membership_table = "factor_membership"
@@ -13,6 +18,8 @@ feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_pred_prod"
 production_score_history = "data_fundamental_score_history_testing"
 production_score_current = "universe_rating" # in DROID v2 DB
+production_score_current_history = "universe_rating_history"
+descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
@@ -25,6 +32,7 @@ eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
 eikon_vix_table = "data_factor_eikon_vix"
 eikon_price_table = "data_factor_eikon_price_daily_final"
+eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"

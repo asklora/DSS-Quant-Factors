@@ -1,6 +1,7 @@
 import global_vals
 import datetime as dt
 import pandas as pd
+import os
 
 def remove_tables_with_suffix(engine, suffix):
     '''
@@ -31,3 +32,32 @@ def record_table_update_time(tb_name, conn):
     extra = {'con': conn, 'index': False, 'if_exists': 'append'}
     pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index().to_sql(global_vals.update_time_table, **extra)
 
+def read_from_firebase():
+
+    # Import database module.
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+
+    # Get a database reference to our posts
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(global_vals.firebase_url)
+        default_app = firebase_admin.initialize_app(cred)
+
+    db = firestore.client()
+    doc_ref = db.collection(u"universe").get()
+
+    object_list = []
+    for data in doc_ref:
+        format_data = {}
+        data = data.to_dict()
+        format_data['ticker'] = data.get('ticker')
+        format_data['negative_factor'] = data.get('rating', {}).get('negative_factor', 0)
+        format_data['positive_factor'] = data.get('rating', {}).get('positive_factor', 0)
+        format_data['ai_score'] = data.get('rating', {}).get('ai_score', 0)
+        object_list.append(format_data)
+
+    result = pd.DataFrame(object_list)
+    return result
+
+if __name__ == "__main__":
+    read_from_firebase()

@@ -73,7 +73,7 @@ if __name__ == "__main__":
     use_pca_list = [0.4, 0.6, 0.8]
 
     # create date list of all testing period
-    last_test_date = dt.date.today() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
+    last_test_date = dt.date.today().date() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
     backtest_period = args.backtest_period
     testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
                            - relativedelta(days=1) for i in range(0, backtest_period + 1)]
