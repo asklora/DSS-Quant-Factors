@@ -4,7 +4,7 @@ numpy
 scikit-learn
 python-dateutil
 lightgbm
-psycopg2-binary==2.8.4
+psycopg2-binary
 hyperopt==0.2.3
 xarray
 matplotlib
