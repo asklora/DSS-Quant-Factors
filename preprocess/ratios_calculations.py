@@ -175,6 +175,8 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     # resample tri using last week average as the proxy for monthly tri
     print(f'      ------------------------> Stock price using [{price_sample}] ')
     tri[['tri','volume']] = tri.groupby("ticker")[['tri','volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
+    tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean()
+    tri['volume'] = tri['volume'] / tri['volume_3m']
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
@@ -248,12 +250,6 @@ def update_period_end(ws=None):
     ws['fiscal_year_end'] = ws['fiscal_year_end'].replace(['MAR','JUN','SEP','DEC'], ['0331','0630','0930','1231'])
     ws['last_year_end'] = (ws['year'].astype(int)-1).astype(str) + ws['fiscal_year_end']
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
-
-    # Update report_date with the updated period_end
-    with global_vals.engine_ali.connect() as conn_ali:
-        eikon_report_date = pd.read_sql(f'SELECT * FROM {global_vals.eikon_report_date_table}', conn_ali, chunksize=10000)
-        eikon_report_date = pd.concat(eikon_report_date, axis=0, ignore_index=True)
-    global_vals.engine_ali.dispose()
 
     ws = ws.merge(eikon_report_date, on=['ticker', 'period_end'], suffixes=('', '_ek'), how='left')
 
