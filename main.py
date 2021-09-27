@@ -55,11 +55,11 @@ if __name__ == "__main__":
         calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
                               use_cached=True, save=True)
         if args.mode == 'default':
-            calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, update=False)
+            calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
         elif args.mode == 'v2':
-            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
+            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=False, trim_outlier_=False)
         elif args.mode == 'v2_trim':
-            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=False, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
