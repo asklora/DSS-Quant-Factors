@@ -263,10 +263,15 @@ class test_cluster:
 
         # x = x.describe()
         # self.trim_outlier_std()
-        self.trim_outlier_quantile()
+        trim_outlier_quantile(self.df)
         # x = x.describe()
 
         # self.plot_scatter_hist(self.df, self.cols)
+
+    def hopkin_static(self):
+        from pyclustertend import hopkins
+        x = hopkins(self.df, 150)
+        print(x)
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -609,10 +614,11 @@ if __name__ == "__main__":
     #     best[i] = {}
     #     best[i]['init_xb'], best[(i,n)]['init_cols'] = data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    # data = test_cluster(last=-1, testing_interval=91)
+    data = test_cluster(last=-1, testing_interval=91)
+    data.hopkin_static()
     # data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    final_test_cluster(use_cached=False)
+    # final_test_cluster(use_cached=False)          # ----------------> final 26/9/2021
 
     # pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
 

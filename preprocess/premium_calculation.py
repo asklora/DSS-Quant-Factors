@@ -300,15 +300,11 @@ def insert_prem_and_membership_for_group(*args):
         with thread_engine_ali.connect() as conn:
             # membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
             prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=results_dtypes, **to_sql_params)
-        # record_table_update_time(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", conn)
-        record_table_update_time(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
     except Exception as e:
         print(e)
         thread_engine_ali.dispose()
         return False
     thread_engine_ali.dispose()
-
-
 
     return True
 
@@ -355,7 +351,15 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
     with mp.Pool(processes=3) as pool:
         # all_groups = [('curr', 'KRW')]
         res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
-    
+
+    with global_vals.engine_ali.connect() as conn:
+        prem = pd.read_sql(f"SELECT * FROM {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
+        prem = prem.sort_values(by='last_update').drop_duplicates(subset=['period_end','factor_name','group','trim_outlier'], keep='last')
+        extra = {'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 8192, 'con': conn}
+        prem.to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", **extra)
+        record_table_update_time(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
+        # record_table_update_time(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", conn)
+    global_vals.engine_ali.dispose()
     return res
 
 
@@ -369,7 +373,7 @@ if __name__ == "__main__":
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
     calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=False)
-    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
+    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()
 
