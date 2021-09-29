@@ -207,6 +207,7 @@ class combine_tri_worldscope:
 
             if self.save:
                 arr_dict[i].dropna(subset=['change_tri_fillna']).to_csv(f'dcache_sample_{i}.csv', index=False)
+                arr_dict[i] = pd.read_csv(f'dcache_sample_{i}.csv')
 
         return arr_dict
 

@@ -40,12 +40,12 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
     corr_df = {}
     list_of_interval_redo = []
 
-    def calc_corr_csv(df):
-        c = df.corr().unstack().reset_index()
-        c['corr_abs'] = c[0].abs()
-        c = c.sort_values('corr_abs', ascending=True)
-        c.to_csv(f'sample_corr_{i}.csv')
-        return c
+    # def calc_corr_csv(df):
+    #     c = df.corr().unstack().reset_index()
+    #     c['corr_abs'] = c[0].abs()
+    #     c = c.sort_values('corr_abs', ascending=True)
+    #     c.to_csv(f'sample_corr_{i}.csv')
+    #     return c
 
     if use_cached:
         for i in list_of_interval:
@@ -64,7 +64,7 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
         #     corr_df[k] = calc_corr_csv(df)
         sample_df.update(df_dict)
 
-    return sample_df, corr_df
+    return sample_df
 
 # ----------------------------------------- Similar Stocks --------------------------------------------------
 
@@ -229,9 +229,10 @@ class test_cluster:
 
         self.testing_interval = testing_interval
 
-        sample_df, corr_df = prep_factor_dateset(list_of_interval=[testing_interval])
+        sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         self.df = sample_df[testing_interval]
-        self.c = corr_df[testing_interval]
+
+        print(len(self.df['ticker'].unique()))
 
         if last:
             self.df = self.df.groupby(['ticker']).nth(last).reset_index()
@@ -268,10 +269,13 @@ class test_cluster:
 
         # self.plot_scatter_hist(self.df, self.cols)
 
-    def hopkin_static(self):
-        from pyclustertend import hopkins
-        x = hopkins(self.df, 150)
-        print(x)
+    # def hopkin_static(self):
+    #     from pyclustertend import hopkins, assess_tendency_by_mean_metric_score, assess_tendency_by_metric
+    #     cols = ['icb_code', 'vol', 'change_tri_fillna']
+    #     X = np.nan_to_num(self.df[list(cols)].values, -1)
+    #     h = hopkins(X, round(X.shape[0]*0.3))
+    #     n_clusters = assess_tendency_by_metric(X, metric="silhouette", n_cluster=10)
+    #     print(n_clusters)
 
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -614,11 +618,12 @@ if __name__ == "__main__":
     #     best[i] = {}
     #     best[i]['init_xb'], best[(i,n)]['init_cols'] = data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    data = test_cluster(last=-1, testing_interval=91)
+    data = test_cluster(last=-1, testing_interval=30)
     data.hopkin_static()
+
     # data.stepwise_test_FCM({'n_clusters': None, 'm': 2})
 
-    # final_test_cluster(use_cached=False)          # ----------------> final 26/9/2021
+    final_test_cluster(use_cached=False)          # ----------------> final 26/9/2021
 
     # pd.DataFrame(best).transpose().to_csv('7_best_history.csv')
 
@@ -636,7 +641,7 @@ if __name__ == "__main__":
     # data.test_method(FCM, {'n_clusters': list(range(5,10)), 'm':list(np.arange(1.25, 2.01, 0.25))})
 
     # data.stepwise_test_method(GaussianMixture, {'n_components': list(range(3, 11))})
-    # data.stepwise_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
+    data.stepwise_test_method(AgglomerativeClustering, {'distance_threshold=0': [0], 'linkage':['ward']})
 
 
     # data.pillar_test_method(AgglomerativeClustering, {'n_clusters': list(range(3, 11)), 'linkage':['ward']})
