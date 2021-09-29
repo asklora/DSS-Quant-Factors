@@ -1,17 +1,13 @@
 import pandas as pd
 import global_vals
 from sqlalchemy.dialects.postgresql import TEXT
-
-# df = pd.read_excel('iso_cur.xlsx', 'Sheet1').iloc[:,:2]
-df = pd.read_csv('table-1.csv').iloc[:,:2]
-
-df.columns = ['currency_code', 'numeric_code']
-df['numeric_code'] = df['numeric_code'].astype(str).str.zfill(3)
-
-print(df)
+import numpy as np
 
 with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000,
-             'dtype': {'numeric_code':TEXT, 'currency_code':TEXT}}
-    df.to_sql("iso_currency_code", **extra)
+    df = pd.read_sql('SELECT * FROM universe_newcode', conn)
+    map = pd.read_sql('SELECT * FROM iso_currency_code', conn)
+    df = df.merge(map, on=['nation_code'], how='left', suffixes=('','_ws'))
+    df = df.drop(['nation_code','nation_name'], axis=1)
+    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
+    df.to_sql("universe_newcode", **extra)
 global_vals.engine_ali.dispose()

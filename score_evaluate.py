@@ -8,6 +8,7 @@ from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, r
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 SLACK = True
+currency_code_list = ["'USD'", "'HKD'"]
 
 class score_eval:
     def __init__(self):
@@ -19,7 +20,7 @@ class score_eval:
 
         with global_vals.engine_ali.connect() as conn_ali:
             score_history = pd.read_sql(f"SELECT ticker, period_end, currency_code, stock_return_y, {', '.join(score_col)} "
-                                        f"FROM {global_vals.production_score_history} WHERE currency_code is not null", conn_ali)
+                                        f"FROM {global_vals.production_score_history} WHERE currency_code in ({','.join(currency_code_list)})", conn_ali)
         global_vals.engine_ali.dispose()
 
         save_description_history(score_history)
@@ -39,37 +40,37 @@ class score_eval:
                 report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
             query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
-            query += f"WHERE currency_code is not null"
+            query += f"WHERE currency_code in ({','.join(currency_code_list)})"
             score_current = pd.read_sql(query, conn)
-            # query1 = f"SELECT currency_code, S.* FROM {global_vals.production_score_current_history} S "
-            # query1 += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
-            # query1 += f"WHERE currency_code is not null"
-            # score_current_history = pd.read_sql(query1, conn)
+            query1 = f"SELECT currency_code, S.* FROM {global_vals.production_score_current_history} S "
+            query1 += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
+            query1 += f"WHERE currency_code in ({','.join(currency_code_list)})"
+            score_current_history = pd.read_sql(query1, conn)
             for p in filter(None, score_current['currency_code'].unique()):
                 pillar_current[p] = pd.read_sql(f"SELECT * FROM \"test_fundamental_score_details_{p}\"", conn_ali)
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
         # 1. save comparison csv
-        # score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
-        # score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
-        # score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
-        # lw_comp = save_compare(score_current, score_history_lw, score_col)
-        # avg_comp = save_compare(score_current, score_history_avg, score_col)
-        # lw_comp_des = lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
-        # avg_comp_des = avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
+        score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
+        score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
+        score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
+        lw_comp = save_compare(score_current, score_history_lw, score_col)
+        avg_comp = save_compare(score_current, score_history_avg, score_col)
+        lw_comp_des = lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
+        avg_comp_des = avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
 
-        # writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
-        # lw_comp_des.to_excel(writer, sheet_name='lastweek_describe (remove inf)')
-        # lw_comp.to_excel(writer, sheet_name='lastweek')
-        # avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
-        # avg_comp.to_excel(writer, sheet_name='average')
-        # writer.save()
+        writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
+        lw_comp_des.to_excel(writer, sheet_name='lastweek_describe (remove inf)')
+        lw_comp.to_excel(writer, sheet_name='lastweek')
+        avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
+        avg_comp.to_excel(writer, sheet_name='average')
+        writer.save()
         
-        # if SLACK:
-        #     report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
-        #     report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
-        #     file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
+        if SLACK:
+            report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
+            report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
+            file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
 
         score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
         score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
@@ -253,6 +254,6 @@ def qcut_eval(score_col, fundamentals, name=''):
 if __name__ == "__main__":
     eval = score_eval()
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    # eval.test_history()     # test on (history) <-global_vals.production_score_history
+    eval.test_history()     # test on (history) <-global_vals.production_score_history
 
     #TODO: descriptive factor (check why 7/30 history worse)
