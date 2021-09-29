@@ -151,6 +151,7 @@ class combine_tri_worldscope:
     
         # Fill NaN in fundamental records with interpolate + tri with ffill
         self.df[self.nonmom_factor] = self.df.groupby(['ticker'])[self.nonmom_factor].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        self.df[self.nonmom_factor] = self.df.groupby(['ticker'])[self.nonmom_factor].ffill()
         self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
         self.df[['currency_code','icb_code']] = self.df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
 
@@ -334,7 +335,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(False, False, ticker=['2005.HK']).get_results()
+    dict = combine_tri_worldscope(False, False, ticker=['A','AAPL.O']).get_results(list_of_interval=[30])
     print(dict.keys())
 
     # get_worldscope(True)

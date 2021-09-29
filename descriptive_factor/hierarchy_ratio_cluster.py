@@ -106,10 +106,10 @@ class test_cluster:
         print(self.df.shape)
         print(self.df.describe().transpose())
         cols = init_cols = ['icb_code']
-        score_col = 'cophenetic'
+        score_col = 'avg_distance'
         init_score = 0
-        cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
-                     'avg_fa_turnover', 'change_earnings', 'change_assets', 'change_ebtda']
+        # cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
+        #              'avg_fa_turnover', 'change_earnings', 'change_assets', 'change_ebtda']
         cols_list = self.cols
 
         all_results_all = []
@@ -133,31 +133,27 @@ class test_cluster:
 
                 labels = None
                 m, model = test_method(X, labels=labels, cluster_method=cluster_method, iter_conditions_dict=kwargs, save_csv=False)
-                get_cophenet_corr(model, X)
+                # get_cophenet_corr(model, X)
 
                 m['factors'] = ', '.join(cols)
-                # print(f'cols: {cols}: {m[score_col]}')
+                print(m[score_col], cols)
                 all_results.append(m)
                 gc.collect()
 
             all_results = pd.DataFrame(all_results)
-            # best = all_results.nsmallest(1, score_col, keep='first')
+            # all_results['period'] = i
             best = all_results.nlargest(1, score_col, keep='first')
-            init_cols = best['factors'].values[0].split(', ')
-            all_results_all.append(all_results.loc[all_results['factors'] == best['factors'].values[0]])
 
             if best[score_col].values[0] > init_score:
+                best_best = best.copy(1)
+                init_cols = best['factors'].values[0].split(', ')
                 init_score = best[score_col].values[0]
-                print(init_score, init_cols)
-                # plt.plot(model.distances_)
-                # plt.show()
-                # plot_dendrogram(model, labels)
             else:
-                init_score = best[score_col].values[0]
-                print(init_score, init_cols)
+                all_results_all.append(best_best)
+                print('-----> Return: ', i, kwargs, init_score, init_cols)
                 next_factor = False
 
-        pd.concat(all_results_all, axis=0).to_csv(f'new_stepwise__{self.testing_interval}.csv')
+        pd.concat(all_results_all, axis=0).to_csv(f'hierarchy_cluster_{self.testing_interval}.csv')
         # print(best.transpose())
 
 def test_method(X, labels, cluster_method, iter_conditions_dict, save_csv=True):
@@ -327,7 +323,6 @@ def plot_dendrogram(model, labels):
 
 if __name__ == "__main__":
     data = test_cluster(last=-1, testing_interval=30)
-    data.stepwise_test(AgglomerativeClustering, {'distance_threshold': [0], 'linkage': ['average'],
-                                                 'n_clusters':[None]})
+    data.stepwise_test(AgglomerativeClustering, {'distance_threshold': [0], 'linkage': ['average'], 'n_clusters':[None]})
 
 

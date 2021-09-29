@@ -260,7 +260,7 @@ def plot_pca_scatter_hist(df, cluster_method):
     plt.close(fig)
 
 if __name__ == "__main__":
-    data = test_cluster(last=-1, testing_interval=91, use_cached=True)
+    data = test_cluster(last=-1, testing_interval=91, use_cached=False)
     data.stepwise_test({'n_clusters':[0.01, 0.02], 'm':[2]})    # data = test_cluster(last=-1, testing_interval=91, use_cached=True)
 
     # data.stepwise_test({'n_clusters':[1], 'm':[1.25]})    # data = test_cluster(last=-1, testing_interval=91, use_cached=True)
