@@ -14,6 +14,7 @@ from sklearn.neighbors import NearestCentroid
 from scipy.cluster.hierarchy import single, cophenet
 from scipy.spatial.distance import pdist
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import create_engine
 
 import global_vals
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
@@ -34,10 +35,7 @@ from sklearn import metrics
 from s_dbw import S_Dbw
 # from jqmcvi import base
 from descriptive_factor.fuzzy_metrics import *
-
-import matplotlib
-
-print(matplotlib.__version__)
+import multiprocessing as mp
 
 clustering_metrics1 = [
     metrics.calinski_harabasz_score,
@@ -45,29 +43,17 @@ clustering_metrics1 = [
     metrics.silhouette_score,
     S_Dbw,
 ]
-# clustering_metrics2 = [base.dunn]
-clustering_metrics_fuzzy = [
-    # partition_coefficient,
-    xie_beni_index,
-    # fukuyama_sugeno_index,
-    # cluster_center_var,
-    fuzzy_hypervolume,
-    # beringer_hullermeier_index,
-    # bouguessa_wang_sun_index,
-]
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
 def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
     sample_df = {}
-    corr_df = {}
     list_of_interval_redo = []
 
     if use_cached:
         for i in list_of_interval:
             try:
                 sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv')
-                corr_df[i] = pd.read_csv(f'sample_corr_{i}.csv')
             except:
                 list_of_interval_redo.append(i)
     else:
@@ -85,117 +71,92 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
 
 class test_cluster:
 
-    def __init__(self, last=-1, testing_interval=91):
+    def __init__(self, testing_interval=91):
 
         self.testing_interval = testing_interval
-
         sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         self.df = sample_df[testing_interval]
-        # self.df['trading_day'] = pd.to_datetime(self.df['trading_day'])
-        # df_fillna = self.df.loc[self.df['trading_day']>(dt.datetime.today()-relativedelta(years=1))]
-        # cols_fillna = df_fillna.filter(regex='^change_').columns.to_list()
-        # df_fillna[cols_fillna] = df_fillna[cols_fillna].mask(df_fillna[cols_fillna].abs()<0.001, np.nan)
-        # self.df = self.df.sort_values(by=['ticker','trading_day']).replace(0, np.nan)
-
+        self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
 
-        self.cols = self.df.select_dtypes(float).columns.to_list()
+    def multithread_stepwise(self):
 
-    def stepwise_test(self, cluster_method, kwargs):
+        self.score_col = 'cophenetic'
+        period_list = list(range(1, round(365*5/self.testing_interval)))
+        all_groups = itertools.product(period_list, self.cols)
+        with mp.Pool(processes=12) as pool:
+            pool.starmap(self.stepwise_test, all_groups)
+
+    def stepwise_test(self, *args):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
-        # print(self.df.shape)
-        # print(self.df.describe().transpose())
-        score_col = 'cophenetic'
+        period, init_col = args
 
-        cols_list = ['vol', 'change_tri_fillna', 'ret_momentum', 'avg_inv_turnover', 'avg_ni_to_cfo', 'change_dividend',
-                     'avg_fa_turnover', 'change_earnings', 'change_assets', 'change_ebtda']
-        cols_list = self.cols
+        df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
+        df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+        df = trim_outlier_std(df)
 
-        all_results_all = []
-        for i in range(1, round(365*10/self.testing_interval)):
-            df = self.df.groupby(['ticker']).nth(-i).reset_index().copy(1)
-            df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
-            # self.df = trim_outlier_quantile(self.df)
-            df = trim_outlier_std(df)
-            # print(df.describe())
+        init_cols = [init_col]
+        init_score = 0
 
-            init_cols = ['icb_code','vol']
-            init_score = 0
-            next_factor = True
-            while next_factor:
-                all_results = []
-                for col in cols_list:
+        next_factor = True
+        while next_factor:
+            all_results = []
+            for col in self.cols:
 
-                    # testing on FCM
-                    if col not in init_cols:
-                        cols = init_cols + [col]
-                    else:
-                        continue
-
-                    # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
-                    X = df[cols].values
-                    X[X == 0] = np.nan
-                    X = np.nan_to_num(X, -1)
-                    # labels = self.cols
-
-                    labels = None
-                    m, model = test_method(X, labels=labels, cluster_method=cluster_method, iter_conditions_dict=kwargs, save_csv=False)
-                    m['factors'] = ', '.join(cols)
-                    # print(m)
-                    all_results.append(m)
-                    gc.collect()
-
-                all_results = pd.DataFrame(all_results)
-                all_results['period'] = i
-                best = all_results.nlargest(1, score_col, keep='first')
-
-                if best[score_col].values[0] > init_score:
-                    best_best = best.copy(1)
-                    init_cols = best['factors'].values[0].split(', ')
-                    init_score = best[score_col].values[0]
+                # testing on FCM
+                if col not in init_cols:
+                    cols = init_cols + [col]
                 else:
-                    all_results_all.append(best_best)
-                    print('-----> Return: ',i, kwargs, init_score, init_cols)
-                    next_factor = False
+                    continue
 
-        pd.concat(all_results_all, axis=0).to_csv(f'hierarchy_average_vol_{self.testing_interval}_{score_col}.csv')
-        # print(best.transpose())
+                # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
+                X = df[cols].values
+                X[X == 0] = np.nan
+                X = np.nan_to_num(X, -1)
 
-def test_method(X, labels, cluster_method, iter_conditions_dict, save_csv=True):
+                m = test_method(X)
+                m['factors'] = ', '.join(cols)
+                all_results.append(m)
+                gc.collect()
+
+            all_results = pd.DataFrame(all_results)
+            all_results['period'] = period
+            best = all_results.nlargest(1, self.score_col, keep='first')
+
+            if best[self.score_col].values[0] > init_score:
+                best_best = best.copy(1)
+                init_cols = best['factors'].values[0].split(', ')
+                init_score = best[self.score_col].values[0]
+            else:
+                print('-----> Return: ',init_col, period, init_score, init_cols)
+                next_factor = False
+
+                thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+                with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+                    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
+                    best_best[['period', 'factors', self.score_col]].to_sql("des_factor_hierarchical", **extra)
+                thread_engine_ali.dispose()
+
+        # pd.concat(all_results_all, axis=0).to_csv(f'hierarchy_diffinit_{self.testing_interval}_{self.score_col}.csv')
+
+def test_method(X):
     ''' test conditions on different conditions of cluster methods '''
 
+    kwargs = {'distance_threshold': [0], 'linkage': ['average'], 'n_clusters':[None]}
+    model = AgglomerativeClustering(**kwargs).fit(X)
+    # y = model.labels_
+
+    # calculate matrics
     m = {}
-    condition_values = list(iter_conditions_dict.values())
-    condition_keys = list(iter_conditions_dict.keys())
+    # m[element]['n_clusters'] = model.n_clusters_
+    m['cophenetic'] = get_cophenet_corr(model, X)
+    m['hopkins'] = hopkin_static(X)
+    m['avg_distance'] = np.mean(model.distances_/np.sqrt(X.shape[1]))
 
-    for element in itertools.product(*condition_values):
-        kwargs = dict(zip(condition_keys, list(element)))
-        model = cluster_method(**kwargs).fit(X)
-        # y = model.labels_
+    return m
 
-        # calculate matrics
-        m[element] = {}
-        # m[element]['count'] = Counter(y)
-        m[element]['n_clusters'] = model.n_clusters_
-        m[element]['cophenetic'] = get_cophenet_corr(model, X)
-        m[element]['hopkins'] = hopkin_static(X)
-        # for i in clustering_metrics1:
-        #     m[element][i.__name__] = i(X, y)
-        # m[element]['min_distance'] = np.min(model.distances_/np.sqrt(X.shape[1]))
-        m[element]['avg_distance'] = np.mean(model.distances_/np.sqrt(X.shape[1]))
-        # m[element]['max_distance'] = np.max(model.distances_/np.sqrt(X.shape[1]))
-
-    if save_csv:
-        results = pd.DataFrame(m).transpose()
-        results.index = results.index.set_names(condition_keys)
-        results = results.reset_index()
-        results.to_csv(f'cluster_{cluster_method.__name__}.csv', index=False)
-        return results
-    else:
-        return m[element], model
-
-# -------------------------------- Plot Cluster -----------------------------------------------
+# ------------------------------------------ Trim Data -----------------------------------------------
 
 def trim_outlier_std(df):
     ''' trim outlier on testing sets '''
@@ -223,6 +184,8 @@ def trim_outlier_quantile(df):
     df[cols] = QuantileTransformer(n_quantiles=4).fit_transform(df[cols])
     return df
 
+# -------------------------------------- Calculate Stat -----------------------------------------------
+
 def hopkin_static(X, m=0.3):
     return hopkins(X, round(X.shape[0]*m))
 
@@ -249,23 +212,8 @@ def get_linkage_matrix(model):
 
     return linkage_matrix
 
-def plot_dendrogram(model, labels):
-    ''' Create linkage matrix and then plot the dendrogram '''
-
-    # create the counts of samples under each node
-
-    linkage_matrix = get_linkage_matrix(model)
-
-    # Plot the corresponding dendrogram
-    # dendrogram(linkage_matrix,  truncate_mode=None, labels=labels, orientation='left')
-    dendrogram(linkage_matrix,  truncate_mode='level', orientation='left')
-
-    plt.tight_layout()
-    plt.show()
-    # exit(1)
-
 if __name__ == "__main__":
-    data = test_cluster(last=-1, testing_interval=7)
-    data.stepwise_test(AgglomerativeClustering, {'distance_threshold': [0], 'linkage': ['average'], 'n_clusters':[None]})
+    data = test_cluster(testing_interval=91)
+    data.multithread_stepwise()
 
 
