@@ -1,41 +1,22 @@
-from sklearn.cluster import AffinityPropagation, KMeans, DBSCAN, OPTICS, AgglomerativeClustering, MeanShift
-from fcmeans import FCM
-import matplotlib.animation as animation
-from sklearn.mixture import GaussianMixture
-from sklearn.decomposition import PCA
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import LabelEncoder, StandardScaler, robust_scale, minmax_scale, QuantileTransformer, \
-    PowerTransformer, MinMaxScaler, scale
-from sklearn import decomposition
-from collections import defaultdict
-from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.neighbors import NearestNeighbors
-from sklearn.neighbors import NearestCentroid
-from scipy.cluster.hierarchy import single, cophenet
-from scipy.spatial.distance import pdist
-from dateutil.relativedelta import relativedelta
 from sqlalchemy import create_engine
-
 import global_vals
-from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
-from pyclustertend import hopkins
-
 import pandas as pd
-import numpy as np
-import datetime as dt
-import matplotlib.pyplot as plt
+
+from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 
 import gc
 import itertools
-from collections import Counter
-from scipy.cluster.hierarchy import dendrogram
-import scipy.spatial
+import multiprocessing as mp
+
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.preprocessing import robust_scale, QuantileTransformer, scale
+from scipy.cluster.hierarchy import cophenet
+from scipy.spatial.distance import pdist
 
 from sklearn import metrics
 from s_dbw import S_Dbw
-# from jqmcvi import base
 from descriptive_factor.fuzzy_metrics import *
-import multiprocessing as mp
+from pyclustertend import hopkins
 
 clustering_metrics1 = [
     metrics.calinski_harabasz_score,
@@ -79,18 +60,20 @@ class test_cluster:
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
 
-    def multithread_stepwise(self):
+    def multithread_stepwise(self, name_sql=None, n_processes=12):
 
         self.score_col = 'cophenetic'
         period_list = list(range(1, round(365*5/self.testing_interval)))
-        all_groups = itertools.product(period_list, self.cols)
-        with mp.Pool(processes=12) as pool:
+        all_groups = itertools.product(period_list, self.cols, [name_sql], )
+        all_groups = [tuple(e) for e in all_groups]
+        with mp.Pool(processes=n_processes) as pool:
             pool.starmap(self.stepwise_test, all_groups)
 
     def stepwise_test(self, *args):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
-        period, init_col = args
+        period, init_col, name_sql = args
+        print(period, init_col)
 
         df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
         df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
@@ -122,6 +105,7 @@ class test_cluster:
 
             all_results = pd.DataFrame(all_results)
             all_results['period'] = period
+            all_results['name_sql'] = name_sql
             best = all_results.nlargest(1, self.score_col, keep='first')
 
             if best[self.score_col].values[0] > init_score:
@@ -134,16 +118,17 @@ class test_cluster:
 
                 thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
                 with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-                    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-                    best_best[['period', 'factors', self.score_col]].to_sql("des_factor_hierarchical", **extra)
+                    extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+                    best_best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)
                 thread_engine_ali.dispose()
+        return
 
         # pd.concat(all_results_all, axis=0).to_csv(f'hierarchy_diffinit_{self.testing_interval}_{self.score_col}.csv')
 
 def test_method(X):
     ''' test conditions on different conditions of cluster methods '''
 
-    kwargs = {'distance_threshold': [0], 'linkage': ['average'], 'n_clusters':[None]}
+    kwargs = {'distance_threshold': 0, 'linkage': 'average', 'n_clusters':None}
     model = AgglomerativeClustering(**kwargs).fit(X)
     # y = model.labels_
 
@@ -213,7 +198,10 @@ def get_linkage_matrix(model):
     return linkage_matrix
 
 if __name__ == "__main__":
-    data = test_cluster(testing_interval=91)
-    data.multithread_stepwise()
+    testing_interval = 7
+    testing_name = 'all_init'
+    
+    data = test_cluster(testing_interval=testing_interval)
+    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=3)
 
 
