@@ -13,13 +13,14 @@ import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
 from score_evaluate import score_eval
 
+cur = ["'USD'","'HKD'"]
 def score_history():
     ''' calculate score with DROID v2 method & evaluate '''
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
         factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
-        universe = pd.read_sql(f'SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active', conn)
+        universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
         fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
                                          f"WHERE (period_end>'2017-08-30') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
@@ -62,7 +63,7 @@ def score_history():
 
     # change ratio to negative if original factor calculation using reverse premiums
     for (group_name, period_end), g in factor_rank.groupby(['group', 'period_end']):
-        neg_factor = g.loc[(factor_rank['long_large'] == False),'factor_name'].to_list()
+        neg_factor = g.loc[(factor_rank['long_large'] == True),'factor_name'].to_list()
         fundamentals_score.loc[(fundamentals_score['period_end']==period_end)&(fundamentals_score['currency_code']==group_name), neg_factor] *= -1
 
     fundamentals = fundamentals_score[['ticker','period_end','currency_code','stock_return_y']+calculate_column]
@@ -74,7 +75,9 @@ def score_history():
     def cols_transform(x):
         ''' transform columns using same method as Droid_v2.1 AI score calculation '''
 
-        s = skew(x)
+        if x.notnull().sum()==0:
+            return x
+        s = skew(x, nan_policy='omit')
         if (s < -5) or (s > 5):
             x = np.log(x + 1 - np.min(x))
         m = np.median(x)
@@ -86,7 +89,7 @@ def score_history():
     calculate_column_score = []
     for column in calculate_column:
         column_score = column + "_score"
-        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code",'period_end']).groupby([
+        fundamentals[column_score] = fundamentals.dropna(subset=["currency_code", 'period_end']).groupby([
             "currency_code",'period_end'])[column].transform(cols_transform)
         calculate_column_score.append(column_score)
     print(calculate_column_score)

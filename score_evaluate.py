@@ -7,7 +7,7 @@ import datetime as dt
 from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
-SLACK = True
+SLACK = False
 currency_code_list = ["'USD'", "'HKD'"]
 
 class score_eval:
@@ -210,11 +210,15 @@ def qcut_eval(score_col, fundamentals, name=''):
 
     writer = pd.ExcelWriter(f'#{suffixes}_score_eval_history_{name}.xlsx')
 
-    best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all')['stock_return_y'].mean()).reset_index()
-    avg = fundamentals.groupby(['period_end', 'currency_code']).mean().reset_index()
-    best_10 = best_10.merge(avg, on=['period_end', 'currency_code']).sort_values(['currency_code','period_end'])
-    best_10[[0,'stock_return_y']] = best_10.groupby(['currency_code']).apply(lambda x: (x[[0,'stock_return_y']]+1).cumprod(axis=0))
-    best_10.to_excel(writer, sheet_name=f'best10')
+    best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all').mean()).reset_index()
+    def record_tickers(g):
+        g = g.nlargest(10, columns=['ai_score'], keep='all')[['ticker', 'stock_return_y']].values
+        g = [f'{a}({round(b,2)})' for a, b in g]
+        return ', '.join(g)
+    best_10['tickers'] = fundamentals.groupby(['period_end', 'currency_code']).apply(record_tickers).values
+    best_10.iloc[:,3:-1] = best_10.iloc[:,3:-1].round(2)
+    for name, g in best_10.groupby('currency_code'):
+        g.to_excel(writer, sheet_name=f'best10_{name}', index=False)
     #
     # # 1. Score describe
     # for name, g in fundamentals.groupby(['currency_code']):
@@ -253,7 +257,7 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
     eval.test_history()     # test on (history) <-global_vals.production_score_history
 
     #TODO: descriptive factor (check why 7/30 history worse)

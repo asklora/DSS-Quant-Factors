@@ -11,6 +11,7 @@ from utils import record_table_update_time
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
+cur = 'USD'
 def get_tri(save=True, currency=None):
     if not isinstance(save, bool):
         raise Exception("Parameter 'save' must be a bool")
@@ -23,9 +24,10 @@ def get_tri(save=True, currency=None):
         conditions = ["True"]
         if currency:
             conditions.append(f"currency_code = '{currency}'")
-        query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
+        query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                      f"FROM {global_vals.stock_data_table_tri} T "
                      f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
+                     f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
                      f"WHERE {' AND '.join(conditions)}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
@@ -127,9 +129,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv')
         except Exception as e:
             print(e)
-            tri, eikon_price, market_cap_anchor = get_tri(save=save)
+            tri, eikon_price, market_cap_anchor = get_tri(save=save, currency=cur)
     else:
-        tri, eikon_price, market_cap_anchor = get_tri(save=save)
+        tri, eikon_price, market_cap_anchor = get_tri(save=save, currency=cur)
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
@@ -470,7 +472,7 @@ def calc_fx_conversion(df):
     fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
     for cur_col, fx_col in zip(currency_code_cols, fx_cols):
         df = df.set_index([cur_col, 'period_end'])
-        df['index'] = df.index
+        df['index'] = df.index.to_numpy()
         df[fx_col] = df['index'].map(fx)
         df = df.reset_index()
 
@@ -511,8 +513,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
 
+    print(df.describe())
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
+    print(df.describe())
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -569,6 +573,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # drop records with no stock_return_y & any ratios
     df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
+    df = df.replace([np.inf, -np.inf], np.nan)
+    x = df.describe().transpose()
 
     db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':
@@ -578,7 +584,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 100000}
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
         ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
         ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
         ddf.to_sql(db_table_name, **extra)
@@ -590,4 +596,4 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 if __name__ == "__main__":
     # update_period_end()
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=False, update=False)
+                          use_cached=True, save=True, update=False)
