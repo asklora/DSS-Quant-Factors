@@ -1,9 +1,9 @@
 #!/bin/sh
 cd /home/loratech/PycharmProjects/factors;
-python3 main.py --backtest_period 12 --recalc_premium --debug
+python3 main.py --backtest_period 48 --debug
 
 cd /home/loratech/PycharmProjects/DROID_V2.1
-/home/loratech/droid2env/bin/python3 /home/loratech/PycharmProjects/DROID_V2.1/ingestion/data_from_dsws.py update_fundamentals_quality_value
+/home/loratech/droid2env/bin/python3 /home/loratech/PycharmProjects/DROID_V2.1/manage.py main --settings=config.production --fundamentals_rating True
 
 #cd /home/loratech/PycharmProjects/factors;
 #python3 score_evaluate.py
