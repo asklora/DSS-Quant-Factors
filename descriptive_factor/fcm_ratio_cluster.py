@@ -20,7 +20,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import matplotlib.pyplot as plt
-
+from hierarchy_ratio_cluster import trim_outlier_std, trim_outlier_quantile
 import gc
 import itertools
 from collections import Counter
@@ -50,15 +50,7 @@ clustering_metrics_fuzzy = [
 
 def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
     sample_df = {}
-    corr_df = {}
     list_of_interval_redo = []
-
-    # def calc_corr_csv(df):
-    #     c = df.corr().unstack().reset_index()
-    #     c['corr_abs'] = c[0].abs()
-    #     c = c.sort_values('corr_abs', ascending=True)
-    #     c.to_csv(f'sample_corr_{i}.csv')
-    #     return c
 
     if use_cached:
         for i in list_of_interval:
@@ -97,10 +89,10 @@ class test_cluster:
         # x = self.df.std()
 
         # x = x.describe()
-        self.df = trim_outlier_std(self.df)
+        # self.df = trim_outlier_std(self.df)
         # self.df = trim_outlier_quantile(self.df)
-        x = self.df.describe()
-        print(x)
+        # x = self.df.describe()
+        # print(x)
 
     def stepwise_test(self, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
@@ -112,6 +104,7 @@ class test_cluster:
         for i in range(1, round(365*5/self.testing_interval)):
             df = self.df.groupby(['ticker']).nth(-i).reset_index().copy(1)
             df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+            df = trim_outlier_std(df)
 
             for element in itertools.product(*condition_values):
                 kwargs = dict(zip(condition_keys, list(element)))
@@ -141,7 +134,7 @@ class test_cluster:
 
                         try:
                             m = test_method(X, kwargs)
-                            print(i, kwargs, m[score_col], cols)
+                            # print(i, kwargs, m[score_col], cols)
                         except Exception as e:
                             print('************** ERROR: ', i, element, cols, e)
 
@@ -189,31 +182,6 @@ def test_method(X, kwargs):
     return m
 
 # -------------------------------- Plot Cluster -----------------------------------------------
-
-def trim_outlier_std(df):
-    ''' trim outlier on testing sets '''
-
-    def trim_scaler(x):
-        x = np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x))
-        # x = np.clip(x, np.percentile(x, 0.10), np.percentile(x, 0.90))
-        x = robust_scale(x)
-        return x
-
-    for col in df.select_dtypes(float).columns.to_list():
-        if col != 'icb_code':
-            x = trim_scaler(df[col])
-        else:
-            x = df[col].values
-        x = StandardScaler().fit_transform(np.expand_dims(x, 1))[:, 0]
-        df[col] = x
-    return df
-
-def trim_outlier_quantile(df):
-    ''' trim outlier on testing sets based on quantile transformation '''
-
-    cols = df.select_dtypes(float).columns.to_list()
-    df[cols] = QuantileTransformer(n_quantiles=4).fit_transform(df[cols])
-    return df
 
 # -------------------------------- Plot Cluster -----------------------------------------------
 
