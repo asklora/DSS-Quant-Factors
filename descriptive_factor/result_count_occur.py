@@ -30,6 +30,8 @@ def count_plot_from_csv():
 
 def count_plot_from_db():
     table_name = 'des_factor_hierarchical'
+    # table_name = 'des_factor_fcm'
+    table_name = 'des_factor_gaussian'
     name_sql ='all_init'
 
     with global_vals.engine_ali.connect() as conn:
@@ -42,12 +44,13 @@ def count_plot_from_db():
     for name, g in df.groupby(['name_sql']):
         f = [e for x in g['factors'].values for e in x]
         x = dict(Counter(f))
-        x = {k: v for k, v in sorted(x.items(), key=lambda item: item[1])}
+        x = {k: v/len(g) for k, v in sorted(x.items(), key=lambda item: item[1])}
+        print([k for k, v in x.items() if v>0.2])
         plt.barh(y=list(x.keys()), width=list(x.values()))
         plt.title('{}:{}'.format(table_name, name))
         plt.tight_layout()
-        plt.show()
-        print(df)
+        plt.savefig('{}_{}.png'.format(table_name, name))
+        plt.close()
 
 if __name__=="__main__":
     # count_plot_from_csv()

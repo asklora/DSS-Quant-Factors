@@ -60,6 +60,54 @@ class test_cluster:
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
 
+    def multithread_combination(self, name_sql=None, n_processes=12):
+
+        self.score_col = 'cophenetic'
+        period_list = list(range(1, round(365*5/self.testing_interval)))
+        all_groups = itertools.product(period_list, [3, 4, 5], [name_sql])
+        all_groups = [tuple(e) for e in all_groups]
+        with mp.Pool(processes=n_processes) as pool:
+            pool.starmap(self.combination_test, all_groups)
+
+    def combination_test(self, *args):
+        ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
+
+        period, n_cols, name_sql = args
+        print(args)
+
+        good_cols = ['change_earnings', 'change_ebtda', 'avg_market_cap_usd', 'avg_roe', 'avg_cash_ratio',
+                     'avg_ebitda_to_ev', 'avg_roic', 'change_dividend', 'avg_inv_turnover']
+
+        df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
+        df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+        df = trim_outlier_std(df)
+
+        all_results = []
+        for cols in itertools.combinations(good_cols, n_cols):
+
+            # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
+            X = df[cols].values
+            X[X == 0] = np.nan
+            X = np.nan_to_num(X, -1)
+
+            m = test_method(X)
+            m['factors'] = ', '.join(cols)
+            all_results.append(m)
+            gc.collect()
+
+        all_results = pd.DataFrame(all_results)
+        all_results['period'] = period
+        all_results['name_sql'] = name_sql
+        best = all_results.nlargest(1, self.score_col, keep='first')
+
+        print('-----> Return: ',best[['period', 'factors', self.score_col, 'name_sql']])
+
+        thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+            best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)
+        thread_engine_ali.dispose()
+
     def multithread_stepwise(self, name_sql=None, n_processes=12):
 
         self.score_col = 'cophenetic'
@@ -199,9 +247,10 @@ def get_linkage_matrix(model):
 
 if __name__ == "__main__":
     testing_interval = 7
-    testing_name = 'all_init'
+    testing_name = 'combination'
     
     data = test_cluster(testing_interval=testing_interval)
-    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=3)
+    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=12)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=12)
 
 

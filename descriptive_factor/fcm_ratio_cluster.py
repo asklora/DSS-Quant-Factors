@@ -60,6 +60,7 @@ class test_cluster:
 
         self.score_col = 'xie_beni_index'
         period_list = list(range(1, round(365*5/self.testing_interval)))
+
         all_groups = itertools.product(period_list, self.cols, [name_sql], fcm_args['n_clusters'], fcm_args['m'])
         all_groups = [tuple(e) for e in all_groups]
         with mp.Pool(processes=n_processes) as pool:
@@ -141,7 +142,7 @@ def test_method(X, n_clusters, m_arg):
 
 if __name__ == "__main__":
 
-    testing_interval = 91
+    testing_interval = 30
     testing_name = 'all_init'
     fcm_args = {'n_clusters':[0.01, 0.02], 'm':[2]}
 

@@ -57,7 +57,7 @@ class test_cluster:
 
     def multithread_stepwise(self, name_sql=None, fcm_args=None, n_processes=12):
 
-        self.score_col = 's_Dbw'
+        self.score_col = 'S_Dbw'
         period_list = list(range(1, round(365*5/self.testing_interval)))
         all_groups = itertools.product(period_list, self.cols, [name_sql], fcm_args['n_clusters'])
         all_groups = [tuple(e) for e in all_groups]
@@ -138,6 +138,6 @@ if __name__ == "__main__":
     testing_name = 'all_init'
     fcm_args = {'n_clusters':[0.01, 0.02]}
 
-    data = test_cluster(testing_interval=testing_interval, use_cached=False)
+    data = test_cluster(testing_interval=testing_interval, use_cached=True)
     data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
 
