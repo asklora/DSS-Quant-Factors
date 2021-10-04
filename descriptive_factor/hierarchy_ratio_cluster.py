@@ -25,6 +25,27 @@ clustering_metrics1 = [
     S_Dbw,
 ]
 
+select_cols = [
+    'avg_debt_to_asset', 'avg_ebitda_to_ev', 'avg_roic', 'change_volume', 'change_tri_fillna', 'avg_capex_to_dda', 'vol',
+    'avg_fa_turnover', 'icb_code', 'avg_volume', 'change_dividend', 'avg_inv_turnover', 'change_earnings', 'avg_roe',
+    'avg_gross_margin', 'avg_div_payout', 'avg_earnings_yield', 'skew', 'change_ebtda', 'avg_market_cap_usd'
+]
+
+select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'change_dividend', 'avg_cash_ratio', 'avg_roic',
+               'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
+               'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'change_dividend']
+
+select_cols = list(set(select_cols))
+
+high_corr_removed_cols = [
+    'avg_cash_ratio',   # icb_code
+    'avg_capex_to_dds', # icb_code
+    'avg_volume_1w3m',  # change_tri_fillna, vol
+]
+
+good_cols = list(set(select_cols) - set(high_corr_removed_cols))
+print(len(good_cols), good_cols)
+
 # --------------------------------- Prepare Datasets ------------------------------------------
 
 def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
@@ -50,6 +71,12 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
 
 # -------------------------------- Test Cluster -----------------------------------------------
 
+def calc_corr_csv(df):
+    c = df.corr().unstack().reset_index()
+    c['corr_abs'] = c[0].abs()
+    c = c.sort_values('corr_abs', ascending=True)
+    return c
+
 class test_cluster:
 
     def __init__(self, testing_interval=91):
@@ -57,6 +84,9 @@ class test_cluster:
         self.testing_interval = testing_interval
         sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         self.df = sample_df[testing_interval]
+
+        # calc_corr_csv(self.df[select_cols])
+
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
 
@@ -73,10 +103,7 @@ class test_cluster:
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
         period, n_cols, name_sql = args
-        print(args)
-
-        good_cols = ['change_earnings', 'change_ebtda', 'avg_market_cap_usd', 'avg_roe', 'avg_cash_ratio',
-                     'avg_ebitda_to_ev', 'avg_roic', 'change_dividend', 'avg_inv_turnover']
+        # print(args)
 
         df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
         df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
@@ -86,12 +113,13 @@ class test_cluster:
         for cols in itertools.combinations(good_cols, n_cols):
 
             # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
-            X = df[cols].values
+            X = df[list(cols)].values
             X[X == 0] = np.nan
             X = np.nan_to_num(X, -1)
 
             m = test_method(X)
             m['factors'] = ', '.join(cols)
+            print(cols, m)
             all_results.append(m)
             gc.collect()
 
@@ -100,12 +128,12 @@ class test_cluster:
         all_results['name_sql'] = name_sql
         best = all_results.nlargest(1, self.score_col, keep='first')
 
-        print('-----> Return: ',best[['period', 'factors', self.score_col, 'name_sql']])
+        print(args, '-----> Return: ', best['factors'].values[0])
 
         thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
-            best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)
+            all_results[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)
         thread_engine_ali.dispose()
 
     def multithread_stepwise(self, name_sql=None, n_processes=12):
@@ -176,7 +204,7 @@ class test_cluster:
 def test_method(X):
     ''' test conditions on different conditions of cluster methods '''
 
-    kwargs = {'distance_threshold': 0, 'linkage': 'average', 'n_clusters':None}
+    kwargs = {'distance_threshold': 0, 'linkage': 'complete', 'n_clusters':None}
     model = AgglomerativeClustering(**kwargs).fit(X)
     # y = model.labels_
 
@@ -247,10 +275,10 @@ def get_linkage_matrix(model):
 
 if __name__ == "__main__":
     testing_interval = 7
-    testing_name = 'combination'
+    testing_name = 'all_comb_all'
     
     data = test_cluster(testing_interval=testing_interval)
-    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=12)
+    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=4)
     data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=12)
 
 

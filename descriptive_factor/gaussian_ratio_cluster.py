@@ -14,6 +14,8 @@ from s_dbw import S_Dbw
 from sklearn.mixture import GaussianMixture
 from descriptive_factor.fuzzy_metrics import *
 
+from hierarchy_ratio_cluster import good_cols
+
 clustering_metrics1 = [
     metrics.calinski_harabasz_score,
     metrics.davies_bouldin_score,
@@ -54,6 +56,53 @@ class test_cluster:
         self.df = sample_df[testing_interval]
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
+
+    def multithread_combination(self, name_sql=None, fcm_args=None, n_processes=12):
+
+        self.score_col = 'S_Dbw'
+        period_list = list(range(1, round(365*5/self.testing_interval)))
+        all_groups = itertools.product(period_list, [3, 4, 5], [name_sql], fcm_args['n_clusters'])
+        all_groups = [tuple(e) for e in all_groups]
+        with mp.Pool(processes=n_processes) as pool:
+            pool.starmap(self.combination_test, all_groups)
+
+    def combination_test(self, *args):
+        ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
+
+        period, n_cols, name_sql, n_clusters = args
+        # print(args)
+
+        df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
+        df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
+        df = trim_outlier_std(df)
+
+        all_results = []
+        for cols in itertools.combinations(good_cols, n_cols):
+
+            # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
+            X = df[list(cols)].values
+            X[X == 0] = np.nan
+            X = np.nan_to_num(X, -1)
+
+            m = test_method(X, n_clusters)
+            m['factors'] = ', '.join(cols)
+            print(cols, m)
+
+            all_results.append(m)
+            gc.collect()
+
+        all_results = pd.DataFrame(all_results)
+        all_results['period'] = period
+        all_results['name_sql'] = name_sql
+        best = all_results.nlargest(1, self.score_col, keep='first')
+
+        print(args, '-----> Return: ', best['factors'].values[0])
+
+        thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
+            best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_gaussian", **extra)
+        thread_engine_ali.dispose()
 
     def multithread_stepwise(self, name_sql=None, fcm_args=None, n_processes=12):
 
@@ -134,10 +183,11 @@ def test_method(X, n_clusters):
 
 if __name__ == "__main__":
 
-    testing_interval = 91
-    testing_name = 'all_init'
+    testing_interval = 30
+    testing_name = 'all_comb'
     fcm_args = {'n_clusters':[0.01, 0.02]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
-    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=4)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=1)
 

@@ -34,18 +34,17 @@ print(matplotlib.__version__)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
+def calc_corr_csv(df):
+    c = df.corr().unstack().reset_index()
+    c['corr_abs'] = c[0].abs()
+    c = c.sort_values('corr_abs', ascending=True)
+    return c
+
 def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
 
     sample_df = {}
     corr_df = {}
     list_of_interval_redo = []
-
-    # def calc_corr_csv(df):
-    #     c = df.corr().unstack().reset_index()
-    #     c['corr_abs'] = c[0].abs()
-    #     c = c.sort_values('corr_abs', ascending=True)
-    #     c.to_csv(f'sample_corr_{i}.csv')
-    #     return c
 
     if use_cached:
         for i in list_of_interval:
