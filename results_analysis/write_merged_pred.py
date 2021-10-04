@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from pandas.tseries.offsets import MonthEnd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
-
+from utils import record_table_update_time
 
 stock_pred_dtypes = dict(
     period_end=DATE,
@@ -43,7 +43,9 @@ def download_stock_pred(
                      f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                      f"FROM {global_vals.result_pred_table}_{model} P "
                      f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
-                     f"WHERE S.name_sql like '{name_sql}%' ORDER BY S.finish_timing")
+                     f"WHERE S.name_sql like '{name_sql}%' "
+                     f"AND \"group\"='USD' "
+                     f"ORDER BY S.finish_timing")
         result_all = pd.read_sql(query, conn, chunksize=10000)
         result_all = pd.concat(result_all, axis=0, ignore_index=True)       # download training history
     global_vals.engine_ali.dispose()
@@ -52,12 +54,8 @@ def download_stock_pred(
     result_all = result_all.drop_duplicates(subset=['group', 'period_end', 'factor_name', 'cv_number']+other_group_col, keep='last')
     result_all['period_end'] = pd.to_datetime(result_all['period_end'])
 
-    neg_factor = result_all[['group','neg_factor']].drop_duplicates().set_index('group')['neg_factor'].to_dict()    # negative value columns
-    # for (name,t), g in result_all.groupby(['group', 'period_end']):
-    #     if name!='USD':
-    #         continue
-    #     print(g.mean())
     result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
+    dict_neg_factor = result_all[['period_end', 'group', 'neg_factor']].drop_duplicates().set_index(['group','period_end'])['neg_factor'].unstack().to_dict()  # negative value columns
 
     # use average predictions from different validation sets
     result_all = result_all.groupby(['period_end','factor_name','group']+other_group_col)[['pred', 'actual']].mean()
@@ -171,11 +169,13 @@ def download_stock_pred(
         # basic info
         df['period_end'] = df['period_end'] + MonthEnd(1)
         df['factor_weight'] = df['factor_weight'].astype(int)
-        df['long_large'] = True
+        df['long_large'] = False             # original premium is "small - big" = short_large -> those marked neg_factor = long_large
         df['last_update'] = dt.datetime.now()
 
+        neg_factor = dict_neg_factor[pd.Timestamp(period)]
+
         for k, v in neg_factor.items():     # write neg_factor i.e. label factors
-            df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = False
+            df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table + tbl_suffix): # remove same period prediction if exists
@@ -186,10 +186,12 @@ def download_stock_pred(
 
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
             df.sort_values(['group','pred_z']).to_sql(global_vals.production_factor_rank_table+tbl_suffix, **extra)
+            record_table_update_time(global_vals.production_factor_rank_table+tbl_suffix, conn)
 
             if (period==result_all['period_end'].max()):  # if keep_all_history also write to prod table
                 extra['if_exists'] = 'replace'
                 df.sort_values(['group', 'pred_z']).to_sql(global_vals.production_factor_rank_table, **extra)
+                record_table_update_time(global_vals.production_factor_rank_table, conn)
 
         global_vals.engine_ali.dispose()
 
@@ -199,8 +201,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
-    parser.add_argument('--model', type=str, default='lasso_prod')
-    parser.add_argument('--name_sql', type=str, default='prod_20210907')
+    parser.add_argument('--model', type=str, default='rf_reg')
+    parser.add_argument('--name_sql', type=str, default='v2_20210928_debug')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')

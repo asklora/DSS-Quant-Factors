@@ -12,6 +12,7 @@ import global_vals
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
 from score_evaluate import score_eval
+from utils import record_table_update_time
 
 cur = ["'USD'","'HKD'"]
 def score_history():
@@ -170,6 +171,7 @@ def score_history():
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
         fundamentals[label_col + score_col].to_sql(global_vals.production_score_history, **extra)
+        record_table_update_time(global_vals.production_score_history, conn)
     global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":

@@ -25,12 +25,14 @@ def record_table_update_time(tb_name, conn):
     ''' record last update time in table '''
     update_time = dt.datetime.now()
     try:
-        query = f"DELETE FROM {global_vals.update_time_table} WHERE index='{tb_name}';"
+        query = f"UPDATE {global_vals.update_time_table} " \
+                f"SET update_time={update_time} " \
+                f"WHERE index='{tb_name}';"
         conn.execute(query)
     except Exception as e:
         print(e)
-    extra = {'con': conn, 'index': False, 'if_exists': 'append'}
-    pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index().to_sql(global_vals.update_time_table, **extra)
+        extra = {'con': conn, 'index': False, 'if_exists': 'append'}
+        pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index().to_sql(global_vals.update_time_table, **extra)
 
 def read_from_firebase():
 
