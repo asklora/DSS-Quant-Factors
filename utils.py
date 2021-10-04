@@ -26,7 +26,7 @@ def record_table_update_time(tb_name, conn):
     update_time = dt.datetime.now()
     try:
         query = f"UPDATE {global_vals.update_time_table} " \
-                f"SET update_time={update_time} " \
+                f"SET update_time='{update_time}' " \
                 f"WHERE index='{tb_name}';"
         conn.execute(query)
     except Exception as e:
