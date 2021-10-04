@@ -7,7 +7,7 @@ import datetime as dt
 from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
-SLACK = False
+SLACK = True
 currency_code_list = ["'USD'", "'HKD'"]
 
 class score_eval:
@@ -219,7 +219,7 @@ def qcut_eval(score_col, fundamentals, name=''):
     best_10.iloc[:,3:-1] = best_10.iloc[:,3:-1].round(2)
     for name, g in best_10.groupby('currency_code'):
         g.to_excel(writer, sheet_name=f'best10_{name}', index=False)
-    #
+
     # # 1. Score describe
     # for name, g in fundamentals.groupby(['currency_code']):
     #     df = g.describe().transpose()
