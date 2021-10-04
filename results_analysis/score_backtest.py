@@ -63,7 +63,7 @@ def score_history():
 
     # change ratio to negative if original factor calculation using reverse premiums
     for (group_name, period_end), g in factor_rank.groupby(['group', 'period_end']):
-        neg_factor = g.loc[(factor_rank['long_large'] == True),'factor_name'].to_list()
+        neg_factor = g.loc[(factor_rank['long_large'] == False),'factor_name'].to_list()
         fundamentals_score.loc[(fundamentals_score['period_end']==period_end)&(fundamentals_score['currency_code']==group_name), neg_factor] *= -1
 
     fundamentals = fundamentals_score[['ticker','period_end','currency_code','stock_return_y']+calculate_column]
