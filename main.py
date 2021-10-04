@@ -1,13 +1,7 @@
 import datetime as dt
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomForestClassifier, ExtraTreesClassifier
 import numpy as np
 import argparse
-import pandas as pd
 from dateutil.relativedelta import relativedelta
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
-from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
-from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
-import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
 
 from preprocess.load_data import load_data
@@ -17,9 +11,7 @@ from random_forest import rf_HPOT, rf_space
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 
-from lasso import start_lasso
 import itertools
-import global_vals
 
 if __name__ == "__main__":
 
