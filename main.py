@@ -63,18 +63,18 @@ if __name__ == "__main__":
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
-    end_time = dt.datetime.now()
-    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
+        end_time = dt.datetime.now()
+        print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
     # --------------------------------- Different Configs -----------------------------------------
 
-    group_code_list = ['USD'] # ,
+    group_code_list = ['USD', 'HKD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.4, 0.6, 0.8]
 
     # create date list of all testing period
-    last_test_date = dt.date.today().date() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
+    last_test_date = dt.datetime.now().date() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
     backtest_period = args.backtest_period
     testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
                            - relativedelta(days=1) for i in range(0, backtest_period + 1)]
