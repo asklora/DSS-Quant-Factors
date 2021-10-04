@@ -101,7 +101,7 @@ class test_cluster:
         thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
-            best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_gaussian", **extra)
+            all_results[['period', 'n_clusters', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_gaussian", **extra)
         thread_engine_ali.dispose()
 
     def multithread_stepwise(self, name_sql=None, fcm_args=None, n_processes=12):
@@ -183,11 +183,11 @@ def test_method(X, n_clusters):
 
 if __name__ == "__main__":
 
-    testing_interval = 30
-    testing_name = 'all_comb'
+    testing_interval = 91
+    testing_name = 'all_comb_all'
     fcm_args = {'n_clusters':[0.01, 0.02]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
     # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=4)
-    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=1)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
 

@@ -142,7 +142,8 @@ def score_history():
 
     # calculate ai_score by each currency_code (i.e. group) for "Extra" pillar
     for group, g in factor_rank.groupby('group'):
-        sub_g = g.loc[(g['factor_weight'] == 2) & (g['pred_z'] >= 1)]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
+        sub_g = g.loc[(g["factor_weight"]==2)|(g["factor_weight"].isnull())]        # use all rank=2 (best class)
+        sub_g = sub_g.loc[(g["pred_z"] >= 1)|(g["pred_z"].isnull())]
         if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
             fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)

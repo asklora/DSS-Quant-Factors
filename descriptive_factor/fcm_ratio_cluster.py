@@ -191,7 +191,7 @@ def test_method(X, n_clusters, m_arg):
 
 if __name__ == "__main__":
 
-    testing_interval = 91
+    testing_interval = 30
     testing_name = 'all_comb_all1'
     fcm_args = {'n_clusters':[0.02], 'm':[2]}
 
