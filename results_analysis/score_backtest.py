@@ -24,6 +24,7 @@ def score_history():
         universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
         fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
                                          f"WHERE (period_end>'2017-08-30') AND (ticker not like '.%%') ", conn_ali)
+                                         # f"WHERE (period_end='2021-07-31') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
     global_vals.engine_ali.dispose()
 
@@ -128,36 +129,50 @@ def score_history():
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
     fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
+    # fundamentals['period_end'] = fundamentals['period_end'].dt.strftime('%Y-%m-%d')
 
     # calculate ai_score by each currency_code (i.e. group) for each of [Value, Quality, Momentum]
-    for (pillar_name, group), g in factor_rank.groupby(['pillar','group']):
+    for (pillar_name, group_name, period_end), g in factor_rank.groupby(['pillar','group','period_end']):
         sub_g = g.loc[(g['factor_weight'] == 2) | (g['factor_weight'].isnull())]  # use all rank=2 (best class)
-        if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
-            sub_g = g.loc[g.nlargest(1, columns=['pred_z']).index.union(g.loc[g['factor_weight'].isnull()].index)]
-        score_col = [f'{x}_{y}_currency_code' for x, y in
-                     sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
+        # if period_end != dt.date(2021,7,31):
+        #     continue
+        # if group_name != 'USD':
+        #     continue
+        # if pillar_name != 'quality':
+        #     continue
+        if len(sub_g.dropna(subset=['pred_z'])) == 0:  # if no factor rank=2, use best z-score one
+            sub_g = g.loc[g.dropna(subset=['pred_z']).nlargest(1, columns=['pred_z']).index]
+        score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
         score_col += [x for x in sub_g.loc[sub_g['scaler'].isnull(), 'factor_name']]
-        print(f"Calculate Fundamentals [{pillar_name}] in group [{group}] with [{', '.join(set(score_col))}]")
-        fundamentals.loc[fundamentals['currency_code'] == group, f"fundamentals_{pillar_name}"] = fundamentals[
-            score_col].mean(axis=1)
+        print(f"Calculate Fundamentals [{pillar_name}] in group [{group_name}] for period [{period_end}] with [{', '.join(set(score_col))}]")
+
+        # i = period_end.strftime('%Y-%m-%d')
+        # x = (fundamentals['currency_code'] == group_name) & (fundamentals['period_end'] == period_end.strftime('%Y-%m-%d'))
+        # xx = fundamentals.loc[(fundamentals['currency_code'] == group_name) & (fundamentals['period_end'] == period_end.strftime('%Y-%m-%d'))]
+
+        # x = fundamentals.loc[(fundamentals['currency_code'] == group_name) & (fundamentals['period_end'] == period_end.strftime('%Y-%m-%d'))]
+        # x = x[score_col].mean(axis=1)
+
+        fundamentals.loc[(fundamentals['currency_code'] == group_name) & (fundamentals['period_end'] == period_end.strftime('%Y-%m-%d')),
+                         f"fundamentals_{pillar_name}"] = fundamentals[score_col].mean(axis=1)
 
     # calculate ai_score by each currency_code (i.e. group) for "Extra" pillar
-    for group, g in factor_rank.groupby('group'):
-        sub_g = g.loc[(g["factor_weight"]==2)|(g["factor_weight"].isnull())]        # use all rank=2 (best class)
-        sub_g = sub_g.loc[(g["pred_z"] >= 1)|(g["pred_z"].isnull())]
+    for (group, period), g in factor_rank.groupby(['group','period_end']):
+        sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
         if len(sub_g.dropna(subset=['pred_z'])) > 0:  # if no factor rank=2, don't add any factor into extra pillar
             score_col = [f'{x}_{y}_currency_code' for x, y in sub_g.loc[sub_g['scaler'].notnull(), ['factor_name', 'scaler']].to_numpy()]
-            fundamentals.loc[fundamentals['currency_code'] == group, f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
-            print(f"Calculate Fundamentals [extra] in group [{group}] with [{', '.join(set(score_col))}]")
+            fundamentals.loc[(fundamentals['currency_code'] == group)&(fundamentals['period_end'] == period.strftime('%Y-%m-%d')),
+                             f'fundamentals_extra'] = fundamentals[score_col].mean(axis=1)
+            print(f"Calculate Fundamentals [extra] in group [{group}] for period [{period}] with [{', '.join(set(score_col))}]")
         else:
-            fundamentals.loc[fundamentals["currency_code"] == group].filter(regex="^fundamentals_").mean().mean()
+            fundamentals.loc[(fundamentals['currency_code'] == group)&
+                             (fundamentals['period_end'] == period)].filter(regex="^fundamentals_").mean().mean()
 
     fundamentals_factors_scores_col = fundamentals.filter(regex='^fundamentals_').columns
     # fundamentals[fundamentals_factors_scores_col] = (fundamentals[fundamentals_factors_scores_col] * 10).round(1)
 
     print("Calculate AI Score")
-    fundamentals["ai_score"] = (fundamentals["fundamentals_value"] + fundamentals["fundamentals_quality"] + \
-                                fundamentals["fundamentals_momentum"] + fundamentals["fundamentals_extra"]) / 4
+    fundamentals["ai_score"] = fundamentals[fundamentals_factors_scores_col].mean(1)
 
     m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
     fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])

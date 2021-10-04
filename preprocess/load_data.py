@@ -455,7 +455,7 @@ if __name__ == '__main__':
     data.split_group(group_code)
 
     # for y in y_type:
-    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False, valid_method='chron', use_pca=0.6)
+    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False, valid_method='chron', use_pca=0.6, mode='v2')
     # print(data.cut_bins)
 
     print(data.x_col)

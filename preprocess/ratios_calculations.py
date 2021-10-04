@@ -453,7 +453,7 @@ def calc_fx_conversion(df):
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
-        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.currency_code_universe}", conn_ali)     # map ibes/ws currency for each ticker
+        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vals.engine.dispose()
@@ -513,10 +513,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
 
-    print(df.describe())
+    x = df.loc[df['currency_code']=='USD'].describe()
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
-    print(df.describe())
+    x = df.loc[df['currency_code']=='USD'].describe()
 
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -538,6 +538,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
                 raise Exception(f"Unexpected operand/operator: {x[n]}")
             n += 2
         df[i] = temp
+
+    x = df.loc[df['currency_code']=='USD'].describe()
 
     # a) Keep original values
     keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
@@ -574,7 +576,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # drop records with no stock_return_y & any ratios
     df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
     df = df.replace([np.inf, -np.inf], np.nan)
-    x = df.describe().transpose()
+    x = df.loc[df['currency_code']=='USD'].describe().transpose()
 
     db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':

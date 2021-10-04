@@ -210,13 +210,16 @@ def qcut_eval(score_col, fundamentals, name=''):
 
     writer = pd.ExcelWriter(f'#{suffixes}_score_eval_history_{name}.xlsx')
 
-    best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all').mean()).reset_index()
+    # best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all').mean()).reset_index()
     def record_tickers(g):
-        g = g.nlargest(10, columns=['ai_score'], keep='all')[['ticker', 'stock_return_y']].values
+        g = g.nlargest(10, columns=['ai_score'], keep='all')
+        comb = pd.DataFrame(g.mean()).round(4).transpose()
+        g = g[['ticker', 'stock_return_y']].values
         g = [f'{a}({round(b,2)})' for a, b in g]
-        return ', '.join(g)
-    best_10['tickers'] = fundamentals.groupby(['period_end', 'currency_code']).apply(record_tickers).values
-    best_10.iloc[:,3:-1] = best_10.iloc[:,3:-1].round(2)
+        comb['ticker'] = ', '.join(g)
+        return comb
+
+    best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(record_tickers).iloc[:,:-2].reset_index().drop(columns=['level_2'])
     for name, g in best_10.groupby('currency_code'):
         g.to_excel(writer, sheet_name=f'best10_{name}', index=False)
 
@@ -231,7 +234,7 @@ def qcut_eval(score_col, fundamentals, name=''):
         if group_col=='':
             fundamentals['currency_code'] = 'cross'
             group_col = 'currency_code'
-        fundamentals['score_qcut'] = fundamentals.groupby([group_col])[score_col].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
+        fundamentals['score_qcut'] = fundamentals.dropna(subset=[score_col]).groupby([group_col])[score_col].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
         mean_ret = pd.pivot_table(fundamentals, index=[group_col], columns=['score_qcut'], values='stock_return_y')
         mean_ret['count'] = fundamentals.groupby([group_col])[score_col].count()
         return mean_ret.transpose()
@@ -257,5 +260,5 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
     eval.test_history()     # test on (history) <-global_vals.production_score_history

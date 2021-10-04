@@ -71,6 +71,43 @@ def count_plot_from_db():
     print('20%:', len(all_f_r), all_f_r)
     print('top10:', len(all_f_10), all_f_10)
 
+def count_plot_from_db_comb_hierarchical():
+    table_name = 'des_factor_hierarchical'
+    name_sql ='all_comb_all'
+    groupby_col = ['name_sql', 'factors']
+    sort_col = 'cophenetic'
+
+    with global_vals.engine_ali.connect() as conn:
+        query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
+        df = pd.read_sql(query, conn)
+    global_vals.engine_ali.dispose()
+
+    sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
+    sort_df['factors'] = sort_df['factors'].str.split(', ')
+    sort_df['n_factors'] = sort_df['factors'].str.len()
+
+    best = sort_df.groupby(['name_sql','n_factors']).first()
+    print(best)
+
+def count_plot_from_db_comb_fcm():
+    table_name = 'des_factor_fcm'
+    name_sql ='all_comb_all1'
+    groupby_col = ['name_sql', 'factors','n_clusters','m']
+    sort_col = 'cophenetic'
+
+    with global_vals.engine_ali.connect() as conn:
+        query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
+        df = pd.read_sql(query, conn)
+    global_vals.engine_ali.dispose()
+
+    sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
+    sort_df['factors'] = sort_df['factors'].str.split(', ')
+    sort_df['n_factors'] = sort_df['factors'].str.len()
+
+    best = sort_df.groupby(['name_sql','n_factors']).first()
+    print(best)
+
 if __name__=="__main__":
     # count_plot_from_csv()
-    count_plot_from_db()
+    # count_plot_from_db()
+    count_plot_from_db_comb_hierarchical()
