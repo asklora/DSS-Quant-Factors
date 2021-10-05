@@ -518,6 +518,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     df = calc_fx_conversion(df)
     x = df.loc[df['currency_code']=='USD'].describe()
 
+    ingestion_cols = df.columns.to_list()
+
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
     add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
@@ -578,6 +580,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     df = df.replace([np.inf, -np.inf], np.nan)
     x = df.loc[df['currency_code']=='USD'].describe().transpose()
 
+    # test ratio calculation missing rate
+    test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
+    print(f'      ------------------------> Save missing Excel')
+
     db_table_name = global_vals.processed_ratio_table
     if sample_interval == 'biweekly':
         db_table_name += '_biweekly'
@@ -592,8 +598,32 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         ddf.to_sql(db_table_name, **extra)
         record_table_update_time(db_table_name, conn)
         print(f'      ------------------------> Finish writing {db_table_name} table ', ddf.shape)
+    global_vals.engine_ali.dispose()
     return df, stocks_col, formula
 
+def test_missing(df_org, formula, ingestion_cols):
+
+    for group in ['HKD', 'USD']:
+        df = df_org.loc[df_org['currency_code']==group]
+        writer = pd.ExcelWriter(f'missing_by_ticker_{group}.xlsx')
+
+        df = df.groupby('ticker').apply(lambda x: x.notnull().sum())
+        df.to_excel(writer, sheet_name='by ticker')
+
+        df_miss = df[ingestion_cols].unstack()
+        df_miss = df_miss.loc[df_miss==0].reset_index()
+        df_miss.to_excel(writer, sheet_name='all_missing', index=False)
+        df_miss.to_csv(f'dsws_missing_ingestion_{group}.csv')
+
+        df_sum = pd.DataFrame(df.sum(0))
+        df_sum_df = df_sum.merge(formula, left_index=True, right_on=['name'], how='left')
+        for i in ['field_num', 'field_denom']:
+            df_sum_df = df_sum_df.merge(df_sum, left_on=[i], how='left', right_index=True)
+        df_sum_df.to_excel(writer, sheet_name='count', index=False)
+        df_sum.to_excel(writer, sheet_name='count_lst')
+
+        writer.save()
+        # print(df)
 
 if __name__ == "__main__":
     # update_period_end()
