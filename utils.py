@@ -2,6 +2,7 @@ import global_vals
 import datetime as dt
 import pandas as pd
 import os
+from pangres import upsert
 
 def remove_tables_with_suffix(engine, suffix):
     '''

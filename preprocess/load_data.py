@@ -449,13 +449,13 @@ if __name__ == '__main__':
     testing_period = dt.datetime(2021,7,31)
     group_code = 'USD'
 
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True)
+    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode='v2')
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)
 
     # for y in y_type:
-    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False, valid_method='chron', use_pca=0.6, mode='v2')
+    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False, valid_method='chron', use_pca=0.6)
     # print(data.cut_bins)
 
     print(data.x_col)
