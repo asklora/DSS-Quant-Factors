@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
 
-    group_code_list = ['USD', 'HKD'] # ,
+    group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.4, 0.6, 0.8]

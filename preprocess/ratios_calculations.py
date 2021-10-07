@@ -35,8 +35,7 @@ def get_tri(save=True, currency=None):
         print(f'      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table} ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
-        market_cap_anchor = pd.read_sql(f'SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY trading_day DESC) '
-                                        f'rank FROM {global_vals.eikon_mktcap_table}) a WHERE a.rank = 1;', conn_ali).iloc[:,:-1]
+        market_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}', conn_droid)
         if save:
             tri.to_csv('cache_tri.csv', index=False)
             eikon_price.to_csv('cache_eikon_price.csv', index=False)
@@ -136,7 +135,6 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
-    market_cap_anchor['trading_day'] = pd.to_datetime(market_cap_anchor['trading_day'], format='%Y-%m-%d')
 
     # find first tri from DSS as anchor
     tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
@@ -193,11 +191,13 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
         raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
 
     # update market_cap/market_cap_usd refer to tri for each period
-    tri = tri.merge(market_cap_anchor, on=['ticker','trading_day'], how='left')
+    market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    anchor_idx = tri.loc[tri['trading_day'].dt.date==(dt.datetime.today().date()-relativedelta(days=1))].index
+    tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
     tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
-    tri[['anchor_tri','market_cap','market_cap_usd']] = tri.groupby('ticker')[['anchor_tri','market_cap','market_cap_usd']].apply(lambda x: x.ffill().bfill())
-    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']*1000
-    tri['market_cap_usd'] = tri['market_cap_usd']/tri['anchor_tri']*tri['tri']*1000
+    tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
+    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
     tri = tri.drop(['anchor_tri'], axis=1)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
@@ -243,13 +243,13 @@ def update_period_end(ws=None):
     ws = ws.dropna(subset=['year'])
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
-    ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end
+    # ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end
 
     ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y-%m-%d')
+    ws['fiscal_year_end'] = (pd.to_datetime(ws['fiscal_year_end'], format='%b') + MonthEnd(0)).dt.strftime('%m%d')
 
     # find last fiscal year end for each company (ticker)
-    ws['fiscal_year_end'] = ws['fiscal_year_end'].replace(['MAR','JUN','SEP','DEC'], ['0331','0630','0930','1231'])
     ws['last_year_end'] = (ws['year'].astype(int)-1).astype(str) + ws['fiscal_year_end']
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
@@ -484,7 +484,7 @@ def calc_fx_conversion(df):
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
     df[['close','market_cap']] = df[['close','market_cap']].div(df['fx_dss'], axis="index")  # convert close price
-
+    df['market_cap_usd'] = df['market_cap']
     return df[org_cols]
 
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
@@ -517,6 +517,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
     x = df.loc[df['currency_code']=='USD'].describe()
+
+    # fill missing for current assets
+    df['fn_2201'] = df['fn_2201'].fillna(df['fn_2999'] - df['fn_2501'])
 
     ingestion_cols = df.columns.to_list()
 
