@@ -17,6 +17,8 @@ from sklearn import metrics
 from s_dbw import S_Dbw
 from descriptive_factor.fuzzy_metrics import *
 from pyclustertend import hopkins
+from dateutil.relativedelta import relativedelta
+import datetime as dt
 
 clustering_metrics1 = [
     metrics.calinski_harabasz_score,
@@ -28,12 +30,16 @@ clustering_metrics1 = [
 select_cols = [
     'avg_debt_to_asset', 'avg_ebitda_to_ev', 'avg_roic', 'change_volume', 'change_tri_fillna', 'avg_capex_to_dda', 'vol',
     'avg_fa_turnover', 'icb_code', 'avg_volume', 'change_dividend', 'avg_inv_turnover', 'change_earnings', 'avg_roe',
-    'avg_gross_margin', 'avg_div_payout', 'avg_earnings_yield', 'skew', 'change_ebtda', 'avg_market_cap_usd'
+    'avg_gross_margin', 'avg_div_payout', 'avg_earnings_yield', 'skew', 'change_ebtda', 'avg_market_cap_usd', 'avg_div_yield'
 ]
 
-select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'change_dividend', 'avg_cash_ratio', 'avg_roic',
+# select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'change_dividend', 'avg_cash_ratio', 'avg_roic',
+#                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
+#                'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'change_dividend', 'avg_div_yield']
+
+select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'avg_cash_ratio', 'avg_roic',
                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
-               'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'change_dividend']
+               'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'avg_div_yield']
 
 select_cols = list(set(select_cols))
 
@@ -44,7 +50,6 @@ high_corr_removed_cols = [
 ]
 
 good_cols = list(set(select_cols) - set(high_corr_removed_cols))
-print(len(good_cols), good_cols)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
@@ -77,6 +82,23 @@ def calc_corr_csv(df):
     c = c.sort_values('corr_abs', ascending=True)
     return c
 
+def test_missing(df):
+
+    # writer = pd.ExcelWriter(f'missing_by_ticker.xlsx')
+
+    # fill missing
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df = df.loc[df['trading_day'] > (dt.datetime.today() - relativedelta(years=5))]
+    # df['avg_div_yield'] = df['avg_div_yield'].fillna(0)
+    # df = df['avg_div_yield'].fillna(0)
+
+    df_miss = df.groupby('ticker').apply(lambda x: x.notnull().sum())
+    df_sum = pd.DataFrame(df_miss.sum(0))
+
+    # df.to_excel(writer, sheet_name='by ticker')
+
+    return df
+
 class test_cluster:
 
     def __init__(self, testing_interval=91):
@@ -85,6 +107,7 @@ class test_cluster:
         sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         self.df = sample_df[testing_interval]
 
+        test_missing(self.df)
         # calc_corr_csv(self.df[select_cols])
 
         self.cols = self.df.select_dtypes(float).columns.to_list()
@@ -92,9 +115,10 @@ class test_cluster:
 
     def multithread_combination(self, name_sql=None, n_processes=12):
 
+        print(len(good_cols), good_cols)
         self.score_col = 'cophenetic'
         period_list = list(range(1, round(365*5/self.testing_interval)))
-        all_groups = itertools.product(period_list, [3, 4, 5], [name_sql])
+        all_groups = itertools.product(period_list, [3, 4], [name_sql])
         all_groups = [tuple(e) for e in all_groups]
         with mp.Pool(processes=n_processes) as pool:
             pool.starmap(self.combination_test, all_groups)
@@ -115,7 +139,7 @@ class test_cluster:
             # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
             X = df[list(cols)].values
             X[X == 0] = np.nan
-            X = np.nan_to_num(X, -1)
+            X = np.nan_to_num(X, 0)
 
             m = test_method(X)
             m['factors'] = ', '.join(cols)
@@ -138,6 +162,7 @@ class test_cluster:
 
     def multithread_stepwise(self, name_sql=None, n_processes=12):
 
+        print(len(self.cols), self.cols)
         self.score_col = 'cophenetic'
         period_list = list(range(1, round(365*5/self.testing_interval)))
         all_groups = itertools.product(period_list, self.cols, [name_sql], )
@@ -274,11 +299,11 @@ def get_linkage_matrix(model):
     return linkage_matrix
 
 if __name__ == "__main__":
-    testing_interval = 7
-    testing_name = 'all_comb_all'
+    testing_interval = 91
+    testing_name = 'all_init_new'
     
     data = test_cluster(testing_interval=testing_interval)
-    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=4)
-    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=12)
+    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=1)
+    # data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=1)
 
 

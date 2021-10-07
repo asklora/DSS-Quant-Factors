@@ -33,10 +33,10 @@ def count_plot_from_db():
     # table_name = 'des_factor_fcm'
     # table_name = 'des_factor_gaussian'
 
-    name_sql ='all_init'
+    name_sql ='all_init_new'
     # name_sql ='combination'
     # name_sql = 'all_init_max' # for hierarchical
-    name_sql ='all_comb_all'
+    # name_sql ='all_comb_all'
 
     with global_vals.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
@@ -73,7 +73,7 @@ def count_plot_from_db():
 
 def count_plot_from_db_comb_hierarchical():
     table_name = 'des_factor_hierarchical'
-    name_sql ='all_comb_all'
+    name_sql ='all_init_new'
     groupby_col = ['name_sql', 'factors']
     sort_col = 'cophenetic'
 
@@ -91,9 +91,9 @@ def count_plot_from_db_comb_hierarchical():
 
 def count_plot_from_db_comb_fcm():
     table_name = 'des_factor_fcm'
-    name_sql ='all_comb_all1'
+    name_sql ='all_comb_all2'
     groupby_col = ['name_sql', 'factors','n_clusters','m']
-    sort_col = 'cophenetic'
+    sort_col = 'xie_beni_index'
 
     with global_vals.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
@@ -104,10 +104,30 @@ def count_plot_from_db_comb_fcm():
     sort_df['factors'] = sort_df['factors'].str.split(', ')
     sort_df['n_factors'] = sort_df['factors'].str.len()
 
-    best = sort_df.groupby(['name_sql','n_factors']).first()
+    best = sort_df.groupby(['name_sql','n_factors','n_clusters']).first()
+    print(best)
+
+def count_plot_from_db_comb_gaussian():
+    table_name = 'des_factor_gaussian'
+    name_sql ='all_comb_all'
+    groupby_col = ['name_sql', 'factors','n_clusters']
+    sort_col = 'S_Dbw'
+
+    with global_vals.engine_ali.connect() as conn:
+        query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
+        df = pd.read_sql(query, conn)
+    global_vals.engine_ali.dispose()
+
+    sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
+    sort_df['factors'] = sort_df['factors'].str.split(', ')
+    sort_df['n_factors'] = sort_df['factors'].str.len()
+
+    best = sort_df.groupby(['name_sql','n_factors','n_clusters']).first()
     print(best)
 
 if __name__=="__main__":
     # count_plot_from_csv()
-    # count_plot_from_db()
-    count_plot_from_db_comb_hierarchical()
+    count_plot_from_db()
+    # count_plot_from_db_comb_hierarchical()
+    # count_plot_from_db_comb_fcm()
+    # count_plot_from_db_comb_gaussian()

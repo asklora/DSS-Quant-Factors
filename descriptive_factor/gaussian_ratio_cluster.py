@@ -184,10 +184,15 @@ def test_method(X, n_clusters):
 if __name__ == "__main__":
 
     testing_interval = 91
-    testing_name = 'all_comb_all'
+    testing_name = 'all_init_all'
     fcm_args = {'n_clusters':[0.01, 0.02]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
-    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=4)
-    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=2)
+    # data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=6)
+
+    #TODO: Backtest Qcut all factors for each period
+    #TODO: Freddata: manual download
+
+
 
