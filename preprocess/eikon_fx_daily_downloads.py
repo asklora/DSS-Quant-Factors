@@ -8,19 +8,18 @@ from dateutil.relativedelta import relativedelta
 def download_from_eikon_others():
     ''' Monthly Update: download report_date from eikon '''
 
-    with global_vals.engine_ali.connect() as conn:
-        universe = pd.read_sql(f"SELECT DISTINCT s.currency_code FROM universe_newcode c INNER JOIN iso_currency_code s "
-                               f"ON c.nation_code = s.nation_code", conn)
+    with global_vals.engine.connect() as conn:
+        universe = pd.read_sql(f"SELECT DISTINCT currency_code_ws as currency_code FROM universe WHERE currency_code IS NOT NULL", conn)
         tickers = list(universe['currency_code'].unique())
-    global_vals.engine_ali.dispose()
+    global_vals.engine.dispose()
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
     # tickers = ['CNY=', "HKD=", "GBP=", "EUR=", "KRW="]
-    tickers = [x + '=' for x in tickers if x !='USD']
+    tickers = [x + '=' for x in tickers if x !='USD' and x]
     step = 1
 
     end = dt.datetime.today()
-    start = end - relativedelta(years=20)
+    start = end - relativedelta(days=14)
     params = {'SDate': start.strftime('%Y-%m-%d'), 'EDate': end.strftime('%Y-%m-%d'), 'Frq': 'D'}      # params for fundemantals
     fields = ['TR.MIDPRICE', 'TR.MIDPRICE.date']
 
