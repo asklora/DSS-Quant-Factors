@@ -238,6 +238,21 @@ class load_data:
         arr_test_cut_median = pd.DataFrame(arr_test_cut).replace(range(qcut_q), median)[0].values
         return arr_cut_median, arr_test_cut_median
 
+    def neg_factor_best_period(self, df, x_col):
+
+        best_best = {}
+        for name in x_col:
+            best = {}
+            g = df[name]
+            for i in np.arange(12, 120, 12):
+                g['ma'] = g.rolling(i, min_periods=1, closed='left')['premium'].mean()
+                g['new_premium'] = np.where(g['ma'] >= 0, g['premium'], -g['premium'])
+                best[i] = g['new_premium'].mean()
+
+            best_best[name] = [k for k, v in best.items() if v == np.max(list(best.values()))][0]
+
+        return best_best
+
     def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change, y_col):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
@@ -249,6 +264,7 @@ class load_data:
         # convert consistently negative premium factor to positive
         m = self.train[y_col].mean(axis=0)
         self.neg_factor = list(m[m<0].index)
+
         # neg_factor = self.x_col_dict['neg_factor']
         self.train[self.neg_factor] = -self.train[self.neg_factor]
         self.test[self.neg_factor] = -self.test[self.neg_factor]
@@ -446,7 +462,7 @@ if __name__ == '__main__':
     # exit(1)
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2021,7,31)
+    testing_period = dt.datetime(2017,8,31)
     group_code = 'USD'
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode='v2')
