@@ -463,6 +463,7 @@ def calc_fx_conversion(df):
     df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
 
     # map fx rate for conversion for each ticker
+    fx = fx.drop_duplicates(subset=['ticker','period_end'])
     fx = fill_all_day(fx, date_col='period_end')
     fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
     fx['period_end'] = fx['period_end'].dt.strftime("%Y-%m-%d")

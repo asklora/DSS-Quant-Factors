@@ -23,5 +23,5 @@ def neg_factor_best_period(df, x_col):
 
     return best_best
 
-df = neg_factor_best_period(df)
+df = neg_factor_best_period(df,['inv_turnover'])
 

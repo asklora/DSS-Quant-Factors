@@ -29,7 +29,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         std = np.nanstd(x)
         return np.clip(x, m - 2 * std, m + 2 * std)
 
-    # trim outlier to +/- 2 std
+    # 1. trim outlier to +/- 2 std
     calculate_column_score = []
     for column in calculate_column:
         column_score = column + "_score"
@@ -41,7 +41,12 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
     # x1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].skew()
     # y1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].apply(pd.DataFrame.kurtosis)
 
-    # apply robust scaler
+    # 2. change ratio to negative if original factor calculation using reverse premiums
+    for group_name, g in factor_rank.groupby(['group']):
+        neg_factor = [x+'_score' for x in g.loc[(factor_rank['long_large'] == False), 'factor_name'].to_list()]
+        fundamentals.loc[(fundamentals['currency_code'] == group_name), neg_factor] *= -1
+
+    # 3. apply robust scaler
     calculate_column_robust_score = []
     for column in calculate_column:
         try:
@@ -54,7 +59,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
             print(e)
     print(calculate_column_robust_score)
 
-    # apply maxmin scaler on Currency / Industry
+    # 4. apply maxmin scaler on Currency / Industry
     minmax_column = ["uid", "ticker", "trading_day"]
     for column in calculate_column:
         column_robust_score = column + "_robust_score"
@@ -159,6 +164,9 @@ def score_history():
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     factor_rank = pd.read_csv('cached_factor_rank.csv')
 
+    fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,1,1)]
+
     fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
     print(len(set(fundamentals_score['ticker'].to_list())))
 
@@ -183,11 +191,6 @@ def score_history():
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-    # change ratio to negative if original factor calculation using reverse premiums
-    for (group_name, period_end), g in factor_rank.groupby(['group', 'period_end']):
-        neg_factor = g.loc[(factor_rank['long_large'] == False),'factor_name'].to_list()
-        fundamentals_score.loc[(fundamentals_score['period_end']==period_end)&(fundamentals_score['currency_code']==group_name), neg_factor] *= -1
-
     fundamentals = fundamentals_score[['ticker','period_end','currency_code','stock_return_y']+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)
@@ -207,7 +210,7 @@ def score_history():
 
     for name, g in fundamentals.groupby(['period_end']):
 
-        factor_rank_period = factor_rank.loc[factor_rank['period_end'].astype(str)==name]
+        factor_rank_period = factor_rank.loc[factor_rank['period_end'].astype(str)==name.strftime('%Y-%m-%d')]
 
         # Scale original fundamental score
         fundamentals, mean_ret_all[name], best_10_tickers_all[name] = score_update_scale(g, calculate_column, universe_currency_code, factor_rank_period)
@@ -216,15 +219,20 @@ def score_history():
         # x = results.groupby(['currency_code']).agg(['min','mean','max','std'])
         # print(x)
 
-    # for c in [x[1:-1] for x in cur]:
-    #     writer = pd.ExcelWriter(f"#{dt.datetime.today().strftime('%Y%m%d')}_backtest_{c}.xlsx")
-    #     tic = {x:z for x, yz in best_10_tickers_all.items() for y, z in yz.items() if y==c}
-    #     pd.DataFrame(tic).to_excel(writer, 'Top 10 Ticker')
-    #     for p in ['momentum','quality', 'value', 'extra','ai_score']:
-    #         ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p)}
-    #         ret_p = {(x,p):y[i][-1] for x, y in ret_p.items() for i in y.columns.to_list() if p in i}
-    #     print(ret_p)
-    #     writer.save()
+    for c in [x[1:-1] for x in cur]:
+        writer = pd.ExcelWriter(f"#{dt.datetime.today().strftime('%Y%m%d')}_backtest_{c}.xlsx")
+        tic = {x:z for x, yz in best_10_tickers_all.items() for y, z in yz.items() if y==c}
+        pd.DataFrame(tic).transpose().to_excel(writer, 'Top 10 Ticker')
+        for p in ['momentum','quality', 'value', 'extra']:
+            ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
+            ret_p = {x:y[f'fundamentals_{p}'] for x, y in ret_p.items()}
+            ret_p = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p.items()}
+            pd.DataFrame(ret_p, index=list(range(10))).transpose().to_excel(writer, f'Qcut {p}')
+        for p in ['ai_score']:
+            ret_p1 = {x:z[p] for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
+            ret_p1 = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p1.items()}
+            pd.DataFrame(ret_p1, index=list(range(10))).transpose().to_excel(writer, 'Qcut ai_score')
+        writer.save()
 
     m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
     fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])

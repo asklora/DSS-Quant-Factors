@@ -462,7 +462,7 @@ if __name__ == '__main__':
     # exit(1)
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2017,8,31)
+    testing_period = dt.datetime(2021,8,31)
     group_code = 'USD'
 
     data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode='v2')
