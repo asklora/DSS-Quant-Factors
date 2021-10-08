@@ -352,6 +352,11 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
         # all_groups = [('curr', 'KRW')]
         res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
 
+    if trim_outlier_:
+        tbl_suffix_extra = '_v2_trim'
+    else:
+        tbl_suffix_extra = '_v2'
+
     with global_vals.engine_ali.connect() as conn:
         prem = pd.read_sql(f"SELECT * FROM {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
         prem = prem.sort_values(by='last_update').drop_duplicates(subset=['period_end','factor_name','group','trim_outlier'], keep='last')

@@ -13,3 +13,4 @@ s-dbw
 fuzzy-c-means
 slack_sdk
 pyclustertend
+psycopg2

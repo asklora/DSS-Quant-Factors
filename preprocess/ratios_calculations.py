@@ -11,7 +11,7 @@ from utils import record_table_update_time
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-cur = 'USD'
+# cur = 'USD'
 def get_tri(save=True, currency=None):
     if not isinstance(save, bool):
         raise Exception("Parameter 'save' must be a bool")
@@ -24,15 +24,15 @@ def get_tri(save=True, currency=None):
         conditions = ["True"]
         if currency:
             conditions.append(f"currency_code = '{currency}'")
-        query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
+        query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
                      f"FROM {global_vals.stock_data_table_tri} T "
                      f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
-                     f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
+                     # f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
                      f"WHERE {' AND '.join(conditions)}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
 
-        print(f'      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.eikon_mktcap_table}')
+        print(f'      ------------------------> Download stock data from {global_vals.eikon_price_table}/{global_vals.fundamental_score_mkt_cap}')
         eikon_price = pd.read_sql(f"SELECT * FROM {global_vals.eikon_price_table} ORDER BY ticker, trading_day", conn_ali, chunksize=10000)
         eikon_price = pd.concat(eikon_price, axis=0, ignore_index=True)
         market_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}', conn_droid)
@@ -128,9 +128,9 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv')
         except Exception as e:
             print(e)
-            tri, eikon_price, market_cap_anchor = get_tri(save=save, currency=cur)
+            tri, eikon_price, market_cap_anchor = get_tri(save=save)
     else:
-        tri, eikon_price, market_cap_anchor = get_tri(save=save, currency=cur)
+        tri, eikon_price, market_cap_anchor = get_tri(save=save)
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=True, save=True)
+                              use_cached=False, save=True)
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
         elif args.mode == 'v2':
