@@ -193,7 +193,7 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     # update market_cap/market_cap_usd refer to tri for each period
     market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    anchor_idx = tri.loc[tri['trading_day'].dt.date==(dt.datetime.today().date()-relativedelta(days=1))].index
+    anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
     tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
     tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
     tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
@@ -353,7 +353,7 @@ def check_duplicates(df, name=''):
         raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
 
 def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=True, update=False):
+                              use_cached=False, save=True):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
@@ -471,12 +471,14 @@ def calc_fx_conversion(df):
 
     currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
     fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
+    df['period_end'] = pd.to_datetime(df['period_end']).dt.strftime("%Y-%m-%d")
     for cur_col, fx_col in zip(currency_code_cols, fx_cols):
         df = df.set_index([cur_col, 'period_end'])
         df['index'] = df.index.to_numpy()
         df[fx_col] = df['index'].map(fx)
         df = df.reset_index()
 
+    df['period_end'] = pd.to_datetime(df['period_end'])
     ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]     # no fx conversion for ratio items
 
     for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
@@ -489,12 +491,12 @@ def calc_fx_conversion(df):
     return df[org_cols]
 
 def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True, update=True):
+                          use_cached=False, save=True):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    if update:  # update for the latest month (not using cachec & not save locally)
-        use_cached = False
-        save = False
+    # if update:  # update for the latest month (not using cachec & not save locally)
+    #     use_cached = False
+    #     save = False
 
     if use_cached:
         try:
@@ -504,7 +506,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             print(e)
             df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
     else:
-        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save, update)
+        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table} WHERE x_col', conn, chunksize=10000)  # ratio calculation used
@@ -632,4 +634,4 @@ def test_missing(df_org, formula, ingestion_cols):
 if __name__ == "__main__":
     # update_period_end()
     calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=True, update=False)
+                          use_cached=True, save=True)

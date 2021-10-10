@@ -344,7 +344,8 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
         all_icb = list(set(all_icb))
         all_curr = []
 
-    all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
+    # all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
+    all_groups = [('curr', 'USD')] #+ [('icb', icb) for icb in all_icb]
 
     print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
 
