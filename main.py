@@ -63,7 +63,8 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.4, 0.6, 0.8]
+    # use_pca_list = [0.4, 0.6, 0.8]
+    use_pca_list = [0.4]
 
     # create date list of all testing period
     last_test_date = dt.datetime.now().date() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today

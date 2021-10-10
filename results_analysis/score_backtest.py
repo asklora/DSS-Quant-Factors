@@ -151,18 +151,18 @@ def score_history():
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
-        # factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
+        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
         universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
-        # fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
-        #                                  f"WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') ", conn_ali)
+        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
+                                         f"WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') ", conn_ali)
                                          # f"WHERE (period_end='2021-07-31') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
     global_vals.engine_ali.dispose()
 
-    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
-    fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
-    factor_rank = pd.read_csv('cached_factor_rank.csv')
+    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
+    # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
     fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,1,1)]
@@ -227,11 +227,13 @@ def score_history():
             ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
             ret_p = {x:y[f'fundamentals_{p}'] for x, y in ret_p.items()}
             ret_p = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p.items()}
-            pd.DataFrame(ret_p, index=list(range(10))).transpose().to_excel(writer, f'Qcut {p}')
+            ret_p_df = pd.DataFrame(ret_p, index=list(range(10))).transpose()
+            ret_p_df.to_excel(writer, f'Qcut {p}')
         for p in ['ai_score']:
             ret_p1 = {x:z[p] for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
             ret_p1 = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p1.items()}
-            pd.DataFrame(ret_p1, index=list(range(10))).transpose().to_excel(writer, 'Qcut ai_score')
+            ret_p1_df = pd.DataFrame(ret_p1, index=list(range(10))).transpose()
+            ret_p1_df.to_excel(writer, 'Qcut ai_score')
         writer.save()
 
     m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
