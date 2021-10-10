@@ -144,14 +144,16 @@ class combine_tri_worldscope:
         tri[['volume_1w']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
         tri[['volume_3m']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
         tri[['volume_1w3m']] = (tri['volume_1w']/tri['volume_3m']).values
-        tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        # tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].ffill()
         self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
         self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
 
         ws_col = ws.filter(regex='^fn_').columns.to_list()
         ibes_col = ibes.select_dtypes(float).columns.to_list()
-        self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].apply(pd.DataFrame.interpolate,
-                                                                                      limit_direction='forward', limit_area='inside')
+        # self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].apply(pd.DataFrame.interpolate,
+        #                                                                               limit_direction='forward', limit_area='inside')
+        self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].ffill()
 
         self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
         self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code','market_cap_usd'])
@@ -266,11 +268,11 @@ def get_rogers_satchell(arr, days_in_year=256):
 
     return result
 
-def get_change(arr):
+def get_change(arr, n=1):
     ''' Calculate daily change'''
     arr = arr.astype(np.float)
-    arr_roll = np.roll(arr, shift=1, axis=1)
-    arr_roll[:,0,:,:] = np.nan
+    arr_roll = np.roll(arr, shift=n, axis=1)
+    arr_roll[:,:n,:,:] = np.nan
     return arr / arr_roll - 1
 
 def get_average(arr, avg_factor):
@@ -278,15 +280,15 @@ def get_average(arr, avg_factor):
     arr = arr.astype(np.float)
     return np.nanmean(arr, axis=2, keepdims=True)
 
-def get_avg_change(arr):
+def get_avg_change(arr, n=1):
     ''' Calculate period change with the average of change on last (1/4) of total period '''
 
     arr = arr.astype(np.float)
     avg_period = round(arr.shape[2]/4, 0)
     sample_arr = arr[:, :, int(arr.shape[2]-avg_period):, :]
     arr_mean = np.nanmean(sample_arr, axis=2, keepdims=True)
-    arr_roll = np.roll(arr_mean, shift=1, axis=1)
-    arr_roll[:,0,:,:] = np.nan
+    arr_roll = np.roll(arr_mean, shift=n, axis=1)
+    arr_roll[:,:n,:,:] = np.nan
 
     return arr_mean / arr_roll - 1
 
@@ -395,7 +397,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['USD']).get_results(list_of_interval=[7, 30, 91])
+    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['USD']).get_results(list_of_interval=[7, 91])
     print(dict.keys())
 
     # get_worldscope(True)

@@ -73,7 +73,7 @@ def count_plot_from_db():
 
 def count_plot_from_db_comb_hierarchical():
     table_name = 'des_factor_hierarchical'
-    name_sql ='all_init_new'
+    name_sql ='all_comb_new_multiperiod'
     groupby_col = ['name_sql', 'factors']
     sort_col = 'cophenetic'
 
@@ -91,7 +91,7 @@ def count_plot_from_db_comb_hierarchical():
 
 def count_plot_from_db_comb_fcm():
     table_name = 'des_factor_fcm'
-    name_sql ='all_comb_all2'
+    name_sql ='all_comb_new_multiperiod'
     groupby_col = ['name_sql', 'factors','n_clusters','m']
     sort_col = 'xie_beni_index'
 
@@ -109,7 +109,7 @@ def count_plot_from_db_comb_fcm():
 
 def count_plot_from_db_comb_gaussian():
     table_name = 'des_factor_gaussian'
-    name_sql ='all_comb_all'
+    name_sql ='all_comb_new_multiperiod'
     groupby_col = ['name_sql', 'factors','n_clusters']
     sort_col = 'S_Dbw'
 
@@ -127,7 +127,7 @@ def count_plot_from_db_comb_gaussian():
 
 if __name__=="__main__":
     # count_plot_from_csv()
-    count_plot_from_db()
+    # count_plot_from_db()
     # count_plot_from_db_comb_hierarchical()
     # count_plot_from_db_comb_fcm()
-    # count_plot_from_db_comb_gaussian()
+    count_plot_from_db_comb_gaussian()

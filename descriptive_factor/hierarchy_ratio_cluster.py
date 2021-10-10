@@ -28,28 +28,32 @@ clustering_metrics1 = [
 ]
 
 select_cols = [
-    'avg_debt_to_asset', 'avg_ebitda_to_ev', 'avg_roic', 'change_volume', 'change_tri_fillna', 'avg_capex_to_dda', 'vol',
-    'avg_fa_turnover', 'icb_code', 'avg_volume', 'change_dividend', 'avg_inv_turnover', 'change_earnings', 'avg_roe',
-    'avg_gross_margin', 'avg_div_payout', 'avg_earnings_yield', 'skew', 'change_ebtda', 'avg_market_cap_usd', 'avg_div_yield'
+    'avg_market_cap_usd', 'avg_ca_turnover_re', 'avg_roe', 'avg_volume', 'change_earnings',  # hierarchical
+    'avg_volume_1w3m', 'avg_debt_to_asset', 'change_volume', 'skew', 'icb_code', 'avg_div_yield', 'avg_gross_margin', 'change_tri_fillna', # fcm
+    'avg_ca_turnover_re', 'icb_code', 'avg_fa_turnover_re', 'avg_market_cap_usd'    # gaussian
 ]
 
 # select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'change_dividend', 'avg_cash_ratio', 'avg_roic',
 #                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
 #                'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'change_dividend', 'avg_div_yield']
 
-select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'avg_cash_ratio', 'avg_roic',
-               'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
-               'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'avg_div_yield']
+# select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'avg_cash_ratio', 'avg_roic',
+#                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
+#                'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'avg_div_yield']
 
 select_cols = list(set(select_cols))
 
 high_corr_removed_cols = [
-    'avg_cash_ratio',   # icb_code
-    'avg_capex_to_dds', # icb_code
-    'avg_volume_1w3m',  # change_tri_fillna, vol
+    # 'avg_cash_ratio',   # icb_code
+    # 'avg_capex_to_dds', # icb_code
+    # 'avg_volume_1w3m',  # change_tri_fillna, vol
+    'avg_gross_margin',     # avg_fx_turnover_re
+    'avg_ca_turnover_re',   # avg_fx_turnover_re
+    'change_volume',        # avg_volume_1w3m
 ]
 
 good_cols = list(set(select_cols) - set(high_corr_removed_cols))
+good_mom_cols = ['skew','avg_volume_1w3m','change_tri_fillna']
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
@@ -60,9 +64,12 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
     if use_cached:
         for i in list_of_interval:
             try:
-                sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv')
+                sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv', usecols=['ticker','trading_day']+good_cols)
             except:
                 list_of_interval_redo.append(i)
+            sample_df[i]['trading_day'] = pd.to_datetime(sample_df[i]['trading_day'])
+            sample_df[i] = sample_df[i].loc[sample_df[i]['trading_day'] > (dt.datetime.today() - relativedelta(years=5))]
+
     else:
         list_of_interval_redo = list_of_interval
 
@@ -77,9 +84,18 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
 # -------------------------------- Test Cluster -----------------------------------------------
 
 def calc_corr_csv(df):
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+    from statsmodels.tools.tools import add_constant
+
+    df = df.drop(columns=['trading_day','ticker'])
+
+    X = add_constant(df.fillna(0))
+    vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])], index=X.columns)
+
     c = df.corr().unstack().reset_index()
     c['corr_abs'] = c[0].abs()
     c = c.sort_values('corr_abs', ascending=True)
+
     return c
 
 def test_missing(df):
@@ -99,16 +115,45 @@ def test_missing(df):
 
     return df
 
+def fill_all_day_interpolate(result, date_col="trading_day"):
+    ''' Fill all the weekends between first / last day and fill NaN'''
+
+    # Construct indexes for all day between first/last day * all ticker used
+    df = result[["ticker", date_col]].copy()
+    df.trading_day = pd.to_datetime(df[date_col])
+    result.trading_day = pd.to_datetime(result[date_col])
+    df = df.sort_values(by=[date_col], ascending=True)
+    daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1], freq='D')
+    indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', date_col])
+
+    # Insert weekend/before first trading date to df
+    df = df.set_index(['ticker', date_col]).reindex(indexes).reset_index()
+    df = df.sort_values(by=['ticker', date_col], ascending=True)
+    result = df.merge(result, how="left", on=["ticker", date_col])
+
+    num_col = result.select_dtypes(float).columns.to_list()
+    result[num_col] = result.groupby(['ticker'])[num_col].apply(pd.DataFrame.interpolate, limit_direction='forward', limit_area='inside')
+    result[num_col] = result.groupby(['ticker'])[num_col].ffill()
+
+    return result
+
 class test_cluster:
 
     def __init__(self, testing_interval=91):
 
         self.testing_interval = testing_interval
-        sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
-        self.df = sample_df[testing_interval]
+        # sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
+        # self.df = sample_df[testing_interval]
 
-        test_missing(self.df)
-        # calc_corr_csv(self.df[select_cols])
+
+        sample_df = prep_factor_dateset(list_of_interval=[7, 91], use_cached=True)
+        df = sample_df[91].merge(fill_all_day_interpolate(sample_df[7])[['ticker','trading_day']+good_mom_cols],
+                                 on=['ticker','trading_day'], how='left', suffixes=('_91','_7'))
+        # df = df.merge(fill_all_day_interpolate(sample_df[7]), on=['ticker','trading_day'], how='left', suffixes=('','_7'))
+        self.df = df.drop(columns=['avg_volume_1w3m_91'])
+
+        # test_missing(self.df)
+        # calc_corr_csv(self.df)
 
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
@@ -134,7 +179,7 @@ class test_cluster:
         df = trim_outlier_std(df)
 
         all_results = []
-        for cols in itertools.combinations(good_cols, n_cols):
+        for cols in itertools.combinations(self.cols, n_cols):
 
             # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
             X = df[list(cols)].values
@@ -300,10 +345,10 @@ def get_linkage_matrix(model):
 
 if __name__ == "__main__":
     testing_interval = 91
-    testing_name = 'all_init_new'
+    testing_name = 'all_comb_new_multiperiod'
     
     data = test_cluster(testing_interval=testing_interval)
-    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=1)
-    # data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=1)
+    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=6)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=2)
 
 

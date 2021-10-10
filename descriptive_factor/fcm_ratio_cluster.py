@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 import global_vals
 import pandas as pd
+import datetime as dt
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 from hierarchy_ratio_cluster import trim_outlier_std
@@ -12,7 +13,7 @@ import multiprocessing as mp
 from fcmeans import FCM
 from descriptive_factor.fuzzy_metrics import *
 
-from hierarchy_ratio_cluster import good_cols
+from hierarchy_ratio_cluster import good_cols, fill_all_day_interpolate, relativedelta, test_missing, prep_factor_dateset, good_mom_cols
 
 clustering_metrics_fuzzy = [
     # partition_coefficient,
@@ -24,28 +25,6 @@ clustering_metrics_fuzzy = [
     # bouguessa_wang_sun_index,
 ]
 
-# --------------------------------- Prepare Datasets ------------------------------------------
-
-def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency='USD'):
-    sample_df = {}
-    list_of_interval_redo = []
-
-    if use_cached:
-        for i in list_of_interval:
-            try:
-                sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv')
-            except:
-                list_of_interval_redo.append(i)
-    else:
-        list_of_interval_redo = list_of_interval
-
-    if len(list_of_interval_redo) > 0:
-        print(f'-----------------------------> No local cache for {list_of_interval_redo} -> Process')
-        df_dict = combine_tri_worldscope(use_cached=use_cached, save=True, currency=[currency]).get_results(list_of_interval_redo)
-        sample_df.update(df_dict)
-
-    return sample_df
-
 # -------------------------------- Test Cluster -----------------------------------------------
 
 class test_cluster:
@@ -53,8 +32,19 @@ class test_cluster:
     def __init__(self, testing_interval=91, use_cached=True):
 
         self.testing_interval = testing_interval
-        sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=use_cached)
-        self.df = sample_df[testing_interval]
+        # sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
+        # self.df = sample_df[testing_interval]
+
+
+        sample_df = prep_factor_dateset(list_of_interval=[7, 91], use_cached=True)
+        df = sample_df[91].merge(fill_all_day_interpolate(sample_df[7])[['ticker','trading_day']+good_mom_cols],
+                                 on=['ticker','trading_day'], how='left', suffixes=('_91','_7'))
+        # df = df.merge(fill_all_day_interpolate(sample_df[7]), on=['ticker','trading_day'], how='left', suffixes=('','_7'))
+        self.df = df.drop(columns=['avg_volume_1w3m_91'])
+
+        # test_missing(self.df)
+        # calc_corr_csv(self.df)
+
         self.cols = self.df.select_dtypes(float).columns.to_list()
         print(len(self.df['ticker'].unique()))
 
@@ -62,7 +52,7 @@ class test_cluster:
 
         self.score_col = 'xie_beni_index'
         period_list = list(range(1, round(365*5/self.testing_interval)))
-        all_groups = itertools.product(period_list, [3, 4, 5], [name_sql], fcm_args['n_clusters'], fcm_args['m'])
+        all_groups = itertools.product(period_list, [5], [name_sql], fcm_args['n_clusters'], fcm_args['m'])
         all_groups = [tuple(e) for e in all_groups]
         with mp.Pool(processes=n_processes) as pool:
             pool.starmap(self.combination_test, all_groups)
@@ -78,12 +68,12 @@ class test_cluster:
         df = trim_outlier_std(df)
 
         all_results = []
-        for cols in itertools.combinations(good_cols, n_cols):
+        for cols in itertools.combinations(self.cols, n_cols):
 
             # We have to fill all the nans with 1(for multiples) since Kmeans can't work with the data that has nans.
             X = df[list(cols)].values
             X[X == 0] = np.nan
-            X = np.nan_to_num(X, -1)
+            X = np.nan_to_num(X, 0)
 
             m = test_method(X, n_clusters, m_arg)
             m['factors'] = ', '.join(cols)
@@ -192,10 +182,10 @@ def test_method(X, n_clusters, m_arg):
 if __name__ == "__main__":
 
     testing_interval = 91
-    testing_name = 'all_init_new'
+    testing_name = 'all_comb_new_multiperiod'
     fcm_args = {'n_clusters':[0.01, 0.02], 'm':[2]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
-    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=1)
-    # data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
 
