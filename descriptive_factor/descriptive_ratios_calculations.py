@@ -165,30 +165,48 @@ class combine_tri_worldscope:
     def calculate_final_results(self, interval=7):
         ''' calculate period average / change / skew / tri '''
 
-        arr = reshape_by_interval(self.df.copy(), interval)
         cols = self.df.columns.to_list()
-    
-        # create label array (ticker, trading_day - period_end)
-        arr_label = arr[:,:,-1, [cols.index('ticker'), cols.index('trading_day')]]
-        arr_curind = arr[:,:,-1, [cols.index('currency_code'), cols.index('icb_code')]]
-    
-        # factor for changes (change over time) + factor for average (point in time)
-        change_idx = [cols.index(x) for x in self.change_factor]
-        average_idx = [cols.index(x) for x in self.avg_factor]
-    
-        arr_change = get_avg_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
-        arr_average = get_average(arr[:,:,:,average_idx], self.avg_factor)[:,:,0,:]      # calculate average in this period
-        arr_skew = get_skew(np.expand_dims(arr[:,:,:,cols.index('tri')], 3))    # calculate tri skew
-        arr_skew = np.expand_dims(arr_skew, 2)
-        arr_tri_momentum = arr_change[:,1:,self.change_factor.index('tri_fillna')]/arr_change[:,:-1,self.change_factor.index('tri_fillna')]
-        arr_tri_momentum = np.pad(arr_tri_momentum, ((0,0), (1,0)), mode='constant', constant_values=np.nan)
-        arr_tri_momentum = np.expand_dims(arr_tri_momentum, 2)
-        arr_vol = get_rogers_satchell(arr[:,:,:,cols.index('open'):(cols.index('close')+1)])    # calculate tri volatility
-    
-        # concat all array & columns name
-        final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_tri_momentum, arr_change, arr_average, arr_curind), axis=2)
-        self.final_col = ['ticker','trading_day', 'vol', 'skew','ret_momentum'] + ['change_'+x for x in self.change_factor] + \
-                         ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
+
+        if interval < 7:
+            df = self.df.sort_values(['trading_day']).copy()
+            df[cols[2:]] = df.groupby('ticker')[cols[2:]].ffill()
+            arr = reshape_by_interval(df.ffill(), interval)
+
+            change_fac = set(self.change_factor) & set(self.mom_factor)
+            avg_fac = set(self.avg_factor) & set(self.mom_factor)
+            change_idx = [cols.index(x) for x in change_fac]
+            average_idx = [cols.index(x) for x in avg_fac]
+
+            arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
+            arr_change = get_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
+            arr_average = get_average(arr[:,:,:,average_idx], self.avg_factor)[:,:,0,:]      # calculate average in this period
+
+            final_arr = np.concatenate((arr_label, arr_change, arr_average), axis=2)
+            self.final_col = ['ticker', 'trading_day']+['change_' + x for x in change_fac]+['avg_' + x for x in avg_fac]
+
+        else:
+            change_idx = [cols.index(x) for x in self.change_factor]
+            average_idx = [cols.index(x) for x in self.avg_factor]
+            arr = reshape_by_interval(self.df.copy(), interval)
+
+            # create label array (ticker, trading_day - period_end)
+            arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
+            arr_curind = arr[:, :, -1, [cols.index('currency_code'), cols.index('icb_code')]]
+
+            # factor for changes (change over time) + factor for average (point in time)
+            arr_change = get_avg_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
+            arr_average = get_average(arr[:,:,:,average_idx], self.avg_factor)[:,:,0,:]      # calculate average in this period
+            arr_skew = get_skew(np.expand_dims(arr[:,:,:,cols.index('tri')], 3))    # calculate tri skew
+            arr_skew = np.expand_dims(arr_skew, 2)
+            arr_tri_momentum = arr_change[:,1:,self.change_factor.index('tri_fillna')]/arr_change[:,:-1,self.change_factor.index('tri_fillna')]
+            arr_tri_momentum = np.pad(arr_tri_momentum, ((0,0), (1,0)), mode='constant', constant_values=np.nan)
+            arr_tri_momentum = np.expand_dims(arr_tri_momentum, 2)
+            arr_vol = get_rogers_satchell(arr[:,:,:,cols.index('open'):(cols.index('close')+1)])    # calculate tri volatility
+
+            # concat all array & columns name
+            final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_tri_momentum, arr_change, arr_average, arr_curind), axis=2)
+            self.final_col = ['ticker','trading_day', 'vol', 'skew','ret_momentum'] + ['change_'+x for x in self.change_factor] + \
+                             ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
     
         return final_arr
 
@@ -209,7 +227,7 @@ class combine_tri_worldscope:
             df = pd.DataFrame(arr, columns=self.final_col)
             df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
             x = df.iloc[:,2:].std()
-            print(x.to_dict())
+            print('std:', x.to_dict())
             use_col = list(x[x>0.001].index)
             df[use_col] = df.groupby(['ticker'])[use_col].ffill()
             arr_dict[i] = df[['ticker','trading_day']+use_col]
@@ -397,7 +415,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['USD']).get_results(list_of_interval=[7, 91])
+    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['USD']).get_results(list_of_interval=[1, 365])
     print(dict.keys())
 
     # get_worldscope(True)

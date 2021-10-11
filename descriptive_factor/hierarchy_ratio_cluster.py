@@ -54,6 +54,7 @@ high_corr_removed_cols = [
 
 good_cols = list(set(select_cols) - set(high_corr_removed_cols))
 good_mom_cols = ['skew','avg_volume_1w3m','change_tri_fillna']
+print(good_cols)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 
@@ -66,9 +67,10 @@ def prep_factor_dateset(use_cached=True, list_of_interval=[7, 30, 91], currency=
             try:
                 sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv', usecols=['ticker','trading_day']+good_cols)
             except:
-                list_of_interval_redo.append(i)
+                sample_df[i] = pd.read_csv(f'dcache_sample_{i}.csv')
+                # list_of_interval_redo.append(i)
             sample_df[i]['trading_day'] = pd.to_datetime(sample_df[i]['trading_day'])
-            sample_df[i] = sample_df[i].loc[sample_df[i]['trading_day'] > (dt.datetime.today() - relativedelta(years=5))]
+            sample_df[i] = sample_df[i].loc[sample_df[i]['trading_day'] > (dt.datetime.today() - relativedelta(years=7))]
 
     else:
         list_of_interval_redo = list_of_interval
@@ -145,10 +147,25 @@ class test_cluster:
         # sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         # self.df = sample_df[testing_interval]
 
+        sample_df = prep_factor_dateset(list_of_interval=[1,7,91], use_cached=True)
 
-        sample_df = prep_factor_dateset(list_of_interval=[7, 91], use_cached=True)
+        # add df for annually change
+        df_1yr = sample_df[91].copy()
+        # avg_cols = ['avg_debt_to_asset', 'avg_div_yield', 'avg_fa_turnover_re', 'avg_roe']
+        avg_cols = []
+        change_cols = ['change_earnings']
+        # df_1yr[avg_cols] = df_1yr.groupby(['ticker'])[avg_cols].rolling(4).mean().reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] + 1
+        df_1yr[change_cols] = df_1yr.groupby(['ticker'])[change_cols].rolling(4).apply(lambda x: np.prod(x)).reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] - 1
+        df_1yr = df_1yr[['ticker','trading_day']+avg_cols+change_cols]
+
+        # merge all period table
         df = sample_df[91].merge(fill_all_day_interpolate(sample_df[7])[['ticker','trading_day']+good_mom_cols],
                                  on=['ticker','trading_day'], how='left', suffixes=('_91','_7'))
+        df = df.merge(fill_all_day_interpolate(sample_df[1]), on=['ticker','trading_day'], how='left', suffixes=('','_1'))
+        df = df.merge(df_1yr, on=['ticker','trading_day'], how='left', suffixes=('','_365'))
+
         # df = df.merge(fill_all_day_interpolate(sample_df[7]), on=['ticker','trading_day'], how='left', suffixes=('','_7'))
         self.df = df.drop(columns=['avg_volume_1w3m_91'])
 
@@ -345,10 +362,10 @@ def get_linkage_matrix(model):
 
 if __name__ == "__main__":
     testing_interval = 91
-    testing_name = 'all_comb_new_multiperiod'
+    testing_name = 'all_comb_new_multiperiod1'
     
     data = test_cluster(testing_interval=testing_interval)
     # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), n_processes=6)
-    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=2)
+    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), n_processes=10)
 
 
