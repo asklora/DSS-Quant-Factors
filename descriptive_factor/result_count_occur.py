@@ -73,7 +73,7 @@ def count_plot_from_db():
 
 def count_plot_from_db_comb_hierarchical():
     table_name = 'des_factor_hierarchical'
-    name_sql ='all_comb_new_multiperiod'
+    name_sql ='all_comb_new_multiperiod1'
     groupby_col = ['name_sql', 'factors']
     sort_col = 'cophenetic'
 
