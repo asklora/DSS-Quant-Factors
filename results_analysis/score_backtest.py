@@ -101,6 +101,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     mean_ret = {}
     best_score_ticker = {}
+    mean_ret_detail_all = {}
 
     # calculate ai_score by each currency_code (i.e. group) for each of [Quality, Value, Momentum]
     for (group, pillar_name), g in factor_rank.groupby(["group", "pillar"]):
@@ -115,6 +116,14 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = fundamentals[score_col].mean(axis=1)
 
         mean_ret[(group, pillar_name)] = score_ret_mean(fundamentals.loc[fundamentals["currency_code"] == group], score_col+[f"fundamentals_{pillar_name}"])
+
+        mean_ret_detail = pd.DataFrame(mean_ret[(group, pillar_name)][f"fundamentals_{pillar_name}"],
+                                       index=list(range(len(mean_ret[(group, pillar_name)][f"fundamentals_{pillar_name}"])))).transpose()
+        f = sub_g[['factor_name', 'factor_weight', 'pred_z', 'long_large']].values
+        f = [f'{a}({b}, {round(c, 2)}, {d})' for a, b, c, d in f]
+        mean_ret_detail['score_col'] = ', '.join(f)
+        mean_ret_detail_all[pillar_name] = mean_ret_detail
+
 
     # calculate ai_score by each currency_code (i.e. group) for [Extra]
     for group, g in factor_rank.groupby("group"):
@@ -144,7 +153,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     print(fundamentals[["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]].describe())
 
-    return fundamentals, mean_ret, best_score_ticker
+    return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
 def score_history():
     ''' calculate score with DROID v2 method & evaluate '''
@@ -165,7 +174,7 @@ def score_history():
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
-    fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,1,1)]
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2020,2,1)]
 
     fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
     print(len(set(fundamentals_score['ticker'].to_list())))
@@ -208,13 +217,26 @@ def score_history():
     mean_ret_all = {}
     best_10_tickers_all = {}
 
+    mean_ret_detail_all = {}
+    mean_ret_detail_all['quality'] = []
+    mean_ret_detail_all['value'] = []
+    mean_ret_detail_all['momentum'] = []
+
+    fundamentals_all = []
+
     for name, g in fundamentals.groupby(['period_end']):
 
         factor_rank_period = factor_rank.loc[factor_rank['period_end'].astype(str)==name.strftime('%Y-%m-%d')]
 
         # Scale original fundamental score
-        fundamentals, mean_ret_all[name], best_10_tickers_all[name] = score_update_scale(g, calculate_column, universe_currency_code, factor_rank_period)
+        fundamentals, mean_ret_all[name], best_10_tickers_all[name], mean_ret_detail = \
+            score_update_scale(g, calculate_column, universe_currency_code, factor_rank_period)
 
+        fundamentals_all.append(fundamentals)
+
+        for p, df in mean_ret_detail.items():
+            df['period_end'] = name
+            mean_ret_detail_all[p].append(df)
         # results = fundamentals[label_col+score_col]
         # x = results.groupby(['currency_code']).agg(['min','mean','max','std'])
         # print(x)
@@ -223,6 +245,11 @@ def score_history():
         writer = pd.ExcelWriter(f"#{dt.datetime.today().strftime('%Y%m%d')}_backtest_{c}.xlsx")
         tic = {x:z for x, yz in best_10_tickers_all.items() for y, z in yz.items() if y==c}
         pd.DataFrame(tic).transpose().to_excel(writer, 'Top 10 Ticker')
+
+        for p, df_list in mean_ret_detail_all.items():
+            ddf = pd.concat(df_list, axis=0).reset_index(drop=True)
+            ddf.to_excel(writer, f'{p} details')
+
         for p in ['momentum','quality', 'value', 'extra']:
             ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
             ret_p = {x:y[f'fundamentals_{p}'] for x, y in ret_p.items()}
@@ -236,6 +263,7 @@ def score_history():
             ret_p1_df.to_excel(writer, 'Qcut ai_score')
         writer.save()
 
+    fundamentals = pd.concat(fundamentals_all, axis=0)
     m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
     fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])
     print(fundamentals[["ai_score"]].describe())
