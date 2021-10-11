@@ -33,10 +33,24 @@ class test_cluster:
         # sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         # self.df = sample_df[testing_interval]
 
+        sample_df = prep_factor_dateset(list_of_interval=[1,7,91], use_cached=True)
 
-        sample_df = prep_factor_dateset(list_of_interval=[7, 91], use_cached=True)
+        df_1yr = sample_df[91].copy()
+        # avg_cols = ['avg_debt_to_asset', 'avg_div_yield', 'avg_fa_turnover_re', 'avg_roe']
+        avg_cols = []
+        change_cols = ['change_earnings']
+        # df_1yr[avg_cols] = df_1yr.groupby(['ticker'])[avg_cols].rolling(4).mean().reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] + 1
+        df_1yr[change_cols] = df_1yr.groupby(['ticker'])[change_cols].rolling(4).apply(lambda x: np.prod(x)).reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] - 1
+        df_1yr = df_1yr[['ticker','trading_day']+avg_cols+change_cols]
+
+        # merge all period table
         df = sample_df[91].merge(fill_all_day_interpolate(sample_df[7])[['ticker','trading_day']+good_mom_cols],
                                  on=['ticker','trading_day'], how='left', suffixes=('_91','_7'))
+        df = df.merge(fill_all_day_interpolate(sample_df[1]), on=['ticker','trading_day'], how='left', suffixes=('','_1'))
+        df = df.merge(df_1yr, on=['ticker','trading_day'], how='left', suffixes=('','_365'))
+
         # df = df.merge(fill_all_day_interpolate(sample_df[7]), on=['ticker','trading_day'], how='left', suffixes=('','_7'))
         self.df = df.drop(columns=['avg_volume_1w3m_91'])
 
@@ -173,7 +187,7 @@ def test_method(X, n_clusters):
 if __name__ == "__main__":
 
     testing_interval = 91
-    testing_name = 'all_comb_new_multiperiod'
+    testing_name = 'all_comb_new_multiperiod1'
     fcm_args = {'n_clusters':[0.01, 0.02]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)

@@ -35,10 +35,24 @@ class test_cluster:
         # sample_df = prep_factor_dateset(list_of_interval=[testing_interval], use_cached=True)
         # self.df = sample_df[testing_interval]
 
+        sample_df = prep_factor_dateset(list_of_interval=[1,7,91], use_cached=True)
 
-        sample_df = prep_factor_dateset(list_of_interval=[7, 91], use_cached=True)
+        df_1yr = sample_df[91].copy()
+        # avg_cols = ['avg_debt_to_asset', 'avg_div_yield', 'avg_fa_turnover_re', 'avg_roe']
+        avg_cols = []
+        change_cols = ['change_earnings']
+        # df_1yr[avg_cols] = df_1yr.groupby(['ticker'])[avg_cols].rolling(4).mean().reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] + 1
+        df_1yr[change_cols] = df_1yr.groupby(['ticker'])[change_cols].rolling(4).apply(lambda x: np.prod(x)).reset_index(level=0, drop=True)
+        df_1yr[change_cols] = df_1yr[change_cols] - 1
+        df_1yr = df_1yr[['ticker','trading_day']+avg_cols+change_cols]
+
+        # merge all period table
         df = sample_df[91].merge(fill_all_day_interpolate(sample_df[7])[['ticker','trading_day']+good_mom_cols],
                                  on=['ticker','trading_day'], how='left', suffixes=('_91','_7'))
+        df = df.merge(fill_all_day_interpolate(sample_df[1]), on=['ticker','trading_day'], how='left', suffixes=('','_1'))
+        df = df.merge(df_1yr, on=['ticker','trading_day'], how='left', suffixes=('','_365'))
+
         # df = df.merge(fill_all_day_interpolate(sample_df[7]), on=['ticker','trading_day'], how='left', suffixes=('','_7'))
         self.df = df.drop(columns=['avg_volume_1w3m_91'])
 
@@ -52,7 +66,7 @@ class test_cluster:
 
         self.score_col = 'xie_beni_index'
         period_list = list(range(1, round(365*5/self.testing_interval)))
-        all_groups = itertools.product(period_list, [5], [name_sql], fcm_args['n_clusters'], fcm_args['m'])
+        all_groups = itertools.product(period_list, [3, 4, 5], [name_sql], fcm_args['n_clusters'], fcm_args['m'])
         all_groups = [tuple(e) for e in all_groups]
         with mp.Pool(processes=n_processes) as pool:
             pool.starmap(self.combination_test, all_groups)
@@ -66,6 +80,8 @@ class test_cluster:
         df = self.df.groupby(['ticker']).nth(-period).reset_index().copy(1)
         df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
         df = trim_outlier_std(df)
+
+        # print(self.cols)
 
         all_results = []
         for cols in itertools.combinations(self.cols, n_cols):
@@ -182,7 +198,7 @@ def test_method(X, n_clusters, m_arg):
 if __name__ == "__main__":
 
     testing_interval = 91
-    testing_name = 'all_comb_new_multiperiod'
+    testing_name = 'all_comb_new_multiperiod1'
     fcm_args = {'n_clusters':[0.01, 0.02], 'm':[2]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
