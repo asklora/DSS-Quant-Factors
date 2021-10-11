@@ -17,7 +17,7 @@ def report_to_slack(message):
     except Exception as e:
         print(e)
 
-def report_series_to_slack(message=None, df=None):
+def report_series_to_slack(message=None, df=None, id=None):
 
     if message:
         report_to_slack(message)
@@ -28,7 +28,10 @@ def report_series_to_slack(message=None, df=None):
     message += "```"
     print(message)
 
-    report_to_slack(message)
+    if id:
+        report_to_slack_user(message, id=id)
+    else:
+        report_to_slack(message)
 
 def report_df_to_slack(message, df):
     if message:
@@ -50,7 +53,10 @@ def report_df_to_slack(message, df):
     message += "```"
     print(message)
 
-    report_to_slack(message)
+    if id:
+        report_to_slack_user(message, id=id)
+    else:
+        report_to_slack(message)
 
 def file_to_slack(file, filetype, title):
 
@@ -66,5 +72,19 @@ def file_to_slack(file, filetype, title):
     except Exception as e:
         print(e)
 
+def file_to_slack_user(file, filetype, title, id='U026B04RB3J'):
+
+    try:
+        client = WebClient(token=SLACK_API, timeout=30)
+        result = client.files_upload(
+            channels=id,
+            file=file,
+            filetype=filetype,
+            title=title)
+        logger.info(result)
+
+    except Exception as e:
+        print(e)
+
 if __name__ == "__main__":
-    report_to_slack('test')
+    file_to_slack_user('test')

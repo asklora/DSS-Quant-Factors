@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import global_vals
 import re
 import datetime as dt
-from descriptive_factor.report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack
+from utils_report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack, file_to_slack_user
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 SLACK = False
@@ -66,7 +66,7 @@ class score_eval:
         avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
         avg_comp.to_excel(writer, sheet_name='average')
         writer.save()
-        
+
         if SLACK:
             report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
             report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
@@ -122,7 +122,8 @@ def save_topn_ticker(df, n=20):
     writer.save()
 
     if SLACK:
-        file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
+        file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
 
 def save_description(df):
     ''' write statistics for  '''
@@ -260,5 +261,5 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    eval.test_history()     # test on (history) <-global_vals.production_score_history
+    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    # eval.test_history()     # test on (history) <-global_vals.production_score_history
