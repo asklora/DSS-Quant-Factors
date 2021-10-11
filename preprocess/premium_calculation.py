@@ -221,6 +221,7 @@ def calc_premium_all(use_biweekly_stock=False, stock_last_week_avg=False, save_m
     global_vals.engine_ali.dispose()
 
 def insert_prem_and_membership_for_group(*args):
+
     def qcut(series):
         try:
             series_fillinf = series.replace([-np.inf, np.inf], np.nan)
@@ -250,6 +251,7 @@ def insert_prem_and_membership_for_group(*args):
 
     gp_type, group, tbl_suffix, factor_list, trim_outlier_ = args
     print(f'      ------------------------> Start calculating factor premium - [{group}] Partition')
+    print(gp_type, group, tbl_suffix, factor_list, trim_outlier_)
 
     thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
@@ -324,7 +326,8 @@ def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_ou
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
         factor_list = formula['name'].to_list()                           # factor = all variabales
                 
-        all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
+        all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} "
+                               f"WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
         # all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {table_name} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
         
     # if icb_num != 6:
@@ -334,17 +337,17 @@ def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_ou
 
     # all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
     all_groups = [('curr', 'USD')] # we test on USD only for now
-
-    print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
-
-    with mp.Pool(processes=3) as pool:
-        # all_groups = [('curr', 'KRW')]
-        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
-
     if trim_outlier_:
         tbl_suffix_extra = '_v2_trim'
     else:
         tbl_suffix_extra = '_v2'
+
+    print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
+    print(f'      ------------------------> save to {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
+
+    with mp.Pool(processes=1) as pool:
+        # all_groups = [('curr', 'KRW')]
+        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
 
     with global_vals.engine_ali.connect() as conn:
         prem = pd.read_sql(f"SELECT * FROM {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
