@@ -308,7 +308,7 @@ def insert_prem_and_membership_for_group(*args):
 
     return True
 
-def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, save_membership=False, update=False, trim_outlier_=False):
+def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_outlier_=False):
 
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
@@ -316,36 +316,24 @@ def calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=False, sav
         3. monthly sample + using average price of last week
     '''
 
-    if use_biweekly_stock and stock_last_week_avg:
-        raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
-
     # Read stock_return / ratio table
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
-
-    if use_biweekly_stock:
-        tbl_suffix = '_biweekly'
-        print(f'      ------------------------> Use biweekly ratios')
-    elif stock_last_week_avg:
-        tbl_suffix = '_monthly'
-        print(f'      ------------------------> Replace stock return with last week average returns')
-    else:
-        tbl_suffix = ''
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
         factor_list = formula['name'].to_list()                           # factor = all variabales
                 
         all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
-        all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {global_vals.processed_ratio_table}{tbl_suffix} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
+        # all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {table_name} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
         
-    if icb_num != 6:
-        all_icb = [icb[:icb_num] for icb in all_icb]
-        all_icb = list(set(all_icb))
-        all_curr = []
+    # if icb_num != 6:
+    #     all_icb = [icb[:icb_num] for icb in all_icb]
+    #     all_icb = list(set(all_icb))
+    #     all_curr = []
 
     # all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
-    all_groups = [('curr', 'USD')] #+ [('icb', icb) for icb in all_icb]
+    all_groups = [('curr', 'USD')] # we test on USD only for now
 
     print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
 
@@ -378,7 +366,7 @@ if __name__ == "__main__":
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=False, trim_outlier_=False)
+    calc_premium_all_v2(tbl_suffix='_weekly4', save_membership=False, trim_outlier_=False)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()

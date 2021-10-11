@@ -12,22 +12,25 @@ from utils import record_table_update_time
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
 # cur = 'USD'
-def get_tri(save=True, currency=None):
+def get_tri(save=True, currency=None, ticker=None):
     if not isinstance(save, bool):
         raise Exception("Parameter 'save' must be a bool")
     # if not isinstance(currency, str):
     #     raise Exception("Parameter 'currency' must be a str")
 
+    conditions = ["True"]
+    if currency:
+        conditions.append(f"currency_code = '{currency}'")
+    if ticker:
+        conditions.append(f"T.ticker = '{ticker}'")
+
     with global_vals.engine.connect() as conn_droid, global_vals.engine_ali.connect() as conn_ali:
         print(f'#################################################################################################')
         print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
-        conditions = ["True"]
-        if currency:
-            conditions.append(f"currency_code = '{currency}'")
-        query = text(f"SELECT T.ticker, T.trading_day, total_return_index as tri, open, high, low, close, volume "
+        query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                      f"FROM {global_vals.stock_data_table_tri} T "
                      f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
-                     # f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
+                     f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
                      f"WHERE {' AND '.join(conditions)}")
         tri = pd.read_sql(query, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
@@ -118,7 +121,13 @@ def resample_to_biweekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(price_sample, sample_interval, use_cached, save):
+def resample_to_weekly(df, date_col):
+    ''' Resample to bi-weekly stock tri '''
+    monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='W')
+    df = df.loc[df[date_col].isin(monthly)]
+    return df
+
+def calc_stock_return(price_sample, sample_interval, rolling_period, use_cached, save, currency, ticker):
     ''' Calcualte monthly stock return '''
 
     if use_cached:
@@ -128,9 +137,16 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
             market_cap_anchor = pd.read_csv('cache_market_cap_anchor.csv')
         except Exception as e:
             print(e)
-            tri, eikon_price, market_cap_anchor = get_tri(save=save)
+            tri, eikon_price, market_cap_anchor = get_tri(save, currency, ticker)
     else:
-        tri, eikon_price, market_cap_anchor = get_tri(save=save)
+        tri, eikon_price, market_cap_anchor = get_tri(save, currency, ticker)
+
+    if currency:        # if only calculate single currency
+        tri = tri.loc[tri['currency_code']==currency]
+    if ticker:
+        tri = tri.loc[tri['ticker']==ticker]
+    eikon_price = eikon_price.loc[eikon_price['ticker'].isin(tri['ticker'].unique())]
+    market_cap_anchor = market_cap_anchor.loc[market_cap_anchor['ticker'].isin(tri['ticker'].unique())]
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
@@ -185,10 +201,12 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     print(f'      ------------------------> Sample interval using [{sample_interval}] ')
     if sample_interval == 'monthly':
         tri = resample_to_monthly(tri, date_col='trading_day')  # Resample to monthly stock tri
-    elif sample_interval == 'biweekly':
-        tri = resample_to_biweekly(tri, date_col='trading_day')  # Resample to bi-weekly stock tri
+    # elif sample_interval == 'biweekly':
+    #     tri = resample_to_biweekly(tri, date_col='trading_day')  # Resample to bi-weekly stock tri
+    elif sample_interval == 'weekly':
+        tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
     else:
-        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
+        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'weekly' got ", sample_interval)
 
     # update market_cap/market_cap_usd refer to tri for each period
     market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
@@ -202,20 +220,24 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
 
     # Calculate monthly return (Y) + R6,2 + R12,7
     print(f'      ------------------------> Calculate stock returns ')
-    tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-1)
+    tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
     if sample_interval == 'monthly':
         tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(1)
+        tri["tri_2mb"] = tri.groupby('ticker')['tri'].shift(2)
         tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(6)
+        tri['tri_7mb'] = tri.groupby('ticker')['tri'].shift(7)
         tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(12)
-    elif sample_interval == 'biweekly':
-        tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(2)
-        tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(12)
-        tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(24)
+    elif sample_interval == 'weekly':
+        tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(4)
+        tri["tri_2mb"] = tri.groupby('ticker')['tri'].shift(8)
+        tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(26)
+        tri['tri_7mb'] = tri.groupby('ticker')['tri'].shift(30)
+        tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(52)
 
     tri["stock_return_y"] = (tri["tri_1ma"] / tri["tri"]) - 1
     tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
-    tri["stock_return_r6_2"] = (tri["tri_1mb"] / tri["tri_6mb"]) - 1
-    tri["stock_return_r12_7"] = (tri["tri_6mb"] / tri["tri_12mb"]) - 1
+    tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
+    tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
 
     tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
@@ -226,6 +248,61 @@ def calc_stock_return(price_sample, sample_interval, use_cached, save):
     return tri, stock_col
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
+
+def download_clean_worldscope_ibes(save, currency, ticker):
+    ''' download all data for factor calculate & LGBM input (except for stock return) '''
+
+    conditions = ["ticker is not null"]
+    if currency:
+        raise ValueError("Error: Currency only available for dsws filter")
+    if ticker:
+        conditions.append(f"ticker = '{ticker}'")
+
+    with global_vals.engine.connect() as conn:
+        print(f'#################################################################################################')
+        query_ws = f"select * from {global_vals.worldscope_quarter_summary_table} WHERE {' AND '.join(conditions)}"
+        query_ibes = f"SELECT * FROM {global_vals.ibes_data_table} WHERE {' AND '.join(conditions)}"
+        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
+        ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
+        ws = pd.concat(ws, axis=0, ignore_index=True)
+        print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
+        ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
+        ibes = pd.concat(ibes, axis=0, ignore_index=True)
+        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
+        universe = pd.concat(universe, axis=0, ignore_index=True)
+    global_vals.engine.dispose()
+
+    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
+
+    def fill_missing_ws(ws):
+        ''' fill in missing values by calculating with existing data '''
+
+        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
+
+        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
+        ws['fn_18308'] = ws['fn_18308'].fillna(
+            ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
+        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
+
+        return ws
+
+    ws = fill_missing_ws(ws)        # selectively fill some missing fields
+    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
+
+    # label period_end with month end of trading_day (update_date)
+    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
+
+    if save:
+        ws.to_csv('cache_ws.csv', index=False)
+        ibes.to_csv('cache_ibes.csv', index=False)
+        universe.to_csv('cache_universe.csv', index=False)
+
+    return ws, ibes, universe
+
+def check_duplicates(df, name=''):
+    df1 = df.drop_duplicates(subset=['period_end','ticker'])
+    if df.shape != df1.shape:
+        raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
 
 def update_period_end(ws=None):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
@@ -303,57 +380,7 @@ def drop_dup(df, col='period_end'):
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
     return df.drop('count', axis=1)
 
-def download_clean_worldscope_ibes(save):
-    ''' download all data for factor calculate & LGBM input (except for stock return) '''
-
-    with global_vals.engine.connect() as conn:
-        print(f'#################################################################################################')
-        query_ws = f'select * from {global_vals.worldscope_quarter_summary_table} WHERE ticker is not null'
-        query_ibes = f'SELECT * FROM {global_vals.ibes_data_table}'
-        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
-        ws = pd.concat(ws, axis=0, ignore_index=True)
-        print(f'      ------------------------> Download ibes data from {global_vals.ibes_data_table}')
-        ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
-        ibes = pd.concat(ibes, axis=0, ignore_index=True)
-        universe = pd.read_sql(f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}", conn, chunksize=10000)
-        universe = pd.concat(universe, axis=0, ignore_index=True)
-    global_vals.engine.dispose()
-
-    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
-
-    def fill_missing_ws(ws):
-        ''' fill in missing values by calculating with existing data '''
-
-        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
-
-        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
-        ws['fn_18308'] = ws['fn_18308'].fillna(
-            ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
-        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
-
-        return ws
-
-    ws = fill_missing_ws(ws)        # selectively fill some missing fields
-    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
-
-    # label period_end with month end of trading_day (update_date)
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-
-    if save:
-        ws.to_csv('cache_ws.csv', index=False)
-        ibes.to_csv('cache_ibes.csv', index=False)
-        universe.to_csv('cache_universe.csv', index=False)
-
-    return ws, ibes, universe
-
-def check_duplicates(df, name=''):
-    df1 = df.drop_duplicates(subset=['period_end','ticker'])
-    if df.shape != df1.shape:
-        raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
-
-def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=True):
+def combine_stock_factor_data(price_sample, fill_method, sample_interval, rolling_period, use_cached, save, currency, ticker):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
@@ -365,9 +392,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
             stocks_col = tri.select_dtypes("float").columns
         except Exception as e:
             print(e)
-            tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
+            tri, stocks_col = calc_stock_return(price_sample, sample_interval, rolling_period, use_cached, save, currency, ticker)
     else:
-        tri, stocks_col = calc_stock_return(price_sample, sample_interval, use_cached, save)
+        tri, stocks_col = calc_stock_return(price_sample, sample_interval, rolling_period, use_cached, save, currency, ticker)
 
     tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
@@ -384,9 +411,9 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
             universe = pd.read_csv('cache_universe.csv')
         except Exception as e:
             print(e)
-            ws, ibes, universe = download_clean_worldscope_ibes(save)
+            ws, ibes, universe = download_clean_worldscope_ibes(save, currency, ticker)
     else:
-        ws, ibes, universe = download_clean_worldscope_ibes(save)
+        ws, ibes, universe = download_clean_worldscope_ibes(save, currency, ticker)
 
     # align worldscope / ibes data with stock return date (monthly/biweekly)
     ws = fill_all_given_date(ws, tri)
@@ -403,8 +430,8 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
-    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left')
-    df = df.merge(ibes, on=['ticker', 'period_end'], how='left')
+    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left', suffixes=('','_ws'))
+    df = df.merge(ibes, on=['ticker', 'period_end'], how='left', suffixes=('','_ibes'))
     df = df.sort_values(by=['ticker', 'period_end'])
 
     # Update close price to adjusted value
@@ -433,10 +460,10 @@ def combine_stock_factor_data(price_sample='last_day', fill_method='fill_all', s
 
     if sample_interval == 'monthly':
         df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
-    elif sample_interval == 'biweekly':
-        df = resample_to_biweekly(df, date_col='period_end')  # Resample to monthly stock tri
+    elif sample_interval == 'weekly':
+        df = resample_to_weekly(df, date_col='period_end')  # Resample to monthly stock tri
     else:
-        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'biweekly' got ", sample_interval)
+        raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'weekly' got ", sample_interval)
 
     df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
 
@@ -490,8 +517,8 @@ def calc_fx_conversion(df):
     df['market_cap_usd'] = df['market_cap']
     return df[org_cols]
 
-def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=False, save=True):
+def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sample_interval='monthly', rolling_period=1,
+                          use_cached=False, save=True, currency=None, ticker=None):
     ''' Calculate all factor used referring to DB ratio table '''
 
     # if update:  # update for the latest month (not using cachec & not save locally)
@@ -504,9 +531,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             stocks_col = pd.read_csv('cache_stocks_col.csv').iloc[:, 0].to_list()
         except Exception as e:
             print(e)
-            df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
+            df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, rolling_period, use_cached, save, currency, ticker)
     else:
-        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, use_cached, save)
+        df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, rolling_period, use_cached, save, currency, ticker)
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table} WHERE x_col', conn, chunksize=10000)  # ratio calculation used
@@ -516,10 +543,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     print(f'#################################################################################################')
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
 
-    x = df.loc[df['currency_code']=='USD'].describe()
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
-    x = df.loc[df['currency_code']=='USD'].describe()
 
     # fill missing for current assets
     df['fn_2201'] = df['fn_2201'].fillna(df['fn_2999'] - df['fn_2501'])
@@ -547,8 +572,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
             n += 2
         df[i] = temp
 
-    x = df.loc[df['currency_code']=='USD'].describe()
-
     # a) Keep original values
     keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
     new_name = formula.loc[keep_original_mask, 'name'].to_list()
@@ -560,9 +583,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     if sample_interval == 'monthly':
         period_yr = 12
         period_q = 3
-    elif sample_interval == 'biweekly':
-        period_yr = 24
-        period_q = 6
+    elif sample_interval == 'weekly':
+        period_yr = 52
+        period_q = 12
 
     for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
             orient='records'):  # minus calculation for ratios
@@ -584,17 +607,16 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # drop records with no stock_return_y & any ratios
     df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
     df = df.replace([np.inf, -np.inf], np.nan)
-    x = df.loc[df['currency_code']=='USD'].describe().transpose()
 
     # test ratio calculation missing rate
     test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
     print(f'      ------------------------> Save missing Excel')
 
     db_table_name = global_vals.processed_ratio_table
-    if sample_interval == 'biweekly':
-        db_table_name += '_biweekly'
+    if sample_interval == 'weekly':
+        db_table_name += f'_weekly{rolling_period}'
     elif price_sample == 'last_week_avg':
-        db_table_name += '_monthly'
+        db_table_name += f'_monthly{rolling_period}'
 
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
@@ -609,7 +631,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
 def test_missing(df_org, formula, ingestion_cols):
 
-    for group in ['HKD', 'USD']:
+    for group in ['USD']:
         df = df_org.loc[df_org['currency_code']==group]
         writer = pd.ExcelWriter(f'missing_by_ticker_{group}.xlsx')
 
@@ -633,5 +655,11 @@ def test_missing(df_org, formula, ingestion_cols):
 
 if __name__ == "__main__":
     # update_period_end()
-    calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                          use_cached=True, save=True)
+    calc_factor_variables(price_sample='last_week_avg',
+                          fill_method='fill_all',
+                          sample_interval='weekly',
+                          rolling_period=4,
+                          use_cached=False,
+                          save=True,
+                          ticker=None,
+                          currency=None)
