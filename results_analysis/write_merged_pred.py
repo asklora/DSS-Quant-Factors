@@ -153,13 +153,15 @@ def download_stock_pred(
     rank_count = rank_count.unstack().fillna(0)
     print(rank_count)
 
+    all_period_end = result_all['period_end'].unique()
+
     # prepare table to write to DB
     if keep_all_history:        # keep only last testing i.e. for production
-        period_list = result_all['period_end'].unique()
-        tbl_suffix = '_history'
+        period_list = all_period_end
+        tbl_suffix = f"_history{int((all_period_end[-1]-all_period_end[-2])/np.timedelta64(1,'D'))}"
     else:
         period_list = [result_all['period_end'].max()]
-        tbl_suffix = ''
+        tbl_suffix = f"{int((all_period_end[-1]-all_period_end[-2])/np.timedelta64(1,'D'))}"
 
     for period in period_list:
         print(period)
@@ -167,7 +169,7 @@ def download_stock_pred(
         df = result_all.loc[result_all['period_end']==period, result_col].copy().reset_index(drop=True)
 
         # basic info
-        df['period_end'] = df['period_end'] + MonthEnd(1)
+        # df['period_end'] = df['period_end'] + MonthEnd(1)
         df['factor_weight'] = df['factor_weight'].astype(int)
         df['long_large'] = False             # original premium is "small - big" = short_large -> those marked neg_factor = long_large
         df['last_update'] = dt.datetime.now()
@@ -202,7 +204,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default='v2_20211008_debug')
+    parser.add_argument('--name_sql', type=str, default='v2_20211011_debug')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')

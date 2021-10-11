@@ -36,7 +36,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         fundamentals[column_score] = fundamentals.dropna(subset=[column]).groupby(groupby_col)[column].transform(
             transform_trim_outlier)
         calculate_column_score.append(column_score)
-    print(calculate_column_score)
+    # print(calculate_column_score)
 
     # x1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].skew()
     # y1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].apply(pd.DataFrame.kurtosis)
@@ -57,7 +57,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
             calculate_column_robust_score.append(column_robust_score)
         except Exception as e:
             print(e)
-    print(calculate_column_robust_score)
+    # print(calculate_column_robust_score)
 
     # 4. apply maxmin scaler on Currency / Industry
     minmax_column = ["uid", "ticker", "trading_day"]
@@ -86,7 +86,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
                                                             fundamentals[column_minmax_industry]) * 10
             minmax_column.append(column_minmax_industry)
 
-    print(minmax_column)
+    # print(minmax_column)
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
@@ -151,18 +151,18 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         mean_ret[(group, 'ai_score')] = score_ret_mean(g, ["ai_score"])
         best_score_ticker[group] = best_10_tickers(g, ai_score_cols+['ai_score'])
 
-    print(fundamentals[["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]].describe())
+    # print(fundamentals[["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]].describe())
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
-def score_history():
+def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
     ''' calculate score with DROID v2 method & evaluate '''
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
-        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history', conn_ali)
+        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history{factor_tbl_suffix}', conn_ali)
         universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
-        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_monthly "
+        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_{ratio_tbl_suffix} "
                                          f"WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') ", conn_ali)
                                          # f"WHERE (period_end='2021-07-31') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
@@ -174,7 +174,7 @@ def score_history():
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
-    fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2020,2,1)]
+    # fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,9,4)]
 
     fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
     print(len(set(fundamentals_score['ticker'].to_list())))
@@ -225,8 +225,10 @@ def score_history():
     fundamentals_all = []
 
     for name, g in fundamentals.groupby(['period_end']):
-
+        print(name)
         factor_rank_period = factor_rank.loc[factor_rank['period_end'].astype(str)==name.strftime('%Y-%m-%d')]
+        if len(factor_rank_period)==0:
+            continue
 
         # Scale original fundamental score
         fundamentals, mean_ret_all[name], best_10_tickers_all[name], mean_ret_detail = \
@@ -297,5 +299,5 @@ def score_ret_mean(df, score_col):
     return mean_ret
 
 if __name__ == "__main__":
-    score_history()
+    score_history(7, 'weekly4')
     # score_eval()
