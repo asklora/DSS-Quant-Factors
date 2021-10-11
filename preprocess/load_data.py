@@ -27,7 +27,7 @@ def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
     return pd.concat([df.reset_index(drop=True), add_df], axis=1)
 
-def download_clean_macros(main_df, use_biweekly_stock):
+def download_clean_macros(main_df):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
@@ -66,22 +66,15 @@ def download_clean_macros(main_df, use_biweekly_stock):
 
     return macros.drop(['trading_day'], axis=1)
 
-def download_index_return(use_biweekly_stock, stock_last_week_avg):
+def download_index_return(tbl_suffix):
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Download index return data from {global_vals.processed_ratio_table}')
 
     # read stock return from ratio calculation table
-    if use_biweekly_stock:
-        db_table_name = global_vals.processed_ratio_table + '_biweekly'
-    elif stock_last_week_avg:
-        db_table_name = global_vals.processed_ratio_table + '_monthly'
-    else:
-        db_table_name = global_vals.processed_ratio_table
-
     with global_vals.engine_ali.connect() as conn:
-        index_ret = pd.read_sql(f"SELECT * FROM {db_table_name} WHERE ticker like '.%%'", conn)
+        index_ret = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'", conn)
     global_vals.engine_ali.dispose()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
@@ -94,28 +87,15 @@ def download_index_return(use_biweekly_stock, stock_last_week_avg):
 
     return index_ret
 
-def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_since=None, mode='default'):
+def combine_data(tbl_suffix, update_since=None, mode='default'):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
 
-    if use_biweekly_stock and stock_last_week_avg:
-        raise ValueError("Expecting 'use_biweekly_stock' or 'stock_last_week_avg' is TRUE. Got both is TRUE")
-
     # Read sql from different tables
     factor_table_name = global_vals.factor_premium_table
-    
-    if use_biweekly_stock:
-        tbl_suffix = '_biweekly'
-        print(f'      ------------------------> Use biweekly ratios')
-    elif stock_last_week_avg:
-        tbl_suffix = '_monthly'
-        print(f'      ------------------------> Replace stock return with last week average returns')
-    else:
-        tbl_suffix = ''
 
-    tbl_suffix_extra = '_v2'
-
+    print(f'      ------------------------> Use {tbl_suffix} ratios')
     conditions = ['"group" IS NOT NULL']
     
     if isinstance(update_since, datetime):
@@ -132,7 +112,7 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
                 conditions.append('trim_outlier')
             else:
                 conditions.append('not trim_outlier')
-            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}{tbl_suffix_extra} '
+            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} '
                              f'WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
             df = pd.concat(df, axis=0, ignore_index=True)
             df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
@@ -155,21 +135,20 @@ def combine_data(use_biweekly_stock=False, stock_last_week_avg=True, update_sinc
     # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
-    macros = download_clean_macros(df, use_biweekly_stock)
+    macros = download_clean_macros(df)
     x_col['macro'] = macros.columns.to_list()[1:]              # add macros variables name to x_col
 
     # 2. Add index return variables
-    index_ret = download_index_return(use_biweekly_stock, stock_last_week_avg)
+    index_ret = download_index_return(tbl_suffix)
     x_col['index'] = index_ret.columns.to_list()[1:]           # add index variables name to x_col
 
     # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
     # Therefore, we should also know other data (macro/index/group fundamental) as at T1
     non_factor_inputs = macros.merge(index_ret, on=['period_end'], how='outer')
-    if use_biweekly_stock:
-        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x-relativedelta(weeks=2))
-    else:
-        non_factor_inputs['period_end'] = non_factor_inputs['period_end'] + MonthEnd(-1)
-
+    if 'weekly' in tbl_suffix:
+        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x-relativedelta(weeks=int(tbl_suffix[-1])))
+    elif 'monthly' in tbl_suffix:
+        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x - relativedelta(months=int(tbl_suffix[-1])))
     df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
 
     # make up for all missing date in df
@@ -184,13 +163,12 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    def __init__(self, use_biweekly_stock=False, stock_last_week_avg=False, update_since=None, mode='default'):
+    def __init__(self, tbl_suffix, update_since=None, mode='default'):
         ''' combine all possible data to be used 
         
         Parameters
         ----------
-        use_biweekly_stock : bool, optional
-        stock_last_week_avg : bool, optional
+        tbl_suffix : text
         update_since : bool, optional
         mode : {default 'default', 'v2', 'v2_trim'}, optional
         
@@ -200,8 +178,7 @@ class load_data:
         self.sample_set = {}
         self.group = pd.DataFrame()
         self.main, self.factor_list, self.x_col_dict = combine_data(
-            use_biweekly_stock=use_biweekly_stock,
-            stock_last_week_avg=stock_last_week_avg,
+            tbl_suffix,
             update_since=update_since,
             mode=mode)    # combine all data
 
@@ -462,10 +439,10 @@ if __name__ == '__main__':
     # exit(1)
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2021,8,31)
+    testing_period = dt.datetime(2021,9,5)
     group_code = 'USD'
 
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode='v2')
+    data = load_data(tbl_suffix='_weekly4', mode='v2')
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)

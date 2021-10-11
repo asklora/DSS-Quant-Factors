@@ -451,6 +451,7 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
 
     # Forward fill for fundamental data
     cols = df.select_dtypes('float').columns.to_list()
+    cols = list(set(cols) - {'stock_return_y'})     # for stock_return_y -> no ffill
     if fill_method == 'fill_all':           # e.g. Quarterly June -> Monthly July/Aug
         df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
     elif fill_method == 'fill_monthly':     # e.g. only 1 June -> 30 June
