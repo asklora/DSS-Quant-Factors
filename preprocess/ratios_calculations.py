@@ -622,7 +622,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-        ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()].dropna(subset=['stock_return_y'])
+        ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
         ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
         ddf.to_sql(db_table_name, **extra)
         record_table_update_time(db_table_name, conn)

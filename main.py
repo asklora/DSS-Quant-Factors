@@ -1,9 +1,11 @@
 import datetime as dt
+import pandas as pd
 import numpy as np
 import argparse
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 
+import global_vals
 from preprocess.load_data import load_data
 from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
@@ -43,15 +45,22 @@ if __name__ == "__main__":
             exit(0)
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
+    tbl_suffix = '_weekly4'
     if args.recalc_premium:
-        calc_factor_variables(price_sample='last_week_avg', fill_method='fill_all', sample_interval='monthly',
-                              use_cached=False, save=True)
+        calc_factor_variables(price_sample='last_week_avg',
+                              fill_method='fill_all',
+                              sample_interval=tbl_suffix[1:-1],
+                              rolling_period=int(tbl_suffix[-1]),
+                              use_cached=False,
+                              save=True,
+                              ticker=None,
+                              currency=None)
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
         elif args.mode == 'v2':
-            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=False, trim_outlier_=False)
+            calc_premium_all_v2(tbl_suffix, save_membership=False, trim_outlier_=False)
         elif args.mode == 'v2_trim':
-            calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=False, trim_outlier_=True)
+            calc_premium_all_v2(tbl_suffix, save_membership=False, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
@@ -63,14 +72,17 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    # use_pca_list = [0.4, 0.6, 0.8]
     use_pca_list = [0.4]
+    # use_pca_list = [0.4]
 
     # create date list of all testing period
-    last_test_date = dt.datetime.now().date() + MonthEnd(-2)  # Default last_test_date is month end of 2 month ago from today
-    backtest_period = args.backtest_period
-    testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
-                           - relativedelta(days=1) for i in range(0, backtest_period + 1)]
+    with global_vals.engine_ali.connect() as conn: # Default last_test_date is second last period_end in premium table
+        last_test_date = pd.read_sql(f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}", conn)
+        testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
+    global_vals.engine_ali.dispose()
+    # backtest_period = args.backtest_period
+    # testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
+    #                        - relativedelta(days=1) for i in range(0, backtest_period + 1)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
@@ -85,8 +97,7 @@ if __name__ == "__main__":
     # sql_result.pop('tree_type')
     # sql_result.pop('use_pca')
 
-
-    data = load_data(use_biweekly_stock=False, stock_last_week_avg=True, mode=args.mode)  # load_data (class) STEP 1
+    data = load_data(tbl_suffix, mode=args.mode)  # load_data (class) STEP 1
     sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
     print(f"===== test on y_type", len(y_type), y_type, "=====")
 

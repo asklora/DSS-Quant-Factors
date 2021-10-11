@@ -25,15 +25,10 @@ def remove_tables_with_suffix(engine, suffix):
 def record_table_update_time(tb_name, conn):
     ''' record last update time in table '''
     update_time = dt.datetime.now()
-    try:
-        query = f"UPDATE {global_vals.update_time_table} " \
-                f"SET update_time='{update_time}' " \
-                f"WHERE index='{tb_name}';"
-        conn.execute(query)
-    except Exception as e:
-        print(e)
-        extra = {'con': conn, 'index': False, 'if_exists': 'append'}
-        pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index().to_sql(global_vals.update_time_table, **extra)
+    df = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn)
+    df.loc[df['index']==tb_name, 'update_time'] = update_time
+    extra = {'con': conn, 'index': False, 'if_exists': 'append'}
+    df.to_sql(global_vals.update_time_table, **extra)
 
 def read_from_firebase():
 

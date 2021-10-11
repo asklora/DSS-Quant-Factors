@@ -321,8 +321,8 @@ class load_data:
 
         # split training/testing sets based on testing_period
         # self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
-        self.train = current_group.loc[(start <= current_group['period_end']) & (current_group['period_end'] < testing_period)].copy()
-        self.test = current_group.loc[current_group['period_end'] == testing_period].reset_index(drop=True).copy()
+        self.train = current_group.loc[(start <= current_group['period_end'].dt.date) & (current_group['period_end'].dt.date < testing_period)].copy()
+        self.test = current_group.loc[current_group['period_end'].dt.date == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change, y_type)
@@ -416,8 +416,8 @@ class load_data:
             gkf = []
             for n in range(1, n_splits+1):
                 valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
-                test_index = self.train.loc[self.train['period_end'] >= valid_period].index.to_list()
-                train_index = self.train.loc[self.train['period_end'] < valid_period].index.to_list()
+                test_index = self.train.loc[self.train['period_end'].dt.date >= valid_period].index.to_list()
+                train_index = self.train.loc[self.train['period_end'].dt.date < valid_period].index.to_list()
                 gkf.append((train_index, test_index))
         else:
             raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)
