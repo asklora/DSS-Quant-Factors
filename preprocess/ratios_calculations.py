@@ -619,6 +619,9 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     elif price_sample == 'last_week_avg':
         db_table_name += f'_monthly{rolling_period}'
 
+    df['stock_return_y_ffill'] = df.groupby('ticker')['stock_return_y'].ffill()
+    df = df.dropna(subset=['stock_return_y_ffill'])
+
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
@@ -659,8 +662,8 @@ if __name__ == "__main__":
     calc_factor_variables(price_sample='last_week_avg',
                           fill_method='fill_all',
                           sample_interval='weekly',
-                          rolling_period=4,
+                          rolling_period=1,
                           use_cached=False,
                           save=True,
-                          ticker=None,
+                          ticker='AAPL.O',
                           currency=None)

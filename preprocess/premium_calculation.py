@@ -258,7 +258,7 @@ def insert_prem_and_membership_for_group(*args):
     try:
         with thread_engine_ali.connect() as conn:
             if gp_type == 'curr':
-                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = '{group}';", conn)
+                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = '{group}' LIMIT 10000;", conn)
             else:
                 df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE SUBSTR(icb_code, 1, {icb_num}) = '{group}';", conn)
 
@@ -271,8 +271,12 @@ def insert_prem_and_membership_for_group(*args):
 
         if trim_outlier_:
             df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
+            tbl_suffix_extra = '_v2_trim'
+        else:
+            tbl_suffix_extra = '_v2'
 
         factor_list = list(set(factor_list) & set(df.columns.to_list()))
+        # factor_list = ['market_cap_usd']
 
         df = df.melt(
             id_vars=['ticker', 'period_end', 'stock_return_y'],
@@ -301,7 +305,8 @@ def insert_prem_and_membership_for_group(*args):
         print(f'      ------------------------> Start writing membership and factor premium - [{group}] Partition')
         with thread_engine_ali.connect() as conn:
             # membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
-            prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=results_dtypes, **to_sql_params)
+            prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
+                                                                               con=conn, dtype=results_dtypes, **to_sql_params)
     except Exception as e:
         print(e)
         thread_engine_ali.dispose()
@@ -369,7 +374,7 @@ if __name__ == "__main__":
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(tbl_suffix='_weekly4', save_membership=False, trim_outlier_=False)
+    calc_premium_all_v2(tbl_suffix='_weekly1', save_membership=False, trim_outlier_=False)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()

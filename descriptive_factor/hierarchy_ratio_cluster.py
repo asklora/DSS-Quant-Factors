@@ -54,7 +54,7 @@ high_corr_removed_cols = [
 
 good_cols = list(set(select_cols) - set(high_corr_removed_cols))
 good_mom_cols = ['skew','avg_volume_1w3m','change_tri_fillna']
-print(good_cols)
+print(len(good_cols), good_cols)
 
 # --------------------------------- Prepare Datasets ------------------------------------------
 

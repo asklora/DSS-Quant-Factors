@@ -109,7 +109,7 @@ def count_plot_from_db_comb_fcm():
 
 def count_plot_from_db_comb_gaussian():
     table_name = 'des_factor_gaussian'
-    name_sql ='all_comb_new_multiperiod'
+    name_sql ='all_comb_new_multiperiod1'
     groupby_col = ['name_sql', 'factors','n_clusters']
     sort_col = 'S_Dbw'
 
@@ -129,5 +129,5 @@ if __name__=="__main__":
     # count_plot_from_csv()
     # count_plot_from_db()
     # count_plot_from_db_comb_hierarchical()
-    count_plot_from_db_comb_fcm()
-    # count_plot_from_db_comb_gaussian()
+    # count_plot_from_db_comb_fcm()
+    count_plot_from_db_comb_gaussian()
