@@ -200,11 +200,14 @@ def download_stock_pred(
         # return factor_rank, rank_count
 
 if __name__ == "__main__":
+
+    suffix = 'weekly4'
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default='v2_20211011_debug')
+    parser.add_argument('--name_sql', type=str, default=f'v2_{suffix}_20211012_debug')
 
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
@@ -233,4 +236,10 @@ if __name__ == "__main__":
         save_xls=args.save_xls,
         # return_summary=args.return_summary
     )
+
+    from results_analysis.score_backtest import score_history
+    from score_evaluate import score_eval
+    score_history(7, suffix)
+    eval = score_eval()
+    eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
 

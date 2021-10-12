@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--backtest_period', default=46, type=int)
+    parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
@@ -45,7 +45,7 @@ if __name__ == "__main__":
             exit(0)
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    tbl_suffix = '_weekly4'
+    tbl_suffix = '_weekly1'
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg',
                               fill_method='fill_all',
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.4]
+    use_pca_list = [0.4, 0.6, 0.8]
     # use_pca_list = [0.4]
 
     # create date list of all testing period
@@ -87,9 +87,9 @@ if __name__ == "__main__":
     # --------------------------------- Prepare Training Set -------------------------------------
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{args.mode}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result['name_sql'] = f'{args.mode}{tbl_suffix}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
-        sql_result['name_sql'] += f'_debug'
+        sql_result['name_sql'] += f'_debug1'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(3):
+    for i in range(2):
         for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
             sql_result['tree_type'] = tree_type + str(i)
             sql_result['testing_period'] = testing_period
@@ -150,7 +150,10 @@ if __name__ == "__main__":
             save_plot=True,
             save_xls=True,
         )
-    score_history()     # calculate score with DROID v2 method & evaluate
+
+    score_history(7, tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+    eval = score_eval()
+    eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
 
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)

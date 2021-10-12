@@ -43,7 +43,7 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     # 2. change ratio to negative if original factor calculation using reverse premiums
     for group_name, g in factor_rank.groupby(['group']):
-        neg_factor = [x+'_score' for x in g.loc[(factor_rank['long_large'] == False), 'factor_name'].to_list()]
+        neg_factor = [x+'_score' for x in g.loc[(g['long_large'] == False), 'factor_name'].to_list()]
         fundamentals.loc[(fundamentals['currency_code'] == group_name), neg_factor] *= -1
 
     # 3. apply robust scaler
@@ -252,17 +252,19 @@ def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
             ddf = pd.concat(df_list, axis=0).reset_index(drop=True)
             ddf.to_excel(writer, f'{p} details')
 
-        for p in ['momentum','quality', 'value', 'extra']:
-            ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
-            ret_p = {x:y[f'fundamentals_{p}'] for x, y in ret_p.items()}
-            ret_p = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p.items()}
-            ret_p_df = pd.DataFrame(ret_p, index=list(range(10))).transpose()
-            ret_p_df.to_excel(writer, f'Qcut {p}')
-        for p in ['ai_score']:
-            ret_p1 = {x:z[p] for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
-            ret_p1 = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p1.items()}
-            ret_p1_df = pd.DataFrame(ret_p1, index=list(range(10))).transpose()
-            ret_p1_df.to_excel(writer, 'Qcut ai_score')
+        # for p in ['momentum','quality', 'value', 'extra']:
+        #     ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
+        #     for col in ret_p[list(ret_p.keys())[0]].keys():
+        #         ret_p = {x:y[col] for x, y in ret_p.items()}
+        #         ret_p = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p.items()}
+        #         ret_p_df = pd.DataFrame(ret_p, index=list(range(10))).transpose()
+        #         ret_p_df = ret_p_df.mean(axis=0)
+        #     ret_p_df.to_excel(writer, f'Qcut {p}')
+        # for p in ['ai_score']:
+        #     ret_p1 = {x:z[p] for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
+        #     ret_p1 = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p1.items()}
+        #     ret_p1_df = pd.DataFrame(ret_p1, index=list(range(10))).transpose()
+        #     ret_p1_df.to_excel(writer, 'Qcut ai_score')
         writer.save()
 
     fundamentals = pd.concat(fundamentals_all, axis=0)
@@ -300,4 +302,5 @@ def score_ret_mean(df, score_col):
 
 if __name__ == "__main__":
     score_history(7, 'weekly4')
-    # score_eval()
+    eval = score_eval()
+    eval.test_history()     # test on (history) <-global_vals.production_score_history

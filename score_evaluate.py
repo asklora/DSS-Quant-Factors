@@ -14,7 +14,7 @@ class score_eval:
     def __init__(self):
         pass
 
-    def test_history(self):
+    def test_history(self, name=''):
         ''' test on ai_score history '''
         score_col = ['fundamentals_momentum', 'fundamentals_quality', 'fundamentals_value', 'fundamentals_extra', 'ai_score']
 
@@ -25,7 +25,7 @@ class score_eval:
 
         save_description_history(score_history)
         plot_dist_score(score_history, 'history', score_col)
-        qcut_eval(score_col, score_history, name='')
+        qcut_eval(score_col, score_history, name=name)
 
     def test_current(self):
         ''' test on ai_score current '''
@@ -263,5 +263,3 @@ if __name__ == "__main__":
     eval = score_eval()
     # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
     eval.test_history()     # test on (history) <-global_vals.production_score_history
-
-    #TODO: debug ai_value write pred to debug
