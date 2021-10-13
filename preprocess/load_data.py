@@ -80,7 +80,8 @@ def download_index_return(tbl_suffix):
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
-    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_r12_7','stock_return_r6_2', 'vol_0_30']].unstack()
+    index_ret = index_ret.set_index(['period_end', 'ticker'])[['stock_return_ww1_0', 'stock_return_ww2_1', 'stock_return_ww4_2',
+                                                               'stock_return_r12_7','stock_return_r6_2']].unstack()
     index_ret.columns = [f'{x[1]}_{x[0][0]}{x[0][-1]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])

@@ -184,7 +184,7 @@ def calc_stock_return(price_sample, sample_interval, rolling_period, use_cached,
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
     print(f'      ------------------------> Calculate RS volatility ')
-    list_of_start_end = [[0, 30], [30, 90], [90, 182]]
+    list_of_start_end = [[0, 30]] # , [30, 90], [90, 182]
     tri = get_rogers_satchell(tri, list_of_start_end)
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
@@ -220,26 +220,40 @@ def calc_stock_return(price_sample, sample_interval, rolling_period, use_cached,
 
     # Calculate monthly return (Y) + R6,2 + R12,7
     print(f'      ------------------------> Calculate stock returns ')
-    tri["tri_1ma"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
     if sample_interval == 'monthly':
+        tri["tri_y"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
+        tri["stock_return_y"] = (tri["tri_y"] / tri["tri"]) - 1
+        tri["stock_return_y"] = tri["stock_return_y"]/rolling_period
+
         tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(1)
         tri["tri_2mb"] = tri.groupby('ticker')['tri'].shift(2)
         tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(6)
         tri['tri_7mb'] = tri.groupby('ticker')['tri'].shift(7)
         tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(12)
+        drop_col = ['tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
     elif sample_interval == 'weekly':
+        tri["tri_y"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
+        tri["stock_return_y"] = (tri["tri_y"] / tri["tri"]) - 1
+        tri["stock_return_y"] = tri["stock_return_y"]*4/rolling_period
+
+        tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
+        tri["tri_2wb"] = tri.groupby('ticker')['tri'].shift(2)
         tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(4)
         tri["tri_2mb"] = tri.groupby('ticker')['tri'].shift(8)
         tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(26)
         tri['tri_7mb'] = tri.groupby('ticker')['tri'].shift(30)
         tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(52)
+        drop_col = ['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
 
-    tri["stock_return_y"] = (tri["tri_1ma"] / tri["tri"]) - 1
+        tri["stock_return_ww1_0"] = (tri["tri"] / tri["tri_1wb"]) - 1
+        tri["stock_return_ww2_1"] = (tri["tri_1wb"] / tri["tri_2wb"]) - 1
+        tri["stock_return_ww4_2"] = (tri["tri_2wb"] / tri["tri_1mb"]) - 1
+
     tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
     tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
     tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
 
-    tri = tri.drop(['tri', 'tri_1ma', 'tri_1mb', 'tri_6mb', 'tri_12mb'], axis=1)
+    tri = tri.drop(['tri', 'tri_y'] + drop_col, axis=1)
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
 
     if save:
@@ -665,5 +679,5 @@ if __name__ == "__main__":
                           rolling_period=1,
                           use_cached=False,
                           save=True,
-                          ticker='AAPL.O',
+                          ticker=None,
                           currency=None)
