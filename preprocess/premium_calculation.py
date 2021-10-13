@@ -368,13 +368,13 @@ def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_ou
 if __name__ == "__main__":
 
     last_update = datetime.now()
-    tbl_suffix_extra = '_v2'
+    # tbl_suffix_extra = '_v2'
 
     start = datetime.now()
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(tbl_suffix='_weekly2', save_membership=False, trim_outlier_=False)
+    calc_premium_all_v2(tbl_suffix='_weekly1', save_membership=False, trim_outlier_=False)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()

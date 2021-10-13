@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--backtest_period', default=210, type=int)
+    parser.add_argument('--backtest_period', default=52, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.4, 0.6, 0.8]
+    use_pca_list = [0.4, 0.6]
     # use_pca_list = [0.4]
 
     # create date list of all testing period
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'{args.mode}{tbl_suffix}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
-        sql_result['name_sql'] += f'_debug1'
+        sql_result['name_sql'] += f'_debug_testy'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
