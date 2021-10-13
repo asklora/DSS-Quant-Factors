@@ -9,11 +9,51 @@ import global_vals
 from preprocess.load_data import load_data
 from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
-from random_forest import rf_HPOT, rf_space
+from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
+from score_evaluate import score_eval
 
 import itertools
+import multiprocessing as mp
+
+def mp_rf(*mp_args):
+    ''' run random forest on multi-processor '''
+
+    data, sql_result, i, group_code, testing_period, tree_type, use_pca = mp_args
+    sql_result['tree_type'] = tree_type + str(i)
+    sql_result['testing_period'] = testing_period
+    sql_result['group_code'] = group_code
+    sql_result['use_pca'] = use_pca
+
+    data.split_group(group_code)
+    # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
+
+    load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
+                        'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
+    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+    cv_number = 1  # represent which cross-validation sets
+
+    for train_index, valid_index in cv:  # roll over different validation set
+        sql_result['cv_number'] = cv_number
+
+        sample_set['valid_x'] = sample_set['train_x'][valid_index]
+        sample_set['train_xx'] = sample_set['train_x'][train_index]
+        sample_set['valid_y'] = sample_set['train_y'][valid_index]
+        sample_set['train_yy'] = sample_set['train_y'][train_index]
+        sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+        sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+
+        sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+        sql_result['valid_len'] = len(sample_set['valid_x'])
+
+        for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
+            sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+
+        sql_result['neg_factor'] = ','.join(data.neg_factor)
+        rf_HPOT(max_evals=10, sql_result=sql_result, sample_set=sample_set, x_col=data.x_col,
+                y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
+        cv_number += 1
 
 if __name__ == "__main__":
 
@@ -106,40 +146,11 @@ if __name__ == "__main__":
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
-    for i in range(2):
-        for group_code, testing_period, tree_type, use_pca in itertools.product(group_code_list, testing_period_list, tree_type_list, use_pca_list):
-            sql_result['tree_type'] = tree_type + str(i)
-            sql_result['testing_period'] = testing_period
-            sql_result['group_code'] = group_code
-            sql_result['use_pca'] = use_pca
 
-            data.split_group(group_code)
-            # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
-
-            load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
-                                'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
-            sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-            cv_number = 1  # represent which cross-validation sets
-
-            for train_index, valid_index in cv:  # roll over different validation set
-                sql_result['cv_number'] = cv_number
-
-                sample_set['valid_x'] = sample_set['train_x'][valid_index]
-                sample_set['train_xx'] = sample_set['train_x'][train_index]
-                sample_set['valid_y'] = sample_set['train_y'][valid_index]
-                sample_set['train_yy'] = sample_set['train_y'][train_index]
-                sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-                sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
-
-                sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-                sql_result['valid_len'] = len(sample_set['valid_x'])
-
-                for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
-                    sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
-
-                sql_result['neg_factor'] = ','.join(data.neg_factor)
-                rf_HPOT(rf_space, max_evals=10)  # start hyperopt
-                cv_number += 1
+    all_groups = itertools.product([data], [sql_result], list(range(2)), group_code_list, testing_period_list, tree_type_list, use_pca_list)
+    all_groups = [tuple(e) for e in all_groups]
+    with mp.Pool(processes=2) as pool:
+        pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(
