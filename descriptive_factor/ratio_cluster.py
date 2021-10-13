@@ -609,6 +609,7 @@ def plot_dendrogram(model, **kwargs):
 
     # Plot the corresponding dendrogram
     dendrogram(linkage_matrix, **kwargs)
+    plt.show()
 
 if __name__ == "__main__":
     # best = {}
