@@ -334,7 +334,8 @@ def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_ou
         all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} "
                                f"WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
         # all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {table_name} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
-        
+    global_vals.engine_ali.dispose()
+
     # if icb_num != 6:
     #     all_icb = [icb[:icb_num] for icb in all_icb]
     #     all_icb = list(set(all_icb))
@@ -374,7 +375,7 @@ if __name__ == "__main__":
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(tbl_suffix='_weekly1', save_membership=False, trim_outlier_=False)
+    calc_premium_all_v2(tbl_suffix='_weekly4', save_membership=False, trim_outlier_=False)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()

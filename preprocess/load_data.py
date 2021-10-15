@@ -127,7 +127,8 @@ def combine_data(tbl_suffix, update_since=None, mode='default'):
 
     # Research stage using 10 selected factor only
     x_col = {}
-    factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
+    # x_col['y_col'] = factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
+    x_col['y_col'] = factors = formula.sort_values(by=['rank']).loc[formula['rank']>0.68, 'name'].to_list()         # remove factors no longer used
     x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
 
     for p in formula['pillar'].unique():

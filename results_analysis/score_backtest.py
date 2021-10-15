@@ -173,6 +173,8 @@ def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
     # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
+    factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['period_end','factor_name','group'], keep='last')
+
     fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
     # fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,9,4)]
 

@@ -14,13 +14,16 @@ from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from score_evaluate import score_eval
 
-import itertools
+from itertools import product, combinations, chain
 import multiprocessing as mp
 
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
 
-    data, sql_result, i, group_code, testing_period, tree_type, use_pca = mp_args
+    data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
+
+    print(f"===== test on y_type", len(y_type), y_type, "=====")
+    sql_result['y_type'] = ','.join(sorted(y_type))   # random forest model predict all factor at the same time
     sql_result['tree_type'] = tree_type + str(i)
     sql_result['testing_period'] = testing_period
     sql_result['group_code'] = group_code
@@ -69,7 +72,9 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--backtest_period', default=52, type=int)
+    parser.add_argument('--tbl_suffix', default='_weekly4', type=str)
+    parser.add_argument('--processes', default=12, type=int)
+    parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
@@ -85,7 +90,7 @@ if __name__ == "__main__":
             exit(0)
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    tbl_suffix = '_weekly1'
+    tbl_suffix = args.tbl_suffix
     if args.recalc_premium:
         calc_factor_variables(price_sample='last_week_avg',
                               fill_method='fill_all',
@@ -134,22 +139,32 @@ if __name__ == "__main__":
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
     sql_result.pop('debug')
+    sql_result.pop('processes')
+    sql_result.pop('tbl_suffix')
     # sql_result.pop('tree_type')
     # sql_result.pop('use_pca')
 
-    data = load_data(tbl_suffix, mode=args.mode)  # load_data (class) STEP 1
-    sql_result['y_type'] = y_type = data.factor_list  # random forest model predict all factor at the same time
-    print(f"===== test on y_type", len(y_type), y_type, "=====")
-
     # --------------------------------- Run Lasso Benchmark -------------------------------------
-
     # start_lasso(data, testing_period_list, group_code_list, y_type)
 
     # --------------------------------- Model Training ------------------------------------------
 
-    all_groups = itertools.product([data], [sql_result], list(range(2)), group_code_list, testing_period_list, tree_type_list, use_pca_list)
+    data = load_data(tbl_suffix, mode=args.mode)  # load_data (class) STEP 1
+
+    # y_type_list = [data.x_col_dict['y_col']]
+    # y_type_list = list(combinations(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col']), 5))
+    # y_type_list += list(combinations(set(data.x_col_dict['quality'])&set(data.x_col_dict['y_col']), 5))
+    # y_type_list += list(combinations(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col']), 5))
+
+    y_type_list = []
+    y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col'])))
+    y_type_list.append(list(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col'])))
+    y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.x_col_dict['y_col'])))
+
+    all_groups = product([data], [sql_result], list(range(3)), group_code_list, testing_period_list,
+                         tree_type_list, use_pca_list, y_type_list)
     all_groups = [tuple(e) for e in all_groups]
-    with mp.Pool(processes=2) as pool:
+    with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
