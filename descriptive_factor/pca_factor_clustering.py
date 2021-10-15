@@ -3,6 +3,7 @@ import global_vals
 import pandas as pd
 import datetime as dt
 import matplotlib.pyplot as plt
+from collections import Counter
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 from hierarchy_ratio_cluster import trim_outlier_std
@@ -17,6 +18,9 @@ from sklearn.cluster import FeatureAgglomeration
 from sklearn.decomposition import PCA
 
 from hierarchy_ratio_cluster import good_cols, fill_all_day_interpolate, relativedelta, test_missing, good_mom_cols, trim_outlier_std
+
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # --------------------------------- Test subset composition ------------------------------------------
 
@@ -46,6 +50,7 @@ def plot_dendrogram(model, **kwargs):
     plt.savefig('dendrogram_{}.png'.format(kwargs['suffix']))
 
 def feature_hierarchical_plot(testing_interval=7):
+    ''' perform agglomorative hierarchical cluster on descriptive factors at different interval'''
 
     df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
 
@@ -65,6 +70,7 @@ def feature_hierarchical_plot(testing_interval=7):
 # --------------------------------- Test subset composition ------------------------------------------
 
 def feature_subset_pca(testing_interval=7):
+    ''' perfrom PCA on different feature subsets '''
 
     all_df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
 
@@ -98,10 +104,12 @@ def feature_subset_pca(testing_interval=7):
 # --------------------------------- Test on Portfolio ------------------------------------------
 
 def read_port_from_firebase():
+    ''' read user portfolio details from firestore '''
 
-    # Import database module.
-    import firebase_admin
-    from firebase_admin import credentials, firestore
+    with global_vals.engine.connect() as conn:
+        rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
+        rating = rating.set_index('ticker')['ai_score'].to_dict()
+    global_vals.engine.dispose()
 
     # Get a database reference to our posts
     if not firebase_admin._apps:
@@ -116,21 +124,41 @@ def read_port_from_firebase():
         format_data = {}
         data = data.to_dict()
         format_data['index'] = data.get('profile').get('email')
-        portfolio = []
+        format_data['return'] = data.get('total_profit_pct')
         for i in data.get('active_portfolio'):
-            portfolio.append(i.get('ticker'))
-        format_data['portfolio'] = portfolio
-        # format_data['negative_factor'] = data.get('rating', {}).get('negative_factor', 0)
-        # format_data['positive_factor'] = data.get('rating', {}).get('positive_factor', 0)
-        # format_data['ai_score'] = data.get('rating', {}).get('ai_score', 0)
-        if len(portfolio) > 0:
-            object_list.append(format_data)
+            format_data['ticker'] = i.get('ticker')
+            format_data['spot_date'] = i.get('spot_date')
+            format_data['pct_profit'] = i.get('pct_profit')
+            format_data['bot'] = i.get('bot_details').get('bot_apps_name')
+            object_list.append(format_data.copy())
 
-    result = pd.DataFrame(object_list)
+    result = pd.DataFrame(object_list).sort_values(by=['return'], ascending=False)
+    result['rating'] = result['ticker'].map(rating)
+
+    result.to_csv('port_result.csv', index=False)
     return result
+
+def analyse_port():
+    ''' analyse ticker, pct_return of users '''
+    result = pd.read_csv('port_result.csv')
+
+    mean_index = result.groupby('index').mean()
+    mean_bot = result.groupby('bot').mean()
+    mean_date = result.groupby('spot_date').mean()
+    count_ticker = result.groupby('ticker')['return'].count().to_frame().reset_index()
+
+    with global_vals.engine.connect() as conn:
+        rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
+        rating = rating.set_index('ticker')['ai_score'].to_dict()
+    global_vals.engine.dispose()
+
+    count_ticker['rating'] = count_ticker['ticker'].map(rating)
+    print(result['bot'].unique())
 
 if __name__ == "__main__":
 
     # feature_cluster()
     # feature_subset_pca()
-    read_port_from_firebase()
+
+    # read_port_from_firebase()
+    analyse_port()
