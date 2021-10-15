@@ -95,7 +95,42 @@ def feature_subset_pca(testing_interval=7):
 
     print(np.cumsum(r))
 
+# --------------------------------- Test on Portfolio ------------------------------------------
+
+def read_port_from_firebase():
+
+    # Import database module.
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+
+    # Get a database reference to our posts
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(global_vals.firebase_url)
+        default_app = firebase_admin.initialize_app(cred)
+
+    db = firestore.client()
+    doc_ref = db.collection(u"prod_portfolio").get()
+
+    object_list = []
+    for data in doc_ref:
+        format_data = {}
+        data = data.to_dict()
+        format_data['index'] = data.get('profile').get('email')
+        portfolio = []
+        for i in data.get('active_portfolio'):
+            portfolio.append(i.get('ticker'))
+        format_data['portfolio'] = portfolio
+        # format_data['negative_factor'] = data.get('rating', {}).get('negative_factor', 0)
+        # format_data['positive_factor'] = data.get('rating', {}).get('positive_factor', 0)
+        # format_data['ai_score'] = data.get('rating', {}).get('ai_score', 0)
+        if len(portfolio) > 0:
+            object_list.append(format_data)
+
+    result = pd.DataFrame(object_list)
+    return result
+
 if __name__ == "__main__":
 
     # feature_cluster()
-    feature_subset_pca()
+    # feature_subset_pca()
+    read_port_from_firebase()
