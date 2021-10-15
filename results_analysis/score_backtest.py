@@ -159,7 +159,7 @@ def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
     ''' calculate score with DROID v2 method & evaluate '''
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
-        factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_prod', conn_ali)
+        factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn_ali)
         factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history{factor_tbl_suffix}', conn_ali)
         universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
         fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_{ratio_tbl_suffix} "
@@ -192,11 +192,11 @@ def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
     factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
     factor_rank = factor_rank.dropna(subset=['pillar'])
 
-    # for non calculating currency_code -> we add same for each one
-    append_df = factor_rank.loc[factor_rank['keep']]
-    for i in set(universe_currency_code):
-        append_df['group'] = i
-        factor_rank = factor_rank.append(append_df, ignore_index=True)
+    # # for non calculating currency_code -> we add same for each one
+    # append_df = factor_rank.loc[factor_rank['keep']]
+    # for i in set(universe_currency_code):
+    #     append_df['group'] = i
+    #     factor_rank = factor_rank.append(append_df, ignore_index=True)
 
     factor_formula = factor_formula.set_index(['name'])
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
@@ -210,7 +210,7 @@ def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
-    fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
+    # fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
     # fundamentals['period_end'] = fundamentals['period_end'].dt.strftime('%Y-%m-%d')
 
     score_col = ['ai_score', 'ai_score_scaled', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
@@ -303,6 +303,6 @@ def score_ret_mean(df, score_col):
     return mean_ret
 
 if __name__ == "__main__":
-    score_history(7, 'weekly4')
+    score_history(7, 'weekly1')
     eval = score_eval()
     eval.test_history()     # test on (history) <-global_vals.production_score_history

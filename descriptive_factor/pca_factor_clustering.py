@@ -2,7 +2,9 @@ from sqlalchemy import create_engine
 import global_vals
 import pandas as pd
 import datetime as dt
+
 import matplotlib.pyplot as plt
+from matplotlib import colors as mcolors
 from collections import Counter
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
@@ -14,10 +16,18 @@ import multiprocessing as mp
 
 from fcmeans import FCM
 from descriptive_factor.fuzzy_metrics import *
-from sklearn.cluster import FeatureAgglomeration
+from sklearn.cluster import FeatureAgglomeration, AgglomerativeClustering
+from sklearn.mixture import GaussianMixture
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import scale, minmax_scale
+from sklearn import metrics
+from s_dbw import S_Dbw
+from descriptive_factor.fuzzy_metrics import xie_beni_index
 
 from hierarchy_ratio_cluster import good_cols, fill_all_day_interpolate, relativedelta, test_missing, good_mom_cols, trim_outlier_std
+from hierarchy_ratio_cluster import test_method as h_test_cluster
+from fcm_ratio_cluster import test_method as f_test_cluster
+from gaussian_ratio_cluster import test_method as g_test_cluster
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -44,8 +54,12 @@ def plot_dendrogram(model, **kwargs):
     linkage_matrix = np.column_stack([model.children_, model.distances_,
                                       counts]).astype(float)
 
+    kwargs_den = kwargs.copy()
+    kwargs_den.pop('suffix')
+    kwargs_den['orientation'] ='left'
+
     # Plot the corresponding dendrogram
-    dendrogram(linkage_matrix, labels=kwargs['labels'], orientation='left')
+    dendrogram(linkage_matrix, **kwargs_den)
     plt.tight_layout()
     plt.savefig('dendrogram_{}.png'.format(kwargs['suffix']))
 
@@ -72,34 +86,127 @@ def feature_hierarchical_plot(testing_interval=7):
 def feature_subset_pca(testing_interval=7):
     ''' perfrom PCA on different feature subsets '''
 
-    all_df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
+    all_df_all = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
 
-    all_df = all_df.loc[all_df['ticker'].str[0]!='.']
-    # all_df = all_df.loc[df['trading_day'] > (dt.datetime.today() - relativedelta(years=5))]
+    all_df_all = all_df_all.loc[all_df_all['ticker'].str[0]!='.']
+    all_df_all['trading_day'] = pd.to_datetime(all_df_all['trading_day'])
 
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT pillar, name FROM {global_vals.formula_factors_table}_descriptive', conn)
     global_vals.engine_ali.dispose()
 
-    p = 'all'
+    org_name = formula.loc[formula['pillar']=='momentum', 'name'].to_list()
+    org_name = org_name + ['avg_' + x for x in org_name] + ['change_' + x for x in org_name]
 
-    # fac_dict = {}
-    # for p, g in formula.groupby('pillar'):
-    #     org_name = g['name'].to_list()
-    #     fac_dict[p] = org_name + ['avg_'+x for x in org_name] + ['change_'+x for x in org_name]
+    # org_name = ['change_tri_fillna', 'avg_volume_1w3m', 'ret_momentum', 'vol', 'icb_code']
 
-    df = all_df.iloc[:, 2:].fillna(0)
-    # df = df.filter(fac_dict[p])
-    print(p, df.columns.to_list())
+    all_df_all = all_df_all.fillna(0).filter(['trading_day','ticker']+org_name)
+    print(all_df_all.columns.to_list()[2:])
 
-    X = trim_outlier_std(df).values
-    pca = PCA(n_components=None).fit(X)  # calculation Cov matrix is embeded in PCA
-    r = pca.explained_variance_ratio_
-    plt.plot(np.cumsum(r))
-    plt.xlabel(p)
+    for i in range(1, 10):
+        df = all_df_all.loc[all_df_all['trading_day'] > (dt.datetime.today() - relativedelta(years=i))]
+        X = trim_outlier_std(df.iloc[:,2:]).values
+        pca = PCA(n_components=None).fit(X)  # calculation Cov matrix is embeded in PCA
+        r = pca.explained_variance_ratio_
+        # plt.plot(np.cumsum(r))
+        # plt.xlabel(p)
+        # plt.show()
+
+        print(i, np.cumsum(r))
+
+def feature_subset_cluster(testing_interval=7):
+    ''' try cluster on features '''
+
+    all_df_all = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
+    all_df_all = all_df_all.loc[all_df_all['ticker'].str[0]!='.']
+    all_df_all['trading_day'] = pd.to_datetime(all_df_all['trading_day'])
+    all_df_all = all_df_all.loc[all_df_all['trading_day'] == all_df_all['trading_day'].max()]
+
+    d_icb = all_df_all['icb_code'].values
+    # d_icb = np.array([np.cos(d_icb/85103035*2*np.pi), np.sin(d_icb/85103035*2*np.pi)]).T
+    # d_icb = scipy.spatial.distance.pdist(d_icb, 'cosine')
+    # d_icb = scipy.spatial.distance.squareform(d_icb)
+    all_df_all[['icb_code1', 'icb_code2']] = np.array(
+        [scale(np.cos(d_icb / 85103035 * 2 * np.pi)), scale(np.sin(d_icb / 85103035 * 2 * np.pi))]).T
+
+    org_name = ['change_tri_fillna', 'avg_volume_1w3m', 'ret_momentum', 'vol']
+
+    r = {}
+    for col in all_df_all.columns.to_list():
+        if col not in org_name + ['trading_day','ticker']:
+            org_name += [col]
+            org_name += ['icb_code1', 'icb_code2']
+            df = all_df_all.fillna(0).filter(['trading_day','ticker'] + org_name)
+            # print(org_name)
+
+            # df = all_df_all.loc[all_df_all['trading_day'] > (dt.datetime.today() - relativedelta(years=1))]
+            df.iloc[:, 2:-2] = trim_outlier_std(df.iloc[:, 2:-2])
+            # print(df.describe())
+            # X = df.iloc[:, 2:].values
+
+            # d_tri = scipy.spatial.distance.pdist(X[:, [-1]], 'euclidean')
+            # d_tri = scipy.spatial.distance.squareform(d_tri)
+
+            X = df[org_name].values
+
+            # kwargs = {'distance_threshold': 0, 'linkage': 'complete', 'n_clusters': None, 'affinity': 'euclidean'}
+            # kwargs = {'distance_threshold': None, 'linkage': 'complete', 'n_clusters': 15, 'affinity': 'euclidean'}
+            # model = AgglomerativeClustering(**kwargs).fit(X)
+            # df['cluster'] = model.labels_
+            # plot_dendrogram(model, labels=df['ticker'].to_list(), suffix=f'1w_{testing_interval}', leaf_font_size=2)
+
+            for i in range(15, 16):
+                model = FCM(n_clusters=i, m=1.5)
+                model.fit(X)
+                df['cluster'] = model.predict(X)
+                u = model.u
+                v = model.centers
+                score = xie_beni_index(X, u, v.T, 2)
+                r[col] = score
+                print(org_name, i, score)
+
+            org_name = org_name[:3]
+            # plot_scatter_hist(df, org_name, 'h2')
+    df = pd.DataFrame(r, index=[0]).transpose()
+    print(df)
+
+def calc_metrics(model, X):
+
+    clustering_metrics = [
+        metrics.calinski_harabasz_score,
+        metrics.davies_bouldin_score,
+        metrics.silhouette_score,
+        S_Dbw,
+    ]
+
+    m = {}
+    for i in clustering_metrics:
+        m[i.__name__] = i(X, model.labels_)
+    print(m)
+
+def plot_scatter_hist(df, cols, suffixes):
+
+    n = len(cols)
+    fig = plt.figure(figsize=(n * 4, n * 4), dpi=60, constrained_layout=True)
+    k=1
+    for v1 in cols:
+        for v2 in cols:
+            print(v1, v2)
+            ax = fig.add_subplot(n, n, k)
+            if v1==v2:
+                ax.hist(df[v1], bins=20)
+                ax.set_xlabel(v1)
+            else:
+                ax.scatter(df[v1], df[v2], c=df['cluster'], cmap="gist_rainbow", alpha=.5)
+                ax.set_xlabel(v1)
+                ax.set_ylabel(v2)
+            k+=1
+
+    plt.legend()
+    plt.tight_layout()
     plt.show()
-
-    print(np.cumsum(r))
+    # fig.savefig(f'cluster_selected_{suffixes}.png')
+    # plt.close(fig)
 
 # --------------------------------- Test on Portfolio ------------------------------------------
 
@@ -140,6 +247,7 @@ def read_port_from_firebase():
 
 def analyse_port():
     ''' analyse ticker, pct_return of users '''
+
     result = pd.read_csv('port_result.csv')
 
     mean_index = result.groupby('index').mean()
@@ -158,7 +266,8 @@ def analyse_port():
 if __name__ == "__main__":
 
     # feature_cluster()
-    # feature_subset_pca()
+    feature_subset_pca()
+    # feature_subset_cluster()
 
     # read_port_from_firebase()
-    analyse_port()
+    # analyse_port()

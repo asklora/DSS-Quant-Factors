@@ -23,7 +23,7 @@ def mp_rf(*mp_args):
     data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
     print(f"===== test on y_type", len(y_type), y_type, "=====")
-    sql_result['y_type'] = ','.join(sorted(y_type))   # random forest model predict all factor at the same time
+    sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
     sql_result['tree_type'] = tree_type + str(i)
     sql_result['testing_period'] = testing_period
     sql_result['group_code'] = group_code
@@ -72,8 +72,8 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--tbl_suffix', default='_weekly4', type=str)
-    parser.add_argument('--processes', default=12, type=int)
+    parser.add_argument('--tbl_suffix', default='_weekly2', type=str)
+    parser.add_argument('--processes', default=9, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
