@@ -33,7 +33,7 @@ def report_series_to_slack(message=None, df=None, id=None):
     else:
         report_to_slack(message)
 
-def report_df_to_slack(message, df):
+def report_df_to_slack(message, df, id=None):
     if message:
         report_to_slack(message)
 

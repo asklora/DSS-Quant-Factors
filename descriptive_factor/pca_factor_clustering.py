@@ -1,3 +1,4 @@
+import numpy as np
 from sqlalchemy import create_engine
 import global_vals
 import pandas as pd
@@ -28,9 +29,6 @@ from hierarchy_ratio_cluster import good_cols, fill_all_day_interpolate, relativ
 from hierarchy_ratio_cluster import test_method as h_test_cluster
 from fcm_ratio_cluster import test_method as f_test_cluster
 from gaussian_ratio_cluster import test_method as g_test_cluster
-
-import firebase_admin
-from firebase_admin import credentials, firestore
 
 # --------------------------------- Test subset composition ------------------------------------------
 
@@ -208,10 +206,13 @@ def plot_scatter_hist(df, cols, suffixes):
     # fig.savefig(f'cluster_selected_{suffixes}.png')
     # plt.close(fig)
 
-# --------------------------------- Test on Portfolio ------------------------------------------
+# --------------------------------- Test on User Portfolio ------------------------------------------
 
 def read_port_from_firebase():
     ''' read user portfolio details from firestore '''
+
+    import firebase_admin
+    from firebase_admin import credentials, firestore
 
     with global_vals.engine.connect() as conn:
         rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
@@ -263,11 +264,45 @@ def analyse_port():
     count_ticker['rating'] = count_ticker['ticker'].map(rating)
     print(result['bot'].unique())
 
+# --------------------------------- Test on Fund Portfolio ------------------------------------------
+
+def read_fund_port():
+    ''' Get top 5 holdings for mid-large size fund '''
+
+    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+        uni = pd.read_sql(f"SELECT * FROM universe WHERE currency_code='USD'", conn)
+        port = pd.read_sql('SELECT * FROM data_factor_eikon_fund_holdings', conn_ali)
+        size = pd.read_sql('SELECT * FROM data_factor_eikon_fund_size ORDER BY tna', conn_ali)
+    global_vals.engine.dispose()
+
+    # filter fund with size in middle-low range (10% - 50%)
+    size = size.loc[(size['tna']>size['tna'].quantile(0.1))&(size['tna']<size['tna'].quantile(0.5))]
+    port = port.loc[port['fund'].isin(size['ric'].to_list())]
+
+    # filter ticker in our universe
+    port['ticker'] = port['ticker'].str.replace('.OQ', '.O')
+    df = port.merge(uni, on=['ticker'], how='inner')
+
+    # first 5 holdings
+    valid_fund = (df.groupby('fund')['ticker'].count()>5)
+    valid_fund = valid_fund.loc[valid_fund]
+    df = df.loc[df['fund'].isin(list(valid_fund.index))]
+    df = df.groupby('fund')[['fund', 'ticker']].head(5)
+
+    f = Counter(df['fund'].to_list())
+    print(f)
+    t = Counter(df['ticker'].to_list())
+    print(t)
+
+    return df
+
 if __name__ == "__main__":
 
     # feature_cluster()
-    feature_subset_pca()
+    # feature_subset_pca()
     # feature_subset_cluster()
 
     # read_port_from_firebase()
     # analyse_port()
+
+    read_fund_port()

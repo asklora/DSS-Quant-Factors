@@ -7,7 +7,7 @@ import datetime as dt
 from utils_report_to_slack import file_to_slack, report_to_slack, report_series_to_slack, report_df_to_slack, file_to_slack_user
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
-SLACK = False
+SLACK = True
 currency_code_list = ["'USD'", "'HKD'"]
 
 class score_eval:
@@ -36,8 +36,6 @@ class score_eval:
         with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
             update_time = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn_ali)
             update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-            if SLACK:
-                report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
             query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
             query += f"WHERE currency_code in ({','.join(currency_code_list)})"
@@ -51,37 +49,40 @@ class score_eval:
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
-        # 1. save comparison csv
-        score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
-        score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
-        score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
-        lw_comp = save_compare(score_current, score_history_lw, score_col)
-        avg_comp = save_compare(score_current, score_history_avg, score_col)
-        lw_comp_des = lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
-        avg_comp_des = avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
-
-        writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
-        lw_comp_des.to_excel(writer, sheet_name='lastweek_describe (remove inf)')
-        lw_comp.to_excel(writer, sheet_name='lastweek')
-        avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
-        avg_comp.to_excel(writer, sheet_name='average')
-        writer.save()
-
-        if SLACK:
-            report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
-            report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
-            file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
-
-        score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
-        score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
-        score_col += ['ai_score_unscaled', 'ai_score2_unscaled']
-
-        # 2. test rank
-        c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
-        c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
-        if SLACK:
-            report_to_slack(f'======== ai_score before & after scaler correlation: {round(c1, 3)} ========')
-            report_to_slack(f'======== ai_score2 before & after scaler correlation: {round(c2, 3)} ========')
+        # if SLACK:
+        #     report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
+        #
+        # # 1. save comparison csv
+        # score_current_history = score_current_history.loc[score_current_history['trading_day'] < score_current_history['trading_day'].max()]
+        # score_history_lw = score_current_history.loc[score_current_history['trading_day'] == score_current_history['trading_day'].max()]
+        # score_history_avg = score_current_history.groupby(['ticker']).mean().reset_index()
+        # lw_comp = save_compare(score_current, score_history_lw, score_col)
+        # avg_comp = save_compare(score_current, score_history_avg, score_col)
+        # lw_comp_des = lw_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
+        # avg_comp_des = avg_comp.replace([np.inf, -np.inf],np.nan).describe().transpose()
+        #
+        # writer = pd.ExcelWriter(f'#{suffixes}_compare.xlsx')
+        # lw_comp_des.to_excel(writer, sheet_name='lastweek_describe (remove inf)')
+        # lw_comp.to_excel(writer, sheet_name='lastweek')
+        # avg_comp_des.to_excel(writer, sheet_name='average_describe (remove inf)')
+        # avg_comp.to_excel(writer, sheet_name='average')
+        # writer.save()
+        #
+        # if SLACK:
+        #     report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
+        #     report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
+        #     file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
+        #
+        # score_current['ai_score_unscaled'] = score_current[score_col[2:-3]].mean(axis=1)
+        # score_current['ai_score2_unscaled'] = score_current[score_col[2:-4]+['esg']].mean(axis=1)
+        # score_col += ['ai_score_unscaled', 'ai_score2_unscaled']
+        #
+        # # 2. test rank
+        # c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
+        # c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
+        # if SLACK:
+        #     report_to_slack(f'======== ai_score before & after scaler correlation: {round(c1, 3)} ========')
+        #     report_to_slack(f'======== ai_score2 before & after scaler correlation: {round(c2, 3)} ========')
 
         # 3. save descriptive csv
         save_topn_ticker(score_current)
@@ -122,8 +123,8 @@ def save_topn_ticker(df, n=20):
     writer.save()
 
     if SLACK:
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
         file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
 
 def save_description(df):
     ''' write statistics for  '''
@@ -261,5 +262,5 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    eval.test_history()     # test on (history) <-global_vals.production_score_history
+    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    # eval.test_history()     # test on (history) <-global_vals.production_score_history
