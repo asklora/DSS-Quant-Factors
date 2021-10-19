@@ -149,12 +149,12 @@ def test_performance(df, col_list):
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
         print(ddf.iloc[:,-1].sort_values(ascending=False).head(10))
 
-    # ddf = ddf.iloc[:10,:].transpose()
-    # print(ddf)
-    # plt.plot(ddf, label=list(ddf.columns))
-    # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
-    # plt.tight_layout()
-    # plt.show()
+    ddf = ddf.iloc[:10,:].transpose()
+    print(ddf)
+    plt.plot(ddf, label=list(ddf.columns))
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
+    plt.tight_layout()
+    plt.show()
 
 def average_absolute_mean(df, col_list):
     print('======= Mean Absolute Premium ========')

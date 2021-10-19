@@ -104,9 +104,7 @@ def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
     tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)-1       # update tri to 1d before (i.e. all stock ret up to 1d before)
-    tri['skew'] = tri["skew"].rolling(365, min_periods=1).skew()
-    tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
-
+    tri['skew'] = tri["skew"].groupby('ticker').skew()
     return tri
 
 def resample_to_monthly(df, date_col):
@@ -235,7 +233,6 @@ def calc_stock_return(price_sample, sample_interval, rolling_period, use_cached,
         tri["tri_y"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
         tri["stock_return_y"] = (tri["tri_y"] / tri["tri"]) - 1
         tri["stock_return_y"] = tri["stock_return_y"]*4/rolling_period
-
         tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
         tri["tri_2wb"] = tri.groupby('ticker')['tri'].shift(2)
         tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(4)
@@ -620,7 +617,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
 
     # drop records with no stock_return_y & any ratios
-    df = df.dropna(subset=['stock_return_y']+formula['name'].to_list(), how='all')
+    dropna_col = set(df.columns.to_list()) & set(['stock_return_y']+formula['name'].to_list())
+    df = df.dropna(subset=list(dropna_col), how='all')
     df = df.replace([np.inf, -np.inf], np.nan)
 
     # test ratio calculation missing rate
@@ -639,7 +637,8 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     # save calculated ratios to DB
     with global_vals.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 1000}
-        ddf = df[['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list()]
+        filter_col = set(df.columns.to_list()) & set(['ticker','period_end','currency_code','icb_code', 'stock_return_y']+formula['name'].to_list())
+        ddf = df[list(filter_col)]
         ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
         ddf.to_sql(db_table_name, **extra)
         record_table_update_time(db_table_name, conn)

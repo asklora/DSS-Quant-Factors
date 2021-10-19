@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import INTEGER
 from utils import remove_tables_with_suffix, record_table_update_time
 import multiprocessing as mp
 import time
+import itertools
 
 icb_num = 6
 
@@ -249,25 +250,15 @@ def insert_prem_and_membership_for_group(*args):
             print(e)
             return series.map(lambda _: np.nan)
 
-    gp_type, group, tbl_suffix, factor_list, trim_outlier_ = args
-    print(f'      ------------------------> Start calculating factor premium - [{group}] Partition')
-    print(gp_type, group, tbl_suffix, factor_list, trim_outlier_)
+    df, group, tbl_suffix, factor, trim_outlier_ = args
+    print(group, tbl_suffix, factor, trim_outlier_)
 
     thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
     try:
-        with thread_engine_ali.connect() as conn:
-            if gp_type == 'curr':
-                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = '{group}' LIMIT 10000;", conn)
-            else:
-                df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE SUBSTR(icb_code, 1, {icb_num}) = '{group}';", conn)
-
-        df = df.dropna(subset=['stock_return_y','ticker'])
-
+        df = df[['period_end','stock_return_y', factor]].dropna(how='any')
         if len(df) == 0:
             raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
-
-        df = df.loc[~df['ticker'].str.startswith('.')].copy()
 
         if trim_outlier_:
             df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
@@ -275,38 +266,22 @@ def insert_prem_and_membership_for_group(*args):
         else:
             tbl_suffix_extra = '_v2'
 
-        factor_list = list(set(factor_list) & set(df.columns.to_list()))
-        # factor_list = ['market_cap_usd']
+        if factor in df.columns.to_list():
+            df['quantile_group'] = df.groupby(['period_end'])[factor].transform(qcut)
+            df = df.dropna(subset=['quantile_group']).copy()
+            df['quantile_group'] = df['quantile_group'].astype(int)
+            prem = df.groupby(['period_end', 'quantile_group'])['stock_return_y'].mean().unstack()
 
-        df = df.melt(
-            id_vars=['ticker', 'period_end', 'stock_return_y'],
-            value_vars=factor_list,
-            var_name='factor_name',
-            value_name='factor_value')
-        df['quantile_group'] = df.groupby(['period_end', 'factor_name'])['factor_value'].transform(qcut)
-        df = df.dropna(subset=['quantile_group']).copy()
-        df['quantile_group'] = df['quantile_group'].astype(int)
+            # Calculate small minus big
+            prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
+            prem['group'] = group
+            prem['factor_name'] = factor
+            prem['last_update'] = last_update
+            prem['trim_outlier'] = trim_outlier_
 
-        quantile_mean_returns = df.groupby(['period_end', 'factor_name', 'quantile_group'])['stock_return_y'].mean().reset_index()
-
-        # Calculate small minus big
-        prem = quantile_mean_returns.pivot(['period_end', 'factor_name'], ['quantile_group']).droplevel(0, axis=1)
-        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
-        membership = df[['ticker', 'period_end', 'factor_name', 'quantile_group']].reset_index(drop=True)
-
-        prem['group'] = group
-        membership['group'] = group
-        
-        prem['last_update'] = last_update
-        membership['last_update'] = last_update
-
-        prem['trim_outlier'] = trim_outlier_
-        
-        print(f'      ------------------------> Start writing membership and factor premium - [{group}] Partition')
-        with thread_engine_ali.connect() as conn:
-            # membership.sort_values(by=['group', 'ticker', 'period_end', 'factor_name']).to_sql(f"{global_vals.membership_table}{tbl_suffix}{tbl_suffix_extra}", con=conn, dtype=mem_dtypes, **to_sql_params)
-            prem.sort_values(by=['group', 'period_end', 'factor_name']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
-                                                                               con=conn, dtype=results_dtypes, **to_sql_params)
+            with thread_engine_ali.connect() as conn:
+                prem.sort_values(by=['group', 'period_end']).to_sql(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
+                                                                    con=conn, dtype=results_dtypes, **to_sql_params)
     except Exception as e:
         print(e)
         thread_engine_ali.dispose()
@@ -315,7 +290,7 @@ def insert_prem_and_membership_for_group(*args):
 
     return True
 
-def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_outlier_=False):
+def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12):
 
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
@@ -326,34 +301,28 @@ def calc_premium_all_v2(tbl_suffix, save_membership=False, update=False, trim_ou
     # Read stock_return / ratio table
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
-
-    with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table}", conn)
-        factor_list = formula['name'].to_list()                           # factor = all variabales
-                
-        all_curr = pd.read_sql(f"SELECT DISTINCT currency_code from {global_vals.processed_ratio_table}{tbl_suffix} "
-                               f"WHERE currency_code IS NOT NULL;", conn).values.flatten().tolist()
-        # all_icb = pd.read_sql(f"SELECT DISTINCT icb_code from {table_name} WHERE icb_code IS NOT NULL AND icb_code != 'nan';", conn).values.flatten().tolist()
-    global_vals.engine_ali.dispose()
-
-    # if icb_num != 6:
-    #     all_icb = [icb[:icb_num] for icb in all_icb]
-    #     all_icb = list(set(all_icb))
-    #     all_curr = []
-
-    # all_groups = [('curr', curr) for curr in all_curr] #+ [('icb', icb) for icb in all_icb]
-    all_groups = [('curr', 'USD')] # we test on USD only for now
+    all_groups = ['USD'] # we test on USD only for now
     if trim_outlier_:
         tbl_suffix_extra = '_v2_trim'
     else:
         tbl_suffix_extra = '_v2'
 
-    print(f'      ------------------------> {" -> ".join([group for _, group in all_groups])}')
-    print(f'      ------------------------> save to {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
+    with global_vals.engine_ali.connect() as conn:
+        formula = pd.read_sql(f"SELECT * FROM {global_vals.formula_factors_table} WHERE x_col OR factors", conn)
+        factor_list = formula['name'].to_list()                           # factor = all variabales
+        df = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = 'USD';", conn)
+        df = df.dropna(subset=['stock_return_y', 'ticker'])
+        df = df.loc[~df['ticker'].str.startswith('.')].copy()
+    global_vals.engine_ali.dispose()
 
-    with mp.Pool(processes=1) as pool:
-        # all_groups = [('curr', 'KRW')]
-        res = pool.starmap(insert_prem_and_membership_for_group, [(*x, tbl_suffix, factor_list, trim_outlier_) for x in all_groups])
+    print(f'      ------------------------> Groups: {" -> ".join(all_groups)}')
+    print(f'      ------------------------> Save to {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
+
+    all_groups = itertools.product([df], all_groups, [tbl_suffix], factor_list, [trim_outlier_])
+    all_groups = [tuple(e) for e in all_groups]
+
+    with mp.Pool(processes=processes) as pool:
+        res = pool.starmap(insert_prem_and_membership_for_group, all_groups)
 
     with global_vals.engine_ali.connect() as conn:
         prem = pd.read_sql(f"SELECT * FROM {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}", conn)
@@ -375,7 +344,7 @@ if __name__ == "__main__":
 
     # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
-    calc_premium_all_v2(tbl_suffix='_weekly2', save_membership=False, trim_outlier_=False)
+    calc_premium_all_v2(tbl_suffix='_monthly1', trim_outlier_=False, processes=6)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()

@@ -155,14 +155,14 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
-def score_history(factor_tbl_suffix='', ratio_tbl_suffix='monthly1'):
+def score_history(tbl_suffix='monthly1'):
     ''' calculate score with DROID v2 method & evaluate '''
 
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
         factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn_ali)
-        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history{factor_tbl_suffix}', conn_ali)
+        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history_{tbl_suffix}', conn_ali)
         universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
-        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_{ratio_tbl_suffix} "
+        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_{tbl_suffix} "
                                          f"WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') ", conn_ali)
                                          # f"WHERE (period_end='2021-07-31') AND (ticker not like '.%%') ", conn_ali)
         # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)

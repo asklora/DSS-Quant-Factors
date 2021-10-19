@@ -29,7 +29,8 @@ def download_stock_pred(
         keep_all_history=True,
         # return_summary=False,
         save_xls=False,
-        save_plot=False):
+        save_plot=False,
+        suffix=None):
     ''' organize production / last period prediction and write weight to DB '''
 
     # --------------------------------- Download Predictions ------------------------------------------
@@ -50,8 +51,15 @@ def download_stock_pred(
         result_all_all = pd.concat(result_all_all, axis=0, ignore_index=True)       # download training history
     global_vals.engine_ali.dispose()
 
+    result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
+    result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
+        ['group', 'year_month', 'factor_name', 'cv_number','y_type']+other_group_col, keep='first')
+    result_all_all = result_all_all.drop(columns=['year_month'])
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
-    x = result_all_all.groupby(['y_type','period_end']).count()['pred'].unstack()
+    # x = result_all_all.groupby(['y_type','period_end']).count()['pred'].unstack()
+
+    all_current = []
+    all_history = []
     for y_type, result_all in result_all_all.groupby('y_type'):
         print(y_type, result_all.shape)
 
@@ -63,7 +71,8 @@ def download_stock_pred(
         result_all['period_end'] = pd.to_datetime(result_all['period_end'])
 
         result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
-        dict_neg_factor = result_all[['period_end', 'group', 'y_type', 'neg_factor']].drop_duplicates().set_index(['group','period_end'])['neg_factor'].unstack().to_dict()  # negative value columns
+        dict_neg_factor = result_all[['period_end', 'group', 'neg_factor']].drop_duplicates(subset=['period_end', 'group'], keep='last')
+        dict_neg_factor = dict_neg_factor.set_index(['group','period_end'])['neg_factor'].unstack().to_dict()  # negative value columns
 
         # use average predictions from different validation sets
         result_all = result_all.groupby(['period_end','factor_name', 'group']+other_group_col)[['pred', 'actual']].mean()
@@ -161,17 +170,7 @@ def download_stock_pred(
         rank_count = rank_count.unstack().fillna(0)
         print(rank_count)
 
-        all_period_end = result_all['period_end'].unique()
-
-        # prepare table to write to DB
-        if keep_all_history:        # keep only last testing i.e. for production
-            period_list = all_period_end
-            tbl_suffix = f"_history{int((all_period_end[-1]-all_period_end[-2])/np.timedelta64(1,'D'))}"
-        else:
-            period_list = [result_all['period_end'].max()]
-            tbl_suffix = f"{int((all_period_end[-1]-all_period_end[-2])/np.timedelta64(1,'D'))}"
-
-        for period in period_list:
+        for period in result_all['period_end'].unique():
             print(period)
             result_col = ['group','period_end','factor_name','pred_z','factor_weight']
             df = result_all.loc[result_all['period_end']==period, result_col].copy().reset_index(drop=True)
@@ -187,36 +186,35 @@ def download_stock_pred(
             for k, v in neg_factor.items():     # write neg_factor i.e. label factors
                 df.loc[(df['group']==k)&(df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
-            with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-                # if conn.dialect.has_table(global_vals.engine_ali, global_vals.production_factor_rank_table + tbl_suffix): # remove same period prediction if exists
-                    # if keep_all_history:
-                    #     latest_period_end = dt.datetime.strftime(df['period_end'][0], r'%Y-%m-%d')
-                    #     delete_query_history = f"DELETE FROM {global_vals.production_factor_rank_table}{tbl_suffix} WHERE period_end='{latest_period_end}';"
-                    #     conn.execute(delete_query_history)
+            # append to history / currency df list
+            all_history.append(df.sort_values(['group', 'pred_z']))
+            if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
+                all_current.append(df.sort_values(['group', 'pred_z']))
 
-                extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
-                df.sort_values(['group','pred_z']).to_sql(global_vals.production_factor_rank_table+tbl_suffix, **extra)
-                record_table_update_time(global_vals.production_factor_rank_table+tbl_suffix, conn)
+    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
 
-                # if (period==result_all['period_end'].max()):  # if keep_all_history also write to prod table
-                #     extra['if_exists'] = 'replace'
-                #     df.sort_values(['group', 'pred_z']).to_sql(global_vals.production_factor_rank_table, **extra)
-                #     record_table_update_time(global_vals.production_factor_rank_table, conn)
+        # prepare table to write to DB
+        if keep_all_history:  # if keep all history
+            tbl_name = global_vals.production_factor_rank_table + f"_history_{suffix}"
+            pd.concat(all_history, axis=0).to_sql(tbl_name, **extra)
+            record_table_update_time(tbl_name, conn)
 
-            global_vals.engine_ali.dispose()
-
-        # return factor_rank, rank_count
+        tbl_name = global_vals.production_factor_rank_table + f"_{suffix}"
+        pd.concat(all_current, axis=0).to_sql(tbl_name, **extra)
+        record_table_update_time(tbl_name, conn)
+    global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":
 
-    suffix = 'weekly4'
+    suffix = 'weekly1'
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default=f'v2_weekly4_20211014_debug_testy')
-
+    parser.add_argument('--name_sql', type=str, default=f'v2_{suffix}_20211018_debug_sep')
+    parser.add_argument('--suffix', type=str, default=suffix)
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
     parser.add_argument('--save_plot', action='store_true', help='save_plot = True')
@@ -242,12 +240,13 @@ if __name__ == "__main__":
         keep_all_history=args.keep_all_history,
         save_plot=args.save_plot,
         save_xls=args.save_xls,
+        suffix=suffix,
         # return_summary=args.return_summary
     )
 
     from results_analysis.score_backtest import score_history
     from score_evaluate import score_eval
-    score_history(7, suffix)
+    score_history(suffix)
     eval = score_eval()
     eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
 

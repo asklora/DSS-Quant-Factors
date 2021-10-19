@@ -9,7 +9,7 @@ import itertools
 import multiprocessing as mp
 
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.preprocessing import robust_scale, QuantileTransformer, scale
+from sklearn.preprocessing import robust_scale, QuantileTransformer, scale, minmax_scale
 from scipy.cluster.hierarchy import cophenet
 from scipy.spatial.distance import pdist
 
@@ -322,6 +322,7 @@ def trim_outlier_std(df):
         else:
             x = df[col].values
         x = scale(x.T)
+        x = minmax_scale(x)
         df[col] = x
     return df
 

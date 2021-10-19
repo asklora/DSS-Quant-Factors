@@ -202,6 +202,6 @@ if __name__ == "__main__":
     fcm_args = {'n_clusters':[0.01, 0.02], 'm':[2]}
 
     data = test_cluster(testing_interval=testing_interval, use_cached=True)
-    # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
-    data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
+    # data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=12)
 

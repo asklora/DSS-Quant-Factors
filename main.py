@@ -72,8 +72,8 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--tbl_suffix', default='_weekly2', type=str)
-    parser.add_argument('--processes', default=9, type=int)
+    parser.add_argument('--tbl_suffix', default='_monthly1', type=str)
+    parser.add_argument('--processes', default=11, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
@@ -103,9 +103,9 @@ if __name__ == "__main__":
         if args.mode == 'default':
             calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
         elif args.mode == 'v2':
-            calc_premium_all_v2(tbl_suffix, save_membership=False, trim_outlier_=False)
+            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
         elif args.mode == 'v2_trim':
-            calc_premium_all_v2(tbl_suffix, save_membership=False, trim_outlier_=True)
+            calc_premium_all_v2(tbl_suffix, processes=arg.processes, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'{args.mode}{tbl_suffix}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
-        sql_result['name_sql'] += f'_debug_testy'
+        sql_result['name_sql'] += f'_debug_sep'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
@@ -175,11 +175,12 @@ if __name__ == "__main__":
             keep_all_history=True,
             save_plot=True,
             save_xls=True,
+            suffix=tbl_suffix[1:],
         )
 
-    score_history(7, tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+    score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
     eval = score_eval()
-    eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
+    eval.test_history(name=tbl_suffix[1:])     # test on (history) <-global_vals.production_score_history
 
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)

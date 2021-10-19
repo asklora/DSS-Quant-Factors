@@ -262,5 +262,5 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    # eval.test_history()     # test on (history) <-global_vals.production_score_history
+    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history

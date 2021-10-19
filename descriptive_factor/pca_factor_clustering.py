@@ -81,6 +81,19 @@ def feature_hierarchical_plot(testing_interval=7):
 
 # --------------------------------- Test subset composition ------------------------------------------
 
+def feature_hierarchical_selection(X, i=0.5):
+    ''' perform agglomorative hierarchical cluster on descriptive factors at different interval'''
+
+    agglo = FeatureAgglomeration(distance_threshold=0, n_clusters=None)
+    model = agglo.fit(X)
+
+    distance_threshold = np.max(model.distances_)*i
+    agglo = FeatureAgglomeration(distance_threshold=distance_threshold, n_clusters=None)
+    model = agglo.fit(X)
+    print(f'---> {i} feature cluster for {model.n_clusters_} clusters')
+
+    return model.labels_
+
 def feature_subset_pca(testing_interval=7):
     ''' perfrom PCA on different feature subsets '''
 
@@ -127,13 +140,13 @@ def feature_subset_cluster(testing_interval=7):
     all_df_all[['icb_code1', 'icb_code2']] = np.array(
         [scale(np.cos(d_icb / 85103035 * 2 * np.pi)), scale(np.sin(d_icb / 85103035 * 2 * np.pi))]).T
 
-    org_name = ['change_tri_fillna', 'avg_volume_1w3m', 'ret_momentum', 'vol']
+    org_name = ['icb_code']
 
     r = {}
     for col in all_df_all.columns.to_list():
         if col not in org_name + ['trading_day','ticker']:
             org_name += [col]
-            org_name += ['icb_code1', 'icb_code2']
+            # org_name += ['icb_code1', 'icb_code2']
             df = all_df_all.fillna(0).filter(['trading_day','ticker'] + org_name)
             # print(org_name)
 
@@ -168,6 +181,46 @@ def feature_subset_cluster(testing_interval=7):
     df = pd.DataFrame(r, index=[0]).transpose()
     print(df)
 
+def feature_subset_cluster1(testing_interval=7):
+    ''' try cluster on features '''
+
+    for testing_interval in [7, 30, 91]:
+        df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
+        df = df.loc[df['ticker'].str[0]!='.']
+        df['trading_day'] = pd.to_datetime(df['trading_day'])
+
+        r = {}
+        for yr, i, n in itertools.product([1, 2, 3], [0.4, 0.3], [2]):
+            r['year'] = yr
+            r['distance_pct'] = i
+            r['pca_components'] = n
+            print(r)
+            df_window = df.loc[df['trading_day'] > (dt.datetime.today() - relativedelta(years=yr))].copy()
+            df_window = trim_outlier_std(df_window.iloc[:, 2:].fillna(0))
+            f_cluster = feature_hierarchical_selection(df_window.values, i)
+            f_cluster = pd.DataFrame({'name': df_window.columns.to_list(), 'cluster': f_cluster})
+            # continue
+            for name, g in f_cluster.groupby('cluster'):
+                col = g['name'].to_list()
+                r['column'] = ','.join(col)
+                r['n_column'] = len(col)
+                X = df_window[col].values
+                X = PCA(n_components=n).fit_transform(X)  # calculation Cov matrix is embeded in PCA
+                for n_clusters in [2, 5, 10]:
+                    r['cluster'] = n_clusters
+                    model = FCM(n_clusters=n_clusters, m=1.5)
+                    model.fit(X)
+                    # df_window['cluster'] = model.predict(X)
+                    u = model.u
+                    v = model.centers
+                    r['score'] = xie_beni_index(X, u, v.T, 2)
+                    print(f"Org cols: {col}, n_cluster: {n_clusters} ----> {r['score']}")
+
+                    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+                        extra = {'con': conn, 'index': False, 'if_exists': 'append'}
+                        pd.DataFrame(r, index=[0]).to_sql(f"des_factor_fcm_pca{testing_interval}", **extra)
+                    global_vals.engine_ali.dispose()
+
 def calc_metrics(model, X):
 
     clustering_metrics = [
@@ -195,7 +248,7 @@ def plot_scatter_hist(df, cols, suffixes):
                 ax.hist(df[v1], bins=20)
                 ax.set_xlabel(v1)
             else:
-                ax.scatter(df[v1], df[v2], c=df['cluster'], cmap="gist_rainbow", alpha=.5)
+                ax.scatter(df[v1], df[v2], c=df['cluster'], cmap="Set1", alpha=.5)
                 ax.set_xlabel(v1)
                 ax.set_ylabel(v2)
             k+=1
@@ -283,11 +336,12 @@ def read_fund_port():
     port['ticker'] = port['ticker'].str.replace('.OQ', '.O')
     df = port.merge(uni, on=['ticker'], how='inner')
 
-    # first 5 holdings
-    valid_fund = (df.groupby('fund')['ticker'].count()>5)
+    # first 10 holdings
+    n = 10
+    valid_fund = (df.groupby('fund')['ticker'].count()>1)
     valid_fund = valid_fund.loc[valid_fund]
     df = df.loc[df['fund'].isin(list(valid_fund.index))]
-    df = df.groupby('fund')[['fund', 'ticker']].head(5)
+    df = df.groupby('fund')[['fund', 'ticker']].head(n)
 
     f = Counter(df['fund'].to_list())
     print(f)
@@ -296,13 +350,53 @@ def read_fund_port():
 
     return df
 
+def sample_port_var(testing_interval=7):
+    ''' calculate variance on different factors for clustering '''
+    port = read_fund_port()
+
+    # read descriptive ratios
+    df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
+    df = df.loc[df['trading_day']==df['trading_day'].max()]
+
+    # preprocessing
+    df = df.loc[df['ticker'].str[0]!='.']
+    df = df.fillna(0)
+    df.iloc[:, 2:] = trim_outlier_std(df.iloc[:, 2:]).values
+
+    df = pd.merge(port, df, on=['ticker'], how='left')
+    std = df.groupby('fund').std()
+
+    # fig = plt.figure(figsize=(4, 7), dpi=60, constrained_layout=True)
+    # i=1
+    # for col in std.columns.to_list():
+    #     ax = fig.add_subplot(7, 4, i)
+    #     ax.hist(std[col])
+    #     i+=1
+    # plt.show()
+
+    # try FCM + xie_beni_index
+    cols = ['icb_code','change_tri_fillna','vol','change_volume']
+    # cols = cols[0].split(', ')
+    std = std[cols].dropna(how='any')
+    X = std.values
+    for i in range(2, 10):
+        model = FCM(n_clusters=i, m=2)
+        model.fit(X)
+        std['cluster'] = model.predict(X)
+        u = model.u
+        v = model.centers
+        score = xie_beni_index(X, u, v.T, 2)
+        print(i, score)
+
+        plot_scatter_hist(std, cols, f'fund_st{i}')
+
 if __name__ == "__main__":
 
     # feature_cluster()
     # feature_subset_pca()
-    # feature_subset_cluster()
+    # feature_subset_cluster1()
 
     # read_port_from_firebase()
     # analyse_port()
 
-    read_fund_port()
+    sample_port_var()
