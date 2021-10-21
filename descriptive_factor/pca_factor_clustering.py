@@ -10,6 +10,7 @@ from collections import Counter
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 from hierarchy_ratio_cluster import trim_outlier_std
+from utils_report_to_slack import report_to_slack
 
 import gc
 import itertools
@@ -205,21 +206,25 @@ def feature_subset_cluster1(testing_interval=7):
                 r['column'] = ','.join(col)
                 r['n_column'] = len(col)
                 X = df_window[col].values
-                X = PCA(n_components=n).fit_transform(X)  # calculation Cov matrix is embeded in PCA
-                for n_clusters in [2, 5, 10]:
-                    r['cluster'] = n_clusters
-                    model = FCM(n_clusters=n_clusters, m=1.5)
-                    model.fit(X)
-                    # df_window['cluster'] = model.predict(X)
-                    u = model.u
-                    v = model.centers
-                    r['score'] = xie_beni_index(X, u, v.T, 2)
-                    print(f"Org cols: {col}, n_cluster: {n_clusters} ----> {r['score']}")
+                try:
+                    X = PCA(n_components=n).fit_transform(X)  # calculation Cov matrix is embeded in PCA
+                    for n_clusters in [2, 5, 10]:
+                        r['cluster'] = n_clusters
+                        model = FCM(n_clusters=n_clusters, m=1.5)
+                        model.fit(X)
+                        # df_window['cluster'] = model.predict(X)
+                        u = model.u
+                        v = model.centers
+                        r['score'] = xie_beni_index(X, u, v.T, 2)
+                        print(f"Org cols: {col}, n_cluster: {n_clusters} ----> {r['score']}")
 
-                    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-                        extra = {'con': conn, 'index': False, 'if_exists': 'append'}
-                        pd.DataFrame(r, index=[0]).to_sql(f"des_factor_fcm_pca{testing_interval}", **extra)
-                    global_vals.engine_ali.dispose()
+                        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+                            extra = {'con': conn, 'index': False, 'if_exists': 'append'}
+                            pd.DataFrame(r, index=[0]).to_sql(f"des_factor_fcm_pca{testing_interval}", **extra)
+                        global_vals.engine_ali.dispose()
+                except Exception as e:
+                    report_to_slack(f'*** Exception: {r}: {e}', channel='U026B04RB3J')
+
 
 def calc_metrics(model, X):
 
@@ -350,7 +355,7 @@ def read_fund_port():
 
     return df
 
-def sample_port_var(testing_interval=7):
+def sample_port_var(testing_interval=91):
     ''' calculate variance on different factors for clustering '''
     port = read_fund_port()
 
@@ -376,10 +381,14 @@ def sample_port_var(testing_interval=7):
 
     # try FCM + xie_beni_index
     cols = ['icb_code','change_tri_fillna','vol','change_volume']
-    # cols = cols[0].split(', ')
+    cols = 'avg_volume,avg_market_cap_usd,avg_inv_turnover_re,avg_ca_turnover_re,avg_cash_ratio'
+    cols = 'skew,ret_momentum,change_tri_fillna,change_earnings,change_ebtda,avg_div_payout,' \
+           'avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin'
+    # cols = 'avg_div_yield,avg_fa_turnover_re,avg_book_to_price,avg_capex_to_dda'
+    cols = cols.split(',')
     std = std[cols].dropna(how='any')
     X = std.values
-    for i in range(2, 10):
+    for i in range(3, 4):
         model = FCM(n_clusters=i, m=2)
         model.fit(X)
         std['cluster'] = model.predict(X)
@@ -394,9 +403,9 @@ if __name__ == "__main__":
 
     # feature_cluster()
     # feature_subset_pca()
-    # feature_subset_cluster1()
+    feature_subset_cluster1()
 
     # read_port_from_firebase()
     # analyse_port()
 
-    sample_port_var()
+    # sample_port_var()

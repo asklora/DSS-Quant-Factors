@@ -13,6 +13,7 @@ from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from score_evaluate import score_eval
+from utils_report_to_slack import report_to_slack
 
 from itertools import product, combinations, chain
 import multiprocessing as mp
@@ -20,43 +21,46 @@ import multiprocessing as mp
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
 
-    data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
+    try:
+        data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
-    print(f"===== test on y_type", len(y_type), y_type, "=====")
-    sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
-    sql_result['tree_type'] = tree_type + str(i)
-    sql_result['testing_period'] = testing_period
-    sql_result['group_code'] = group_code
-    sql_result['use_pca'] = use_pca
+        print(f"===== test on y_type", len(y_type), y_type, "=====")
+        sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
+        sql_result['tree_type'] = tree_type + str(i)
+        sql_result['testing_period'] = testing_period
+        sql_result['group_code'] = group_code
+        sql_result['use_pca'] = use_pca
 
-    data.split_group(group_code)
-    # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
+        data.split_group(group_code)
+        # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
-    load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
-                        'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
-    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-    cv_number = 1  # represent which cross-validation sets
+        load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
+                            'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
+        sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+        cv_number = 1  # represent which cross-validation sets
 
-    for train_index, valid_index in cv:  # roll over different validation set
-        sql_result['cv_number'] = cv_number
+        for train_index, valid_index in cv:  # roll over different validation set
+            sql_result['cv_number'] = cv_number
 
-        sample_set['valid_x'] = sample_set['train_x'][valid_index]
-        sample_set['train_xx'] = sample_set['train_x'][train_index]
-        sample_set['valid_y'] = sample_set['train_y'][valid_index]
-        sample_set['train_yy'] = sample_set['train_y'][train_index]
-        sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-        sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+            sample_set['valid_x'] = sample_set['train_x'][valid_index]
+            sample_set['train_xx'] = sample_set['train_x'][train_index]
+            sample_set['valid_y'] = sample_set['train_y'][valid_index]
+            sample_set['train_yy'] = sample_set['train_y'][train_index]
+            sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+            sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-        sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-        sql_result['valid_len'] = len(sample_set['valid_x'])
+            sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+            sql_result['valid_len'] = len(sample_set['valid_x'])
 
-        for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
-            sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+            for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
+                sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-        sql_result['neg_factor'] = ','.join(data.neg_factor)
-        rf_HPOT(max_evals=10, sql_result=sql_result, sample_set=sample_set, x_col=data.x_col,
-                y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
-        cv_number += 1
+            sql_result['neg_factor'] = ','.join(data.neg_factor)
+            rf_HPOT(max_evals=10, sql_result=sql_result, sample_set=sample_set, x_col=data.x_col,
+                    y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
+            cv_number += 1
+    except Exception as e:
+        report_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}', channel='U026B04RB3J')
 
 if __name__ == "__main__":
 
@@ -73,8 +77,8 @@ if __name__ == "__main__":
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
     parser.add_argument('--tbl_suffix', default='_monthly1', type=str)
-    parser.add_argument('--processes', default=11, type=int)
-    parser.add_argument('--backtest_period', default=210, type=int)
+    parser.add_argument('--processes', default=8, type=int)
+    parser.add_argument('--backtest_period', default=45, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
@@ -125,9 +129,8 @@ if __name__ == "__main__":
         last_test_date = pd.read_sql(f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}", conn)
         testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
     global_vals.engine_ali.dispose()
-    # backtest_period = args.backtest_period
-    # testing_period_list = [last_test_date + relativedelta(days=1) - i * relativedelta(months=1)
-    #                        - relativedelta(days=1) for i in range(0, backtest_period + 1)]
+
+    # testing_period_list = [dt.date(2021,4,30)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
