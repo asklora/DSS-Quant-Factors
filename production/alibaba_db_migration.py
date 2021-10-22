@@ -42,6 +42,8 @@ if __name__=="__main__":
     # lst = get_table_name_list(global_vals.engine_ali)
     # print(lst)
 
-    migrate_tbl_lst = ['factor_formula_ratios_prod', 'test_fundamental_score_current_names', 'ingestion_name',
-                       'factor_result_pred_prod', 'iso_currency_code', 'ai_value_lgbm_pred_final_eps']
+    # 'factor_formula_ratios_prod', 'test_fundamental_score_current_names',  'factor_result_pred_prod',
+    # 'iso_currency_code', 'ai_value_lgbm_pred_final_eps', 'ingestion_name',
+
+    migrate_tbl_lst = ['factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1','factor_formula_ratios_prod_test']
     ali_migration_to_prod(migrate_tbl_lst)
