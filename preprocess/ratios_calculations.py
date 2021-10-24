@@ -104,7 +104,7 @@ def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
     tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)-1       # update tri to 1d before (i.e. all stock ret up to 1d before)
-    tri['skew'] = tri["skew"].groupby('ticker').skew()
+    tri['skew'] = tri.groupby('ticker')["skew"].skew(axis=1)
     return tri
 
 def resample_to_monthly(df, date_col):
@@ -678,5 +678,5 @@ if __name__ == "__main__":
                           rolling_period=1,
                           use_cached=False,
                           save=True,
-                          ticker=None,
+                          ticker='AAPL.O',
                           currency=None)

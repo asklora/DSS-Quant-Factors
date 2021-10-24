@@ -76,9 +76,9 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--tbl_suffix', default='_monthly1', type=str)
+    parser.add_argument('--tbl_suffix', default='_weekly1', type=str)
     parser.add_argument('--processes', default=8, type=int)
-    parser.add_argument('--backtest_period', default=45, type=int)
+    parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')

@@ -9,10 +9,21 @@ from dateutil.relativedelta import relativedelta
 # test_url = "postgres://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
 # test_engine = create_engine(test_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
-with global_vals.engine.connect() as conn:
-    df = pd.read_sql('SELECT * FROM universe_rating r INNER JOIN '
-                     '(SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker', conn)
-global_vals.engine.dispose()
+filter_field = ["EPS1TR12", "WC05480", "WC18100A", "WC18262A", "WC08005",
+                "WC18309A", "WC18311A", "WC18199A", "WC08372", "WC05510", "WC08636A",
+                "BPS1FD12", "EBD1FD12", "EVT1FD12", "EPS1FD12", "SAL1FD12", "CAP1FD12",
+                "WC02999", "WC02001", "WC03101", "WC03501", "WC18312A", "WC02101",
+                "WC18264", "WC18267", "WC01451", "WC18810", "WC02401", "WC18274",
+                "WC07211", "i0eps"]
+
+with global_vals.engine_ali_prod.connect() as conn:
+    df = pd.read_sql('SELECT * FROM ingestion_name', conn)
+    df.loc[df['dsws_name'].str[-1]=='A', 'replace_fn1']= df.loc[df['dsws_name'].str[-1]=='A', 'dsws_name'].str[:-1]
+    print(df)
+    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
+    df.to_sql('ingestion_name', **extra)
+global_vals.engine_ali_prod.dispose()
+exit(1)
 
 df = df.loc[df['currency_code']=='USD'].sort_values('ai_score', ascending=False).head(20)
 df = df.loc[(df['wts_rating']==10)&(df['dlp_1m']==10)]
