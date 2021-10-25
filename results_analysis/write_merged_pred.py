@@ -31,7 +31,7 @@ def download_stock_pred(
         save_xls=False,
         save_plot=False,
         suffix=None):
-    ''' organize production / last period prediction and write weight to DB '''
+    ''' organize cron / last period prediction and write weight to DB '''
 
     # --------------------------------- Download Predictions ------------------------------------------
     if 'rf' in model:

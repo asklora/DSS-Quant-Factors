@@ -2,6 +2,7 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 import argparse
+import time
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 
@@ -86,12 +87,28 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # --------------------------------------- Schedule for Production --------------------------------
+    def start_on_update(check_interval=60):
+        ''' check if data tables finished ingestion -> then start '''
+        table_names = ['data_ibes_monthly', 'data_macro_monthly', 'data_worldscope_summary']
+        waiting = True
+        while waiting:
+            with global_vals.engine_ali_prod.connect() as conn:  # Default last_test_date is second last period_end in premium table
+                update_time = pd.read_sql(f"SELECT * FROM ingestion_update_time WHERE table_name in {tuple(table_names)}", conn)
+            global_vals.engine_ali_prod.dispose()
+            if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
+                waiting = False
+            else:
+                time.sleep(check_interval)
+                print(f'-------------------> Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+        return True
+
     if not args.debug:
-        td = dt.datetime.today()
-        ystd = td - relativedelta(days=1)
-        if (ystd.weekday() != 6) or (td.day==1):
-            print('Not start: Factor model only run on the next day after first Sunday every month! ')
-            exit(0)
+        # Check 1. if monthly -> only first Sunday every month
+        if "monthly" in args.tbl_suffix:
+            if dt.datetime.today().day>7:
+                raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        # Check 2. if all input data df finished update
+        start_on_update()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     tbl_suffix = args.tbl_suffix

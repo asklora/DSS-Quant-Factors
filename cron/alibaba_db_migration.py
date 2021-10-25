@@ -13,7 +13,7 @@ def get_table_name_list(engine):
     return sorted(df['table_name'])
 
 def ali_migration_to_prod(migrate_tbl_lst):
-    ''' migrate list of production table (i.e. currenctly used in DROID_v2.1) used to Prod DB '''
+    ''' migrate list of cron table (i.e. currenctly used in DROID_v2.1) used to Prod DB '''
 
     print(' === Alibaba Migrate Dev to Prod Start === ')
     # metadata = MetaData()
