@@ -104,7 +104,10 @@ def get_skew(tri):
     ''' Calculate past 1yr daily return skewness '''
 
     tri["skew"] = tri['tri']/tri.groupby('ticker')['tri'].shift(1)-1       # update tri to 1d before (i.e. all stock ret up to 1d before)
-    tri['skew'] = tri.groupby('ticker')["skew"].skew(axis=1)
+    tri = tri.sort_values(by=['ticker','trading_day'])
+    tri['skew'] = tri["skew"].rolling(365, min_periods=1).skew()
+    tri.loc[tri.groupby('ticker').head(364).index, 'skew'] = np.nan  # y-1 ~ y0
+
     return tri
 
 def resample_to_monthly(df, date_col):
@@ -290,11 +293,11 @@ def download_clean_worldscope_ibes(save, currency, ticker):
 
         print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
 
-        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
-        ws['fn_18308'] = ws['fn_18308'].fillna(
-            ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
-        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
-
+        ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])  # Net debt = total debt - C&CE
+        ws['ttm_ebit'] = ws['ttm_ebit'].fillna(
+            ws['ttm_pretax_income'] + ws['ttm_interest'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
+        ws['ttm_ebitda'] = ws['ttm_ebitda'].fillna(ws['ttm_ebit'] + ws['ttm_dda'])  # TTM EBITDA = TTM EBIT + TTM DDA
+        ws['current_asset'] = ws['current_asset'].fillna(ws['total_asset'] - ws['ppe_net']) # fill missing for current assets
         return ws
 
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
@@ -521,7 +524,7 @@ def calc_fx_conversion(df):
     ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]     # no fx conversion for ratio items
 
     for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
-        cols = list(set(g['model_name'].to_list()) & set(df.columns.to_list()))
+        cols = list(set(g['our_name'].to_list()) & set(df.columns.to_list()))
         print(f'----> [{name}] source data with fx conversion: ', cols)
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
@@ -557,9 +560,6 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
-
-    # fill missing for current assets
-    df['fn_2201'] = df['fn_2201'].fillna(df['fn_2999'] - df['fn_2501'])
 
     ingestion_cols = df.columns.to_list()
 

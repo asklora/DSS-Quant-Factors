@@ -46,5 +46,5 @@ if __name__=="__main__":
     # 'iso_currency_code', 'ai_value_lgbm_pred_final_eps', 'ingestion_name',
     # 'factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1','factor_formula_ratios_prod_test'
 
-    migrate_tbl_lst = ['processed_ratio_weekly1']
+    migrate_tbl_lst = ['factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1']
     ali_migration_to_prod(migrate_tbl_lst)

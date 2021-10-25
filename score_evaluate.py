@@ -45,7 +45,11 @@ class score_eval:
             query1 += f"WHERE currency_code in ({','.join(currency_code_list)})"
             score_current_history = pd.read_sql(query1, conn)
             for p in filter(None, score_current['currency_code'].unique()):
-                pillar_current[p] = pd.read_sql(f"SELECT * FROM \"test_fundamental_score_details_{p}\"", conn_ali)
+                for i in ['_weekly1','_monthly1']:
+                    try:
+                        pillar_current[(p,i)] = pd.read_sql(f"SELECT * FROM test_fundamental_score_details_{p}{i}", conn_ali)
+                    except Exception as e:
+                        report_to_slack(e, channel='U026B04RB3J')
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
@@ -124,12 +128,13 @@ def save_topn_ticker(df, n=20):
 
     if SLACK:
         file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U026B04RB3J')   # send top pick to Clair
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U8ZV41XS9')   # send top pick to Stephen
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDG0LDJH1')   # send top pick to John
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UD3NSMMS5')   # send top pick to Kenson
-        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDLED1DC6')   # send top pick to Joseph
+        if (dt.datetime.today().weekday == 1) or DEBUG: # on Monday send all TOP Picks
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U026B04RB3J')   # send top pick to Clair
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U8ZV41XS9')   # send top pick to Stephen
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDG0LDJH1')   # send top pick to John
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UD3NSMMS5')   # send top pick to Kenson
+            file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDLED1DC6')   # send top pick to Joseph
 
 def save_description(df):
     ''' write statistics for  '''
@@ -183,7 +188,7 @@ def plot_dist_score(df, filename, score_col):
 def plot_minmax_factor(df_dict):
     ''' plot min/max distribution '''
 
-    for cur, g in df_dict.items():
+    for (cur, freq), g in df_dict.items():
 
         cols = g.set_index("index").columns.to_list()
         score_idx = [cols.index(x) for x in cols if re.match("^fundamentals_", x)]+[len(cols)]
@@ -207,9 +212,10 @@ def plot_minmax_factor(df_dict):
             else:
                 k += 1
 
-        plt.suptitle(cur, fontsize=30)
-        fig.savefig(f'#{suffixes}_score_minmax_{cur}.png')
-        # file_to_slack(f'#{suffixes}_score_minmax_{cur}.png', 'png', f'{cur} Score Detailed Distribution')
+        fig_name = cur+freq
+        plt.suptitle(fig_name, fontsize=30)
+        fig.savefig(f'#{suffixes}_score_minmax_{fig_name}.png')
+        # file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution')
         plt.close(fig)
 
 def qcut_eval(score_col, fundamentals, name=''):
@@ -266,6 +272,7 @@ def qcut_eval(score_col, fundamentals, name=''):
         file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
 
 if __name__ == "__main__":
+    DEBUG=True
     eval = score_eval()
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
     # eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history
