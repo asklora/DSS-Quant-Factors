@@ -2,10 +2,10 @@ from slack_sdk import WebClient
 import logging
 
 SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
-channel = "#factor_message"
+default_channel = "#factor_message"
 logger = logging.getLogger(__name__)
 
-def report_to_slack(message):
+def report_to_slack(message, channel=default_channel):
 
     try:
         client = WebClient(token=SLACK_API, timeout=30)
@@ -58,7 +58,7 @@ def report_df_to_slack(message, df, id=None):
     else:
         report_to_slack(message)
 
-def file_to_slack(file, filetype, title):
+def file_to_slack(file, filetype, title, channel=default_channel):
 
     try:
         client = WebClient(token=SLACK_API, timeout=30)
@@ -87,4 +87,5 @@ def file_to_slack_user(file, filetype, title, id='U026B04RB3J'):
         print(e)
 
 if __name__ == "__main__":
-    file_to_slack_user('test')
+    # file_to_slack_user('test')
+    report_to_slack('test', channel='U026B04RB3J')
