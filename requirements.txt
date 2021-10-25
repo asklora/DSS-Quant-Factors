@@ -11,4 +11,3 @@ matplotlib
 openpyxl
 slack_sdk
 statsmodels
-psycopg2

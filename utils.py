@@ -2,7 +2,6 @@ import global_vals
 import datetime as dt
 import pandas as pd
 import os
-from pangres import upsert
 
 def remove_tables_with_suffix(engine, suffix):
     '''
@@ -35,4 +34,5 @@ def record_table_update_time(tb_name, conn):
     df.to_sql(global_vals.update_time_table, **extra)
 
 if __name__ == "__main__":
-    read_from_firebase()
+    pass
+    # read_from_firebase()

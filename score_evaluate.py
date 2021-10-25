@@ -11,13 +11,7 @@ suffixes = dt.datetime.today().strftime('%Y%m%d')
 
 class score_eval:
     def __init__(self):
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
-        args = parser.parse_args()
-
-        self.SLACK = args.slack
-        currency_code_list = ["'USD'", "'HKD'"]
+        pass
 
     def test_history(self, name=''):
         ''' test on ai_score history '''
@@ -58,7 +52,7 @@ class score_eval:
         global_vals.engine_ali.dispose()
         global_vals.engine.dispose()
 
-        if self.SLACK:
+        if args.slack:
             report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
 
         # 1. save comparison csv
@@ -77,7 +71,7 @@ class score_eval:
         avg_comp.to_excel(writer, sheet_name='average')
         writer.save()
 
-        if self.SLACK:
+        if args.slack:
             report_series_to_slack('*======== Compare with Last Week (Mean Change) ========*', lw_comp_des['mean'])
             report_series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
             file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
@@ -89,7 +83,7 @@ class score_eval:
         # 2. test rank
         c1 = score_current.groupby(['currency_code'])['ai_score'].rank(axis=0).corr(score_current.groupby(['currency_code'])['ai_score_unscaled'].rank(axis=0))
         c2 = score_current['ai_score2'].rank(axis=0).corr(score_current['ai_score2_unscaled'].rank(axis=0))
-        if self.SLACK:
+        if args.slack:
             report_to_slack(f'======== ai_score before & after scaler correlation: {round(c1, 3)} ========')
             report_to_slack(f'======== ai_score2 before & after scaler correlation: {round(c2, 3)} ========')
 
@@ -131,7 +125,7 @@ class score_eval:
         pd.concat(all_df, axis=0).drop_duplicates().to_excel(writer, sheet_name='original_scores', index=False)
         writer.save()
 
-        if self.SLACK:
+        if args.slack:
             file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
             if (dt.datetime.today().weekday == 1) or DEBUG: # on Monday send all TOP Picks
                 file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U026B04RB3J')   # send top pick to Clair
@@ -151,7 +145,7 @@ class score_eval:
         df.to_excel(writer, sheet_name='Distribution Current')
         writer.save()
 
-        if self.SLACK:
+        if args.slack:
             for col in ['ai_score','ai_score_unscaled','ai_score2','ai_score2_unscaled']:
                 df_save = df.xs(col, level=0).round(2)
                 report_df_to_slack(f'*======== Score Distribution - {col} ========*', df_save)
@@ -273,11 +267,15 @@ class score_eval:
 
         writer.save()
 
-        if self.SLACK:
+        if args.slack:
             file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
 
 if __name__ == "__main__":
-    DEBUG=True
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
+    args = parser.parse_args()
+
+    currency_code_list = ["'USD'", "'HKD'"]
     eval = score_eval()
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
     # eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history

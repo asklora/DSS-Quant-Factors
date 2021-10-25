@@ -11,8 +11,8 @@ from preprocess.ratios_calculations import calc_factor_variables
 from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
 from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
-# from results_analysis.score_backtest import score_history
-# from score_evaluate import score_eval
+from results_analysis.score_backtest import score_history
+from score_evaluate import score_eval
 from utils_report_to_slack import report_to_slack
 
 from itertools import product, combinations, chain
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--tbl_suffix', default='_weekly1', type=str)
+    parser.add_argument('--tbl_suffix', default='_monthly1', type=str)
     parser.add_argument('--processes', default=8, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
@@ -181,9 +181,9 @@ if __name__ == "__main__":
             suffix=tbl_suffix[1:],
         )
 
-    # score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
-    # eval = score_eval()
-    # eval.test_history(name=tbl_suffix[1:])     # test on (history) <-global_vals.production_score_history
+    score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+    eval = score_eval()
+    eval.test_history(name=tbl_suffix[1:])     # test on (history) <-global_vals.production_score_history
 
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)
