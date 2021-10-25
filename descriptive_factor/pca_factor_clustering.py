@@ -379,7 +379,7 @@ def sample_port_var(testing_interval=7):
     # cols = cols[0].split(', ')
     std = std[cols].dropna(how='any')
     X = std.values
-    for i in range(2, 10):
+    for i in range(3, 4):
         model = FCM(n_clusters=i, m=2)
         model.fit(X)
         std['cluster'] = model.predict(X)

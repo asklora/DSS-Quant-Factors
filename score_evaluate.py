@@ -124,7 +124,12 @@ def save_topn_ticker(df, n=20):
 
     if SLACK:
         file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U026B04RB3J')   # send top pick to Clair
         file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U01JKNY3D0U')   # send top pick to Nick
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='U8ZV41XS9')   # send top pick to Stephen
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDG0LDJH1')   # send top pick to John
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UD3NSMMS5')   # send top pick to Kenson
+        file_to_slack_user(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers weekly', id='UDLED1DC6')   # send top pick to Joseph
 
 def save_description(df):
     ''' write statistics for  '''
@@ -262,5 +267,5 @@ def qcut_eval(score_col, fundamentals, name=''):
 
 if __name__ == "__main__":
     eval = score_eval()
-    # eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history
+    eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
+    # eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history
