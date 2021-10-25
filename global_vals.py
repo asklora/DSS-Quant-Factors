@@ -36,6 +36,7 @@ eikon_other_table = "data_factor_eikon_others"
 eikon_vix_table = "data_factor_eikon_vix"
 eikon_price_table = "data_factor_eikon_price_daily_final"
 eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
+currency_history_table = "currency_price_history"      # ALIBABA DB
 
 # TABLE names - preprocessed data
 processed_ratio_table = "processed_ratio"

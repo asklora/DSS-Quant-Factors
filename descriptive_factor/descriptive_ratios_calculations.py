@@ -320,6 +320,9 @@ def calc_fx_conversion(df):
     with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
+        fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
+                          f"FROM {global_vals.currency_history_table}", conn)
+        fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vals.engine.dispose()
     global_vals.engine_ali.dispose()

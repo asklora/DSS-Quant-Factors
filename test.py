@@ -9,19 +9,16 @@ from dateutil.relativedelta import relativedelta
 # test_url = "postgres://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
 # test_engine = create_engine(test_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
-filter_field = ["EPS1TR12", "WC05480", "WC18100A", "WC18262A", "WC08005",
-                "WC18309A", "WC18311A", "WC18199A", "WC08372", "WC05510", "WC08636A",
-                "BPS1FD12", "EBD1FD12", "EVT1FD12", "EPS1FD12", "SAL1FD12", "CAP1FD12",
-                "WC02999", "WC02001", "WC03101", "WC03501", "WC18312A", "WC02101",
-                "WC18264", "WC18267", "WC01451", "WC18810", "WC02401", "WC18274",
-                "WC07211", "i0eps"]
-
 with global_vals.engine_ali_prod.connect() as conn:
-    df = pd.read_sql('SELECT * FROM ingestion_name', conn)
-    df.loc[df['dsws_name'].str[-1]=='A', 'replace_fn1']= df.loc[df['dsws_name'].str[-1]=='A', 'dsws_name'].str[:-1]
-    print(df)
-    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-    df.to_sql('ingestion_name', **extra)
+    df = pd.read_sql('SELECT * FROM ai_value_formula_ratios', conn)
+    ingestion_name = pd.read_sql('SELECT dsws_name, our_name FROM ingestion_name', conn)
+    ingestion_name['dsws_name'] = ingestion_name['dsws_name'].str.lower()
+    ingestion_name['dsws_name'] = ingestion_name['dsws_name'].apply(lambda x: 'fn_'+str(int(x[2:-1])) if x[:2]=='wc' else x)
+    ingestion_name = ingestion_name.set_index('dsws_name')['our_name'].to_dict()
+    for i in ['field_num','field_denom']:
+        df[i] = df[i].replace(ingestion_name)
+    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
+    df.to_sql('ai_value_formula_ratios', **extra)
 global_vals.engine_ali_prod.dispose()
 exit(1)
 

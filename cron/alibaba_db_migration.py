@@ -45,6 +45,8 @@ if __name__=="__main__":
     # 'factor_formula_ratios_prod', 'test_fundamental_score_current_names',  'factor_result_pred_prod',
     # 'iso_currency_code', 'ai_value_lgbm_pred_final_eps', 'ingestion_name',
     # 'factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1','factor_formula_ratios_prod_test'
+    # 'ai_value_formula_ratios'
+    # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
 
-    migrate_tbl_lst = ['factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1']
+    migrate_tbl_lst = ['data_factor_eikon_others_fx']
     ali_migration_to_prod(migrate_tbl_lst)
