@@ -118,13 +118,19 @@ class score_eval:
 
         df = df.loc[df['currency_code'].isin(['HKD','USD'])]
 
+        with global_vals.engine_ali.connect() as conn_ali:
+            query = f"SELECT ticker, ticker_fullname FROM universe"
+            universe = pd.read_sql(query, conn_ali)
+        global_vals.engine_ali.dispose()
+
         writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
 
         all_df = []
         for i in ['wts_rating', 'dlp_1m', 'ai_score', 'ai_score2']:
             idx = df.groupby(['currency_code'])[i].nlargest(n).index.get_level_values(1)
             ddf = df.loc[idx].sort_values(by=['currency_code',i], ascending=False)
-            ddf[['currency_code','ticker',i]].to_excel(writer, sheet_name=i, index=False)
+            ddf = ddf[['currency_code','ticker',i]].merge(universe, on='ticker', how='left')
+            ddf.to_excel(writer, sheet_name=i, index=False)
             all_df.append(ddf)
 
         pd.concat(all_df, axis=0).drop_duplicates().to_excel(writer, sheet_name='original_scores', index=False)
