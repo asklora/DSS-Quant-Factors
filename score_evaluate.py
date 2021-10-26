@@ -284,7 +284,7 @@ class score_eval:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
-    parser.add_argument('--debug', action='store_true', help='Send message/file to Slack = True')
+    parser.add_argument('--debug', action='store_true', help='Debug = True')
     parser.add_argument('--currency', default='HKD')
     args = parser.parse_args()
 
