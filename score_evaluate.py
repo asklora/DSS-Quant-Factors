@@ -118,10 +118,10 @@ class score_eval:
 
         df = df.loc[df['currency_code'].isin(['HKD','USD'])]
 
-        with global_vals.engine_ali.connect() as conn_ali:
+        with global_vals.engine.connect() as conn:
             query = f"SELECT ticker, ticker_fullname FROM universe"
-            universe = pd.read_sql(query, conn_ali)
-        global_vals.engine_ali.dispose()
+            universe = pd.read_sql(query, conn)
+        global_vals.engine.dispose()
 
         writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
 
