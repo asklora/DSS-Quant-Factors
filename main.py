@@ -98,8 +98,8 @@ if __name__ == "__main__":
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
             else:
-                time.sleep(check_interval)
                 print(f'-------------------> Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+                time.sleep(check_interval)
         return True
 
     if not args.debug:
