@@ -304,6 +304,21 @@ def read_port_from_firebase():
     result.to_csv('port_result.csv', index=False)
     return result
 
+def read_port_from_postgres():
+    ''' read user portfolio details from postgres '''
+
+    with global_vals.engine.connect() as conn:
+        df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, created FROM orders", conn)
+    global_vals.engine.dispose()
+    df['bot_id'] = df['bot_id'].apply(lambda x: x.split('_')[0])
+
+    df = df.loc[df['status']!='cancel']
+    df['created'] = df['created']
+
+    print(df['status'].unique())
+    return df
+
+
 def analyse_port():
     ''' analyse ticker, pct_return of users '''
 
@@ -403,9 +418,10 @@ if __name__ == "__main__":
 
     # feature_cluster()
     # feature_subset_pca()
-    feature_subset_cluster1()
+    # feature_subset_cluster1()
 
     # read_port_from_firebase()
+    read_port_from_postgres()
     # analyse_port()
 
     # sample_port_var()
