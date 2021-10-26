@@ -499,6 +499,7 @@ def calc_fx_conversion(df):
         fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vals.currency_history_table}", conn)
+        fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
         fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vals.engine.dispose()
