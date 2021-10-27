@@ -323,13 +323,13 @@ def update_period_end(ws=None):
 
     print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+    with global_vals.engine.connect() as conn, global_vals.engine_ali_prod.connect() as conn_ali_prod:
         universe = pd.read_sql(f'SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}', conn, chunksize=10000)
         universe = pd.concat(universe, axis=0, ignore_index=True)
-        eikon_report_date = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_date', conn_ali, chunksize=10000)
+        eikon_report_date = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_date', conn_ali_prod, chunksize=10000)
         eikon_report_date = pd.concat(eikon_report_date, axis=0, ignore_index=True)
     global_vals.engine.dispose()
-    global_vals.engine_ali.dispose()
+    global_vals.engine_ali_prod.dispose()
 
     ws = ws.dropna(subset=['year'])
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
@@ -494,16 +494,16 @@ def calc_fx_conversion(df):
 
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+    with global_vals.engine.connect() as conn, global_vals.engine_ali_prod.connect() as conn_ali_prod:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
-        fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
+        fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali_prod)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vals.currency_history_table}", conn)
         fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
         fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
-        ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
+        ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali_prod)
     global_vals.engine.dispose()
-    global_vals.engine_ali.dispose()
+    global_vals.engine_ali_prod.dispose()
 
     df = df.merge(curr_code, on='ticker', how='inner')
     df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended

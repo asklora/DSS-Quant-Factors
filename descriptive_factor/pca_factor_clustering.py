@@ -83,13 +83,13 @@ def feature_hierarchical_plot(testing_interval=7):
 # --------------------------------- Test subset composition ------------------------------------------
 
 def feature_hierarchical_selection(X, i=0.5):
-    ''' perform agglomorative hierarchical cluster on descriptive factors at different interval'''
+    ''' perform agglomorative hierarchical cluster on descriptive factors at different interval (Update: i=n_cluster)'''
 
     agglo = FeatureAgglomeration(distance_threshold=0, n_clusters=None)
     model = agglo.fit(X)
 
     distance_threshold = np.max(model.distances_)*i
-    agglo = FeatureAgglomeration(distance_threshold=distance_threshold, n_clusters=None)
+    agglo = FeatureAgglomeration(distance_threshold=None, n_clusters=i)
     model = agglo.fit(X)
     print(f'---> {i} feature cluster for {model.n_clusters_} clusters')
 
@@ -183,7 +183,12 @@ def feature_subset_cluster(testing_interval=7):
     print(df)
 
 def feature_subset_cluster1(testing_interval=7):
-    ''' try cluster on features '''
+    ''' try cluster on features
+        1. select features subset based on feature clustering
+        2. Use PCA on feature subsets
+        3. Clustering on n PCA components
+        4. evaluate based on xie-beni index
+    '''
 
     for testing_interval in [7, 30, 91]:
         df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
@@ -191,7 +196,7 @@ def feature_subset_cluster1(testing_interval=7):
         df['trading_day'] = pd.to_datetime(df['trading_day'])
 
         r = {}
-        for yr, i, n in itertools.product([1, 2, 3], [0.4, 0.3], [2]):
+        for yr, i, n in itertools.product([1, 2, 3], [2, 3, 4, 5, 6], [1]):
             r['year'] = yr
             r['distance_pct'] = i
             r['pca_components'] = n
@@ -208,7 +213,7 @@ def feature_subset_cluster1(testing_interval=7):
                 X = df_window[col].values
                 try:
                     X = PCA(n_components=n).fit_transform(X)  # calculation Cov matrix is embeded in PCA
-                    for n_clusters in [2, 5, 10]:
+                    for n_clusters in [2]:      # 5, 10
                         r['cluster'] = n_clusters
                         model = FCM(n_clusters=n_clusters, m=1.5)
                         model.fit(X)
@@ -264,9 +269,53 @@ def plot_scatter_hist(df, cols, suffixes):
     # fig.savefig(f'cluster_selected_{suffixes}.png')
     # plt.close(fig)
 
+def plot_scatter_hist_2d(df):
+    ''' plot variance in 2D space (variance on 2D side) '''
+    plt.scatter(df.iloc[:,0], df.iloc[:,1], c=df['cluster'], cmap="Set1", alpha=.5)
+    for i in range(len(df)):
+        plt.annotate(df.index[i], (df.iloc[i, 0], df.iloc[i, 1]), fontsize=5)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+    # fig.savefig(f'cluster_selected_{suffixes}.png')
+    # plt.close(fig)
+
+def plot_scatter_hist_2d_pca():
+    ''' plot best PCA combination from feature_subset_cluster1() '''
+
+    # best for 7, 30, 91
+    # cols = 'change_assets,change_ebtda,avg_volume,avg_inv_turnover_re,avg_ca_turnover_re,avg_fa_turnover_re,avg_capex_to_dda,avg_cash_ratio,avg_market_cap_usd'
+    # cols = 'skew,ret_momentum,change_earnings,change_ebtda,avg_div_payout,avg_earnings_yield,avg_ebitda_to_ev,avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin,avg_roic,icb_code'
+    cols = 'change_volume,avg_volume,avg_div_yield,avg_inv_turnover_re,avg_ca_turnover_re,avg_fa_turnover_re,avg_capex_to_dda,avg_cash_ratio,avg_market_cap_usd'
+
+    # bad one
+    cols='skew,ret_momentum,change_tri_fillna,change_earnings,avg_div_payout,avg_volume_1w3m,avg_ni_to_cfo,avg_interest_to_earnings,avg_roe,avg_ebitda_to_ev,avg_roic'
+    cols = cols.split(',')
+
+    # prepare cluster df (download data)
+    df = pd.read_csv(f'dcache_sample_91.csv')
+    df = df.loc[df['ticker'].str[0] != '.']
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df.iloc[:, 2:] = trim_outlier_std(df.iloc[:, 2:].fillna(0))
+
+    # prepare cluster df (PCA)
+    df = df.loc[df['trading_day'] > (dt.datetime.today() - relativedelta(years=2))].copy()
+    X = df[cols].values
+    X = PCA(n_components=2).fit_transform(X)  # calculation Cov matrix is embeded in PCA
+
+    # FCM clustering
+    model = FCM(n_clusters=2, m=1.5)
+    model.fit(X)
+    y = model.predict(X)
+
+    # Plot Scatter plot
+    plt.scatter(X[:,0], X[:,1], c=y, cmap="Set1", alpha=.5)
+    plt.tight_layout()
+    plt.show()
+
 # --------------------------------- Test on User Portfolio ------------------------------------------
 
-def read_port_from_firebase():
+def read_user_from_firebase():
     ''' read user portfolio details from firestore '''
 
     import firebase_admin
@@ -289,6 +338,7 @@ def read_port_from_firebase():
     for data in doc_ref:
         format_data = {}
         data = data.to_dict()
+        format_data['user_id'] = data.get('user_id')
         format_data['index'] = data.get('profile').get('email')
         format_data['return'] = data.get('total_profit_pct')
         for i in data.get('active_portfolio'):
@@ -301,23 +351,37 @@ def read_port_from_firebase():
     result = pd.DataFrame(object_list).sort_values(by=['return'], ascending=False)
     result['rating'] = result['ticker'].map(rating)
 
+    print(list(result['user_id'].unique()))
+
     result.to_csv('port_result.csv', index=False)
     return result
 
-def read_port_from_postgres():
+def read_user_from_postgres():
     ''' read user portfolio details from postgres '''
 
     with global_vals.engine.connect() as conn:
-        df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, created FROM orders", conn)
+        df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, placed_at FROM orders WHERE placed", conn)
     global_vals.engine.dispose()
     df['bot_id'] = df['bot_id'].apply(lambda x: x.split('_')[0])
 
     df = df.loc[df['status']!='cancel']
-    df['created'] = df['created']
+    df['placed_at'] = df['placed_at'].dt.date
 
+    # filter1: id used in production
+    prod_id = [1423, 1422, 1816, 1453, 1428, 1915, 1507, 1420, 1277, 1094, 1883, 1684, 1426, 1685, 1693, 1263, 1694, 1324, 1618, 1494, 1325, 1489, 1653, 1882, 1691, 1321, 1499, 2015, 1698, 1487, 1506, 1495, 1981, 1264, 1948, 1267, 1326, 1520, 2146, 2147, 2278, 1783, 1695, 1687, 2014, 1521, 1425, 1689, 2080, 2212, 1192, 1274, 2113, 1692, 1222, 2245, 1191, 1269, 1271, 1255, 1273, 1697, 1429]
+
+    # filter2: id with > 2 stocks/bots in portfolio
+    id_more_than2 = df.groupby('user_id').count()['ticker']
+    id_more_than2 = id_more_than2[id_more_than2>2].index
+
+    df = df.loc[df['user_id'].isin(set(prod_id)&set(id_more_than2))]
+    df = df.rename(columns={'placed_at': 'trading_day'})
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
     print(df['status'].unique())
-    return df
 
+    df.to_csv('user_port.csv')
+
+    return df
 
 def analyse_port():
     ''' analyse ticker, pct_return of users '''
@@ -370,58 +434,80 @@ def read_fund_port():
 
     return df
 
-def sample_port_var(testing_interval=91):
+def sample_port_var(testing_interval=7):
     ''' calculate variance on different factors for clustering '''
-    port = read_fund_port()
+    # port = read_fund_port()
+    port = read_user_from_postgres()
 
     # read descriptive ratios
     df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
-    df = df.loc[df['trading_day']==df['trading_day'].max()]
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df = df.loc[df['trading_day']>dt.datetime(2021,9,1)]
+
+    df_max = df.loc[df['trading_day']==df['trading_day'].max()]
+    df_max['trading_day'] = dt.datetime.today()
+    df = df.append(df_max)
+    df = df.drop_duplicates(subset=['trading_day','ticker'], keep='last')
+
+    from preprocess.ratios_calculations import fill_all_day
+    df = fill_all_day(df).sort_values(by=['ticker','trading_day'])
+    num_col = df.select_dtypes(float).columns.to_list()
+    df[num_col] = df[num_col].ffill()
 
     # preprocessing
     df = df.loc[df['ticker'].str[0]!='.']
     df = df.fillna(0)
     df.iloc[:, 2:] = trim_outlier_std(df.iloc[:, 2:]).values
 
-    df = pd.merge(port, df, on=['ticker'], how='left')
-    std = df.groupby('fund').std()
+    df = pd.merge(port, df, on=['ticker', 'trading_day'], how='left')
 
-    # fig = plt.figure(figsize=(4, 7), dpi=60, constrained_layout=True)
+    # # plot distribution
+    # fig = plt.figure(figsize=(4, 8), dpi=60, constrained_layout=True)
     # i=1
     # for col in std.columns.to_list():
-    #     ax = fig.add_subplot(7, 4, i)
+    #     ax = fig.add_subplot(8, 4, i)
     #     ax.hist(std[col])
+    #     ax.set_xlabel(col)
     #     i+=1
     # plt.show()
 
     # try FCM + xie_beni_index
-    cols = ['icb_code','change_tri_fillna','vol','change_volume']
-    cols = 'avg_volume,avg_market_cap_usd,avg_inv_turnover_re,avg_ca_turnover_re,avg_cash_ratio'
-    cols = 'skew,ret_momentum,change_tri_fillna,change_earnings,change_ebtda,avg_div_payout,' \
-           'avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin'
+    cols1 = ['icb_code']
+    cols2 = ['change_tri_fillna', 'vol', 'change_volume']
+    # cols = 'avg_volume,avg_market_cap_usd,avg_inv_turnover_re,avg_ca_turnover_re,avg_cash_ratio'
+    # cols = 'skew,ret_momentum,change_tri_fillna,change_earnings,change_ebtda,avg_div_payout,' \
+    #        'avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin'
     # cols = 'avg_div_yield,avg_fa_turnover_re,avg_book_to_price,avg_capex_to_dda'
-    cols = cols.split(',')
-    std = std[cols].dropna(how='any')
-    X = std.values
-    for i in range(3, 4):
-        model = FCM(n_clusters=i, m=2)
-        model.fit(X)
-        std['cluster'] = model.predict(X)
-        u = model.u
-        v = model.centers
-        score = xie_beni_index(X, u, v.T, 2)
-        print(i, score)
+    # cols = cols.split(',')
 
-        plot_scatter_hist(std, cols, f'fund_st{i}')
+    std1 = df.groupby('user_id')[cols1].var().sum(axis=1)
+    std2 = df.groupby('user_id')[cols2].var().sum(axis=1)
+    std = pd.DataFrame({'v1': std1, 'v2': std2}).dropna(how='any')
+
+    X = std.values
+    n_clusters = 2
+
+
+
+    plot_scatter_hist_2d(std)
 
 if __name__ == "__main__":
+
+    # df = pd.read_csv(f'dcache_sample_91.csv')
+    # df = df.loc[df['trading_day']==df['trading_day'].max()]
+    # df = df.loc[df['ticker'].str[-3:]=='.HK']
+    # df.iloc[:, 2:] = trim_outlier_std(df.iloc[:, 2:].fillna(0))
+    # plt.scatter(df['icb_code'], df['change_volume'], alpha=.5)
+    # plt.show()
+    # exit(200)
 
     # feature_cluster()
     # feature_subset_pca()
     # feature_subset_cluster1()
+    # exit(200)
 
-    # read_port_from_firebase()
-    read_port_from_postgres()
+    # read_user_from_firebase()
+    # read_user_from_postgres()
     # analyse_port()
 
-    # sample_port_var()
+    sample_port_var()

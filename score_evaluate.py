@@ -281,7 +281,28 @@ class score_eval:
         if self.SLACK:
             file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
 
+def read_query(query, engine_num=int):
+    ''' read table from different DB '''
+    engine_dict = {0: global_vals.engine, 1: global_vals.engine_ali, 2: global_vals.engine_ali_prod}
+    with engine_dict[engine_num].connect() as conn:
+        df = pd.read_sql(query, conn)
+    engine_dict[engine_num].dispose()
+    return df
+
+def manual_check_on_score(currency='HKD'):
+    ''' checking ai_score rational by go through reason for top picks in each currency '''
+
+    ai_score_table_name = "universe_rating"
+
+    score = read_query(f"SELECT * FROM {ai_score_table_name} WHERE currency_code='{currency}' LIMIT 10", 0)
+    score = read_query(query, 0)
+    score = read_query(query, 0)
+
 if __name__ == "__main__":
+    manual_check_on_score()
+
+    exit(200)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
     parser.add_argument('--debug', action='store_true', help='Debug = True')

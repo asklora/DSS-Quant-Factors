@@ -31,11 +31,11 @@ def get_tri(save=True, conditions=None):
     # update market_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
     market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    anchor_idx = tri.loc[tri['trading_day'].dt.date==(dt.datetime.today().date()-relativedelta(days=1))].index
+    anchor_idx = tri.groupby('ticker').tail(1).index
     tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
     tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
     tri[['anchor_tri', 'market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].ffill().bfill()
-    tri[['anchor_tri']] = tri['tri']/tri['anchor_tri']
+    tri['anchor_tri'] = tri['tri'].values/tri['anchor_tri'].values
     tri[['market_cap','tac']] = tri[['market_cap','close']].multiply(tri['anchor_tri'], axis=0)
 
     tri = tri.drop(['anchor_tri'], axis=1)
@@ -51,12 +51,11 @@ def get_worldscope(save=True, conditions=None):
     ws_conditions = ["C.ticker IS NOT NULL"]
     if conditions:
         ws_conditions.extend(conditions)
-
     with global_vals.engine.connect() as conn:
         print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
         query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vals.worldscope_quarter_summary_table} C '
         query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vals.dl_value_universe_table}) U ON U.ticker = C.ticker "
-        query_ws += f"WHERE {' AND '.join(ws_conditions)}"
+        query_ws += f"WHERE {' AND '.join(ws_conditions)} "
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
         query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vals.ibes_data_table} WHERE ticker IS NOT NULL'
@@ -78,9 +77,11 @@ def get_worldscope(save=True, conditions=None):
         ''' fill in missing values by calculating with existing data '''
 
         print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
-        ws['fn_18199'] = ws['fn_18199'].fillna(ws['fn_3255'] - ws['fn_2001'])  # Net debt = total debt - C&CE
-        ws['fn_18308'] = ws['fn_18308'].fillna(ws['fn_18271'] + ws['fn_18269'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
-        ws['fn_18309'] = ws['fn_18309'].fillna(ws['fn_18308'] + ws['fn_18313'])  # TTM EBITDA = TTM EBIT + TTM DDA
+        ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])  # Net debt = total debt - C&CE
+        ws['ttm_ebit'] = ws['ttm_ebit'].fillna(
+            ws['ttm_pretax_income'] + ws['ttm_interest'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
+        ws['ttm_ebitda'] = ws['ttm_ebitda'].fillna(ws['ttm_ebit'] + ws['ttm_dda'])  # TTM EBITDA = TTM EBIT + TTM DDA
+        ws['current_asset'] = ws['current_asset'].fillna(ws['total_asset'] - ws['ppe_net']) # fill missing for current assets
         return ws
 
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
@@ -141,9 +142,9 @@ class combine_tri_worldscope:
     
         # Merge all table and convert to daily basis
         tri = fill_all_day(tri)
-        tri[['volume_1w']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
-        tri[['volume_3m']] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
-        tri[['volume_1w3m']] = (tri['volume_1w']/tri['volume_3m']).values
+        tri['volume_1w'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
+        tri['volume_3m'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
+        tri['volume_1w3m'] = (tri['volume_1w']/tri['volume_3m']).values
         # tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
         tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].ffill()
         self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
@@ -317,15 +318,16 @@ def calc_fx_conversion(df):
 
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+    with global_vals.engine.connect() as conn, global_vals.engine_ali_prod.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vals.currency_history_table}", conn)
+        fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
         fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vals.engine.dispose()
-    global_vals.engine_ali.dispose()
+    global_vals.engine_ali_prod.dispose()
 
     df = df.merge(curr_code, on='ticker', how='left')
     # df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
@@ -342,7 +344,7 @@ def calc_fx_conversion(df):
     for cur_col, fx_col in zip(currency_code_cols, fx_cols):
         df['trading_day_str'] = df['trading_day'].dt.strftime('%Y-%m-%d')
         df = df.set_index([cur_col, 'trading_day_str'])
-        df['index'] = df.index
+        df['index'] = df.index.to_numpy()
         df[fx_col] = df['index'].map(fx)
         df = df.reset_index()
     df[fx_cols] = df.groupby(['ticker'])[fx_cols].ffill()
@@ -350,7 +352,7 @@ def calc_fx_conversion(df):
     ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]     # no fx conversion for ratio items
 
     for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
-        cols = list(set(g['model_name'].to_list()) & set(df.columns.to_list()))
+        cols = list(set(g['our_name'].to_list()) & set(df.columns.to_list()))
         print(f'----> [{name}] source data with fx conversion: ', cols)
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
@@ -367,9 +369,6 @@ def calc_factor_variables(df):
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
-
-    # Fill NaN for current assets
-    df['fn_2201'] = df['fn_2201'].fillna(df['fn_2999'] - df['fn_2501'])
 
     print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
     # Prepare for field requires add/minus
@@ -418,7 +417,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['USD']).get_results(list_of_interval=[1, 365])
+    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[7, 91])
     print(dict.keys())
 
     # get_worldscope(True)

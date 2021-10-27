@@ -9,8 +9,8 @@ from dateutil.relativedelta import relativedelta
 # test_url = "postgres://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
 # test_engine = create_engine(test_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
-with global_vals.engine_ali_prod.connect() as conn:
-    df = pd.read_sql('SELECT * FROM ai_value_formula_ratios', conn)
+with global_vals.engine_ali.connect() as conn:
+    df = pd.read_sql('SELECT * FROM factor_formula_ratios_descriptive', conn)
     ingestion_name = pd.read_sql('SELECT dsws_name, our_name FROM ingestion_name', conn)
     ingestion_name['dsws_name'] = ingestion_name['dsws_name'].str.lower()
     ingestion_name['dsws_name'] = ingestion_name['dsws_name'].apply(lambda x: 'fn_'+str(int(x[2:-1])) if x[:2]=='wc' else x)
@@ -18,8 +18,8 @@ with global_vals.engine_ali_prod.connect() as conn:
     for i in ['field_num','field_denom']:
         df[i] = df[i].replace(ingestion_name)
     extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
-    df.to_sql('ai_value_formula_ratios', **extra)
-global_vals.engine_ali_prod.dispose()
+    df.to_sql('factor_formula_ratios_descriptive', **extra)
+global_vals.engine_ali.dispose()
 exit(1)
 
 df = df.loc[df['currency_code']=='USD'].sort_values('ai_score', ascending=False).head(20)
