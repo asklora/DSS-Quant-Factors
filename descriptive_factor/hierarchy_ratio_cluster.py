@@ -9,7 +9,7 @@ import itertools
 import multiprocessing as mp
 
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.preprocessing import robust_scale, QuantileTransformer, scale, minmax_scale
+from sklearn.preprocessing import robust_scale, QuantileTransformer, scale, minmax_scale, quantile_transform
 from scipy.cluster.hierarchy import cophenet
 from scipy.spatial.distance import pdist
 
@@ -313,7 +313,7 @@ def trim_outlier_std(df):
         x = np.clip(x, np.nanpercentile(x, 1), np.nanpercentile(x, 99))
         # x = np.clip(x, np.nanmean(x) - 2 * np.nanstd(x), np.nanmean(x) + 2 * np.nanstd(x))
         x = robust_scale(x)
-        return x
+        return quantile_transform(np.reshape(x, (x.shape[0], 1)), output_distribution='normal')[:, 0]
 
     cols = df.select_dtypes(float).columns.to_list()
     for col in cols:

@@ -25,18 +25,18 @@ def get_tri(save=True, conditions=None):
         query_tri += f"ORDER BY C.ticker, trading_day"
         tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
-        market_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}', conn_droid)
+        mkt_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}', conn_droid)
     global_vals.engine.dispose()
 
-    # update market_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
-    market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
+    # update mkt_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
+    mkt_cap_anchor = mkt_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     anchor_idx = tri.groupby('ticker').tail(1).index
-    tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
-    tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
-    tri[['anchor_tri', 'market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].ffill().bfill()
+    tri.loc[anchor_idx, 'mkt_cap'] = tri.loc[anchor_idx, 'ticker'].map(mkt_cap_anchor)
+    tri.loc[tri['mkt_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['mkt_cap'].notnull(), 'tri']
+    tri[['anchor_tri', 'mkt_cap']] = tri.groupby('ticker')[['anchor_tri','mkt_cap']].ffill().bfill()
     tri['anchor_tri'] = tri['tri'].values/tri['anchor_tri'].values
-    tri[['market_cap','tac']] = tri[['market_cap','close']].multiply(tri['anchor_tri'], axis=0)
+    tri[['mkt_cap','tac']] = tri[['mkt_cap','close']].multiply(tri['anchor_tri'], axis=0)
 
     tri = tri.drop(['anchor_tri'], axis=1)
 
@@ -138,6 +138,7 @@ class combine_tri_worldscope:
         # change to datetime
         tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
         ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+        ws = ws.drop(columns=['mkt_cap'])
         ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
     
         # Merge all table and convert to daily basis
@@ -145,19 +146,19 @@ class combine_tri_worldscope:
         tri['volume_1w'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
         tri['volume_3m'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
         tri['volume_1w3m'] = (tri['volume_1w']/tri['volume_3m']).values
-        # tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
-        tri[['market_cap','tac']] = tri.groupby(['ticker'])[['market_cap','tac']].ffill()
+        # tri[['mkt_cap','tac']] = tri.groupby(['ticker'])[['mkt_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
+        tri[['mkt_cap','tac']] = tri.groupby(['ticker'])[['mkt_cap','tac']].ffill()
         self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
         self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
 
-        ws_col = ws.filter(regex='^fn_').columns.to_list()
+        ws_col = ws.select_dtypes(float).columns.to_list()
         ibes_col = ibes.select_dtypes(float).columns.to_list()
         # self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].apply(pd.DataFrame.interpolate,
         #                                                                               limit_direction='forward', limit_area='inside')
         self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].ffill()
 
         self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
-        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code','market_cap_usd'])
+        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code'])
     
         # Fill NaN in fundamental records with interpolate + tri with
         self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
@@ -356,7 +357,7 @@ def calc_fx_conversion(df):
         print(f'----> [{name}] source data with fx conversion: ', cols)
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
-    df[['close','market_cap']] = df[['close','market_cap']].div(df['fx_dss'], axis="index")  # convert close price
+    df[['close','mkt_cap']] = df[['close','mkt_cap']].div(df['fx_dss'], axis="index")  # convert close price
 
     return df[org_cols]
 
@@ -417,7 +418,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[7, 91])
+    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[1, 365])
     print(dict.keys())
 
     # get_worldscope(True)

@@ -269,11 +269,12 @@ def plot_scatter_hist(df, cols, suffixes):
     # fig.savefig(f'cluster_selected_{suffixes}.png')
     # plt.close(fig)
 
-def plot_scatter_hist_2d(df):
+def plot_scatter_hist_2d(df, annotate=True):
     ''' plot variance in 2D space (variance on 2D side) '''
     plt.scatter(df.iloc[:,0], df.iloc[:,1], c=df['cluster'], cmap="Set1", alpha=.5)
-    for i in range(len(df)):
-        plt.annotate(df.index[i], (df.iloc[i, 0], df.iloc[i, 1]), fontsize=5)
+    if annotate:
+        for i in range(len(df)):
+            plt.annotate(df.index[i], (df.iloc[i, 0], df.iloc[i, 1]), fontsize=5)
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -432,17 +433,18 @@ def read_fund_port():
     t = Counter(df['ticker'].to_list())
     print(t)
 
-    return df
+    df['trading_day'] = dt.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    return df.rename(columns={'fund':'user_id'})
 
-def sample_port_var(testing_interval=7):
+def sample_port_var(testing_interval=91):
     ''' calculate variance on different factors for clustering '''
-    # port = read_fund_port()
-    port = read_user_from_postgres()
+    port = read_fund_port()
+    # port = read_user_from_postgres()
 
     # read descriptive ratios
     df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
     df['trading_day'] = pd.to_datetime(df['trading_day'])
-    df = df.loc[df['trading_day']>dt.datetime(2021,9,1)]
+    df = df.loc[df['trading_day']>dt.datetime(2019,9,1)]
 
     df_max = df.loc[df['trading_day']==df['trading_day'].max()]
     df_max['trading_day'] = dt.datetime.today()
@@ -472,8 +474,8 @@ def sample_port_var(testing_interval=7):
     # plt.show()
 
     # try FCM + xie_beni_index
-    cols1 = ['icb_code']
-    cols2 = ['change_tri_fillna', 'vol', 'change_volume']
+    cols1 = ['avg_debt_to_asset']
+    cols2 = ['change_volume']
     # cols = 'avg_volume,avg_market_cap_usd,avg_inv_turnover_re,avg_ca_turnover_re,avg_cash_ratio'
     # cols = 'skew,ret_momentum,change_tri_fillna,change_earnings,change_ebtda,avg_div_payout,' \
     #        'avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin'
@@ -486,10 +488,12 @@ def sample_port_var(testing_interval=7):
 
     X = std.values
     n_clusters = 2
+    from utils_des import cluster_hierarchical, cluster_fcm
+    score, y = cluster_fcm(X)
+    std['cluster'] = y
+    print(score)
 
-
-
-    plot_scatter_hist_2d(std)
+    plot_scatter_hist_2d(std, annotate=False)
 
 if __name__ == "__main__":
 

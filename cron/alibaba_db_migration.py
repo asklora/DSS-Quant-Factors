@@ -16,19 +16,21 @@ def ali_migration_to_prod(migrate_tbl_lst):
     ''' migrate list of cron table (i.e. currenctly used in DROID_v2.1) used to Prod DB '''
 
     print(' === Alibaba Migrate Dev to Prod Start === ')
-    # metadata = MetaData()
+    metadata = MetaData()
 
     for t in migrate_tbl_lst:
-        # try:    # create new tables if not exist
-        #     table = Table(t, metadata, autoload=True, autoload_with=global_vals.engine_ali)
-        #     table.create(bind=global_vals.engine_ali_prod)
-        #     print('---> Create table for: ', t)
-        # except Exception as e:
-        #     pass
+        try:    # create new tables if not exist
+            table = Table(t, metadata, autoload=True, autoload_with=global_vals.engine_ali)
+            table.create(bind=global_vals.engine_ali_prod)
+            print('---> Create table for: ', t)
+        except Exception as e:
+            print(t, e)
 
         with global_vals.engine_ali.connect() as conn_dev, global_vals.engine_ali_prod.connect() as conn_prod:
-            extra = {'con': conn_prod, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
-            pd.read_sql(f'SELECT * FROM {t}', conn_dev).to_sql(t, **extra)
+            df = pd.read_sql(f'SELECT * FROM {t}', conn_dev, chunksize=10000)
+            df = pd.concat(df)
+            extra = {'con': conn_prod, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':10000}
+            df.to_sql(t, **extra)
         global_vals.engine_ali.dispose()
         global_vals.engine_ali_prod.dispose()
         print('     ---> Finish migrate: ', t)
@@ -48,5 +50,5 @@ if __name__=="__main__":
     # 'ai_value_formula_ratios'
     # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
 
-    migrate_tbl_lst = ['data_factor_eikon_others_fx']
+    migrate_tbl_lst = ['ai_value_lgbm_pred','ai_value_lgbm_pred_final','ai_value_lgbm_pred_final_eps','ai_value_lgbm_score']
     ali_migration_to_prod(migrate_tbl_lst)
