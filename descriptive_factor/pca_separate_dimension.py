@@ -4,7 +4,6 @@ import datetime as dt
 from utils_des import read_item_df, feature_hierarchical_plot, selection_feature_hierarchical, \
     cluster_fcm, cluster_gaussian, cluster_hierarchical, report_to_slack, plot_scatter_2d
 
-
 def define_pillars(df):
     with global_vals.engine_ali.connect() as conn:
         formula = pd.read_sql(f'SELECT pillar, name FROM {global_vals.formula_factors_table}_descriptive', conn)
@@ -147,9 +146,9 @@ def check_corr():
     print(c)
 
 if __name__=="__main__":
-    # test_factor(suffixes='_quantile2').try_pca()
-    # test_factor(suffixes='_quantile2').try_svd()
-    test_factor(suffixes='_quantile2').try_original()
+    test_factor(suffixes='_quantile3').try_pca()        # 2: right for selection / 3: start combine pillars
+    test_factor(suffixes='_quantile3').try_svd()
+    test_factor(suffixes='_quantile3').try_original()
 
     # plot_test_factor()
     # check_corr()

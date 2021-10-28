@@ -30,9 +30,19 @@ def test_selection_score():
     data = read_item_df(testing_interval=91)
     data.time_after(5, 0)
 
-    cols1 = 'avg_debt_to_asset,avg_roe,avg_div_yield,change_earnings,change_tri_fillna,avg_volume'
+    # cols1 = 'avg_debt_to_asset,avg_roe,avg_div_yield,change_earnings,change_tri_fillna,avg_volume'
+    # cols1 = 'avg_ca_turnover_re,avg_interest_to_earnings,'
+    # cols1 +='change_ebtda,avg_div_yield,'
+    cols1 ='avg_volume,change_volume,'
+
+    cols1 +='avg_mkt_cap,'
+    cols1 +='icb_code'
+            # 'avg_ebitda_to_ev,avg_earnings_yield,avg_ni_to_cfo'
     cols1 = cols1.split(',')
     x1 = data.org_x(cols1)
+    # df = pd.DataFrame(np.concatenate([x1], axis=1), columns=cols1)
+    # c = df.corr().unstack().reset_index().drop_duplicates().sort_values(by=[0])
+    # print(c)
 
     cols2 = 'avg_earnings_yield,avg_ni_to_cfo,avg_ebitda_to_ev,avg_book_to_price'
     cols2 = cols2.split(',')
@@ -41,6 +51,19 @@ def test_selection_score():
     df = pd.DataFrame(np.concatenate([x1, x2], axis=1), columns=cols1+['value_pca1', 'value_pca2'])
     c = df.corr().unstack().reset_index().drop_duplicates().sort_values(by=[0])
     print(c)
+
+    cols3 = 'avg_roic,avg_debt_to_asset,avg_ca_turnover_re,avg_cash_ratio,avg_roe,avg_inv_turnover_re,avg_fa_turnover_re,avg_interest_to_earnings'
+    cols3 = cols3.split(',')
+    x3, _ = data.pca_x(cols3, 2)
+
+    cols4 = 'change_earnings,change_ebtda,change_assets,avg_gross_margin,avg_div_yield,avg_capex_to_dda,change_revenue,avg_div_payout'
+    cols4 = cols4.split(',')
+    x4, _ = data.svd_x(cols4, 2)
+
+    df = pd.DataFrame(np.concatenate([x1, x2, x3, x4], axis=1), columns=cols1+['value_pca1', 'value_pca2']+['effi_svd1', 'effi_svd2']+['grow_pca1', 'grow_pca2'])
+    c = df.corr().unstack().reset_index().drop_duplicates(subset=[0]).sort_values(by=[0], ascending=False)
+    print(c)
+
 
 if __name__=="__main__":
     # best_factor()
