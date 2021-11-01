@@ -191,7 +191,7 @@ def download_stock_pred(
             if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
-    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+    with global_vals.engine_ali_prod.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
 
         # prepare table to write to DB
@@ -203,7 +203,7 @@ def download_stock_pred(
         tbl_name = global_vals.production_factor_rank_table + f"_{suffix}"
         pd.concat(all_current, axis=0).to_sql(tbl_name, **extra)
         record_table_update_time(tbl_name, conn)
-    global_vals.engine_ali.dispose()
+    global_vals.engine_ali_prod.dispose()
 
 if __name__ == "__main__":
 
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default=f'v2_{suffix}_20211018_debug_sep')
+    parser.add_argument('--name_sql', type=str, default=f'v2_weekly1_20211101')
     parser.add_argument('--suffix', type=str, default=suffix)
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
