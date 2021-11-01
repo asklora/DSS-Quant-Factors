@@ -15,6 +15,7 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, a
     recall_score, f1_score
 
 from preprocess.load_data import load_data
+from utils_sql import upsert_data_to_database
 import global_vals
 import sys
 
@@ -50,20 +51,14 @@ class rf_HPOT:
         trials = Trials()
         best = fmin(fn=self.eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-    def __compare_with_lasso(self):
-        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            lasso_bm = pd.read_sql(f"SELECT * FROM {global_vals.result_score_table}_lasso_prod "
-                                   f"WHERE \"group_code\"='{hpot['group_code']}' "
-                                   f"AND testing_period<'{dt.datetime.strftime(hpot['testing_period'], '%Y-%m-%d')}'", conn)
-            # lasso_bm = lasso_bm.groupby(['group_code','testing_period'])['mse_test'].min()
-            lasso_bm = lasso_bm['mse_train'].mean()
-        global_vals.engine_ali.dispose()
-
-        # print('==============> BM mse_train', str(lasso_bm*100)[:6])
-
     def write_db(self):
         ''' write score/prediction/feature to DB ''' 
         tbl_suffix = '_rf_reg'
+
+        # upd
+        upsert_data_to_database()
+
+
         with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
             self.hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)

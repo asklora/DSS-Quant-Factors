@@ -14,7 +14,8 @@ from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from score_evaluate import score_eval
-from utils_report_to_slack import report_to_slack
+from utils_report_to_slack import to_slack
+from utils_sql import sql_read_query, sql_read_table
 
 from itertools import product, combinations, chain
 import multiprocessing as mp
@@ -61,7 +62,7 @@ def mp_rf(*mp_args):
                     y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     except Exception as e:
-        report_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}', channel='U026B04RB3J')
+        to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
 
 if __name__ == "__main__":
 
@@ -92,9 +93,8 @@ if __name__ == "__main__":
         table_names = ['data_ibes_monthly', 'data_macro_monthly', 'data_worldscope_summary']
         waiting = True
         while waiting:
-            with global_vals.engine_ali_prod.connect() as conn:  # Default last_test_date is second last period_end in premium table
-                update_time = pd.read_sql(f"SELECT * FROM ingestion_update_time WHERE table_name in {tuple(table_names)}", conn)
-            global_vals.engine_ali_prod.dispose()
+            update_time = sql_read_table("ingestion_update_time", global_vals.db_url_alibaba_prod)
+            update_time = update_time.loc[update_time['table_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
             else:
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         elif args.mode == 'v2':
             calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
         elif args.mode == 'v2_trim':
-            calc_premium_all_v2(tbl_suffix, processes=arg.processes, trim_outlier_=True)
+            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=True)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
@@ -142,11 +142,9 @@ if __name__ == "__main__":
     # use_pca_list = [0.4]
 
     # create date list of all testing period
-    with global_vals.engine_ali.connect() as conn: # Default last_test_date is second last period_end in premium table
-        last_test_date = pd.read_sql(f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}", conn)
-        testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
-    global_vals.engine_ali.dispose()
-
+    query = f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}"
+    last_test_date = sql_read_query(query, db_url=global_vals.engine_ali)
+    testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
     # --------------------------------- Prepare Training Set -------------------------------------

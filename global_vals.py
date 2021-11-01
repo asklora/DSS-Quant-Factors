@@ -2,9 +2,7 @@ from sqlalchemy import create_engine
 import os
 from pathlib import Path
 
-db_url_prod = "postgres://postgres:ml2021#LORA@droid-v2-prod-instance.cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres"
-db_url_droid = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # AWS Read url
-db_clair_local = 'postgresql://localhost:5432/postgres'
+db_url_aws_read = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # AWS Read url
 db_url_alibaba = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
 db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
 
@@ -55,7 +53,6 @@ date_column = "period_end"
 icb_column = "icb_code"
 index_column = "currency_code"
 
-engine = create_engine(db_url_droid, max_overflow=-1, isolation_level="AUTOCOMMIT")              # APP cron DB
-engine_prod = create_engine(db_url_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")          # cron version
+engine = create_engine(db_url_aws_read, max_overflow=-1, isolation_level="AUTOCOMMIT")              # APP cron DB
 engine_ali = create_engine(db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")        # research DB
 engine_ali_prod = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")        # research DB

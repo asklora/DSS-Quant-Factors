@@ -11,3 +11,5 @@ matplotlib
 openpyxl
 slack_sdk
 statsmodels
+yagmail
+pangres

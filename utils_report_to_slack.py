@@ -1,91 +1,81 @@
 from slack_sdk import WebClient
-import logging
 
-SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
-default_channel = "#factor_message"
-logger = logging.getLogger(__name__)
+class to_slack:
+    def __init__(self, channel="#factor_message"):
+        self.SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
+        self.slack_name_to_id = {
+            "#factor_message": "#factor_message",
+            "clair": "U026B04RB3J",
+            "stephen": "U8ZV41XS9",
+            "nick": "U01JKNY3D0U"
+        }
+        try:
+            self.channel = self.slack_name_to_id[channel]
+        except Exception as e:
+            # report error to Clair
+            self.channel = self.slack_name_to_id["clair"]
+            self.message_to_slack(f"Send to slack ERROR: need to add slack user id for {channel} ("
+                                 f"currently user_id includes: {list(self.slack_name_to_id.keys())})")
+            raise Exception(e)
 
-def report_to_slack(message, channel=default_channel):
+    def message_to_slack(self, message):
 
-    try:
-        client = WebClient(token=SLACK_API, timeout=30)
-        client.chat_postMessage(
-            channel=channel,
-            text=message,
-        )
+        try:
+            client = WebClient(token=self.SLACK_API, timeout=30)
+            client.chat_postMessage(
+                channel=self.channel,
+                text=message,
+            )
 
-    except Exception as e:
-        print(e)
+        except Exception as e:
+            print(e)
 
-def report_series_to_slack(message=None, df=None, id=None):
+    def series_to_slack(self, message=None, df=None):
 
-    if message:
-        report_to_slack(message)
+        if message:
+            self.message_to_slack(message)
 
-    message = "```"
-    for k, v in df.to_dict().items():
-        message += f"{k.ljust(40)}{v}\n"
-    message += "```"
-    print(message)
+        message = "```"
+        for k, v in df.to_dict().items():
+            message += f"{k.ljust(40)}{v}\n"
+        message += "```"
+        print(message)
+        self.message_to_slack(message)
 
-    if id:
-        report_to_slack_user(message, id=id)
-    else:
-        report_to_slack(message)
+    def df_to_slack(self, message, df):
+        if message:
+            self.message_to_slack(message)
 
-def report_df_to_slack(message, df, id=None):
-    if message:
-        report_to_slack(message)
+        message = "```"
+        message += f"{'columns'.ljust(20)}"
 
-    message = "```"
-    message += f"{'columns'.ljust(20)}"
-
-    for i in df.columns.to_list():  # add columns
-        message += f"{i.ljust(10)}"
-    message += "\n"
-
-    for k, v in df.transpose().to_dict(orient='list').items():
-        message += f"{str(k).ljust(20)}"
-        for i in v:
-            message += f"{str(i).ljust(10)}"
+        for i in df.columns.to_list():  # add columns
+            message += f"{i.ljust(10)}"
         message += "\n"
 
-    message += "```"
-    print(message)
+        for k, v in df.transpose().to_dict(orient='list').items():
+            message += f"{str(k).ljust(20)}"
+            for i in v:
+                message += f"{str(i).ljust(10)}"
+            message += "\n"
 
-    if id:
-        report_to_slack_user(message, id=id)
-    else:
-        report_to_slack(message)
+        message += "```"
+        print(message)
+        self.message_to_slack(message)
 
-def file_to_slack(file, filetype, title, channel=default_channel):
+    def file_to_slack(self, file, filetype, title):
 
-    try:
-        client = WebClient(token=SLACK_API, timeout=30)
-        result = client.files_upload(
-            channels=channel,
-            file=file,
-            filetype=filetype,
-            title=title)
-        logger.info(result)
+        try:
+            client = WebClient(token=self.SLACK_API, timeout=30)
+            result = client.files_upload(
+                channels=self.channel,
+                file=file,
+                filetype=filetype,
+                title=title)
 
-    except Exception as e:
-        print(e)
-
-def file_to_slack_user(file, filetype, title, id='U026B04RB3J'):
-
-    try:
-        client = WebClient(token=SLACK_API, timeout=30)
-        result = client.files_upload(
-            channels=id,
-            file=file,
-            filetype=filetype,
-            title=title)
-        logger.info(result)
-
-    except Exception as e:
-        print(e)
+        except Exception as e:
+            print(e)
 
 if __name__ == "__main__":
     # file_to_slack_user('test')
-    report_to_slack('test', channel='U026B04RB3J')
+    to_slack("clair").message_to_slack('test')

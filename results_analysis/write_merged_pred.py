@@ -191,13 +191,13 @@ def download_stock_pred(
             if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
-    with global_vals.engine_ali_prod.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
+    with global_vals.engine_ali.connect() as conn, global_vals.engine_ali_prod.connect() as conn_prod:  # write stock_pred for the best hyperopt records to sql
+        extra = {'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
 
         # prepare table to write to DB
         if keep_all_history:  # if keep all history
             tbl_name = global_vals.production_factor_rank_table + f"_history_{suffix}"
-            pd.concat(all_history, axis=0).to_sql(tbl_name, **extra)
+            pd.concat(all_history, axis=0).to_sql(tbl_name, con=conn_prod, **extra)
             record_table_update_time(tbl_name, conn)
 
         tbl_name = global_vals.production_factor_rank_table + f"_{suffix}"
