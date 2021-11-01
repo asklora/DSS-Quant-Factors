@@ -50,5 +50,9 @@ if __name__=="__main__":
     # 'ai_value_formula_ratios'
     # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
 
-    migrate_tbl_lst = ['ai_value_lgbm_pred','ai_value_lgbm_pred_final','ai_value_lgbm_pred_final_eps','ai_value_lgbm_score']
-    ali_migration_to_prod(migrate_tbl_lst)
+    import time
+    import datetime as dt
+    while dt.datetime.now() < dt.datetime(2021,11,1,8,0,0):
+        migrate_tbl_lst = ['factor_result_pred_prod_weekly1']
+        ali_migration_to_prod(migrate_tbl_lst)
+        time.sleep(60*60)

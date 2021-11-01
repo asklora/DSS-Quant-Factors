@@ -17,11 +17,11 @@ def define_pillars(df):
     return lst
 
 class test_factor:
-    def __init__(self, suffixes='', start=1, end=0):
+    def __init__(self, suffixes='', start=5, end=0, testing_interval=91):
         self.suffixes = suffixes
-        self.data = read_item_df(testing_interval=7)
+        self.data = read_item_df(testing_interval=testing_interval)
         self.data.time_after(start, end)
-        self.info = {'years': start, 'testing_interval': 7}
+        self.info = {'years': start, 'testing_interval': testing_interval}
     
         df = self.data.item_df
         df = df.drop(columns=['avg_mkt_cap','icb_code'])        # columns will be evaluate separately
@@ -77,28 +77,28 @@ class test_factor:
 
     def try_original(self):
         self.info['preprocess'] = 'original'
-        cluster_method = [cluster_fcm, cluster_gaussian, cluster_hierarchical]
-        for pillar_cols in self.cols:
-            self.info['pillar'] = pillar_cols[0]
-            for n in [2, 3]:
-                comb_list = self.data.select_comb_x(pillar_cols, n_cols=n)
-                for i in [10, 20]:        # n_clusters
-                    for col in comb_list:
-                        print(col)
-                        X = self.data.org_x(cols=list(col))
-                        results = []
-                        for func in cluster_method:
-                            try:
-                                score, y = func(X, n_clusters=i)
-                                self.info1 = self.info.copy()
-                                self.info1.update({'cols':','.join(col), 'dimension': n, 'n_cluster':i, 'score': score,
-                                             'method':func.__name__})
-                                results.append(self.info1)
-                            except Exception as e:
-                                report_to_slack(e)
-                        with global_vals.engine_ali.connect() as conn:
-                            pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False, if_exists='append')
-                        global_vals.engine_ali.dispose()
+        cluster_method = [cluster_hierarchical]
+        self.info['pillar'] = 'all'
+        pillar_cols = [i for x in self.cols[1:] for i in x]
+        for n in [3]:
+            comb_list = self.data.select_comb_x(pillar_cols, n_cols=n)
+            for i in [5, 20]:        # n_clusters
+                for col in comb_list:
+                    print(col)
+                    X = self.data.org_x(cols=list(col))
+                    results = []
+                    for func in cluster_method:
+                        try:
+                            score, y = func(X, n_clusters=i)
+                            self.info1 = self.info.copy()
+                            self.info1.update({'cols':','.join(col), 'dimension': n, 'n_cluster':i, 'score': score,
+                                         'method':func.__name__})
+                            results.append(self.info1)
+                        except Exception as e:
+                            report_to_slack(e)
+                    with global_vals.engine_ali.connect() as conn:
+                        pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False, if_exists='append')
+                    global_vals.engine_ali.dispose()
 
 def plot_test_factor():
 
@@ -145,10 +145,44 @@ def check_corr():
     c = df.corr().unstack().reset_index().drop_duplicates().sort_values(by=[0])
     print(c)
 
+def test_grid_search(testing_interval, start):
+
+    data = read_item_df(testing_interval=testing_interval)
+    data.time_after(start, 0)
+    info = {'years': start, 'testing_interval': testing_interval}
+
+    df = data.item_df
+    df = df.drop(columns=['avg_mkt_cap', 'icb_code'])  # columns will be evaluate separately
+    cols = define_pillars(df)
+
+    cluster_method = [cluster_hierarchical]
+    pillar_cols = [i for x in cols[1:] for i in x]
+    for n in [3]:
+        comb_list = data.select_comb_x(pillar_cols, n_cols=n)
+        for col in comb_list:
+            info1 = info.copy()
+            info1.update({'cols': ','.join(col), 'dimension': n})
+            for i in [5, 10, 20]:  # n_clusters
+                print(col)
+                X = data.org_x(cols=list(col))
+                results = []
+                for func in cluster_method:
+                    try:
+                        score, y = func(X, n_clusters=i)
+                        info1[f'cluster_{i}'] = score
+                        results.append(info1)
+                    except Exception as e:
+                        report_to_slack(e)
+            with global_vals.engine_ali.connect() as conn:
+                pd.DataFrame(results).to_sql(f'des_factor_trial_original3', conn, index=False, if_exists='append')
+            global_vals.engine_ali.dispose()
+
 if __name__=="__main__":
-    test_factor(suffixes='_quantile3').try_pca()        # 2: right for selection / 3: start combine pillars
-    test_factor(suffixes='_quantile3').try_svd()
-    test_factor(suffixes='_quantile3').try_original()
+    # test_factor(suffixes='_quantile3').try_pca()        # 2: right for selection / 3: start combine pillars
+    # test_factor(suffixes='_quantile3').try_svd()
+    for y, t in [[5, 91],[1, 7]]:
+        print(y,t)
+        test_grid_search(start=y, testing_interval=t)
 
     # plot_test_factor()
     # check_corr()

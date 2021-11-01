@@ -8,8 +8,6 @@ from dateutil.relativedelta import relativedelta
 import global_vals
 from sqlalchemy import create_engine
 
-# def feature_subset_cluster1(testing_interval=7):
-#     ''' search 1: PCA '''
 
 class test:
 

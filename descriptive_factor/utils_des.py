@@ -88,6 +88,7 @@ class read_item_df:
         X = self.item_df[cols].values
         model = PCA(n_components=n).fit(X)  # calculation Cov matrix is embeded in PCA
         X = model.transform(X)
+        components = pd.DataFrame(model.components_, columns=cols).transpose()
         explained_ratio = np.cumsum(model.explained_variance_ratio_)
         print(explained_ratio)
         return X, explained_ratio
@@ -136,6 +137,27 @@ def plot_scatter_2d(X, y, annotate=None):
             plt.annotate(annotate[i], (X[:,0], X[:,1]), fontsize=5)
     plt.tight_layout()
     plt.show()
+
+def plot_scatter_nd(X, y, cols=None):
+    n = X.shape[1]
+    fig = plt.figure(figsize=(n * 4, n * 4), dpi=60, constrained_layout=True)
+    k = 1
+    for v1 in range(n):
+        for v2 in range(n):
+            # print(v1, v2)
+            ax = fig.add_subplot(n, n, k)
+            if v1 == v2:
+                ax.hist(X[:,v1], bins=20)
+                ax.set_xlabel(v1)
+            if v1 < v2:
+                ax.scatter(X[:,v1], X[:,v2], c=y, cmap="Set1", alpha=.5)
+                if cols:
+                    ax.set_xlabel(cols[v1])
+                    ax.set_ylabel(cols[v2])
+            k += 1
+
+    plt.show()
+    plt.close(fig)
 
 def plot_dendrogram(model, **kwargs):
     ''' Create linkage matrix and then plot the dendrogram '''

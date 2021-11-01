@@ -284,13 +284,9 @@ def plot_scatter_hist_2d(df, annotate=True):
 def plot_scatter_hist_2d_pca():
     ''' plot best PCA combination from feature_subset_cluster1() '''
 
-    # best for 7, 30, 91
-    # cols = 'change_assets,change_ebtda,avg_volume,avg_inv_turnover_re,avg_ca_turnover_re,avg_fa_turnover_re,avg_capex_to_dda,avg_cash_ratio,avg_market_cap_usd'
-    # cols = 'skew,ret_momentum,change_earnings,change_ebtda,avg_div_payout,avg_earnings_yield,avg_ebitda_to_ev,avg_ni_to_cfo,avg_interest_to_earnings,avg_gross_margin,avg_roic,icb_code'
-    cols = 'change_volume,avg_volume,avg_div_yield,avg_inv_turnover_re,avg_ca_turnover_re,avg_fa_turnover_re,avg_capex_to_dda,avg_cash_ratio,avg_market_cap_usd'
-
     # bad one
-    cols='skew,ret_momentum,change_tri_fillna,change_earnings,avg_div_payout,avg_volume_1w3m,avg_ni_to_cfo,avg_interest_to_earnings,avg_roe,avg_ebitda_to_ev,avg_roic'
+    cols='change_volume,avg_volume,avg_volume_1w3m'
+    # cols='avg_book_to_price,avg_earnings_yield,change_revenue'
     cols = cols.split(',')
 
     # prepare cluster df (download data)
@@ -302,17 +298,21 @@ def plot_scatter_hist_2d_pca():
     # prepare cluster df (PCA)
     df = df.loc[df['trading_day'] > (dt.datetime.today() - relativedelta(years=2))].copy()
     X = df[cols].values
-    X = PCA(n_components=2).fit_transform(X)  # calculation Cov matrix is embeded in PCA
+    print(cols)
+    X_pca = PCA(n_components=2).fit_transform(X)  # calculation Cov matrix is embeded in PCA
 
     # FCM clustering
-    model = FCM(n_clusters=2, m=1.5)
-    model.fit(X)
-    y = model.predict(X)
+    from utils_des import cluster_hierarchical
+    score, y = cluster_hierarchical(X, n_clusters=20)
 
     # Plot Scatter plot
-    plt.scatter(X[:,0], X[:,1], c=y, cmap="Set1", alpha=.5)
+    plt.scatter(X_pca[:,0], X_pca[:,1], c=y, cmap="Set1", alpha=.5)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f'cluster_pca_2d_{dt.datetime.now()}.png')
+    # plt.show()
+
+plot_scatter_hist_2d_pca()
+exit(1)
 
 # --------------------------------- Test on User Portfolio ------------------------------------------
 
@@ -438,8 +438,8 @@ def read_fund_port():
 
 def sample_port_var(testing_interval=91):
     ''' calculate variance on different factors for clustering '''
-    port = read_fund_port()
-    # port = read_user_from_postgres()
+    # port = read_fund_port()
+    port = read_user_from_postgres()
 
     # read descriptive ratios
     df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
