@@ -113,14 +113,14 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     tbl_suffix = args.tbl_suffix
     if args.recalc_premium:
-        # calc_factor_variables(price_sample='last_week_avg',
-        #                       fill_method='fill_all',
-        #                       sample_interval=tbl_suffix[1:-1],
-        #                       rolling_period=int(tbl_suffix[-1]),
-        #                       use_cached=False,
-        #                       save=True,
-        #                       ticker=None,
-        #                       currency=None)
+        calc_factor_variables(price_sample='last_week_avg',
+                              fill_method='fill_all',
+                              sample_interval=tbl_suffix[1:-1],
+                              rolling_period=int(tbl_suffix[-1]),
+                              use_cached=False,
+                              save=True,
+                              ticker=None,
+                              currency=None)
         if args.mode == 'v2':
             calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
         elif args.mode == 'v2_trim':
@@ -192,8 +192,8 @@ if __name__ == "__main__":
             q=1/3,
             model='rf_reg',
             name_sql=sql_result['name_sql'],
-            save_plot=True,
-            save_xls=True,
+            save_plot=False,
+            save_xls=False,
             suffix=tbl_suffix[1:],
         )
 

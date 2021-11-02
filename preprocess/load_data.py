@@ -96,7 +96,6 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
 
     prem_query = f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
     df = sql_read_query(prem_query, global_vals.db_url_alibaba_prod)
-    df = pd.concat(df, axis=0, ignore_index=True)
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
     df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
     df.columns.name = None
