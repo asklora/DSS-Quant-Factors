@@ -5,7 +5,7 @@ import multiprocessing as mp
 import itertools
 
 import global_vals
-from utils_sql import sql_read_query, upsert_data_to_database
+from utils_sql import sql_read_query, upsert_data_to_database, trucncate_table_in_database
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.dialects.postgresql import INTEGER
@@ -132,6 +132,8 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12):
     all_groups = itertools.product([df], all_groups, [tbl_suffix], factor_list, [trim_outlier_])
     all_groups = [tuple(e) for e in all_groups]
 
+    trucncate_table_in_database(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
+                                global_vals.db_url_alibaba_prod)
     with mp.Pool(processes=processes) as pool:
         res = pool.starmap(insert_prem_and_membership_for_group, all_groups)
 
