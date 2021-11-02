@@ -9,13 +9,13 @@ from pandas.tseries.offsets import MonthEnd
 import global_vals
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables
-from preprocess.calculation_premium import calc_premium_all, calc_premium_all_v2
+from preprocess.calculation_premium import calc_premium_all_v2
 from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from score_evaluate import score_eval
 from utils_report_to_slack import to_slack
-from utils_sql import sql_read_query, sql_read_table, drop_table_in_database
+from utils_sql import sql_read_query, sql_read_table, trucncate_table_in_database
 
 from itertools import product, combinations, chain
 import multiprocessing as mp
@@ -121,9 +121,7 @@ if __name__ == "__main__":
                               save=True,
                               ticker=None,
                               currency=None)
-        if args.mode == 'default':
-            calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False)
-        elif args.mode == 'v2':
+        if args.mode == 'v2':
             calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
         elif args.mode == 'v2_trim':
             calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=True)
@@ -182,6 +180,10 @@ if __name__ == "__main__":
     all_groups = product([data], [sql_result], list(range(3)), group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
     all_groups = [tuple(e) for e in all_groups]
+
+    # Reset results table everytimes
+    trucncate_table_in_database(f"{global_vals.result_pred_table}{tbl_suffix}", global_vals.db_url_alibaba_prod)
+    trucncate_table_in_database( f"{global_vals.feature_importance_table}{tbl_suffix}", global_vals.db_url_alibaba_prod)
     with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 

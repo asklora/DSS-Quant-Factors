@@ -55,16 +55,13 @@ class rf_HPOT:
         ''' write score/prediction/feature to DB ''' 
         tbl_suffix = '_rf_reg'
 
-        # upd
-        upsert_data_to_database()
-
-
-        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
-            extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi'}
-            self.hpot['best_stock_df'].to_sql(f"{global_vals.result_pred_table}{tbl_suffix}", **extra)
-            pd.DataFrame(self.hpot['all_results']).to_sql(f"{global_vals.result_score_table}{tbl_suffix}", **extra)
-            self.hpot['best_stock_feature'].to_sql(f"{global_vals.feature_importance_table}{tbl_suffix}", **extra)
-        global_vals.engine_ali.dispose()
+        # update results
+        upsert_data_to_database(self.hpot['best_stock_df'], f"{global_vals.result_pred_table}{tbl_suffix}",
+                                primary_key="finish_timing", db_url=global_vals.db_url_alibaba_prod, how="append")
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), f"{global_vals.result_score_table}{tbl_suffix}",
+                                primary_key=["finish_timing", "ticker"], db_url=global_vals.db_url_alibaba_prod, how="append")
+        upsert_data_to_database(self.hpot['best_stock_feature'], f"{global_vals.feature_importance_table}{tbl_suffix}",
+                                primary_key=["finish_timing", "name"], db_url=global_vals.db_url_alibaba_prod, how="append")
 
     def rf_train(self, space, rerun):
         ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''

@@ -43,10 +43,10 @@ def download_stock_pred(
         query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, S.train_bins, "
                      f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                      f"FROM {global_vals.result_pred_table}_{model} P "
-                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
+                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.uid = P.uid "
                      f"WHERE S.name_sql like '{name_sql}%' "
                      f"AND \"group\"='USD' "
-                     f"ORDER BY S.finish_timing")
+                     f"ORDER BY S.uid")
         result_all_all = pd.read_sql(query, conn, chunksize=10000)
         result_all_all = pd.concat(result_all_all, axis=0, ignore_index=True)       # download training history
     global_vals.engine_ali.dispose()

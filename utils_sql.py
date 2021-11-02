@@ -29,7 +29,8 @@ def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB === Error : {e}")
 
-def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_alibaba, how="update"):
+def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_alibaba, how="update",
+                            drop_primary_key=False):
     ''' upsert Table to DB '''
 
     try:
@@ -39,6 +40,8 @@ def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_
         if len(primary_key) > 1:    # for tables using more than 1 columns as primary key (replace primary with a created "uid")
             data = uid_maker(data, primary_key)
             primary_key = "uid"
+            if drop_primary_key:    # drop original columns (>1) for primary keys
+                data = data.drop(columns=primary_key)
 
         # df = data.duplicated(subset=[primary_key], keep=False)
         # df = data.loc[df]
@@ -65,6 +68,7 @@ def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_
             print(f"DATA [{how}] TO {table}")
         engine.dispose()
         to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
+        record_table_update_time(table)
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN UPSERT DB === Error : {e}")
 
@@ -93,8 +97,15 @@ def sql_read_table(table, db_url=global_vals.db_url_alibaba):
 def record_table_update_time(table):
     ''' record last update time in table '''
     update_time = dt.datetime.now()
-    df = pd.DataFrame({'update_time': {table: update_time}}).reset_index()
-    upsert_data_to_database(df, table=global_vals.update_time_table, primary_key=table, db_url=global_vals.db_url_alibaba_prod)
+    df = pd.DataFrame({'table_name': table, 'last_update': update_time, 'finish': True}, index=[0]).set_index("table_name")
+
+    engine = create_engine(global_vals.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    upsert(engine=engine,
+           df=df,
+           table_name=global_vals.update_time_table,
+           if_row_exists="update",
+           chunksize=20000)
+    engine.dispose()
 
 def uid_maker(df, primary_key):
     ''' create uid columns for table when multiple columns used as primary_key '''
