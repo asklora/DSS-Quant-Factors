@@ -198,8 +198,6 @@ if __name__ == "__main__":
         )
 
     score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
-    eval = score_eval()
-    eval.test_history(name=tbl_suffix[1:])     # test on (history) <-global_vals.production_score_history
 
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)
