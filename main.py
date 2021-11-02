@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     query = f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}"
-    last_test_date = sql_read_query(query, db_url=global_vals.engine_ali)
+    last_test_date = sql_read_query(query, db_url=global_vals.db_url_alibaba_prod)
     testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
