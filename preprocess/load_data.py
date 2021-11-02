@@ -1,27 +1,17 @@
 import numpy as np
 import pandas as pd
 import datetime as dt
-from pandas.tseries.offsets import MonthEnd
-
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
+
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupShuffleSplit
-from preprocess.premium_calculation import calc_premium_all, trim_outlier
-import global_vals
-# from scipy.fft import fft, fftfreq, rfft, rfftfreq
-from sqlalchemy import text
 from sklearn.decomposition import PCA
-from sklearn.svm import LinearSVC
 from sklearn import linear_model
 
-from sklearn.feature_selection import SelectFromModel
-import matplotlib.pyplot as plt
-from datetime import datetime
-
-from multiprocessing import Pool
-def process_image(name):
-    sci=fits.open('{}.fits'.format(name))
+import global_vals
+from utils_sql import sql_read_table, sql_read_query
 
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
@@ -33,11 +23,7 @@ def download_clean_macros(main_df):
     print(f'#################################################################################################')
     print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
 
-    with global_vals.engine.connect() as conn:
-        macros = pd.read_sql(f'SELECT * FROM {global_vals.macro_data_table} WHERE period_end IS NOT NULL', conn)
-        # vix = pd.read_sql(f'SELECT * FROM {global_vals.eikon_vix_table}_weekly', conn)
-    global_vals.engine.dispose()
-
+    macros = sql_read_table(global_vals.macro_data_table, global_vals.db_url_aws_read)
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
     yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
@@ -59,8 +45,6 @@ def download_clean_macros(main_df):
     df_date_list = main_df['period_end'].drop_duplicates().sort_values()
     macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
                           how='outer').sort_values(['period_end'])
-    # vix["period_end"] = pd.to_datetime(vix["period_end"])
-    # macros = macros.merge(vix, on=['period_end'], how='outer').sort_values(by=['period_end'])
     macros = macros.fillna(method='ffill')
     macros = macros.loc[macros['period_end'].isin(df_date_list)]
 
@@ -73,9 +57,8 @@ def download_index_return(tbl_suffix):
     print(f'      ------------------------> Download index return data from {global_vals.processed_ratio_table}')
 
     # read stock return from ratio calculation table
-    with global_vals.engine_ali.connect() as conn:
-        index_ret = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'", conn)
-    global_vals.engine_ali.dispose()
+    index_query = f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'"
+    index_ret = sql_read_query(index_query, global_vals.db_url_aws_read)
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
@@ -89,7 +72,7 @@ def download_index_return(tbl_suffix):
 
     return index_ret
 
-def combine_data(tbl_suffix, update_since=None, mode='default'):
+def combine_data(tbl_suffix, update_since=None, mode='v2'):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
@@ -104,34 +87,26 @@ def combine_data(tbl_suffix, update_since=None, mode='default'):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
         conditions.append(f"period_end >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
-    with global_vals.engine_ali.connect() as conn:
-        if mode == 'default':
-            df = pd.read_sql(f'SELECT * FROM {factor_table_name}{tbl_suffix} WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
-            df = pd.concat(df, axis=0, ignore_index=True)
-            df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
-        elif 'v2' in mode:
-            if mode == 'v2_trim':
-                conditions.append('trim_outlier')
-            else:
-                conditions.append('not trim_outlier')
-            df = pd.read_sql(f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} '
-                             f'WHERE {" AND ".join(conditions)};', conn, chunksize=10000)
-            df = pd.concat(df, axis=0, ignore_index=True)
-            df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')                 # convert to datetime
-            df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
-            df.columns.name = None
-            df = df.reset_index()
-        else:
-            raise Exception('Unknown mode')
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table};', conn)
-    global_vals.engine_ali.dispose()
+    if mode == 'v2_trim':
+        conditions.append('trim_outlier')
+    elif mode == 'v2':
+        conditions.append('not trim_outlier')
+    else:
+        raise Exception('Unknown mode')
 
+    prem_query = f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
+    df = sql_read_query(prem_query, global_vals.db_url_alibaba_prod)
+    df = pd.concat(df, axis=0, ignore_index=True)
+    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
+    df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
+    df.columns.name = None
+    df = df.reset_index()
+
+    formula = sql_read_table(global_vals.formula_factors_table_prod, global_vals.db_url_alibaba_prod)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]       # filter existing columns from factors
 
     # Research stage using 10 selected factor only
     x_col = {}
-    # x_col['y_col'] = factors = formula.sort_values(by=['rank']).loc[formula['factors'], 'name'].to_list()         # remove factors no longer used
-    x_col['y_col'] = factors = formula.sort_values(by=['rank']).loc[formula['rank']>0.68, 'name'].to_list()         # remove factors no longer used
     x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
 
     for p in formula['pillar'].unique():
@@ -159,9 +134,9 @@ def combine_data(tbl_suffix, update_since=None, mode='default'):
     # make up for all missing date in df
     indexes = pd.MultiIndex.from_product([df['group'].unique(), df['period_end'].unique()], names=['group', 'period_end']).to_frame().reset_index(drop=True)
     df = pd.merge(df, indexes, on=['group', 'period_end'], how='right')
-    print('      ------------------------> Factors: ', factors)
+    print('      ------------------------> Factors: ', x_col['factor'])
 
-    return df.sort_values(by=['group', 'period_end']), factors, x_col
+    return df.sort_values(by=['group', 'period_end']), x_col['factor'], x_col
 
 class load_data:
     ''' main function:
@@ -349,18 +324,18 @@ class load_data:
             print(f"      ------------------------> After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
 
             # write PCA components to DB
-            if write_pca_component:
-                df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor'] + arma_factor).reset_index()
-                df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
-                df['group'] = self.group_name
-                df['testing_period'] = testing_period
-                with global_vals.engine_ali.connect() as conn:
-                    extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-                    conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
-                                 f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-                    df.to_sql(global_vals.processed_pca_table, **extra)
-                    pd.DataFrame({global_vals.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vals.update_time_table, **extra)
-                global_vals.engine_ali.dispose()
+            # if write_pca_component:
+            #     df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor'] + arma_factor).reset_index()
+            #     df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
+            #     df['group'] = self.group_name
+            #     df['testing_period'] = testing_period
+            #     with global_vals.engine_ali.connect() as conn:
+            #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
+            #         conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
+            #                      f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
+            #         df.to_sql(global_vals.processed_pca_table, **extra)
+            #         pd.DataFrame({global_vals.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vals.update_time_table, **extra)
+            #     global_vals.engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))
@@ -437,7 +412,6 @@ class load_data:
         self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change=test_change, use_pca=use_pca)   # split x, y for test / train samples
         self.standardize_x()                                          # standardize x array
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
-
         return self.sample_set, gkf
 
 if __name__ == '__main__':

@@ -34,18 +34,21 @@ eikon_other_table = "data_factor_eikon_others"
 eikon_vix_table = "data_factor_eikon_vix"
 eikon_price_table = "data_factor_eikon_price_daily_final"
 eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
+eikon_fx_table = "data_factor_eikon_others_fx"      # ALIBABA DB
 currency_history_table = "currency_price_history"      # ALIBABA DB
+ingestion_name_table = "ingestion_name"
 
 # TABLE names - preprocessed data
-processed_ratio_table = "processed_ratio"
-factor_premium_table = "processed_factor_premium"
-processed_group_ratio_table = "processed_group_ratio"
+processed_ratio_table = "factor_processed_ratio"
+factor_premium_table = "factor_processed_factor_premium"
+# processed_group_ratio_table = "processed_group_ratio"
 processed_cutbins_table = "processed_cutbins"
 processed_pca_table = 'processed_pca'
 
 # TABLE names - preprocess formula
 formula_factors_table = "factor_formula_ratios"
-update_time_table = "factor_table_update_time"
+formula_factors_table_prod = "factor_formula_ratios_prod"
+update_time_table = "ingestion_update_time"     # all table update time record in this table
 
 # COLUMN names - preprocess
 ticker_column = "ticker"

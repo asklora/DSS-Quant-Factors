@@ -8,14 +8,14 @@ from pandas.tseries.offsets import MonthEnd
 
 import global_vals
 from preprocess.load_data import load_data
-from preprocess.ratios_calculations import calc_factor_variables
-from preprocess.premium_calculation import calc_premium_all, calc_premium_all_v2
+from preprocess.calculation_ratio import calc_factor_variables
+from preprocess.calculation_premium import calc_premium_all, calc_premium_all_v2
 from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from score_evaluate import score_eval
 from utils_report_to_slack import to_slack
-from utils_sql import sql_read_query, sql_read_table
+from utils_sql import sql_read_query, sql_read_table, drop_table_in_database
 
 from itertools import product, combinations, chain
 import multiprocessing as mp
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--mode', default='v2', type=str)
-    parser.add_argument('--tbl_suffix', default='_monthly1', type=str)
+    parser.add_argument('--tbl_suffix', default='_weekly1', type=str)
     parser.add_argument('--processes', default=8, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)

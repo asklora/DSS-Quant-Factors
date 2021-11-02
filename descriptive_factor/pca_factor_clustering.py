@@ -10,7 +10,7 @@ from collections import Counter
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 from hierarchy_ratio_cluster import trim_outlier_std
-from utils_report_to_slack import report_to_slack
+# from utils_report_to_slack import report_to_slack
 
 import gc
 import itertools
@@ -311,9 +311,6 @@ def plot_scatter_hist_2d_pca():
     plt.savefig(f'cluster_pca_2d_{dt.datetime.now()}.png')
     # plt.show()
 
-plot_scatter_hist_2d_pca()
-exit(1)
-
 # --------------------------------- Test on User Portfolio ------------------------------------------
 
 def read_user_from_firebase():
@@ -361,7 +358,7 @@ def read_user_from_postgres():
     ''' read user portfolio details from postgres '''
 
     with global_vals.engine.connect() as conn:
-        df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, placed_at FROM orders WHERE placed", conn)
+        df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, placed_at, side FROM orders WHERE placed", conn)
     global_vals.engine.dispose()
     df['bot_id'] = df['bot_id'].apply(lambda x: x.split('_')[0])
 
@@ -439,7 +436,12 @@ def read_fund_port():
 def sample_port_var(testing_interval=91):
     ''' calculate variance on different factors for clustering '''
     # port = read_fund_port()
+    # rank = pd.read_csv('oct_ranking.csv')
+    # rank = rank[["__id__","rank"]].rename(columns={"__id__":"user_id"})
+
     port = read_user_from_postgres()
+    port = port.loc[port['user_id']==1423]
+    # port = port.merge(rank, on=['user_id'])
 
     # read descriptive ratios
     df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
@@ -451,7 +453,7 @@ def sample_port_var(testing_interval=91):
     df = df.append(df_max)
     df = df.drop_duplicates(subset=['trading_day','ticker'], keep='last')
 
-    from preprocess.ratios_calculations import fill_all_day
+    from preprocess.calculation_ratio import fill_all_day
     df = fill_all_day(df).sort_values(by=['ticker','trading_day'])
     num_col = df.select_dtypes(float).columns.to_list()
     df[num_col] = df[num_col].ffill()

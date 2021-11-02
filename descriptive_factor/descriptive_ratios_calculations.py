@@ -7,7 +7,7 @@ import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
-from preprocess.ratios_calculations import check_duplicates, fill_all_day, update_period_end
+from preprocess.calculation_ratio import check_duplicates, fill_all_day, update_period_end
 from scipy.stats import skew
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------

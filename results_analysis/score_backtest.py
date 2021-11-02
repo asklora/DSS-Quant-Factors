@@ -7,7 +7,7 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler, QuantileTransformer
-from preprocess.premium_calculation import trim_outlier
+from preprocess.calculation_premium import trim_outlier
 import global_vals
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
