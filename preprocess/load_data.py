@@ -58,7 +58,7 @@ def download_index_return(tbl_suffix):
 
     # read stock return from ratio calculation table
     index_query = f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'"
-    index_ret = sql_read_query(index_query, global_vals.db_url_aws_read)
+    index_ret = sql_read_query(index_query, global_vals.db_url_alibaba_prod)
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
@@ -106,7 +106,7 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
 
     # Research stage using 10 selected factor only
     x_col = {}
-    x_col['factor'] = formula.sort_values(by=['rank']).loc[formula['x_col'], 'name'].to_list()         # x_col remove highly correlated variables
+    x_col['factor'] = formula['name'].to_list()         # x_col remove highly correlated variables
 
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar

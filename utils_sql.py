@@ -29,36 +29,36 @@ def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB === Error : {e}")
 
-def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_alibaba, how="update",
-                            drop_primary_key=False):
+def upsert_data_to_database(data, table, primary_key=None, db_url=global_vals.db_url_alibaba, how="update",
+                            drop_primary_key=False, verbose=1):
     ''' upsert Table to DB '''
 
     try:
         print(f"=== Upsert Data to Database on Table [{table}] ===")
         print(f"=== URL: {db_url} ===")
 
-        if len(primary_key) > 1:    # for tables using more than 1 columns as primary key (replace primary with a created "uid")
-            data = uid_maker(data, primary_key)
-            primary_key = "uid"
-            if drop_primary_key:    # drop original columns (>1) for primary keys
-                data = data.drop(columns=primary_key)
-
-        # df = data.duplicated(subset=[primary_key], keep=False)
-        # df = data.loc[df]
-
-        if data.duplicated(subset=[primary_key], keep=False).sum()>0:
-            to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
-
-        data = data.drop_duplicates(subset=[primary_key], keep="first", inplace=False)
-        data = data.dropna(subset=[primary_key])
-        data = data.set_index(primary_key)
-        data_type = {primary_key: TEXT}
-
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
-            extra = {'con': engine.connect(), 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize':20000}
+            extra = {'con': engine.connect(), 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
             data.to_sql(table, **extra)
         else:
+            if len(primary_key) > 1:  # for tables using more than 1 columns as primary key (replace primary with a created "uid")
+                data = uid_maker(data, primary_key)
+                primary_key = "uid"
+                if drop_primary_key:  # drop original columns (>1) for primary keys
+                    data = data.drop(columns=primary_key)
+
+            # df = data.duplicated(subset=[primary_key], keep=False)
+            # df = data.loc[df]
+
+            if data.duplicated(subset=[primary_key], keep=False).sum() > 0:
+                to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
+
+            data = data.drop_duplicates(subset=[primary_key], keep="first", inplace=False)
+            data = data.dropna(subset=[primary_key])
+            data = data.set_index(primary_key)
+            data_type = {primary_key: TEXT}
+
             upsert(engine=engine,
                    df=data,
                    table_name=table,
@@ -67,10 +67,11 @@ def upsert_data_to_database(data, table, primary_key, db_url=global_vals.db_url_
                    dtype=data_type)
             print(f"DATA [{how}] TO {table}")
         engine.dispose()
-        to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
+        if verbose>=0:
+            to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN UPSERT DB === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB === Error : {e}")
 
 def sql_read_query(query, db_url=global_vals.db_url_alibaba):
     ''' Read specific query from SQL '''

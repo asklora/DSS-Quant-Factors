@@ -113,14 +113,14 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     tbl_suffix = args.tbl_suffix
     if args.recalc_premium:
-        # calc_factor_variables(price_sample='last_week_avg',
-        #                       fill_method='fill_all',
-        #                       sample_interval=tbl_suffix[1:-1],
-        #                       rolling_period=int(tbl_suffix[-1]),
-        #                       use_cached=False,
-        #                       save=True,
-        #                       ticker=None,
-        #                       currency=None)
+        calc_factor_variables(price_sample='last_week_avg',
+                              fill_method='fill_all',
+                              sample_interval=tbl_suffix[1:-1],
+                              rolling_period=int(tbl_suffix[-1]),
+                              use_cached=False,
+                              save=True,
+                              ticker=None,
+                              currency=None)
         if args.mode == 'v2':
             calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
         elif args.mode == 'v2_trim':
@@ -173,9 +173,9 @@ if __name__ == "__main__":
     # y_type_list += list(combinations(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col']), 5))
 
     y_type_list = []
-    y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col'])))
-    y_type_list.append(list(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col'])))
-    y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.x_col_dict['y_col'])))
+    y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.factor_list)))
+    y_type_list.append(list(set(data.x_col_dict['value'])&set(data.factor_list)))
+    y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.factor_list)))
 
     all_groups = product([data], [sql_result], list(range(3)), group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
