@@ -192,7 +192,6 @@ if __name__ == "__main__":
             q=1/3,
             model='rf_reg',
             name_sql=sql_result['name_sql'],
-            keep_all_history=True,
             save_plot=True,
             save_xls=True,
             suffix=tbl_suffix[1:],

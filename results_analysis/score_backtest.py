@@ -1,20 +1,12 @@
-from sqlalchemy import text
 from scipy.stats import skew
-
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
 import datetime as dt
-from dateutil.relativedelta import relativedelta
 import numpy as np
-from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler, QuantileTransformer
-from preprocess.calculation_premium import trim_outlier
-import global_vals
-import matplotlib.pyplot as plt
-from pandas.tseries.offsets import MonthEnd
-from score_evaluate import score_eval
-from utils import record_table_update_time
+from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler
 
-cur = ["'USD'"]
+import global_vals
+from utils_sql import sql_read_query, sql_read_table, upsert_data_to_database
+from utils_report_to_slack import to_slack
 
 def score_update_scale(fundamentals, calculate_column, universe_currency_code, factor_rank):
 
@@ -36,10 +28,6 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         fundamentals[column_score] = fundamentals.dropna(subset=[column]).groupby(groupby_col)[column].transform(
             transform_trim_outlier)
         calculate_column_score.append(column_score)
-    # print(calculate_column_score)
-
-    # x1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].skew()
-    # y1 = fundamentals.groupby("currency_code")[[x+'_score' for x in calculate_column]].apply(pd.DataFrame.kurtosis)
 
     # 2. change ratio to negative if original factor calculation using reverse premiums
     for group_name, g in factor_rank.groupby(['group']):
@@ -57,7 +45,6 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
             calculate_column_robust_score.append(column_robust_score)
         except Exception as e:
             print(e)
-    # print(calculate_column_robust_score)
 
     # 4. apply maxmin scaler on Currency / Industry
     minmax_column = ["uid", "ticker", "trading_day"]
@@ -85,8 +72,6 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
                                                             fundamentals[column_minmax_industry].mean() * 0.9,
                                                             fundamentals[column_minmax_industry]) * 10
             minmax_column.append(column_minmax_industry)
-
-    # print(minmax_column)
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
@@ -150,26 +135,24 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
     for group, g in fundamentals.groupby("currency_code"):
         mean_ret[(group, 'ai_score')] = score_ret_mean(g, ["ai_score"])
         best_score_ticker[group] = best_10_tickers(g, ai_score_cols+['ai_score'])
-
-    # print(fundamentals[["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]].describe())
+    print(fundamentals[["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]].describe())
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
 def score_history(tbl_suffix='monthly1'):
     ''' calculate score with DROID v2 method & evaluate '''
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:  # write stock_pred for the best hyperopt records to sql
-        factor_formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn_ali)
-        factor_rank = pd.read_sql(f'SELECT * FROM {global_vals.production_factor_rank_table}_history_{tbl_suffix}', conn_ali)
-        universe = pd.read_sql(f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active AND currency_code in ({','.join(cur)})", conn)
-        fundamentals_score = pd.read_sql(f"SELECT * FROM {global_vals.processed_ratio_table}_{tbl_suffix} "
-                                         f"WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') ", conn_ali)
-                                         # f"WHERE (period_end='2021-07-31') AND (ticker not like '.%%') ", conn_ali)
-        # pred_mean = pd.read_sql(f"SELECT * FROM ai_value_lgbm_pred_final_eps", conn_ali)
-    global_vals.engine_ali.dispose()
+    factor_formula = sql_read_table(global_vals.formula_factors_table_prod, global_vals.db_url_alibaba_prod)
+    factor_rank = sql_read_table(f"{global_vals.production_factor_rank_table}_history_{tbl_suffix}", global_vals.db_url_alibaba_prod)
 
-    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    universe_query = f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active"
+    universe = sql_read_query(universe_query, global_vals.db_url_aws_read)
+
+    ratio_query = f"SELECT * FROM {global_vals.processed_ratio_table}_{tbl_suffix} WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') "
+    fundamentals_score = sql_read_query(ratio_query, global_vals.db_url_alibaba_prod)
+
+    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
     # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
@@ -192,11 +175,11 @@ def score_history(tbl_suffix='monthly1'):
     factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
     factor_rank = factor_rank.dropna(subset=['pillar'])
 
-    # # for non calculating currency_code -> we add same for each one
-    # append_df = factor_rank.loc[factor_rank['keep']]
-    # for i in set(universe_currency_code):
-    #     append_df['group'] = i
-    #     factor_rank = factor_rank.append(append_df, ignore_index=True)
+    # for non calculating currency_code -> we add same for each one
+    append_df = factor_rank.loc[factor_rank['keep']]
+    for i in set(universe_currency_code):
+        append_df['group'] = i
+        factor_rank = factor_rank.append(append_df, ignore_index=True)
 
     factor_formula = factor_formula.set_index(['name'])
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
@@ -241,10 +224,20 @@ def score_history(tbl_suffix='monthly1'):
         for p, df in mean_ret_detail.items():
             df['period_end'] = name
             mean_ret_detail_all[p].append(df)
-        # results = fundamentals[label_col+score_col]
-        # x = results.groupby(['currency_code']).agg(['min','mean','max','std'])
-        # print(x)
 
+    fundamentals = pd.concat(fundamentals_all, axis=0)
+    # m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
+    # fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])
+    # print(fundamentals[["ai_score"]].describe())
+
+    # Evaluate
+    eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
+    score_history = fundamentals[label_col + score_col]
+    save_description_history(score_history)                                     # score distribution
+    qcut_eval(score_history, score_col)                                         # ret on 10-qcut portfolios
+    return True
+
+def eval_qcut_col_specific(cur, best_10_tickers_all, mean_ret_detail_all):
     for c in [x[1:-1] for x in cur]:
         writer = pd.ExcelWriter(f"#{dt.datetime.today().strftime('%Y%m%d')}_backtest_{c}.xlsx")
         tic = {x:z for x, yz in best_10_tickers_all.items() for y, z in yz.items() if y==c}
@@ -253,7 +246,6 @@ def score_history(tbl_suffix='monthly1'):
         for p, df_list in mean_ret_detail_all.items():
             ddf = pd.concat(df_list, axis=0).reset_index(drop=True)
             ddf.to_excel(writer, f'{p} details')
-
         # for p in ['momentum','quality', 'value', 'extra']:
         #     ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
         #     for col in ret_p[list(ret_p.keys())[0]].keys():
@@ -269,17 +261,6 @@ def score_history(tbl_suffix='monthly1'):
         #     ret_p1_df.to_excel(writer, 'Qcut ai_score')
         writer.save()
 
-    fundamentals = pd.concat(fundamentals_all, axis=0)
-    m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])
-    fundamentals[["ai_score_scaled"]] = m1.transform(fundamentals[["ai_score"]])
-    print(fundamentals[["ai_score"]].describe())
-
-    with global_vals.engine_ali.connect() as conn:
-        extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        fundamentals[label_col + score_col].to_sql(global_vals.production_score_history, **extra)
-        record_table_update_time(global_vals.production_score_history, conn)
-    global_vals.engine_ali.dispose()
-
 def best_10_tickers(g, score_col):
     g = g.set_index('ticker').nlargest(10, columns=['ai_score'], keep='all')[['stock_return_y']+score_col]
     comb = pd.DataFrame(g.mean()).round(4).transpose()
@@ -288,21 +269,28 @@ def best_10_tickers(g, score_col):
     comb['ticker'] = ', '.join(g)
     return comb.transpose().to_dict()[0]
 
-    # for name, g in fundamentals.groupby('currency_code'):
-    #     df_dict[f'best10_{name}'] = record_tickers(g).iloc[:,:-2].reset_index().drop(columns=['level_2'])
-
-# 2. Test 10-qcut return
 def score_ret_mean(df, score_col):
-
+    ''' evaluate score history with score 10-qcut mean ret (within current period)'''
     mean_ret = {}
     df = df.reset_index(drop=True)
     for col in score_col:
         df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
         mean_ret[col.replace('_minmax_currency_code','')] = df.dropna(subset=[col]).groupby(['qcut'])['stock_return_y'].mean().values
-
     return mean_ret
 
+def save_description_history(df):
+    ''' write statistics for description '''
+    df = df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
+    to_slack("clair").df_to_slack("AI Score distribution (Backtest)", df)
+
+def qcut_eval(fundamentals, score_col):
+    ''' evaluate score history with score 10-qcut mean ret (over entire history) '''
+    group_col = ['period_end', 'currency_code']
+    for i in score_col:
+        fundamentals['score_qcut'] = fundamentals.dropna(subset=[i]).groupby([group_col])[i].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
+        mean_ret = pd.pivot_table(fundamentals, index=[group_col], columns=['score_qcut'], values='stock_return_y')
+        mean_ret['count'] = fundamentals.groupby([group_col])[i].count()
+        to_slack("clair").df_to_slack(f'qcut_ret_{i}', mean_ret.transpose())
+
 if __name__ == "__main__":
-    score_history(7, 'weekly1')
-    eval = score_eval()
-    eval.test_history()     # test on (history) <-global_vals.production_score_history
+    score_history('weekly1')

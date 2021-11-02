@@ -1,16 +1,13 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
-import numpy as np
 import argparse
 
-from pandas.core.reshape.tile import qcut
 import global_vals
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
-from pandas.tseries.offsets import MonthEnd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
-from utils import record_table_update_time
+from utils_sql import sql_read_query, upsert_data_to_database
 
 stock_pred_dtypes = dict(
     period_end=DATE,
@@ -39,17 +36,15 @@ def download_stock_pred(
     elif 'lasso' in model:
         other_group_col = ['name_sql']
 
-    with global_vals.engine_ali.connect() as conn:
-        query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, S.train_bins, "
-                     f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
-                     f"FROM {global_vals.result_pred_table}_{model} P "
-                     f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.uid = P.uid "
-                     f"WHERE S.name_sql like '{name_sql}%' "
-                     f"AND \"group\"='USD' "
-                     f"ORDER BY S.uid")
-        result_all_all = pd.read_sql(query, conn, chunksize=10000)
-        result_all_all = pd.concat(result_all_all, axis=0, ignore_index=True)       # download training history
-    global_vals.engine_ali.dispose()
+    # download training history
+    query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, S.train_bins, "
+                 f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
+                 f"FROM {global_vals.result_pred_table}_{model} P "
+                 f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
+                 f"WHERE S.name_sql like '{name_sql}%' "
+                 f"AND \"group\"='USD' "
+                 f"ORDER BY S.finish_timing")
+    result_all_all = sql_read_query(query, global_vals.db_url_alibaba_prod)
 
     result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
     result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
@@ -191,19 +186,13 @@ def download_stock_pred(
             if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
-    with global_vals.engine_ali.connect() as conn, global_vals.engine_ali_prod.connect() as conn_prod:  # write stock_pred for the best hyperopt records to sql
-        extra = {'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000, 'dtype': stock_pred_dtypes}
+    tbl_name_history = global_vals.production_factor_rank_table + f"_history_{suffix}"
+    upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","period_end","factor_name"],
+                            db_url=global_vals.db_url_alibaba_prod)
 
-        # prepare table to write to DB
-        if keep_all_history:  # if keep all history
-            tbl_name = global_vals.production_factor_rank_table + f"_history_{suffix}"
-            pd.concat(all_history, axis=0).to_sql(tbl_name, con=conn_prod, **extra)
-            record_table_update_time(tbl_name, conn)
-
-        tbl_name = global_vals.production_factor_rank_table + f"_{suffix}"
-        pd.concat(all_current, axis=0).to_sql(tbl_name, **extra)
-        record_table_update_time(tbl_name, conn)
-    global_vals.engine_ali_prod.dispose()
+    tbl_name_current = global_vals.production_factor_rank_table + f"_{suffix}"
+    upsert_data_to_database(pd.concat(all_current, axis=0), tbl_name_current, primary_key=["group","factor_name"],
+                            db_url=global_vals.db_url_alibaba_prod)
 
 if __name__ == "__main__":
 
@@ -216,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument('--name_sql', type=str, default=f'v2_weekly1_20211101')
     parser.add_argument('--suffix', type=str, default=suffix)
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
-    parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
+    # parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
     parser.add_argument('--save_plot', action='store_true', help='save_plot = True')
     parser.add_argument('--save_xls', action='store_true', help='save_xls = True')
     # parser.add_argument('--return_summary', action='store_true', help='return_summary = True')
@@ -237,16 +226,15 @@ if __name__ == "__main__":
         q,
         args.model,
         args.name_sql,
-        keep_all_history=args.keep_all_history,
         save_plot=args.save_plot,
         save_xls=args.save_xls,
         suffix=suffix,
-        # return_summary=args.return_summary
     )
 
     from results_analysis.score_backtest import score_history
-    from score_evaluate import score_eval
     score_history(suffix)
+
+    from score_evaluate import score_eval
     eval = score_eval()
     eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
 

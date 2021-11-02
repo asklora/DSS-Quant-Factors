@@ -16,20 +16,6 @@ class score_eval:
         self.currency = currency
         self.DEBUG = DEBUG
 
-    def test_history(self, name=''):
-        ''' test on ai_score history '''
-
-        with global_vals.engine_ali.connect() as conn_ali:
-            query = f"SELECT * FROM {global_vals.production_score_history}"
-            if self.currency:
-                query += f"WHERE currency_code='{self.currency}'"
-            score_history = pd.read_sql(query, conn_ali)
-        global_vals.engine_ali.dispose()
-
-        self.__save_description_history(score_history)
-        self.__plot_dist_score(score_history, 'history')
-        self.__qcut_eval(score_history, name=name)
-
     def test_current(self):
         ''' test on ai_score current '''
 
@@ -168,16 +154,6 @@ class score_eval:
                 to_slack().df_to_slack(f'*======== Score Distribution - {col} ========*', df_save)
             to_slack().file_to_slack(f'#{suffixes}_describe_current.xlsx', 'xlsx', f'{global_vals.production_score_current} Score Distribution')
 
-    def __save_description_history(self, df):
-        ''' write statistics for description '''
-
-        df = df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
-        print(df)
-        writer = pd.ExcelWriter(f'#{suffixes}_describe_history.xlsx')
-        df.to_excel(writer, sheet_name='Distribution History')
-        writer.save()
-        # to_slack().file_to_slack(f'#{suffixes}_describe_history.xlsx', 'xlsx', f'Backtest Score Distribution')
-
     def __plot_dist_score(self, df, filename):
         ''' Plot distribution (currency, score)  for all AI score compositions '''
 
@@ -235,57 +211,6 @@ class score_eval:
             to_slack().file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution', channel="U026B04RB3J")
             plt.close(fig)
 
-    def __qcut_eval(self, fundamentals, name=''):
-        ''' evaluate score history with 1) descirbe, 2) score 10-qcut mean ret, 3) per period change '''
-
-        writer = pd.ExcelWriter(f'#{suffixes}_score_eval_history_{name}.xlsx')
-
-        # best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(lambda x: x.nlargest(10, columns=['ai_score'], keep='all').mean()).reset_index()
-        def record_tickers(g):
-            g = g.nlargest(10, columns=['ai_score'], keep='all')
-            comb = pd.DataFrame(g.mean()).round(4).transpose()
-            g = g[['ticker', 'stock_return_y']].values
-            g = [f'{a}({round(b,2)})' for a, b in g]
-            comb['ticker'] = ', '.join(g)
-            return comb
-
-        best_10 = fundamentals.groupby(['period_end', 'currency_code']).apply(record_tickers).iloc[:,:-2].reset_index().drop(columns=['level_2'])
-        for name, g in best_10.groupby('currency_code'):
-            g.to_excel(writer, sheet_name=f'best10_{name}', index=False)
-
-        # # 1. Score describe
-        # for name, g in fundamentals.groupby(['currency_code']):
-        #     df = g.describe().transpose()
-        #     df['std'] = df.std()
-        #     df.to_excel(writer, sheet_name=f'describe_{name}')
-
-        # 2. Test 10-qcut return
-        def score_ret_mean(score_col='ai_score', group_col='currency_code'):
-            if group_col=='':
-                fundamentals['currency_code'] = 'cross'
-                group_col = 'currency_code'
-            fundamentals['score_qcut'] = fundamentals.dropna(subset=[score_col]).groupby([group_col])[score_col].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
-            mean_ret = pd.pivot_table(fundamentals, index=[group_col], columns=['score_qcut'], values='stock_return_y')
-            mean_ret['count'] = fundamentals.groupby([group_col])[score_col].count()
-            return mean_ret.transpose()
-
-        for i in score_col:
-            df = score_ret_mean(i)
-            df.to_excel(writer, sheet_name=f'ret_{i}')
-            if i == 'ai_score':
-                print(df)
-        score_ret_mean('ai_score','').to_excel(writer, sheet_name='ret_cross')
-
-        # 3. Ticker Score Single-Period Change
-        fundamentals = fundamentals.sort_values(by=['ticker','period_end'])
-        fundamentals['ai_score_last'] = fundamentals.groupby(['ticker'])['ai_score'].shift(1)
-        fundamentals['ai_score_change'] = fundamentals['ai_score'] - fundamentals['ai_score_last']
-        df = fundamentals.groupby(['ticker'])['ai_score_change'].agg(['mean','std'])
-        df.to_excel(writer, sheet_name='score_change')
-
-        writer.save()
-        to_slack().file_to_slack(f'#{suffixes}_score_eval_history_{name}.xlsx', 'xlsx', f'Backtest Return')
-
 def read_query(query, engine_num=int):
     ''' read table from different DB '''
     engine_dict = {0: global_vals.engine, 1: global_vals.engine_ali, 2: global_vals.engine_ali_prod}
@@ -317,4 +242,3 @@ if __name__ == "__main__":
 
     eval = score_eval(SLACK=args.slack, currency=args.currency, DEBUG=args.debug)
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
-    # eval.test_history('weekly1')     # test on (history) <-global_vals.production_score_history
