@@ -11,7 +11,7 @@ def trucncate_table_in_database(table, db_url=global_vals.db_url_alibaba):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
-        with global_vals.engine_ali.connect() as conn:
+        with engine.connect() as conn:
             conn.execute(f"TRUNCATE TABLE {table}")
         print(f"TRUNCATE TABLE: [{table}]")
         engine.dispose()
@@ -22,7 +22,7 @@ def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
-        with global_vals.engine_ali.connect() as conn:
+        with engine.connect() as conn:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         print(f"DROP TABLE: [{table}]")
         engine.dispose()
