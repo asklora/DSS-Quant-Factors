@@ -110,7 +110,7 @@ def record_table_update_time(table):
 def uid_maker(df, primary_key):
     ''' create uid columns for table when multiple columns used as primary_key '''
     df["uid"] = df[primary_key].apply(lambda row: ''.join(row.values.astype(str)), axis=1)
-    for s in [" ", ",", ":", ".", "-", "'"]:
+    for s in [" ", ",", ":", ".", "-", "'","_"]:
         df["uid"] = df["uid"].str.replace(s, "")
     return df
 
