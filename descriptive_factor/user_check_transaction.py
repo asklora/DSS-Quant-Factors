@@ -1,32 +1,30 @@
 import global_vals
 import pandas as pd
 import datetime as dt
+import numpy as np
+from utils_sql import sql_read_query, sql_read_table
 
-with global_vals.engine.connect() as conn:
-    df = pd.read_sql(f"SELECT * FROM orders WHERE placed AND user_id=1423", conn)
-global_vals.engine.dispose()
+def check_user(user_id):
+    ''' check all transaction of single user '''
 
-df['created'] = pd.to_datetime(df['created']).dt.tz_localize(None)
-df = df.loc[df['created'] < dt.datetime(2021,11,1,0,0,0)]
+    # get all position_uid from orders_position
+    op_query = f"SELECT op.position_uid, op.ticker, opp.order_summary, opp.status, opp.share_num, opp.current_investment_amount, opp.current_bot_cash_balance FROM orders_position op "
+    op_query += f"INNER JOIN orders_position_performance opp ON op.position_uid=opp.position_uid "
+    op_query += f"WHERE user_id='{user_id}' AND opp.created<'2021-11-01' "
+    op_query += f"ORDER BY op.ticker, op.position_uid, opp.created"
 
-df.loc[df['side']=="buy", "qty"] = -df["qty"]
-df.loc[df['side']=="buy", "amount"] = -df["amount"]
+    op = sql_read_query(op_query, global_vals.db_url_aws_read)
 
-sum = df.groupby("ticker")["qty", "amount"].sum()
+    op_last = op.groupby("position_uid").last()
+    op_last[""]
 
-ticker = list(sum.loc[sum['qty']!=0].index)
+    op.loc[op['status']=="Populate", "qty"] = op['share_num']
+    op.loc[op['order_summary'].notnull(), "qty"] = op.loc[op['order_summary'].notnull(), "order_summary"].apply(lambda x: x["hedge_shares"])
+    # op = op.dropna(subset=["qty"])
+    op["qty_cum"] = op.groupby("ticker")["qty"].apply(np.cumsum)
+    print(op)
 
-with global_vals.engine.connect() as conn:
-    price = pd.read_sql(f"SELECT ticker, close FROM master_ohlcvtr WHERE ticker in {tuple(ticker)} AND trading_day='2021-10-29'", conn)
-global_vals.engine.dispose()
+    opp_query = f"SELECT order_summary"
 
-price = price.set_index('ticker')
-sum = sum.merge(price, left_index=True, right_index=True, how='outer')
-
-sum['if_sell'] = sum['qty']*sum['close']
-sum['if_sell'] = sum['if_sell'].fillna(0)
-sum['total'] = sum['amount'] - sum['if_sell']
-print(sum["total"].sum())
-
-df = df.set_index(["ticker","filled_at","bot_id","side"])
-print(df)
+if __name__=="__main__":
+    check_user(user_id=1423)

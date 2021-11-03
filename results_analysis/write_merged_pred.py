@@ -187,11 +187,11 @@ def download_stock_pred(
 
     tbl_name_history = global_vals.production_factor_rank_table + f"_history_{suffix}"
     upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","period_end","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=True)
+                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=False)
 
     tbl_name_current = global_vals.production_factor_rank_table + f"_{suffix}"
     upsert_data_to_database(pd.concat(all_current, axis=0), tbl_name_current, primary_key=["group","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=True)
+                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=False)
 
 if __name__ == "__main__":
 
