@@ -118,7 +118,7 @@ if __name__ == "__main__":
                               sample_interval=tbl_suffix[1:-1],
                               rolling_period=int(tbl_suffix[-1]),
                               use_cached=False,
-                              save=True,
+                              save=False,
                               ticker=None,
                               currency=None)
         if args.mode == 'v2':

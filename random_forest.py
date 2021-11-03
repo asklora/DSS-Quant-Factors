@@ -60,8 +60,8 @@ class rf_HPOT:
                                 db_url=global_vals.db_url_alibaba_prod, how="append", verbose=-1)
         upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), f"{global_vals.result_score_table}{tbl_suffix}",
                                 db_url=global_vals.db_url_alibaba_prod, how="append", verbose=-1)
-        upsert_data_to_database(self.hpot['best_stock_feature'], f"{global_vals.feature_importance_table}{tbl_suffix}",
-                                db_url=global_vals.db_url_alibaba_prod, how="append", verbose=-1)
+        # upsert_data_to_database(self.hpot['best_stock_feature'], f"{global_vals.feature_importance_table}{tbl_suffix}",
+        #                         db_url=global_vals.db_url_alibaba_prod, how="append", verbose=-1)
 
     def rf_train(self, space, rerun):
         ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
