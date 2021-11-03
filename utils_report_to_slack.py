@@ -49,6 +49,8 @@ class to_slack:
         message = "```"
         message += f"{'columns'.ljust(20)}"
 
+        num_col = df.select_dtypes(float).columns.to_list()
+        df[num_col] = df[num_col].round(2)
         for i in df.columns.to_list():  # add columns
             message += f"{i.ljust(10)}"
         message += "\n"

@@ -1,5 +1,5 @@
 from pangres import upsert
-from sqlalchemy.dialects.postgresql import TEXT
+from sqlalchemy.dialects.postgresql import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
@@ -16,21 +16,21 @@ def trucncate_table_in_database(table, db_url=global_vals.db_url_alibaba):
         print(f"TRUNCATE TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
 def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
-            conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.execute(f"DROP TABLE {table}")
         print(f"DROP TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
 def upsert_data_to_database(data, table, primary_key=None, db_url=global_vals.db_url_alibaba, how="update",
-                            drop_primary_key=False, verbose=1):
+                            drop_primary_key=False, verbose=1, try_drop_table=False):
     ''' upsert Table to DB '''
 
     try:
@@ -71,7 +71,21 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vals.db
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB === Error : {e}")
+        if try_drop_table:      # if error from columns doesn't exist -> could try to drop table and create again
+            try:
+                drop_table_in_database(table, db_url)
+                upsert(engine=engine,
+                       df=data,
+                       table_name=table,
+                       if_row_exists=how,
+                       chunksize=20000,
+                       dtype=data_type)
+                print(f"DATA [{how}] TO {table}")
+                engine.dispose()
+            except:
+                to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
+        else:
+            to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
 
 def sql_read_query(query, db_url=global_vals.db_url_alibaba):
     ''' Read specific query from SQL '''
@@ -98,21 +112,24 @@ def sql_read_table(table, db_url=global_vals.db_url_alibaba):
 def record_table_update_time(table):
     ''' record last update time in table '''
     update_time = dt.datetime.now()
-    df = pd.DataFrame({'table_name': table, 'last_update': update_time, 'finish': True}, index=[0]).set_index("table_name")
+    df = pd.DataFrame({'tbl_name': table, 'last_update': update_time, 'finish': True}, index=[0]).set_index("tbl_name")
+    df.index.name = "tbl_name"
+    data_type = {"tbl_name": TEXT}
 
     engine = create_engine(global_vals.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
     upsert(engine=engine,
            df=df,
            table_name=global_vals.update_time_table,
            if_row_exists="update",
-           chunksize=20000)
+           chunksize=20000,
+           dtype=data_type)
     engine.dispose()
 
 def uid_maker(df, primary_key):
     ''' create uid columns for table when multiple columns used as primary_key '''
     df["uid"] = df[primary_key].apply(lambda row: ''.join(row.values.astype(str)), axis=1)
     for s in [" ", ",", ":", ".", "-", "'","_"]:
-        df["uid"] = df["uid"].str.replace(s, "")
+        df["uid"] = df["uid"].str.replace(s, "", regex=False)
     return df
 
 if __name__=="__main__":

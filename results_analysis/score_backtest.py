@@ -196,7 +196,7 @@ def score_history(tbl_suffix='monthly1'):
     # fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
     # fundamentals['period_end'] = fundamentals['period_end'].dt.strftime('%Y-%m-%d')
 
-    score_col = ['ai_score', 'ai_score_scaled', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
+    score_col = ['ai_score', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
     label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']
 
     mean_ret_all = {}
@@ -280,12 +280,12 @@ def score_ret_mean(df, score_col):
 
 def save_description_history(df):
     ''' write statistics for description '''
-    df = df.groupby(['currency_code','period_end'])['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
+    df = df.groupby('currency_code')['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
     to_slack("clair").df_to_slack("AI Score distribution (Backtest)", df)
 
 def qcut_eval(fundamentals, score_col):
     ''' evaluate score history with score 10-qcut mean ret (over entire history) '''
-    group_col = ['period_end', 'currency_code']
+    group_col = 'currency_code'
     for i in score_col:
         fundamentals['score_qcut'] = fundamentals.dropna(subset=[i]).groupby([group_col])[i].transform(lambda x: pd.qcut(x, q=10, labels=False, duplicates='drop'))
         mean_ret = pd.pivot_table(fundamentals, index=[group_col], columns=['score_qcut'], values='stock_return_y')

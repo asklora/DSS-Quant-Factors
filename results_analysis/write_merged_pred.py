@@ -37,7 +37,7 @@ def download_stock_pred(
         other_group_col = ['name_sql']
 
     # download training history
-    query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, S.train_bins, "
+    query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, "
                  f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                  f"FROM {global_vals.result_pred_table}_{model} P "
                  f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
@@ -46,12 +46,11 @@ def download_stock_pred(
                  f"ORDER BY S.finish_timing")
     result_all_all = sql_read_query(query, global_vals.db_url_alibaba_prod)
 
-    result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
-    result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
-        ['group', 'year_month', 'factor_name', 'cv_number','y_type']+other_group_col, keep='first')
-    result_all_all = result_all_all.drop(columns=['year_month'])
+    # result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
+    # result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
+    #     ['group', 'year_month', 'factor_name', 'cv_number','y_type']+other_group_col, keep='first')
+    # result_all_all = result_all_all.drop(columns=['year_month'])
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
-    # x = result_all_all.groupby(['y_type','period_end']).count()['pred'].unstack()
 
     all_current = []
     all_history = []
@@ -188,11 +187,11 @@ def download_stock_pred(
 
     tbl_name_history = global_vals.production_factor_rank_table + f"_history_{suffix}"
     upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","period_end","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod)
+                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=True)
 
     tbl_name_current = global_vals.production_factor_rank_table + f"_{suffix}"
     upsert_data_to_database(pd.concat(all_current, axis=0), tbl_name_current, primary_key=["group","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod)
+                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=True)
 
 if __name__ == "__main__":
 
@@ -202,7 +201,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='rf_reg')
-    parser.add_argument('--name_sql', type=str, default=f'v2_weekly1_20211101')
+    parser.add_argument('--name_sql', type=str, default=f'v2_weekly1_20211102_debug_sep')
     parser.add_argument('--suffix', type=str, default=suffix)
     # parser.add_argument('--rank_along_testing_history', action='store_false', help='rank_along_testing_history = True')
     # parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
@@ -220,8 +219,6 @@ if __name__ == "__main__":
         raise Exception('q is either >= .5 or not a numeric')
 
     # Example
-    # download_stock_pred(1/3, 'rf_reg', 'pca_trimold2', rank_along_testing_history=True, keep_last_period=True, save_plot=True, return_summary=True)
-
     download_stock_pred(
         q,
         args.model,
@@ -231,10 +228,6 @@ if __name__ == "__main__":
         suffix=suffix,
     )
 
-    from results_analysis.score_backtest import score_history
-    score_history(suffix)
-
-    from score_evaluate import score_eval
-    eval = score_eval()
-    eval.test_history(name=suffix)     # test on (history) <-global_vals.production_score_history
+    # from results_analysis.score_backtest import score_history
+    # score_history(suffix)
 
