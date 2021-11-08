@@ -21,8 +21,8 @@ class score_eval:
 
         pillar_current = {}
         with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
-            update_time = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn_ali)
-            update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            # update_time = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn_ali)
+            # update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
             query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
             # query += f"WHERE currency_code='{self.currency}'"
@@ -75,8 +75,8 @@ class score_eval:
         writer.save()
 
         if self.SLACK:
-            to_slack().df_to_slack('*======== Compare with Last Business Day (Mean Change) ========*', lw_comp_des['mean'])
-            to_slack().df_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
+            to_slack().series_to_slack('*======== Compare with Last Business Day (Mean Change) ========*', lw_comp_des['mean'])
+            to_slack().series_to_slack('*======== Compare with Score History Average (Mean Change) ========*', avg_comp_des['mean'])
             to_slack().file_to_slack(f'./#{suffixes}_compare.xlsx', 'xlsx', f'Compare score')
 
     def __corr_scale_unscale(self, current):
