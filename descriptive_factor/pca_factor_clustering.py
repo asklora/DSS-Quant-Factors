@@ -313,47 +313,6 @@ def plot_scatter_hist_2d_pca():
 
 # --------------------------------- Test on User Portfolio ------------------------------------------
 
-def read_user_from_firebase():
-    ''' read user portfolio details from firestore '''
-
-    import firebase_admin
-    from firebase_admin import credentials, firestore
-
-    with global_vals.engine.connect() as conn:
-        rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
-        rating = rating.set_index('ticker')['ai_score'].to_dict()
-    global_vals.engine.dispose()
-
-    # Get a database reference to our posts
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(global_vals.firebase_url)
-        default_app = firebase_admin.initialize_app(cred)
-
-    db = firestore.client()
-    doc_ref = db.collection(u"prod_portfolio").get()
-
-    object_list = []
-    for data in doc_ref:
-        format_data = {}
-        data = data.to_dict()
-        format_data['user_id'] = data.get('user_id')
-        format_data['index'] = data.get('profile').get('email')
-        format_data['return'] = data.get('total_profit_pct')
-        for i in data.get('active_portfolio'):
-            format_data['ticker'] = i.get('ticker')
-            format_data['spot_date'] = i.get('spot_date')
-            format_data['pct_profit'] = i.get('pct_profit')
-            format_data['bot'] = i.get('bot_details').get('bot_apps_name')
-            object_list.append(format_data.copy())
-
-    result = pd.DataFrame(object_list).sort_values(by=['return'], ascending=False)
-    result['rating'] = result['ticker'].map(rating)
-
-    print(list(result['user_id'].unique()))
-
-    result.to_csv('port_result.csv', index=False)
-    return result
-
 def read_user_from_postgres():
     ''' read user portfolio details from postgres '''
 

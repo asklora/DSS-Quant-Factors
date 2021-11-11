@@ -21,6 +21,8 @@ class read_item_df:
     def __init__(self, testing_interval=7, plot=False, currency=None):
         self.item_df = pd.read_csv(f'dcache_sample_{testing_interval}.csv')
         self.item_df = self.item_df.sort_values(by=['ticker', 'trading_day'])
+        self.item_df_org = self.item_df.copy(1)
+
         self.item_df = self.item_df.loc[self.item_df['ticker'].str[0] != '.']
 
         if currency=='HKD':
@@ -230,3 +232,4 @@ def report_to_slack(message, channel='U026B04RB3J'):
         )
     except Exception as e:
         print(e)
+

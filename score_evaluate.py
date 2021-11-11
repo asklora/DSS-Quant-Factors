@@ -25,7 +25,8 @@ class score_eval:
             # update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
             query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
-            # query += f"WHERE currency_code='{self.currency}'"
+            if self.currency:
+                query += f"WHERE currency_code='{self.currency}'"
             score_current = pd.read_sql(query, conn)
             query1 = f"SELECT currency_code, S.* FROM {global_vals.production_score_current_history} S "
             query1 += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
@@ -176,7 +177,7 @@ class score_eval:
                 continue
         plt.suptitle(filename, fontsize=30)
         plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
-        to_slack().file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution', channel="U026B04RB3J")
+        to_slack("clair").file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
 
     def __plot_minmax_factor(self, df_dict):
         ''' plot min/max distribution '''
@@ -208,7 +209,7 @@ class score_eval:
             fig_name = cur+freq
             plt.suptitle(fig_name, fontsize=30)
             fig.savefig(f'#{suffixes}_score_minmax_{fig_name}.png')
-            to_slack().file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution', channel="U026B04RB3J")
+            to_slack("clair").file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution')
             plt.close(fig)
 
 def read_query(query, engine_num=int):

@@ -418,7 +418,7 @@ def calc_factor_variables(df):
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
 if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[1, 365])
+    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[1, 7, 30, 91, 365])
     print(dict.keys())
 
     # get_worldscope(True)
