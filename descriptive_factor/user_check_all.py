@@ -12,69 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 from utils_des import cluster_hierarchical
 from preprocess.calculation_ratio import fill_all_day
 from collections import Counter
-
-
-def get_amount_holding():
-    ''' check all transaction of single user '''
-
-    # get all position_uid from orders_position
-    query = "SELECT * FROM orders_position "
-    query += f"WHERE created<'2021-11-01' AND created>'2021-09-30'"
-    trans = sql_read_query(query, global_vals.db_url_aws_read)
-
-    # g3 = trans.groupby(["user_id", "bot_id"])["investment_amount"].sum().unstack()
-    # g4 = trans.groupby(["user_id", "bot_id"])["final_pnl_amount"].sum().unstack()
-    # print(g4.sum())
-
-    # print(trans['event'].unique())
-    # trans = trans.loc[trans['event'].isin(["Stopped by User", "Bot Stopped"])]
-
-    trans["holding_period"] = -(trans["created"] - trans["updated"])/dt.timedelta(days=1)
-
-    g1 = trans.groupby(["user_id", "ticker"])["holding_period"].mean()
-    g2 = trans.groupby(["user_id", "ticker"])["investment_amount"].sum()
-    g = pd.concat([g1, g2], axis=1).reset_index()
-    g["total_inv"] = g.groupby(["user_id"])["investment_amount"].transform("sum")
-    g["pct_inv"] = g["investment_amount"]/g["total_inv"]
-    g["adj_period"] = g["pct_inv"]*g["holding_period"]
-
-    user_adj_period = g.groupby(["user_id"])["adj_period"].sum()
-    user_ticker_pct = g.groupby(["user_id", "ticker"])["pct_inv"].sum()
-
-    # g = g.loc[g["user_id"]==1423]
-    # import matplotlib.pyplot as plt
-    # plt.scatter(g["holding_period"], g["investment_amount"], c=g["user_id"], cmap="prism", alpha=1, s=10)
-    # plt.xlim(-1, 16)
-    # plt.ylim(0, 110000)
-    # plt.show()
-    #
-    # g3 = trans.groupby(["user_id"])["holding_period"].mean()
-    # print(trans)
-
-    return user_adj_period, user_ticker_pct.reset_index()
-
-def get_transaction():
-    ''' check all transaction of single user '''
-
-    # get all position_uid from orders_position
-    buy_query = "SELECT user_id, ticker, created as trading_day, final_pnl_amount FROM orders_position "
-    buy_query += f"WHERE created<'2021-11-01' AND created>'2021-09-30'"
-    buy = sql_read_query(buy_query, global_vals.db_url_aws_read)
-    print(buy)
-
-    sell_query = "SELECT user_id, ticker, event_date as trading_day, final_pnl_amount FROM orders_position "
-    sell_query += f"WHERE created<'2021-11-01' AND created>'2021-09-30' AND event='Stopped by User' "
-    sell = sql_read_query(sell_query, global_vals.db_url_aws_read)
-    print(sell)
-
-    # user_details = get_user()
-    # op_ret_rank = buy.groupby(["user_id"])["final_pnl_amount"].sum()
-    # user_details["return"] = user_details["user_id"].map(op_ret_rank.to_dict())
-    # print(user_details)
-
-    # rating = get_rating_history()
-
-    return buy, sell
+from sklearn.preprocessing import maxabs_scale
 
 def get_items(testing_interval=91, start=1):
     from utils_des import read_item_df
@@ -163,11 +101,6 @@ def get_user():
     result = pd.DataFrame(object_list).sort_values(by=['user_id'], ascending=False)
     return result
 
-def get_universe():
-    df = sql_read_query("SELECT ticker_name, company_description, ticker FROM universe", global_vals.db_url_aws_read)
-    return df
-
-
 from utils_des import read_item_df
 
 class calc_recommend_score:
@@ -200,21 +133,26 @@ class calc_recommend_score:
         # exit(200)
 
         # 2. get ticker universe (map ticker -> name)
-        universe = get_universe()
+        universe_query = "SELECT ticker_name, company_description, ticker FROM universe"
+        universe = sql_read_query(universe_query, global_vals.db_url_aws_read)
         ticker_to_name = universe.set_index(["ticker"])["ticker_name"].to_dict()
 
         # 3. get items & merge with user
-        period = {"short_term": (91, 5),
-                  "long_term": (7, 1)
+        period = {"long_term": (91, 5),
+                  "short_term": (7, 1)
                   }
+
         pillar = {"tech": self._get_tech_pillar,
                   "funda": self._get_funda_pillar,
                   "id": self._get_id_pillar
                   }
 
+        # 3.1. separate score for long / short term
         for term, (interval, start_year) in period.items():
             distance_list = []
             similarity_list = []
+
+            # 3.2. separate score for each pillar
             for name, func in pillar.items():
                 item = func(interval, start_year)
                 item = self.__cluster(item, n=20)
@@ -245,12 +183,14 @@ class calc_recommend_score:
                 similarity_list.append(similarity)
                 print(similarity)
 
+            pillar_name = list(pillar.keys())
             distance = pd.concat(distance_list, axis=1)
-            distance =
+            distance[pillar_name] = 1-maxabs_scale(distance[pillar_name])
+            distance = distance.div(distance.sum(axis=1), axis=0)
             distance = distance.reset_index()
 
-
             similarity = pd.concat(similarity_list, axis=1).reset_index().fillna(0)
+            similarity = similarity.merge(distance, on=["user_id"], how="outer", suffixes=('_d', '_s'))
             similarity["ticker_name"] = similarity["ticker"].map(ticker_to_name)
 
         print(distance)
