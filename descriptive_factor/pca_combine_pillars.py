@@ -210,7 +210,7 @@ def test_case(suffixes, testing_interval=91, years=5):
     # global_vals.engine_ali.dispose()
 
 if __name__ == "__main__":
-    # test_91_factor(suffixes='_quantile3').try_original()
+    test_91_factor(suffixes='_quantile3').try_original()
     # test_7_factor(suffixes='_quantile4').try_original()
-    test_case('_quantile6')
+    # test_case('_quantile6')
     # test_icb_mkt()
