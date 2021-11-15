@@ -313,22 +313,25 @@ def check_factor_change():
     minmax = df.groupby(["ticker", "level_2"])[0].agg(["min","mean","max"])
     minmax["diff"] = minmax["max"] - minmax["min"]
     minmax = minmax.sort_values(by=['max'], ascending=False).head(20)
-    minmax = minmax.index.to_numpy()
     df_org["trading_day"] = pd.to_datetime(df_org["trading_day"])
-    for ticker, factor in minmax:
-        ddf = df_org.loc[(df_org['ticker']==ticker), ["trading_day", factor]].sort_values(by=["trading_day"])
-        plt.plot(ddf.dropna(how='any').set_index("trading_day")[factor])
-        print(ddf)
-        # plt.suptitle(ticker)
-        # plt.xlabel(factor)
-        # plt.show()
-        # continue
-        plt.savefig(f'check_factor_{ticker}_{factor}.png')
-        plt.close()
-    print(df)
+    minmax = minmax.reset_index()[["ticker","level_2"]]
+
+    df = df.merge(minmax, on=["ticker","level_2"])
+    print(minmax)
+    # for ticker, factor in minmax:
+    #     ddf = df_org.loc[(df_org['ticker']==ticker), ["trading_day", factor]].sort_values(by=["trading_day"])
+    #     plt.plot(ddf.dropna(how='any').set_index("trading_day")[factor])
+    #     print(ddf)
+    #     # plt.suptitle(ticker)
+    #     # plt.xlabel(factor)
+    #     # plt.show()
+    #     # continue
+    #     plt.savefig(f'check_factor_{ticker}_{factor}.png')
+    #     plt.close()
+    # print(df)
 
 if __name__=="__main__":
     # get_items_pillar(91, 5)
     # get_transaction()
-    calc_recommend_score()
-    # check_factor_change()
+    # calc_recommend_score()
+    check_factor_change()

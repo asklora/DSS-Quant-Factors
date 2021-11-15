@@ -93,7 +93,7 @@ class read_item_df:
         components = pd.DataFrame(model.components_, columns=cols).transpose()
         explained_ratio = np.cumsum(model.explained_variance_ratio_)
         print(explained_ratio)
-        return X, explained_ratio
+        return X, explained_ratio, components
 
     def svd_x(self, cols, n=2):
         X = self.item_df[cols].values

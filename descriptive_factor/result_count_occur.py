@@ -125,9 +125,32 @@ def count_plot_from_db_comb_gaussian():
     best = sort_df.groupby(['name_sql','n_factors','n_clusters']).first()
     print(best)
 
+
+def count_plot_from_db_final(pillar=None, testing_interval=None, currency=None):
+    table_name = 'des_factor_final'
+    groupby_col = ['n_factor','cols','testing_interval']
+    sort_col = 'score'
+
+    conditions=['True']
+    if pillar:
+        conditions.append(f"pillar='{pillar}'")
+    if testing_interval:
+        conditions.append(f"testing_interval={testing_interval}")
+    if currency:
+        conditions.append(f"currency='{currency}'")
+
+    with global_vals.engine_ali.connect() as conn:
+        df = pd.read_sql(f"SELECT * FROM {table_name} WHERE {' AND '.join(conditions)}", conn)
+    global_vals.engine_ali.dispose()
+
+    sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
+    sort_df = sort_df.sort_values(by=["score"])
+    print(pillar, testing_interval, currency, sort_df[["cols","score"]].head(10))
+
 if __name__=="__main__":
     # count_plot_from_csv()
     # count_plot_from_db()
     # count_plot_from_db_comb_hierarchical()
     # count_plot_from_db_comb_fcm()
-    count_plot_from_db_comb_gaussian()
+    # count_plot_from_db_comb_gaussian()
+    count_plot_from_db_final(pillar='funda', currency='USD')
