@@ -19,6 +19,8 @@ def check_user(user_id):
 
     op = sql_read_query(op_query, global_vals.db_url_aws_read)
 
+    print(op['current_investment_amount'].sum())
+
     # evaluate top earner by (ticker / bot) for this user
     op_last = op.groupby("position_uid").last()
     op_ticker_sum = op_last.groupby("ticker").sum()
@@ -63,29 +65,29 @@ def check_ticker(ticker):
 
 if __name__=="__main__":
     # check_ticker("1211.HK")
-    check_user(user_id=1423)
+    check_user(user_id=1428)
 
-    df0 = sql_read_query("SELECT updated as sold_time, position_uid, bot_cash_balance * exchange_rate as final FROM orders_position "
-                         "WHERE user_id = 1423 and updated >= '2021-11-01' AND event is not null", global_vals.db_url_aws_read)
-    df = sql_read_query("SELECT * FROM user_transaction "
-                        "WHERE balance_uid='4b91b275c08e4e0ba27eb4f1bfb9d882' and updated>='2021-10-29'", global_vals.db_url_aws_read)
-    df.loc[df['side']=='credit', "amount"] = -df["amount"]
-
-    pos_details = sql_read_query(f"SELECT * FROM orders_position WHERE user_id = 1423 and updated >= '2021-11-01'", global_vals.db_url_aws_read)
-    pos_details["final_pnl_amount"] = pos_details["final_pnl_amount"]*pos_details["exchange_rate"]
-
-    details = pd.DataFrame(df["transaction_detail"].to_list())
-    df = pd.concat([df, details], axis=1)
-
-    df = df.dropna(subset=["position"])
-    df = df.loc[df["event"]=="create"]
-    print(df["amount"].sum())
-
-    df = df.merge(df0, left_on="position", right_on="position_uid", how="inner")
-    df = df[["position_uid", "updated", "sold_time", "amount", "final"]]
-    df["pnl"] = df["amount"] - df["final"]
-
-    df = df.merge(pos_details, on="position_uid")[["pnl","final_pnl_amount"]]
-    df["sum"] = df["pnl"] + df["final_pnl_amount"]
-
-    print(df.sum())
+    # df0 = sql_read_query("SELECT updated as sold_time, position_uid, bot_cash_balance * exchange_rate as final FROM orders_position "
+    #                      "WHERE user_id = 1423 and updated >= '2021-11-01' AND event is not null", global_vals.db_url_aws_read)
+    # df = sql_read_query("SELECT * FROM user_transaction "
+    #                     "WHERE balance_uid='4b91b275c08e4e0ba27eb4f1bfb9d882' and updated>='2021-10-29'", global_vals.db_url_aws_read)
+    # df.loc[df['side']=='credit', "amount"] = -df["amount"]
+    #
+    # pos_details = sql_read_query(f"SELECT * FROM orders_position WHERE user_id = 1423 and updated >= '2021-11-01'", global_vals.db_url_aws_read)
+    # pos_details["final_pnl_amount"] = pos_details["final_pnl_amount"]*pos_details["exchange_rate"]
+    #
+    # details = pd.DataFrame(df["transaction_detail"].to_list())
+    # df = pd.concat([df, details], axis=1)
+    #
+    # df = df.dropna(subset=["position"])
+    # df = df.loc[df["event"]=="create"]
+    # print(df["amount"].sum())
+    #
+    # df = df.merge(df0, left_on="position", right_on="position_uid", how="inner")
+    # df = df[["position_uid", "updated", "sold_time", "amount", "final"]]
+    # df["pnl"] = df["amount"] - df["final"]
+    #
+    # df = df.merge(pos_details, on="position_uid")[["pnl","final_pnl_amount"]]
+    # df["sum"] = df["pnl"] + df["final_pnl_amount"]
+    #
+    # print(df.sum())
