@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors import NearestCentroid
 
-import global_vals
+import global_vars
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 import pandas as pd
 import numpy as np

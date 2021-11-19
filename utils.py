@@ -1,4 +1,4 @@
-import global_vals
+import global_vars
 import datetime as dt
 import pandas as pd
 import os

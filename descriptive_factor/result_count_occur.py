@@ -3,7 +3,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 
-import global_vals
+import global_vars
 
 
 def count_plot_from_csv():

@@ -1,6 +1,6 @@
 import numpy as np
 from sqlalchemy import create_engine
-import global_vals
+import global_vars
 import pandas as pd
 import datetime as dt
 

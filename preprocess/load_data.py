@@ -10,7 +10,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
 from sklearn import linear_model
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_table, sql_read_query
 
 def add_arr_col(df, arr, col_name):

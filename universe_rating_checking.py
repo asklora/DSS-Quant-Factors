@@ -1,6 +1,6 @@
 import pandas as pd
 import datetime as dt
-import global_vals
+import global_vars
 from utils_sql import sql_read_query, sql_read_table
 
 rating = sql_read_query("SELECT ticker, trading_day, ai_score, wts_rating FROM universe_rating_history", global_vals.db_url_aws_read)

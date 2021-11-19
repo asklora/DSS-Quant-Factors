@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
-import global_vals
+import global_vars
 
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from utils_sql import upsert_data_to_database, sql_read_table, sql_read_query

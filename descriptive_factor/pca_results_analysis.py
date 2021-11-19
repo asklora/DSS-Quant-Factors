@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import global_vals
+import global_vars
 from utils_des import read_item_df
 
 def best_factor():

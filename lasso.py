@@ -16,7 +16,7 @@ from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn import linear_model
 from preprocess.load_data import load_data
 from random_forest import eval_test_return
-import global_vals
+import global_vars
 import sys
 import itertools
 

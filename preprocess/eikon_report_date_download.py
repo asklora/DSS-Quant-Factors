@@ -1,5 +1,5 @@
 import eikon as ek
-import global_vals
+import global_vars
 import pandas as pd
 import numpy as np
 import datetime as dt

@@ -6,7 +6,7 @@ import time
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 
-import global_vals
+import global_vars
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables
 from preprocess.calculation_premium import calc_premium_all_v2

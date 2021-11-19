@@ -4,7 +4,7 @@ from datetime import datetime
 import multiprocessing as mp
 import itertools
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_query, upsert_data_to_database, trucncate_table_in_database
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION

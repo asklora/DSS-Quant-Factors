@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import global_vals
+import global_vars
 import re
 import argparse
 import datetime as dt
@@ -138,6 +138,7 @@ class score_eval:
                 send_mail(subject, text, file, "john.kim@loratechai.com")
                 send_mail(subject, text, file, "kenson.lau@loratechai.com")
                 send_mail(subject, text, file, "joseph.chang@loratechai.com")
+                send_mail(subject, text, file, "nickey.kong@loratechai.com")
 
     def __save_description(self, df):
         ''' write statistics for  '''

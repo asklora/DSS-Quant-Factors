@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from sqlalchemy import text
-import global_vals
+import global_vars
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta

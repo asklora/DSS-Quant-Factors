@@ -16,7 +16,7 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, a
 
 from preprocess.load_data import load_data
 from utils_sql import upsert_data_to_database
-import global_vals
+import global_vars
 import sys
 
 class rf_HPOT:

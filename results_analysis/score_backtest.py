@@ -4,7 +4,7 @@ import datetime as dt
 import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_query, sql_read_table, upsert_data_to_database
 from utils_report_to_slack import to_slack
 

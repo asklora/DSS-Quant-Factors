@@ -1,4 +1,4 @@
-import global_vals
+import global_vars
 import pandas as pd
 import datetime as dt
 from utils_des import read_item_df, feature_hierarchical_plot, selection_feature_hierarchical, \

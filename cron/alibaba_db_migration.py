@@ -1,4 +1,4 @@
-import global_vals
+import global_vars
 import pandas as pd
 from sqlalchemy import Table, MetaData
 from sqlalchemy.orm import sessionmaker

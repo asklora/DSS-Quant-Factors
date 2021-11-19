@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-import global_vals
+import global_vars
 import pandas as pd
 
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope

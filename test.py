@@ -1,5 +1,5 @@
 import pandas as pd
-import global_vals
+import global_vars
 from sqlalchemy.dialects.postgresql import TEXT
 import numpy as np
 from sqlalchemy import create_engine

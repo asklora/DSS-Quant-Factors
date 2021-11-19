@@ -5,7 +5,7 @@ import pandas as pd
 from hierarchy_ratio_cluster import trim_outlier_std
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-import global_vals
+import global_vars
 from sqlalchemy import create_engine
 
 

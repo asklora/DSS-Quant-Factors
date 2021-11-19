@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
 
-import global_vals
+import global_vars
 from utils_report_to_slack import to_slack
 
 def trucncate_table_in_database(table, db_url=global_vals.db_url_alibaba):
