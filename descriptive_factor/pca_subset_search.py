@@ -39,7 +39,7 @@ class test:
         r = pca.explained_variance_ratio_
         print(r[0], cols)
 
-        thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        thread_engine_ali = create_engine(global_vars.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             pd.DataFrame({'cols':','.join(cols), 'score':r[0]}, index=[0]).to_sql("des_factor_pca", **extra)

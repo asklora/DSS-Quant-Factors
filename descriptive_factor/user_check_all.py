@@ -70,13 +70,13 @@ def get_items_pillar(testing_interval, start):
 def get_rating_history():
     ''' get rating history '''
     query = "SELECT ticker, trading_day, ai_score FROM universe_rating_history"
-    df = sql_read_query(query, global_vals.db_url_aws_read)
+    df = sql_read_query(query, global_vars.db_url_aws_read)
     return df
 
 def get_rating():
     ''' get rating history '''
     query = "SELECT * FROM universe_rating_history"
-    df = sql_read_query(query, global_vals.db_url_aws_read)
+    df = sql_read_query(query, global_vars.db_url_aws_read)
     return df
 
 def get_user():
@@ -84,7 +84,7 @@ def get_user():
 
     # Get a database reference to our posts
     if not firebase_admin._apps:
-        cred = credentials.Certificate(global_vals.firebase_url)
+        cred = credentials.Certificate(global_vars.firebase_url)
         default_app = firebase_admin.initialize_app(cred)
 
     db = firestore.client()
@@ -113,7 +113,7 @@ class calc_recommend_score:
         # 1. get user transaction from orders_position
         op_query = "SELECT user_id, ticker, created, current_returns, event, updated, bot_id, exchange_rate*investment_amount as investment_amount FROM orders_position "
         op_query += f"WHERE created>'2021-09-30'"
-        user = sql_read_query(op_query, global_vals.db_url_aws_read)
+        user = sql_read_query(op_query, global_vars.db_url_aws_read)
         user["trading_day"] = pd.to_datetime(user["created"].dt.date)
         user["investment_amount"] = (user["investment_amount"]/10000).round(0)
 
@@ -134,7 +134,7 @@ class calc_recommend_score:
 
         # 2. get ticker universe (map ticker -> name)
         universe_query = "SELECT ticker_name, company_description, ticker FROM universe"
-        universe = sql_read_query(universe_query, global_vals.db_url_aws_read)
+        universe = sql_read_query(universe_query, global_vars.db_url_aws_read)
         ticker_to_name = universe.set_index(["ticker"])["ticker_name"].to_dict()
 
         # 3. get items & merge with user

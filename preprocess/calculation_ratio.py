@@ -20,17 +20,17 @@ def get_tri(save=True, currency=None, ticker=None):
 
     print(f'===========================================================================================')
     query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
-                 f"FROM {global_vals.stock_data_table_tri} T "
-                 f"INNER JOIN {global_vals.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
-                 f"INNER JOIN {global_vals.dl_value_universe_table} U ON T.ticker = U.ticker "
+                 f"FROM {global_vars.stock_data_table_tri} T "
+                 f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
+                 f"INNER JOIN {global_vars.dl_value_universe_table} U ON T.ticker = U.ticker "
                  f"WHERE {' AND '.join(conditions)}")
-    tri = sql_read_query(query, global_vals.db_url_aws_read)
+    tri = sql_read_query(query, global_vars.db_url_aws_read)
 
-    query1 = f"SELECT * FROM {global_vals.eikon_price_table} ORDER BY ticker, trading_day"
-    eikon_price = sql_read_query(query1, global_vals.db_url_alibaba)
+    query1 = f"SELECT * FROM {global_vars.eikon_price_table} ORDER BY ticker, trading_day"
+    eikon_price = sql_read_query(query1, global_vars.db_url_alibaba)
 
-    query2 = f"SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}"
-    market_cap_anchor = sql_read_query(query2, global_vals.db_url_aws_read)
+    query2 = f"SELECT ticker, mkt_cap FROM {global_vars.fundamental_score_mkt_cap}"
+    market_cap_anchor = sql_read_query(query2, global_vars.db_url_aws_read)
 
     if save:
         tri.to_csv('cache_tri.csv', index=False)
@@ -265,19 +265,19 @@ def download_clean_worldscope_ibes(save, currency, ticker):
         conditions.append(f"ticker = '{ticker}'")
 
     print(f"==================================================================================================")
-    query_ws = f"select * from {global_vals.worldscope_quarter_summary_table} WHERE {' AND '.join(conditions)}"
-    ws = sql_read_query(query_ws, global_vals.db_url_aws_read)
+    query_ws = f"select * from {global_vars.worldscope_quarter_summary_table} WHERE {' AND '.join(conditions)}"
+    ws = sql_read_query(query_ws, global_vars.db_url_aws_read)
 
-    query_ibes = f"SELECT * FROM {global_vals.ibes_data_table} WHERE {' AND '.join(conditions)}"
-    ibes = sql_read_query(query_ibes, global_vals.db_url_aws_read)
+    query_ibes = f"SELECT * FROM {global_vars.ibes_data_table} WHERE {' AND '.join(conditions)}"
+    ibes = sql_read_query(query_ibes, global_vars.db_url_aws_read)
 
-    query_universe = f"SELECT ticker, currency_code, icb_code FROM {global_vals.dl_value_universe_table}"
-    universe = sql_read_query(query_universe, global_vals.db_url_aws_read)
+    query_universe = f"SELECT ticker, currency_code, icb_code FROM {global_vars.dl_value_universe_table}"
+    universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
 
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
+        print(f'      ------------------------> Fill missing in {global_vars.worldscope_quarter_summary_table} ')
 
         ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])  # Net debt = total debt - C&CE
         ws['ttm_ebit'] = ws['ttm_ebit'].fillna(
@@ -308,11 +308,11 @@ def check_duplicates(df, name=''):
 def update_period_end(ws=None):
     ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
 
-    print(f'      ------------------------> Update period_end in {global_vals.worldscope_quarter_summary_table} ')
+    print(f'      ------------------------> Update period_end in {global_vars.worldscope_quarter_summary_table} ')
 
-    query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vals.dl_value_universe_table}"
-    universe = sql_read_query(query_universe, global_vals.db_url_aws_read)
-    eikon_report_date = sql_read_table(global_vals.eikon_report_date_table, global_vals.db_url_alibaba_prod)
+    query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vars.dl_value_universe_table}"
+    universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
+    eikon_report_date = sql_read_table(global_vars.eikon_report_date_table, global_vars.db_url_alibaba_prod)
 
     ws = ws.dropna(subset=['year'])
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
@@ -371,7 +371,7 @@ def fill_all_given_date(result, ref):
 def drop_dup(df, col='period_end'):
     ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-    print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+    print(f'      ------------------------> Drop duplicates in {global_vars.worldscope_quarter_summary_table} ')
 
     df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
@@ -477,17 +477,17 @@ def calc_fx_conversion(df):
 
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
-    curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}"
-    curr_code = sql_read_query(curr_code_query, global_vals.db_url_aws_read)
+    curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.dl_value_universe_table}"
+    curr_code = sql_read_query(curr_code_query, global_vars.db_url_aws_read)
 
     # combine download fx data from eikon & daily currency price ingestion
-    fx = sql_read_table(global_vals.eikon_fx_table, global_vals.db_url_alibaba_prod)
-    fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end FROM {global_vals.currency_history_table}"
-    fx2 = sql_read_query(fx2_query, global_vals.db_url_aws_read)
+    fx = sql_read_table(global_vars.eikon_fx_table, global_vars.db_url_alibaba_prod)
+    fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end FROM {global_vars.currency_history_table}"
+    fx2 = sql_read_query(fx2_query, global_vars.db_url_aws_read)
     fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
     fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
 
-    ingestion_source = sql_read_table(global_vals.ingestion_name_table, global_vals.db_url_alibaba_prod)
+    ingestion_source = sql_read_table(global_vars.ingestion_name_table, global_vars.db_url_alibaba_prod)
 
     df = df.merge(curr_code, on='ticker', how='inner')
     df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
@@ -538,11 +538,11 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     else:
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, rolling_period, use_cached, save, currency, ticker)
 
-    formula = sql_read_table(global_vals.formula_factors_table_prod, global_vals.db_url_alibaba_prod)
+    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     formula = formula.loc[formula['is_active']]
 
     print(f'============================================================================================')
-    print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
+    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table}')
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
@@ -614,7 +614,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
     print(f'      ------------------------> Save missing Excel')
 
-    db_table_name = global_vals.processed_ratio_table
+    db_table_name = global_vars.processed_ratio_table
     if sample_interval == 'weekly':
         db_table_name += f'_weekly{rolling_period}'
     elif price_sample == 'last_week_avg':
@@ -628,7 +628,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
         ['ticker', 'period_end', 'currency_code', 'icb_code', 'stock_return_y'] + formula['name'].to_list())
     ddf = df[list(filter_col)]
     ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
-    upsert_data_to_database(ddf, db_table_name, primary_key=["ticker","period_end"], db_url=global_vals.db_url_alibaba_prod, how="replace")
+    upsert_data_to_database(ddf, db_table_name, primary_key=["ticker","period_end"], db_url=global_vars.db_url_alibaba_prod, how="replace")
     return df, stocks_col, formula
 
 def test_missing(df_org, formula, ingestion_cols):

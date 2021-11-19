@@ -26,22 +26,22 @@ def back_by_month(n=12, str=True):
 def get_tri(conditions=None):
     ''' get stock related data from DSS & DSWS '''
 
-    print(f'      ------------------------> Download stock data from {global_vals.stock_data_table_tri}')
+    print(f'      ------------------------> Download stock data from {global_vars.stock_data_table_tri}')
     tri_conditions = ["U.is_active"]
     if conditions:
         tri_conditions.extend(conditions)
     tri_conditions.append(f"trading_day > '{back_by_month(24)}'")
-    with global_vals.engine.connect() as conn_droid:
+    with global_vars.engine.connect() as conn_droid:
         query_tri = f"SELECT C.ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
-        query_tri += f"FROM {global_vals.stock_data_table_ohlc} C "
-        query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vals.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
-        query_tri += f"INNER JOIN (SELECT ticker, is_active, currency_code FROM {global_vals.dl_value_universe_table}) U ON U.ticker = C.ticker "
+        query_tri += f"FROM {global_vars.stock_data_table_ohlc} C "
+        query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vars.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
+        query_tri += f"INNER JOIN (SELECT ticker, is_active, currency_code FROM {global_vars.dl_value_universe_table}) U ON U.ticker = C.ticker "
         query_tri += f"WHERE {' AND '.join(tri_conditions)} "
         query_tri += f"ORDER BY C.ticker, trading_day"
         tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
-        mkt_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vals.fundamental_score_mkt_cap}', conn_droid)
-    global_vals.engine.dispose()
+        mkt_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vars.fundamental_score_mkt_cap}', conn_droid)
+    global_vars.engine.dispose()
 
     # update mkt_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
     mkt_cap_anchor = mkt_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
@@ -64,22 +64,22 @@ def get_worldscope(conditions=None):
     conditions.append(f"period_end > '{back_by_month(24)}'")
     if conditions:
         ws_conditions.extend(conditions)
-    with global_vals.engine.connect() as conn:
-        print(f'      ------------------------> Download worldscope data from {global_vals.worldscope_quarter_summary_table}')
-        query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vals.worldscope_quarter_summary_table} C '
-        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vals.dl_value_universe_table}) U ON U.ticker = C.ticker "
+    with global_vars.engine.connect() as conn:
+        print(f'      ------------------------> Download worldscope data from {global_vars.worldscope_quarter_summary_table}')
+        query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vars.worldscope_quarter_summary_table} C '
+        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vars.dl_value_universe_table}) U ON U.ticker = C.ticker "
         query_ws += f"WHERE {' AND '.join(ws_conditions)} "
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
-        query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vals.ibes_data_table} WHERE ticker IS NOT NULL'
+        query_ibes = f'SELECT ticker, trading_day, eps1tr12 FROM {global_vars.ibes_data_table} WHERE ticker IS NOT NULL'
         ibes = pd.read_sql(query_ibes, conn, chunksize=10000)  # ibes_data
         ibes = pd.concat(ibes, axis=0, ignore_index=True)
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
 
     def drop_dup(df):
         ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-        print(f'      ------------------------> Drop duplicates in {global_vals.worldscope_quarter_summary_table} ')
+        print(f'      ------------------------> Drop duplicates in {global_vars.worldscope_quarter_summary_table} ')
         df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
         df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
         return df.drop('count', axis=1)
@@ -89,7 +89,7 @@ def get_worldscope(conditions=None):
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        print(f'      ------------------------> Fill missing in {global_vals.worldscope_quarter_summary_table} ')
+        print(f'      ------------------------> Fill missing in {global_vars.worldscope_quarter_summary_table} ')
         ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])  # Net debt = total debt - C&CE
         ws['ttm_ebit'] = ws['ttm_ebit'].fillna(
             ws['ttm_pretax_income'] + ws['ttm_interest'])  # TTM EBIT = TTM Pretax Income + TTM Interest Exp.
@@ -209,16 +209,16 @@ def calc_fx_conversion(df):
 
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali_prod.connect() as conn_ali:
-        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vals.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
-        fx = pd.read_sql(f"SELECT * FROM {global_vals.eikon_other_table}_fx", conn_ali)
+    with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
+        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
+        fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_other_table}_fx", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
-                          f"FROM {global_vals.currency_history_table}", conn)
+                          f"FROM {global_vars.currency_history_table}", conn)
         fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
         fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
-    global_vals.engine.dispose()
-    global_vals.engine_ali_prod.dispose()
+    global_vars.engine.dispose()
+    global_vars.engine_ali_prod.dispose()
 
     df = df.merge(curr_code, on='ticker', how='left')
     # df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
@@ -254,14 +254,14 @@ def calc_fx_conversion(df):
 def calc_factor_variables(df):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}_descriptive', conn)  # ratio calculation used
-    global_vals.engine_ali.dispose()
+    with global_vars.engine_ali.connect() as conn:
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}_descriptive', conn)  # ratio calculation used
+    global_vars.engine_ali.dispose()
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
 
-    print(f'      ------------------------> Calculate all factors in {global_vals.formula_factors_table}')
+    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table}')
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].to_numpy().flatten()
     add_minus_fields = [i for i in filter(None, list(set(add_minus_fields))) if any(['-' in i, '+' in i, '*' in i])]
@@ -345,7 +345,7 @@ def get_cluster_dimensions(ticker=None, currency=None):
     _, df_cluster["funda_3m_cluster"] = cluster_hierarchical(df_cluster[funda_factor_newname].values)
 
     df_cluster = upsert_data_to_database(df_cluster, "cluster_factor", primary_key=["ticker","trading_day"],
-                                         db_url=global_vals.db_url_alibaba, how="replace")
+                                         db_url=global_vars.db_url_alibaba, how="replace")
 
     return df_cluster
 

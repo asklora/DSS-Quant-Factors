@@ -17,7 +17,7 @@ def check_user(user_id):
     op_query += f"WHERE user_id='{user_id}' AND opp.updated>='2021-11-01' "
     op_query += f"ORDER BY op.ticker, op.position_uid, opp.updated"
 
-    op = sql_read_query(op_query, global_vals.db_url_aws_read)
+    op = sql_read_query(op_query, global_vars.db_url_aws_read)
 
     print(op['current_investment_amount'].sum())
 
@@ -47,7 +47,7 @@ def check_user(user_id):
     # evaluate price used for amount calculation is correct
     op["trading_day"] = op["updated"].dt.date
     price_query = "SELECT trading_day, ticker, high, low, \"close\" FROM master_ohlcvtr WHERE trading_day>='2021-10-01' ORDER BY trading_day asc"
-    price = sql_read_query(price_query, global_vals.db_url_aws_read).dropna(how='any')
+    price = sql_read_query(price_query, global_vars.db_url_aws_read).dropna(how='any')
     price["close"] = price.groupby(["ticker"])["close"].shift(1)
     op = op.merge(price, on=["trading_day","ticker"])
     op["correct"] = (op["last_live_price"]==op["close"])|(op["low"].isnull())
@@ -56,10 +56,10 @@ def check_user(user_id):
 
 def check_ticker(ticker):
     rating_query = f"SELECT * FROM universe_rating_history WHERE ticker='{ticker}' ORDER BY trading_day DESC"
-    rating = sql_read_query(rating_query, global_vals.db_url_aws_read)
+    rating = sql_read_query(rating_query, global_vars.db_url_aws_read)
 
     des_query = f"SELECT * FROM universe WHERE ticker='{ticker}'"
-    universe = sql_read_query(des_query, global_vals.db_url_aws_read)
+    universe = sql_read_query(des_query, global_vars.db_url_aws_read)
 
     return rating, universe
 
@@ -68,12 +68,12 @@ if __name__=="__main__":
     check_user(user_id=1428)
 
     # df0 = sql_read_query("SELECT updated as sold_time, position_uid, bot_cash_balance * exchange_rate as final FROM orders_position "
-    #                      "WHERE user_id = 1423 and updated >= '2021-11-01' AND event is not null", global_vals.db_url_aws_read)
+    #                      "WHERE user_id = 1423 and updated >= '2021-11-01' AND event is not null", global_vars.db_url_aws_read)
     # df = sql_read_query("SELECT * FROM user_transaction "
-    #                     "WHERE balance_uid='4b91b275c08e4e0ba27eb4f1bfb9d882' and updated>='2021-10-29'", global_vals.db_url_aws_read)
+    #                     "WHERE balance_uid='4b91b275c08e4e0ba27eb4f1bfb9d882' and updated>='2021-10-29'", global_vars.db_url_aws_read)
     # df.loc[df['side']=='credit', "amount"] = -df["amount"]
     #
-    # pos_details = sql_read_query(f"SELECT * FROM orders_position WHERE user_id = 1423 and updated >= '2021-11-01'", global_vals.db_url_aws_read)
+    # pos_details = sql_read_query(f"SELECT * FROM orders_position WHERE user_id = 1423 and updated >= '2021-11-01'", global_vars.db_url_aws_read)
     # pos_details["final_pnl_amount"] = pos_details["final_pnl_amount"]*pos_details["exchange_rate"]
     #
     # details = pd.DataFrame(df["transaction_detail"].to_list())

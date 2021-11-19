@@ -208,7 +208,7 @@ def final_test_cluster(use_cached=True):
                 best_cols = best_best['factors'].values[0].split(', ')
                 print(best_cols)
 
-                with global_vals.engine_ali.connect() as conn:
+                with global_vars.engine_ali.connect() as conn:
                     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
                     r_cols = ['update_date','currency','interval','backtest_period','n_clusters','factors','xie_beni_index']
                     all_results_all = all_results_all.loc[all_results_all['factors']==best_best['factors'].values[0]]
@@ -216,9 +216,9 @@ def final_test_cluster(use_cached=True):
                     all_results_all['interval'] = testing_interval
                     all_results_all['currency'] = cur
                     all_results_all['backtest_period'] = t
-                    all_results_all[r_cols].to_sql(global_vals.descriptive_factor_table, **extra)
+                    all_results_all[r_cols].to_sql(global_vars.descriptive_factor_table, **extra)
                     print(f'----------------------> finish writing best clustered {testing_interval}')
-                global_vals.engine_ali.dispose()
+                global_vars.engine_ali.dispose()
 
 # -------------------------------- Test Cluster -----------------------------------------------
 
@@ -397,9 +397,9 @@ class test_cluster:
     def pillar_test_method(self, cluster_method, iter_conditions_dict):
         ''' test cluster using features manually classified to 4 pillar '''
 
-        with global_vals.engine_ali.connect() as conn:
-            uni = pd.read_sql(f'SELECT name, pillar FROM {global_vals.formula_factors_table}_descriptive', conn)
-        global_vals.engine_ali.dispose()
+        with global_vars.engine_ali.connect() as conn:
+            uni = pd.read_sql(f'SELECT name, pillar FROM {global_vars.formula_factors_table}_descriptive', conn)
+        global_vars.engine_ali.dispose()
 
         all_results = []
         for p, g in uni.groupby(['pillar']):

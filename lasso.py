@@ -128,11 +128,11 @@ class lasso_bm:
             hpot_lasso['all_results'].append(sql_result_lasso.copy())
             hpot_lasso['best_stock_df'] = self.to_sql_prediction(Y_test_pred)
 
-            with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+            with global_vars.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
-                hpot_lasso['best_stock_df'].to_sql(global_vals.result_pred_table + "_lasso_prod", **extra)
-                pd.DataFrame(hpot_lasso['all_results']).to_sql(global_vals.result_score_table + "_lasso_prod", **extra)
-            global_vals.engine_ali.dispose()
+                hpot_lasso['best_stock_df'].to_sql(global_vars.result_pred_table + "_lasso_prod", **extra)
+                pd.DataFrame(hpot_lasso['all_results']).to_sql(global_vars.result_score_table + "_lasso_prod", **extra)
+            global_vars.engine_ali.dispose()
 
         return result['mse_valid']
 
@@ -190,9 +190,9 @@ def start_lasso(data, testing_period_list, group_code_list, y_type):
 
 if __name__ == '__main__':
     testing_period_list = pd.date_range(dt.datetime(2017,8,31), dt.datetime(2021,6,30),freq='m')
-    group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
+    group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vars.engine.connect())['currency_code'].to_list()
     # group_code_list = ['HKD','EUR']
-    y_type = pd.read_sql('SELECT name from factor_formula_ratios WHERE factors', global_vals.engine_ali.connect())['name'].to_list()
+    y_type = pd.read_sql('SELECT name from factor_formula_ratios WHERE factors', global_vars.engine_ali.connect())['name'].to_list()
     start_lasso(data, testing_period_list, group_code_list, y_type)
 
 

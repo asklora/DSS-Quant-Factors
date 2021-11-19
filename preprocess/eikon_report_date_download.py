@@ -8,10 +8,10 @@ from dateutil.relativedelta import relativedelta
 def download_from_eikon_others():
     ''' Monthly Update: download report_date from eikon '''
 
-    with global_vals.engine.connect() as conn:
-        universe = pd.read_sql(f"SELECT ticker FROM {global_vals.dl_value_universe_table}", conn)
+    with global_vars.engine.connect() as conn:
+        universe = pd.read_sql(f"SELECT ticker FROM {global_vars.dl_value_universe_table}", conn)
         tickers = list(universe['ticker'].unique())
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
 
     ek.set_app_key('5c452d92214347ec8bd6270cab734e58ec70af2c')
 
@@ -34,22 +34,22 @@ def download_from_eikon_others():
         df['period_end'] = pd.to_datetime(df['period_end'])
 
         # write to DB
-        with global_vals.engine_ali.connect() as conn:
+        with global_vars.engine_ali.connect() as conn:
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
-            df.to_sql(global_vals.eikon_other_table+'_date', **extra)
-        global_vals.engine_ali.dispose()
+            df.to_sql(global_vars.eikon_other_table+'_date', **extra)
+        global_vars.engine_ali.dispose()
 
     # drop duplicates
-    with global_vals.engine_ali.connect() as conn:
-        all = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_date', conn)
+    with global_vars.engine_ali.connect() as conn:
+        all = pd.read_sql(f'SELECT * FROM {global_vars.eikon_other_table}_date', conn)
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
         all_unique = all.drop_duplicates(keep='last')
         unique_groups = all_unique.groupby(['period_end', 'ticker']).count()
         if any(unique_groups['report_date'] > 1):
             print(unique_groups.loc[unique_groups['report_date'] > 1])
             raise ValueError('Same period_end with different report_date!')
-        all_unique.to_sql(global_vals.eikon_other_table + '_date', **extra)
-    global_vals.engine_ali.dispose()
+        all_unique.to_sql(global_vars.eikon_other_table + '_date', **extra)
+    global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
     download_from_eikon_others()

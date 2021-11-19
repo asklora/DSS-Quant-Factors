@@ -123,10 +123,10 @@ def cluster_write_to_sql(r):
     ''' write cluster results to SQL '''
 
     print(f"Org cols: {r['cols']}, n_cluster: {r['n_clusters']} ----> {r['score']}")
-    with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+    with global_vars.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
         extra = {'con': conn, 'index': False, 'if_exists': 'append'}
         pd.DataFrame(r, index=[0]).to_sql(f"des_factor_final", **extra)
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
 if __name__=="__main__":
 

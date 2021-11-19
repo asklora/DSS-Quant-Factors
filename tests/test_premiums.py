@@ -168,10 +168,10 @@ def average_absolute_mean(df, col_list):
 
 def test_premiums(name):
 
-    with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql(f'SELECT * FROM {global_vals.factor_premium_table}_{name} WHERE not trim_outlier', conn)
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
-    global_vals.engine_ali.dispose()
+    with global_vars.engine_ali.connect() as conn:
+        df = pd.read_sql(f'SELECT * FROM {global_vars.factor_premium_table}_{name} WHERE not trim_outlier', conn)
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}', conn)
+    global_vars.engine_ali.dispose()
 
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
     df = df.pivot_table(index=['period_end', 'group'], columns=['factor_name'], values=['premium']).droplevel(0, axis=1)
@@ -194,12 +194,12 @@ def test_premiums(name):
     df.columns = ['corr','miss','mean']
     df['score'] = 1 - minmax_scale(df['corr']) + minmax_scale(df['mean'])
 
-    with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vals.formula_factors_table}', conn)
+    with global_vars.engine_ali.connect() as conn:
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}', conn)
         formula['rank'] = formula['name'].map(df['score'].to_dict())
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        formula.to_sql(global_vals.formula_factors_table, **extra)
-    global_vals.engine_ali.dispose()
+        formula.to_sql(global_vars.formula_factors_table, **extra)
+    global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
     test_premiums('weekly1_v2')

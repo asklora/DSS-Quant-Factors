@@ -216,7 +216,7 @@ class test_cluster:
 
         print(args, '-----> Return: ', best['factors'].values[0])
 
-        thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        thread_engine_ali = create_engine(global_vars.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
             extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
             all_results[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)
@@ -279,7 +279,7 @@ class test_cluster:
                 print('-----> Return: ',init_col, period, init_score, init_cols)
                 next_factor = False
 
-                thread_engine_ali = create_engine(global_vals.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
+                thread_engine_ali = create_engine(global_vars.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")
                 with thread_engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
                     extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
                     best_best[['period', 'factors', self.score_col, 'name_sql']].to_sql("des_factor_hierarchical", **extra)

@@ -51,10 +51,10 @@ class test_91_factor:
                              'method': func.__name__})
                         results.append(self.info1)
 
-                    with global_vals.engine_ali.connect() as conn:
+                    with global_vars.engine_ali.connect() as conn:
                         pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False,
                                                      if_exists='append')
-                    global_vals.engine_ali.dispose()
+                    global_vars.engine_ali.dispose()
 
 class test_7_factor:
     def __init__(self, suffixes='', start=1, end=0):
@@ -105,10 +105,10 @@ class test_7_factor:
                              'method': func.__name__})
                         results.append(self.info1)
 
-                    with global_vals.engine_ali.connect() as conn:
+                    with global_vars.engine_ali.connect() as conn:
                         pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False,
                                                      if_exists='append')
-                    global_vals.engine_ali.dispose()
+                    global_vars.engine_ali.dispose()
 
 def test_icb_mkt(testing_interval=91, years=5):
 
@@ -205,9 +205,9 @@ def test_case(suffixes, testing_interval=91, years=5):
             continue
         results.append(info1)
 
-    # with global_vals.engine_ali.connect() as conn:
+    # with global_vars.engine_ali.connect() as conn:
     #     pd.DataFrame(results).to_sql(f'des_factor_trial{suffixes}', conn, index=False, if_exists='append')
-    # global_vals.engine_ali.dispose()
+    # global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
     test_91_factor(suffixes='_quantile3').try_original()
