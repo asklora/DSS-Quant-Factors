@@ -4,10 +4,10 @@ from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
 
-import global_vals
+import global_vars
 from utils_report_to_slack import to_slack
 
-def trucncate_table_in_database(table, db_url=global_vals.db_url_alibaba):
+def trucncate_table_in_database(table, db_url=global_vars.db_url_alibaba):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -18,7 +18,7 @@ def trucncate_table_in_database(table, db_url=global_vals.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
-def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
+def drop_table_in_database(table, db_url=global_vars.db_url_alibaba):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -29,7 +29,7 @@ def drop_table_in_database(table, db_url=global_vals.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
-def upsert_data_to_database(data, table, primary_key=None, db_url=global_vals.db_url_alibaba, how="update",
+def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1, try_drop_table=False):
     ''' upsert Table to DB '''
 
@@ -87,7 +87,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vals.db
         else:
             to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
 
-def sql_read_query(query, db_url=global_vals.db_url_alibaba):
+def sql_read_query(query, db_url=global_vars.db_url_alibaba):
     ''' Read specific query from SQL '''
 
     print(f'      ------------------------> Download Table with query: [{query}]')
@@ -98,7 +98,7 @@ def sql_read_query(query, db_url=global_vals.db_url_alibaba):
     engine.dispose()
     return df
 
-def sql_read_table(table, db_url=global_vals.db_url_alibaba):
+def sql_read_table(table, db_url=global_vars.db_url_alibaba):
     ''' Read entire table from SQL '''
 
     print(f'      ------------------------> Download Entire Table from [{table}]')
@@ -116,10 +116,10 @@ def record_table_update_time(table):
     df.index.name = "tbl_name"
     data_type = {"tbl_name": TEXT}
 
-    engine = create_engine(global_vals.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
     upsert(engine=engine,
            df=df,
-           table_name=global_vals.update_time_table,
+           table_name=global_vars.update_time_table,
            if_row_exists="update",
            chunksize=20000,
            dtype=data_type)
@@ -133,6 +133,12 @@ def uid_maker(df, primary_key):
     return df
 
 if __name__=="__main__":
+
+    df = sql_read_table("universe_rating_history")[["ticker", "trading_day", "ai_score"]]
+    df = df.sort_values(by=["ai_score"]).groupby(["trading_day"]).tail(10)
+    df = df.loc[df["trading_day"].isin([dt.datetime(2021,11,15), dt.datetime(2021,11,8), dt.datetime(2021,11,1), dt.datetime(2021,10,25)])]
+    print(df)
+
     df = sql_read_table("iso_currency_code")
     uid_maker(df, ["nation_code","nation_name"])
     # data = data.loc[data['nation_code']=='372']

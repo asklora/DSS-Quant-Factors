@@ -3,7 +3,7 @@ import pandas as pd
 import datetime as dt
 import argparse
 
-import global_vals
+import global_vars
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
@@ -39,12 +39,12 @@ def download_stock_pred(
     # download training history
     query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, "
                  f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
-                 f"FROM {global_vals.result_pred_table}_{model} P "
-                 f"INNER JOIN {global_vals.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
+                 f"FROM {global_vars.result_pred_table}_{model} P "
+                 f"INNER JOIN {global_vars.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                  f"WHERE S.name_sql like '{name_sql}%' "
                  f"AND \"group\"='USD' "
                  f"ORDER BY S.finish_timing")
-    result_all_all = sql_read_query(query, global_vals.db_url_alibaba_prod)
+    result_all_all = sql_read_query(query, global_vars.db_url_alibaba_prod)
 
     # result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
     # result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
@@ -185,13 +185,13 @@ def download_stock_pred(
             if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
-    tbl_name_history = global_vals.production_factor_rank_table + f"_history_{suffix}"
+    tbl_name_history = global_vars.production_factor_rank_table + f"_history_{suffix}"
     upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","period_end","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=False)
+                            db_url=global_vars.db_url_alibaba_prod, try_drop_table=False)
 
-    tbl_name_current = global_vals.production_factor_rank_table + f"_{suffix}"
+    tbl_name_current = global_vars.production_factor_rank_table + f"_{suffix}"
     upsert_data_to_database(pd.concat(all_current, axis=0), tbl_name_current, primary_key=["group","factor_name"],
-                            db_url=global_vals.db_url_alibaba_prod, try_drop_table=False)
+                            db_url=global_vars.db_url_alibaba_prod, try_drop_table=False)
 
 if __name__ == "__main__":
 

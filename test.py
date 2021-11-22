@@ -1,5 +1,5 @@
 import pandas as pd
-import global_vals
+import global_vars
 from sqlalchemy.dialects.postgresql import TEXT
 import numpy as np
 from sqlalchemy import create_engine
@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 # test_url = "postgres://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
 # test_engine = create_engine(test_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
-with global_vals.engine_ali.connect() as conn:
+with global_vars.engine_ali.connect() as conn:
     df = pd.read_sql('SELECT * FROM factor_formula_ratios_descriptive', conn)
     ingestion_name = pd.read_sql('SELECT dsws_name, our_name FROM ingestion_name', conn)
     ingestion_name['dsws_name'] = ingestion_name['dsws_name'].str.lower()
@@ -19,7 +19,7 @@ with global_vals.engine_ali.connect() as conn:
         df[i] = df[i].replace(ingestion_name)
     extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
     df.to_sql('factor_formula_ratios_descriptive', **extra)
-global_vals.engine_ali.dispose()
+global_vars.engine_ali.dispose()
 exit(1)
 
 df = df.loc[df['currency_code']=='USD'].sort_values('ai_score', ascending=False).head(20)

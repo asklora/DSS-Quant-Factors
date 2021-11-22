@@ -6,7 +6,7 @@ import time
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
 
-import global_vals
+import global_vars
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables
 from preprocess.calculation_premium import calc_premium_all_v2
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         table_names = ['data_ibes_monthly', 'data_macro_monthly', 'data_worldscope_summary']
         waiting = True
         while waiting:
-            update_time = sql_read_table("ingestion_update_time", global_vals.db_url_alibaba_prod)
+            update_time = sql_read_table("ingestion_update_time", global_vars.db_url_alibaba_prod)
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
@@ -134,14 +134,14 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
 
     group_code_list = ['USD'] # ,
-    # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vals.engine.connect())['currency_code'].to_list()
+    # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vars.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.4, 0.6]
     # use_pca_list = [0.4]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT period_end FROM {global_vals.factor_premium_table}{tbl_suffix}_{args.mode}"
-    last_test_date = sql_read_query(query, db_url=global_vals.db_url_alibaba_prod)
+    query = f"SELECT DISTINCT period_end FROM {global_vars.factor_premium_table}{tbl_suffix}_{args.mode}"
+    last_test_date = sql_read_query(query, db_url=global_vars.db_url_alibaba_prod)
     testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
@@ -182,8 +182,8 @@ if __name__ == "__main__":
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
-    trucncate_table_in_database(f"{global_vals.result_pred_table}{tbl_suffix}", global_vals.db_url_alibaba_prod)
-    trucncate_table_in_database( f"{global_vals.feature_importance_table}{tbl_suffix}", global_vals.db_url_alibaba_prod)
+    trucncate_table_in_database(f"{global_vars.result_pred_table}{tbl_suffix}", global_vars.db_url_alibaba_prod)
+    trucncate_table_in_database( f"{global_vars.feature_importance_table}{tbl_suffix}", global_vars.db_url_alibaba_prod)
     with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 

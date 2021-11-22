@@ -1,6 +1,6 @@
 import numpy as np
 from sqlalchemy import create_engine
-import global_vals
+import global_vars
 import pandas as pd
 import datetime as dt
 
@@ -103,9 +103,9 @@ def feature_subset_pca(testing_interval=7):
     all_df_all = all_df_all.loc[all_df_all['ticker'].str[0]!='.']
     all_df_all['trading_day'] = pd.to_datetime(all_df_all['trading_day'])
 
-    with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vals.formula_factors_table}_descriptive', conn)
-    global_vals.engine_ali.dispose()
+    with global_vars.engine_ali.connect() as conn:
+        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vars.formula_factors_table}_descriptive', conn)
+    global_vars.engine_ali.dispose()
 
     org_name = formula.loc[formula['pillar']=='momentum', 'name'].to_list()
     org_name = org_name + ['avg_' + x for x in org_name] + ['change_' + x for x in org_name]
@@ -223,10 +223,10 @@ def feature_subset_cluster1(testing_interval=7):
                         r['score'] = xie_beni_index(X, u, v.T, 2)
                         print(f"Org cols: {col}, n_cluster: {n_clusters} ----> {r['score']}")
 
-                        with global_vals.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
+                        with global_vars.engine_ali.connect() as conn:  # write stock_pred for the best hyperopt records to sql
                             extra = {'con': conn, 'index': False, 'if_exists': 'append'}
                             pd.DataFrame(r, index=[0]).to_sql(f"des_factor_fcm_pca{testing_interval}", **extra)
-                        global_vals.engine_ali.dispose()
+                        global_vars.engine_ali.dispose()
                 except Exception as e:
                     report_to_slack(f'*** Exception: {r}: {e}', channel='U026B04RB3J')
 
@@ -313,53 +313,12 @@ def plot_scatter_hist_2d_pca():
 
 # --------------------------------- Test on User Portfolio ------------------------------------------
 
-def read_user_from_firebase():
-    ''' read user portfolio details from firestore '''
-
-    import firebase_admin
-    from firebase_admin import credentials, firestore
-
-    with global_vals.engine.connect() as conn:
-        rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
-        rating = rating.set_index('ticker')['ai_score'].to_dict()
-    global_vals.engine.dispose()
-
-    # Get a database reference to our posts
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(global_vals.firebase_url)
-        default_app = firebase_admin.initialize_app(cred)
-
-    db = firestore.client()
-    doc_ref = db.collection(u"prod_portfolio").get()
-
-    object_list = []
-    for data in doc_ref:
-        format_data = {}
-        data = data.to_dict()
-        format_data['user_id'] = data.get('user_id')
-        format_data['index'] = data.get('profile').get('email')
-        format_data['return'] = data.get('total_profit_pct')
-        for i in data.get('active_portfolio'):
-            format_data['ticker'] = i.get('ticker')
-            format_data['spot_date'] = i.get('spot_date')
-            format_data['pct_profit'] = i.get('pct_profit')
-            format_data['bot'] = i.get('bot_details').get('bot_apps_name')
-            object_list.append(format_data.copy())
-
-    result = pd.DataFrame(object_list).sort_values(by=['return'], ascending=False)
-    result['rating'] = result['ticker'].map(rating)
-
-    print(list(result['user_id'].unique()))
-
-    result.to_csv('port_result.csv', index=False)
-    return result
-
 def read_user_from_postgres():
     ''' read user portfolio details from postgres '''
 
-    with global_vals.engine.connect() as conn:
+    with global_vars.engine.connect() as conn:
         df = pd.read_sql(f"SELECT user_id, ticker, margin, bot_id, status, placed_at, side FROM orders WHERE placed", conn)
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
     df['bot_id'] = df['bot_id'].apply(lambda x: x.split('_')[0])
 
     df = df.loc[df['status']!='cancel']
@@ -391,10 +350,10 @@ def analyse_port():
     mean_date = result.groupby('spot_date').mean()
     count_ticker = result.groupby('ticker')['return'].count().to_frame().reset_index()
 
-    with global_vals.engine.connect() as conn:
+    with global_vars.engine.connect() as conn:
         rating = pd.read_sql(f'SELECT ticker, ai_score FROM universe_rating', conn)
         rating = rating.set_index('ticker')['ai_score'].to_dict()
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
 
     count_ticker['rating'] = count_ticker['ticker'].map(rating)
     print(result['bot'].unique())
@@ -404,11 +363,11 @@ def analyse_port():
 def read_fund_port():
     ''' Get top 5 holdings for mid-large size fund '''
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+    with global_vars.engine.connect() as conn, global_vars.engine_ali.connect() as conn_ali:
         uni = pd.read_sql(f"SELECT * FROM universe WHERE currency_code='USD'", conn)
         port = pd.read_sql('SELECT * FROM data_factor_eikon_fund_holdings', conn_ali)
         size = pd.read_sql('SELECT * FROM data_factor_eikon_fund_size ORDER BY tna', conn_ali)
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
 
     # filter fund with size in middle-low range (10% - 50%)
     size = size.loc[(size['tna']>size['tna'].quantile(0.1))&(size['tna']<size['tna'].quantile(0.5))]

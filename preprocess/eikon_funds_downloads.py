@@ -1,5 +1,5 @@
 import eikon as ek
-import global_vals
+import global_vars
 import pandas as pd
 import numpy as np
 import datetime as dt
@@ -43,30 +43,30 @@ def download_from_eikon_others():
             df = df.dropna(how='any')
 
             # write to DB
-            with global_vals.engine_ali.connect() as conn:
+            with global_vars.engine_ali.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 10000}
-                df.to_sql(global_vals.eikon_other_table+f"_{fields.split('.')[1]}", **extra)
-            global_vals.engine_ali.dispose()
+                df.to_sql(global_vars.eikon_other_table+f"_{fields.split('.')[1]}", **extra)
+            global_vars.engine_ali.dispose()
 
     # # drop duplicates
-    # with global_vals.engine_ali.connect() as conn:
-    #     all = pd.read_sql(f'SELECT * FROM {global_vals.eikon_other_table}_fx', conn)
+    # with global_vars.engine_ali.connect() as conn:
+    #     all = pd.read_sql(f'SELECT * FROM {global_vars.eikon_other_table}_fx', conn)
     #     extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
     #     all_unique = all.drop_duplicates(keep='last')
-    #     all_unique.to_sql(global_vals.eikon_other_table + '_fx', **extra)
-    # global_vals.engine_ali.dispose()
+    #     all_unique.to_sql(global_vars.eikon_other_table + '_fx', **extra)
+    # global_vars.engine_ali.dispose()
 
 def reverse_fmt():
-    with global_vals.engine_ali.connect() as conn:
-        df = pd.read_sql("SELECT * FROM {}".format(global_vals.eikon_other_table + '_fx'), conn)
-    global_vals.engine_ali.dispose()
+    with global_vars.engine_ali.connect() as conn:
+        df = pd.read_sql("SELECT * FROM {}".format(global_vars.eikon_other_table + '_fx'), conn)
+    global_vars.engine_ali.dispose()
 
     df.loc[df['ticker'].isin(['AUD']), 'fx_rate'] = 1/df.loc[df['ticker'].isin(['AUD']), 'fx_rate']
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        df.to_sql(global_vals.eikon_other_table + '_fx', **extra)
-    global_vals.engine_ali.dispose()
+        df.to_sql(global_vars.eikon_other_table + '_fx', **extra)
+    global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
     download_from_eikon_others()

@@ -1,13 +1,13 @@
-import global_vals
+import global_vars
 import pandas as pd
 import datetime as dt
 from utils_des import read_item_df, feature_hierarchical_plot, selection_feature_hierarchical, \
     cluster_fcm, cluster_gaussian, cluster_hierarchical, report_to_slack, plot_scatter_2d
 
 def define_pillars(df):
-    with global_vals.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vals.formula_factors_table}_descriptive', conn)
-    global_vals.engine_ali.dispose()
+    with global_vars.engine_ali.connect() as conn:
+        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vars.formula_factors_table}_descriptive', conn)
+    global_vars.engine_ali.dispose()
 
     lst = []
     for i in ['momentum','value','growth','efficiency']:
@@ -48,9 +48,9 @@ class test_factor:
                         except Exception as e:
                             report_to_slack(e)
                     # print(pd.DataFrame(results))
-                    with global_vals.engine_ali.connect() as conn:
+                    with global_vars.engine_ali.connect() as conn:
                         pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False, if_exists='append')
-                    global_vals.engine_ali.dispose()
+                    global_vars.engine_ali.dispose()
 
     def try_svd(self):
         self.info['preprocess'] = 'svd'
@@ -71,9 +71,9 @@ class test_factor:
                         # except Exception as e:
                         #     report_to_slack(e)
                     # print(pd.DataFrame(results))
-                    with global_vals.engine_ali.connect() as conn:
+                    with global_vars.engine_ali.connect() as conn:
                         pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False, if_exists='append')
-                    global_vals.engine_ali.dispose()
+                    global_vars.engine_ali.dispose()
 
     def try_original(self):
         self.info['preprocess'] = 'original'
@@ -96,9 +96,9 @@ class test_factor:
                             results.append(self.info1)
                         except Exception as e:
                             report_to_slack(e)
-                    with global_vals.engine_ali.connect() as conn:
+                    with global_vars.engine_ali.connect() as conn:
                         pd.DataFrame(results).to_sql(f'des_factor_trial{self.suffixes}', conn, index=False, if_exists='append')
-                    global_vals.engine_ali.dispose()
+                    global_vars.engine_ali.dispose()
 
 def plot_test_factor():
 
@@ -173,9 +173,9 @@ def test_grid_search(testing_interval, start):
                         results.append(info1)
                     except Exception as e:
                         report_to_slack(e)
-            with global_vals.engine_ali.connect() as conn:
+            with global_vars.engine_ali.connect() as conn:
                 pd.DataFrame(results).to_sql(f'des_factor_trial_original3', conn, index=False, if_exists='append')
-            global_vals.engine_ali.dispose()
+            global_vars.engine_ali.dispose()
 
 if __name__=="__main__":
     # test_factor(suffixes='_quantile3').try_pca()        # 2: right for selection / 3: start combine pillars

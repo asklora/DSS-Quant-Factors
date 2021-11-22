@@ -15,7 +15,7 @@ from scipy.cluster.hierarchy import single, cophenet
 from scipy.spatial.distance import pdist
 from dateutil.relativedelta import relativedelta
 
-import global_vals
+import global_vars
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 from pyclustertend import hopkins
 

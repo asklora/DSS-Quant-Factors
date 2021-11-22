@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import global_vals
+import global_vars
 import pandas as pd
 from collections import Counter
 

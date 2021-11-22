@@ -4,7 +4,7 @@ import functools
 import pickle as pkl
 import os.path
 
-from global_vals import engine_ali
+from global_vars import engine_ali
 from datetime import datetime
 
 from sktime.forecasting.arima import ARIMA

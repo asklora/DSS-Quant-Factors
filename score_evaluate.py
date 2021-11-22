@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import global_vals
+import global_vars
 import re
 import argparse
 import datetime as dt
@@ -20,14 +20,15 @@ class score_eval:
         ''' test on ai_score current '''
 
         pillar_current = {}
-        with global_vals.engine_ali.connect() as conn_ali, global_vals.engine.connect() as conn:
-            # update_time = pd.read_sql(f'SELECT * FROM {global_vals.update_time_table}', conn_ali)
+        with global_vars.engine_ali.connect() as conn_ali, global_vars.engine.connect() as conn:
+            # update_time = pd.read_sql(f'SELECT * FROM {global_vars.update_time_table}', conn_ali)
             # update_time['update_time'] = update_time['update_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-            query = f"SELECT currency_code, S.* FROM {global_vals.production_score_current} S "
+            query = f"SELECT currency_code, S.* FROM {global_vars.production_score_current} S "
             query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
-            # query += f"WHERE currency_code='{self.currency}'"
+            if self.currency:
+                query += f"WHERE currency_code='{self.currency}'"
             score_current = pd.read_sql(query, conn)
-            query1 = f"SELECT currency_code, S.* FROM {global_vals.production_score_current_history} S "
+            query1 = f"SELECT currency_code, S.* FROM {global_vars.production_score_current_history} S "
             query1 += f"INNER JOIN (SELECT ticker, currency_code FROM universe) U ON S.ticker=U.ticker "
             # query1 += f"WHERE currency_code='{self.currency}'"
             score_current_history = pd.read_sql(query1, conn)
@@ -37,8 +38,8 @@ class score_eval:
                         pillar_current[(p,i)] = pd.read_sql(f"SELECT * FROM test_fundamental_score_details_{p}{i}", conn_ali)
                     except Exception as e:
                         to_slack("clair").message_to_slack(e)
-        global_vals.engine_ali.dispose()
-        global_vals.engine.dispose()
+        global_vars.engine_ali.dispose()
+        global_vars.engine.dispose()
 
         # if self.SLACK:
         #     report_series_to_slack('*======== Tables Update Time ========*', update_time.set_index('index')['update_time'])
@@ -104,10 +105,10 @@ class score_eval:
 
         df = df.loc[df['currency_code'].isin(['HKD','USD'])]
 
-        with global_vals.engine.connect() as conn:
+        with global_vars.engine.connect() as conn:
             query = f"SELECT ticker, ticker_fullname FROM universe"
             universe = pd.read_sql(query, conn)
-        global_vals.engine.dispose()
+        global_vars.engine.dispose()
 
         writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
 
@@ -137,6 +138,7 @@ class score_eval:
                 send_mail(subject, text, file, "john.kim@loratechai.com")
                 send_mail(subject, text, file, "kenson.lau@loratechai.com")
                 send_mail(subject, text, file, "joseph.chang@loratechai.com")
+                send_mail(subject, text, file, "nickey.kong@loratechai.com")
 
     def __save_description(self, df):
         ''' write statistics for  '''
@@ -152,7 +154,7 @@ class score_eval:
             for col in ['ai_score','ai_score_unscaled','ai_score2','ai_score2_unscaled']:
                 df_save = df.xs(col, level=0).round(2)
                 to_slack().df_to_slack(f'*======== Score Distribution - {col} ========*', df_save)
-            to_slack().file_to_slack(f'#{suffixes}_describe_current.xlsx', 'xlsx', f'{global_vals.production_score_current} Score Distribution')
+            to_slack().file_to_slack(f'#{suffixes}_describe_current.xlsx', 'xlsx', f'{global_vars.production_score_current} Score Distribution')
 
     def __plot_dist_score(self, df, filename):
         ''' Plot distribution (currency, score)  for all AI score compositions '''
@@ -176,7 +178,7 @@ class score_eval:
                 continue
         plt.suptitle(filename, fontsize=30)
         plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
-        to_slack().file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution', channel="U026B04RB3J")
+        to_slack("clair").file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
 
     def __plot_minmax_factor(self, df_dict):
         ''' plot min/max distribution '''
@@ -208,12 +210,12 @@ class score_eval:
             fig_name = cur+freq
             plt.suptitle(fig_name, fontsize=30)
             fig.savefig(f'#{suffixes}_score_minmax_{fig_name}.png')
-            to_slack().file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution', channel="U026B04RB3J")
+            to_slack("clair").file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution')
             plt.close(fig)
 
 def read_query(query, engine_num=int):
     ''' read table from different DB '''
-    engine_dict = {0: global_vals.engine, 1: global_vals.engine_ali, 2: global_vals.engine_ali_prod}
+    engine_dict = {0: global_vars.engine, 1: global_vars.engine_ali, 2: global_vars.engine_ali_prod}
     with engine_dict[engine_num].connect() as conn:
         df = pd.read_sql(query, conn)
     engine_dict[engine_num].dispose()

@@ -7,21 +7,36 @@ import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd
+from sklearn.preprocessing import quantile_transform, scale
 from preprocess.calculation_ratio import check_duplicates, fill_all_day, update_period_end
 from scipy.stats import skew
+from sklearn.decomposition import PCA
+from sklearn.cluster import AgglomerativeClustering
+from utils_sql import upsert_data_to_database
+from s_dbw import S_Dbw
+
+def back_by_month(n=12, str=True):
+    ''' return date in string for (n) months ago '''
+    if str:
+        return (dt.datetime.now() - relativedelta(months=n)).strftime("%Y-%m-%d")
+    else:
+        return dt.datetime.now() - relativedelta(months=n)
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
-def get_tri(save=True, conditions=None):
+def get_tri(conditions=None):
     ''' get stock related data from DSS & DSWS '''
 
     print(f'      ------------------------> Download stock data from {global_vars.stock_data_table_tri}')
-    conditions.append("U.is_active")
+    tri_conditions = ["U.is_active"]
+    if conditions:
+        tri_conditions.extend(conditions)
+    tri_conditions.append(f"trading_day > '{back_by_month(24)}'")
     with global_vars.engine.connect() as conn_droid:
         query_tri = f"SELECT C.ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
         query_tri += f"FROM {global_vars.stock_data_table_ohlc} C "
         query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vars.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
         query_tri += f"INNER JOIN (SELECT ticker, is_active, currency_code FROM {global_vars.dl_value_universe_table}) U ON U.ticker = C.ticker "
-        query_tri += f"WHERE {' AND '.join(conditions)} "
+        query_tri += f"WHERE {' AND '.join(tri_conditions)} "
         query_tri += f"ORDER BY C.ticker, trading_day"
         tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
@@ -40,15 +55,13 @@ def get_tri(save=True, conditions=None):
 
     tri = tri.drop(['anchor_tri'], axis=1)
 
-    if save:
-        tri.to_csv('dcache_tri.csv', index=False)
-
     return tri
 
-def get_worldscope(save=True, conditions=None):
+def get_worldscope(conditions=None):
     ''' get fundamental data related data from Worldscope '''
 
     ws_conditions = ["C.ticker IS NOT NULL"]
+    conditions.append(f"period_end > '{back_by_month(24)}'")
     if conditions:
         ws_conditions.extend(conditions)
     with global_vars.engine.connect() as conn:
@@ -93,184 +106,67 @@ def get_worldscope(save=True, conditions=None):
     # ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
     ws['icb_code'] = pd.to_numeric(ws['icb_code'], errors='coerce')
 
-    if save:
-        ws.to_csv('dcache_ws.csv', index=False)
-        ibes.to_csv('dcache_ibes.csv', index=False)
-
     return ws, ibes
 
-class combine_tri_worldscope:
+def combine_tri_worldscope(currency=None, ticker=None):
     ''' combine tri & worldscope raw data '''
 
-    def __init__(self, use_cached, save=True, currency=None, ticker=None):
+    conditions = ["True"]
+    if currency:
+        conditions.append("currency_code in ({})".format(','.join(['\''+x+'\'' for x in currency])))
+    if ticker:
+        conditions.append("C.ticker in ({})".format(','.join(['\''+x+'\'' for x in ticker])))
 
-        conditions = ["True"]
-        self.save = save
+    # 1. Stock return/volatility/volume
+    tri = get_tri(conditions)
 
-        if currency:
-            conditions.append("currency_code in ({})".format(','.join(['\''+x+'\'' for x in currency])))
-        if ticker:
-            conditions.append("C.ticker in ({})".format(','.join(['\''+x+'\'' for x in ticker])))
-    
-        # 1. Stock return/volatility/volume
-        if use_cached:
-            try:
-                tri = pd.read_csv(f'dcache_tri_{currency[0]}.csv', low_memory=False)
-            except Exception as e:
-                print(e)
-                tri = get_tri(save, conditions)
-        else:
-            tri = get_tri(save, conditions)
-    
-        # 2. Fundamental financial data - from Worldscope
-        # 3. Consensus forecasts - from I/B/E/S
-        # 4. Universe
-        if use_cached:
-            try:
-                ws = pd.read_csv(f'dcache_ws_{currency[0]}.csv')
-                ibes = pd.read_csv(f'dcache_ibes_{currency[0]}.csv')
-            except Exception as e:
-                print(e)
-                ws, ibes = get_worldscope(save, conditions)
-        else:
-            ws, ibes = get_worldscope(save, conditions)
-    
-        # change to datetime
-        tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-        ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
-        ws = ws.drop(columns=['mkt_cap'])
-        ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
-    
-        # Merge all table and convert to daily basis
-        tri = fill_all_day(tri)
-        tri['volume_1w'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(7, min_periods=1).mean().values
-        tri['volume_3m'] = tri.dropna(subset=['ticker']).groupby(['ticker'])['volume'].rolling(90, min_periods=1).mean().values
-        tri['volume_1w3m'] = (tri['volume_1w']/tri['volume_3m']).values
-        # tri[['mkt_cap','tac']] = tri.groupby(['ticker'])[['mkt_cap','tac']].apply(pd.DataFrame.interpolate, limit_direction='forward')
-        tri[['mkt_cap','tac']] = tri.groupby(['ticker'])[['mkt_cap','tac']].ffill()
-        self.df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
-        self.df = pd.merge(self.df, ibes, on=['ticker', 'trading_day'], how='left')
+    # 2. Fundamental financial data - from Worldscope
+    # 3. Consensus forecasts - from I/B/E/S
+    # 4. Universe
+    ws, ibes = get_worldscope(conditions)
 
-        ws_col = ws.select_dtypes(float).columns.to_list()
-        ibes_col = ibes.select_dtypes(float).columns.to_list()
-        # self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].apply(pd.DataFrame.interpolate,
-        #                                                                               limit_direction='forward', limit_area='inside')
-        self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].ffill()
+    # change to datetime
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+    ws = ws.drop(columns=['mkt_cap'])
+    ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
 
-        self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
-        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code'])
-    
-        # Fill NaN in fundamental records with interpolate + tri with
-        self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
-        self.df[['currency_code','icb_code']] = self.df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
+    # Merge all table and convert to daily basis
+    tri = fill_all_day(tri)
+    tri[['mkt_cap','tac']] = tri.groupby(['ticker'])[['mkt_cap','tac']].ffill()
+    df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left')
+    df = pd.merge(df, ibes, on=['ticker', 'trading_day'], how='left')
 
-    def calculate_final_results(self, interval=7):
-        ''' calculate period average / change / skew / tri '''
+    ws_col = ws.select_dtypes(float).columns.to_list()
+    ibes_col = ibes.select_dtypes(float).columns.to_list()
+    df[ws_col+ibes_col] = df.groupby(['ticker'])[ws_col+ibes_col].ffill()
 
-        cols = self.df.columns.to_list()
+    df, mom_factor, nonmom_factor, change_factor, avg_factor = calc_factor_variables(df)
+    df = df.filter(tri.columns.to_list()+nonmom_factor+['currency_code','icb_code'])
 
-        if interval < 7:
-            df = self.df.sort_values(['trading_day']).copy()
-            df[cols[2:]] = df.groupby('ticker')[cols[2:]].ffill()
-            arr = reshape_by_interval(df.ffill(), interval)
+    # Fill NaN in fundamental records with interpolate + tri
+    df = fill_all_day(df, date_col='trading_day').sort_values(by=["ticker","trading_day"])
+    df['tri_fillna'] = df.groupby(['ticker'])['tri'].ffill()
+    df[['currency_code','icb_code']] = df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
 
-            change_fac = set(self.change_factor) & set(self.mom_factor)
-            avg_fac = set(self.avg_factor) & set(self.mom_factor)
-            change_idx = [cols.index(x) for x in change_fac]
-            average_idx = [cols.index(x) for x in avg_fac]
+    # vol + factor for changes (change over time) + factor for average (point in time)
+    df = get_rogers_satchell(df, list_of_start_end=[[0,7], [0,91]])    # calculate tri volatility
+    df[['1w_avg_'+x for x in avg_factor]] = get_average(df, avg_factor, 7)
+    df[['3m_avg_'+x for x in avg_factor]] = get_average(df, avg_factor, 91)
+    df[['1w_chg_'+x for x in change_factor]] = get_avg_change(df, change_factor, 7)
+    df[['3m_chg_'+x for x in change_factor]] = get_avg_change(df, change_factor, 91)
+    return df
 
-            arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
-            arr_change = get_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
-            arr_average = get_average(arr[:,:,:,average_idx], self.avg_factor)[:,:,0,:]      # calculate average in this period
+def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
+    ''' Calculate roger satchell volatility:
+        daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
+        annualized = sqrt(daily*256)
+    '''
 
-            final_arr = np.concatenate((arr_label, arr_change, arr_average), axis=2)
-            self.final_col = ['ticker', 'trading_day']+['change_' + x for x in change_fac]+['avg_' + x for x in avg_fac]
+    open_data, high_data, low_data, close_data = tri['open'].values, tri['high'].values, tri['low'].values, tri[
+        'close'].values
 
-        else:
-            change_idx = [cols.index(x) for x in self.change_factor]
-            average_idx = [cols.index(x) for x in self.avg_factor]
-            arr = reshape_by_interval(self.df.copy(), interval)
-
-            # create label array (ticker, trading_day - period_end)
-            arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
-            arr_curind = arr[:, :, -1, [cols.index('currency_code'), cols.index('icb_code')]]
-
-            # factor for changes (change over time) + factor for average (point in time)
-            arr_change = get_avg_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
-            arr_average = get_average(arr[:,:,:,average_idx], self.avg_factor)[:,:,0,:]      # calculate average in this period
-            arr_skew = get_skew(np.expand_dims(arr[:,:,:,cols.index('tri')], 3))    # calculate tri skew
-            arr_skew = np.expand_dims(arr_skew, 2)
-            arr_tri_momentum = arr_change[:,1:,self.change_factor.index('tri_fillna')]/arr_change[:,:-1,self.change_factor.index('tri_fillna')]
-            arr_tri_momentum = np.pad(arr_tri_momentum, ((0,0), (1,0)), mode='constant', constant_values=np.nan)
-            arr_tri_momentum = np.expand_dims(arr_tri_momentum, 2)
-            arr_vol = get_rogers_satchell(arr[:,:,:,cols.index('open'):(cols.index('close')+1)])    # calculate tri volatility
-
-            # concat all array & columns name
-            final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_tri_momentum, arr_change, arr_average, arr_curind), axis=2)
-            self.final_col = ['ticker','trading_day', 'vol', 'skew','ret_momentum'] + ['change_'+x for x in self.change_factor] + \
-                             ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
-    
-        return final_arr
-
-    def read_cache(self, list_of_interval):
-        ''' read cache csv if use_cache = True '''
-
-        for i in list_of_interval:
-            df = pd.read_csv(f'dcache_sample_{i}.csv')
-        return df
-
-    def get_results(self, list_of_interval=[7, 14, 30, 91, 182, 365]):
-        ''' calculate all arr for different period '''
-
-        arr_dict = {}
-        for i in list_of_interval:
-            arr = self.calculate_final_results(i)
-            arr = np.reshape(arr, (arr.shape[0]*arr.shape[1], arr.shape[2]))
-            df = pd.DataFrame(arr, columns=self.final_col)
-            df = df.replace([-np.inf, np.inf], [np.nan, np.nan])
-            x = df.iloc[:,2:].std()
-            print('std:', x.to_dict())
-            use_col = list(x[x>0.001].index)
-            df[use_col] = df.groupby(['ticker'])[use_col].ffill()
-            arr_dict[i] = df[['ticker','trading_day']+use_col]
-            print(arr_dict[i])
-
-            if self.save:
-                arr_dict[i].dropna(subset=['change_tri_fillna']).to_csv(f'dcache_sample_{i}.csv', index=False)
-                arr_dict[i] = pd.read_csv(f'dcache_sample_{i}.csv')
-
-        return arr_dict
-
-def reshape_by_interval(df, interval=7):
-    ''' reshape 2D sample -> (ticker, #period, interval_length, factor) '''
-
-    # define length as int
-    num_ticker   = int(len(df['ticker'].unique()))
-    num_day      = int(len(df['trading_day'].unique()))
-    num_interval = int(interval)
-    num_period   = int(np.ceil(num_day/num_interval))
-    num_factor   = int(df.shape[1])
-
-    arr = np.reshape(df.values, (num_ticker, num_day, num_factor), order='C')       # reshape to (ticker, period_end, interval)
-    arr = np.pad(arr, ((0,0), (int(num_period*num_interval-num_day),0), (0,0)), mode='constant', constant_values=np.nan)   # fill for dates
-    arr = np.reshape(arr, (num_ticker, num_period, num_interval, num_factor), order='C')    # reshape to different interval partition
-
-    return arr
-
-def get_skew(tri):
-    ''' Calculate return skewness '''
-
-    returns = get_change(tri)[:,:,:,0]
-    log_returns = np.log(returns)
-    result = stats.skew(log_returns, axis=-1, nan_policy='omit')
-    return result
-
-def get_rogers_satchell(arr, days_in_year=256):
-    ''' Calculate return volatility '''
-
-    arr = arr.astype(np.float)
-    open_data, high_data, low_data, close_data = arr[:,:,:,0], arr[:,:,:,1], arr[:,:,:,2], arr[:,:,:,3]
-
+    # Calculate daily volatility
     hc_ratio = np.divide(high_data, close_data)
     log_hc_ratio = np.log(hc_ratio.astype(float))
     ho_ratio = np.divide(high_data, open_data)
@@ -282,35 +178,29 @@ def get_rogers_satchell(arr, days_in_year=256):
 
     input1 = np.multiply(log_hc_ratio, log_ho_ratio)
     input2 = np.multiply(log_lo_ratio, log_lc_ratio)
-    sum = np.add(input1, input2)
-    rogers_satchell_var = np.nanmean(sum, axis=2, keepdims=True)
-    result = np.sqrt(rogers_satchell_var * days_in_year)
+    sum_ = np.add(input1, input2)
 
-    return result
+    # Calculate annualize volatility
+    for l in list_of_start_end:
+        start, end = l[0], l[1]
+        name_col = f'vol_{start}_{end}'
+        tri[name_col] = sum_
+        tri[name_col] = tri.groupby('ticker')[name_col].rolling(end - start, min_periods=1).mean().reset_index(drop=1)
+        tri[name_col] = tri[name_col].apply(lambda x: np.sqrt(x * days_in_year))
+        tri[name_col] = tri[name_col].shift(start)
+        tri.loc[tri.groupby('ticker').head(end - 1).index, name_col] = np.nan  # y-1 ~ y0
 
-def get_change(arr, n=1):
+    return tri
+
+def get_average(df, cols, interval=91):
     ''' Calculate daily change'''
-    arr = arr.astype(np.float)
-    arr_roll = np.roll(arr, shift=n, axis=1)
-    arr_roll[:,:n,:,:] = np.nan
-    return arr / arr_roll - 1
+    return df.groupby(["ticker"])[cols].rolling(interval, min_periods=1).mean().values
 
-def get_average(arr, avg_factor):
-    ''' Calculate daily change'''
-    arr = arr.astype(np.float)
-    return np.nanmean(arr, axis=2, keepdims=True)
-
-def get_avg_change(arr, n=1):
+def get_avg_change(df, cols, interval=1):
     ''' Calculate period change with the average of change on last (1/4) of total period '''
-
-    arr = arr.astype(np.float)
-    avg_period = round(arr.shape[2]/4, 0)
-    sample_arr = arr[:, :, int(arr.shape[2]-avg_period):, :]
-    arr_mean = np.nanmean(sample_arr, axis=2, keepdims=True)
-    arr_roll = np.roll(arr_mean, shift=n, axis=1)
-    arr_roll[:,:n,:,:] = np.nan
-
-    return arr_mean / arr_roll - 1
+    avg_period = int(round(interval/4, 0))
+    df[["avg_"+x for x in cols]] = df.groupby(["ticker"])[cols].rolling(avg_period, min_periods=1).mean().values
+    return df[["avg_"+x for x in cols]].values / df.groupby(["ticker"])[["avg_"+x for x in cols]].shift(interval).values
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
@@ -357,7 +247,7 @@ def calc_fx_conversion(df):
         print(f'----> [{name}] source data with fx conversion: ', cols)
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
-    df[['close','mkt_cap']] = df[['close','mkt_cap']].div(df['fx_dss'], axis="index")  # convert close price
+    df[['open','high','low','close','mkt_cap']] = df[['open','high','low','close','mkt_cap']].div(df['fx_dss'], axis="index")  # convert close price
 
     return df[org_cols]
 
@@ -417,8 +307,74 @@ def calc_factor_variables(df):
 
     return df, mom_factor, nonmom_factor, change_factor, avg_factor
 
-if __name__ == "__main__":
-    dict = combine_tri_worldscope(use_cached=False, save=True, ticker=None, currency=['HKD', 'USD']).get_results(list_of_interval=[1, 7, 30, 91, 365])
-    print(dict.keys())
+# -------------------------------------------- Clean to Clustering Format --------------------------------------------
 
-    # get_worldscope(True)
+def get_cluster_dimensions(ticker=None, currency=None):
+    ''' calculate pillar factors for clustering '''
+    df = combine_tri_worldscope(ticker=ticker, currency=currency)
+    cols = df.select_dtypes(float).columns.to_list()
+
+    df = df.loc[df['trading_day']>back_by_month(2, str=False)]
+    df = df.loc[df['ticker'].str[0] != '.']
+    df_cluster = df[["ticker", "trading_day","currency_code"]].copy()
+
+    # technical pillar
+    tech_factor_1w = ["vol_0_7", "1w_avg_volume", "1w_chg_tri_fillna"]  # 1w factors (ST)
+    tech_factor_3m = ["vol_0_91", "3m_avg_volume"]  # 3m factors (LT)
+    tech_factor_newname = ["tech_1w_volatility", "tech_1w_volume", "tech_1w_return"]
+    tech_factor_newname += ["tech_3m_volatility", "tech_3m_volume"]
+    df_cluster[tech_factor_newname] = trim_outlier_std(df.groupby(["ticker"])[tech_factor_1w + tech_factor_3m].ffill().fillna(0))
+    _, df_cluster["tech_1w_cluster"] = cluster_hierarchical(df_cluster[["tech_1w_volatility", "tech_1w_volume", "tech_1w_return"]].values)
+    _, df_cluster["tech_3m_cluster"] = cluster_hierarchical(df_cluster[["tech_3m_volatility", "tech_3m_volume"]].values)
+
+    # id pillar
+    id_factor = ["1w_avg_mkt_cap", "icb_code", "3m_avg_mkt_cap"]
+    id_factor_newname = ["id_1w_size", "id_icb"]
+    id_factor_newname += ["id_3m_size"]
+    df_cluster[id_factor_newname] = trim_outlier_std(df.groupby(["ticker"])[id_factor].ffill().fillna(0))
+    _, df_cluster["id_1w_cluster"] = cluster_hierarchical(df_cluster[["id_1w_size", "id_icb"]].values)
+    _, df_cluster["id_3m_cluster"] = cluster_hierarchical(df_cluster[["id_3m_size", "id_icb"]].values)
+
+    # fundamental pillar
+    funda_factor = [x for x in cols if x[:2]=='3m']
+    funda_factor = list(set(funda_factor) - set(tech_factor_1w+tech_factor_3m+["3m_chg_tri_fillna"]+id_factor))
+    funda_factor_newname = ["funda_3m_pc1", "funda_3m_pc2", "funda_3m_pc3"]
+    X = df.groupby(["ticker"])[funda_factor].ffill().fillna(0).replace([np.inf, -np.inf], 0)
+    X = trim_outlier_std(X)
+    df_cluster[funda_factor_newname] = PCA(n_components=3).fit_transform(X)
+    _, df_cluster["funda_3m_cluster"] = cluster_hierarchical(df_cluster[funda_factor_newname].values)
+
+    df_cluster = upsert_data_to_database(df_cluster, "cluster_factor", primary_key=["ticker","trading_day"],
+                                         db_url=global_vars.db_url_alibaba, how="replace")
+
+    return df_cluster
+
+def trim_outlier_std(df):
+    ''' trim outlier on testing sets '''
+
+    def trim_scaler(x):
+        x = x.values
+        return quantile_transform(np.reshape(x, (x.shape[0], 1)), output_distribution='normal', n_quantiles=1000)[:,0]
+
+    cols = df.select_dtypes(float).columns.to_list()
+    for col in cols:
+        print(col, df[col].isnull().sum())
+        if col != 'icb_code':
+            x = trim_scaler(df[col])
+        else:
+            x = df[col].values
+        x = scale(x.T)
+        df[col] = x
+    return df
+
+def cluster_hierarchical(X, distance_threshold=None, n_clusters=20):
+    kwargs = {'distance_threshold': distance_threshold, 'linkage': 'complete', 'n_clusters': n_clusters}
+    kwargs['affinity'] = 'euclidean'
+    model = AgglomerativeClustering(**kwargs).fit(X)
+    y = model.labels_
+    score = S_Dbw(X, y)
+    print("score: ", score)
+    return score, y
+
+if __name__ == "__main__":
+    get_cluster_dimensions(ticker=None, currency=['HKD', 'USD'])

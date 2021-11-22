@@ -10,7 +10,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
 from sklearn import linear_model
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_table, sql_read_query
 
 def add_arr_col(df, arr, col_name):
@@ -21,9 +21,9 @@ def download_clean_macros(main_df):
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
-    print(f'      ------------------------> Download macro data from {global_vals.macro_data_table}')
+    print(f'      ------------------------> Download macro data from {global_vars.macro_data_table}')
 
-    macros = sql_read_table(global_vals.macro_data_table, global_vals.db_url_aws_read)
+    macros = sql_read_table(global_vars.macro_data_table, global_vars.db_url_aws_read)
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
     yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
@@ -54,11 +54,11 @@ def download_index_return(tbl_suffix):
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
     print(f'#################################################################################################')
-    print(f'      ------------------------> Download index return data from {global_vals.processed_ratio_table}')
+    print(f'      ------------------------> Download index return data from {global_vars.processed_ratio_table}')
 
     # read stock return from ratio calculation table
-    index_query = f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'"
-    index_ret = sql_read_query(index_query, global_vals.db_url_alibaba_prod)
+    index_query = f"SELECT * FROM {global_vars.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'"
+    index_ret = sql_read_query(index_query, global_vars.db_url_alibaba_prod)
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
@@ -78,7 +78,7 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
 
     # Read sql from different tables
-    factor_table_name = global_vals.factor_premium_table
+    factor_table_name = global_vars.factor_premium_table
 
     print(f'      ------------------------> Use {tbl_suffix} ratios')
     conditions = ['"group" IS NOT NULL']
@@ -95,13 +95,13 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
         raise Exception('Unknown mode')
 
     prem_query = f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
-    df = sql_read_query(prem_query, global_vals.db_url_alibaba_prod)
+    df = sql_read_query(prem_query, global_vars.db_url_alibaba_prod)
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
     df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
     df.columns.name = None
     df = df.reset_index()
 
-    formula = sql_read_table(global_vals.formula_factors_table_prod, global_vals.db_url_alibaba_prod)
+    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]       # filter existing columns from factors
 
     # Research stage using 10 selected factor only
@@ -328,13 +328,13 @@ class load_data:
             #     df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
             #     df['group'] = self.group_name
             #     df['testing_period'] = testing_period
-            #     with global_vals.engine_ali.connect() as conn:
+            #     with global_vars.engine_ali.connect() as conn:
             #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-            #         conn.execute(f"DELETE FROM {global_vals.processed_pca_table} "
+            #         conn.execute(f"DELETE FROM {global_vars.processed_pca_table} "
             #                      f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-            #         df.to_sql(global_vals.processed_pca_table, **extra)
-            #         pd.DataFrame({global_vals.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vals.update_time_table, **extra)
-            #     global_vals.engine_ali.dispose()
+            #         df.to_sql(global_vars.processed_pca_table, **extra)
+            #         pd.DataFrame({global_vars.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vars.update_time_table, **extra)
+            #     global_vars.engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))

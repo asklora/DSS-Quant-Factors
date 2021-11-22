@@ -1,4 +1,4 @@
-import global_vals
+import global_vars
 import pandas as pd
 from collections import Counter
 import lightgbm as lgb
@@ -9,11 +9,11 @@ from sklearn.preprocessing import scale
 def read_fund_port(n=10):
     ''' Get top 5 holdings for mid-large size fund '''
 
-    with global_vals.engine.connect() as conn, global_vals.engine_ali.connect() as conn_ali:
+    with global_vars.engine.connect() as conn, global_vars.engine_ali.connect() as conn_ali:
         uni = pd.read_sql(f"SELECT * FROM universe WHERE currency_code='USD'", conn)
         port = pd.read_sql('SELECT * FROM data_factor_eikon_fund_holdings', conn_ali)
         size = pd.read_sql('SELECT * FROM data_factor_eikon_fund_size ORDER BY tna', conn_ali)
-    global_vals.engine.dispose()
+    global_vars.engine.dispose()
 
     # filter fund with size in middle-low range (10% - 50%)
     size = size.loc[(size['tna']>size['tna'].quantile(0.1))&(size['tna']<size['tna'].quantile(0.5))]

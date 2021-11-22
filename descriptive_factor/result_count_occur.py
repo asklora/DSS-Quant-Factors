@@ -3,7 +3,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 
-import global_vals
+import global_vars
 
 
 def count_plot_from_csv():
@@ -38,10 +38,10 @@ def count_plot_from_db():
     # name_sql = 'all_init_max' # for hierarchical
     # name_sql ='all_comb_all'
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
         df = pd.read_sql(query, conn)
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
     df['factors'] = df['factors'].str.split(', ')
     df['n_factors'] = df['factors'].str.len()
@@ -77,10 +77,10 @@ def count_plot_from_db_comb_hierarchical():
     groupby_col = ['name_sql', 'factors']
     sort_col = 'cophenetic'
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
         df = pd.read_sql(query, conn)
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
     sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
     sort_df['factors'] = sort_df['factors'].str.split(', ')
@@ -95,10 +95,10 @@ def count_plot_from_db_comb_fcm():
     groupby_col = ['name_sql', 'factors','n_clusters','m']
     sort_col = 'xie_beni_index'
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
         df = pd.read_sql(query, conn)
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
     sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
     sort_df['factors'] = sort_df['factors'].str.split(', ')
@@ -113,10 +113,10 @@ def count_plot_from_db_comb_gaussian():
     groupby_col = ['name_sql', 'factors','n_clusters']
     sort_col = 'S_Dbw'
 
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         query = f"SELECT * FROM {table_name} WHERE name_sql like '{name_sql}:%%'"
         df = pd.read_sql(query, conn)
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
     sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
     sort_df['factors'] = sort_df['factors'].str.split(', ')
@@ -125,9 +125,32 @@ def count_plot_from_db_comb_gaussian():
     best = sort_df.groupby(['name_sql','n_factors','n_clusters']).first()
     print(best)
 
+
+def count_plot_from_db_final(pillar=None, testing_interval=None, currency=None):
+    table_name = 'des_factor_final'
+    groupby_col = ['n_factor','cols','testing_interval']
+    sort_col = 'score'
+
+    conditions=['True']
+    if pillar:
+        conditions.append(f"pillar='{pillar}'")
+    if testing_interval:
+        conditions.append(f"testing_interval={testing_interval}")
+    if currency:
+        conditions.append(f"currency='{currency}'")
+
+    with global_vars.engine_ali.connect() as conn:
+        df = pd.read_sql(f"SELECT * FROM {table_name} WHERE {' AND '.join(conditions)}", conn)
+    global_vars.engine_ali.dispose()
+
+    sort_df = df.groupby(groupby_col).mean()[sort_col].sort_values(ascending=False).reset_index()
+    sort_df = sort_df.sort_values(by=["score"])
+    print(pillar, testing_interval, currency, sort_df[["cols","score"]].head(10))
+
 if __name__=="__main__":
     # count_plot_from_csv()
     # count_plot_from_db()
     # count_plot_from_db_comb_hierarchical()
     # count_plot_from_db_comb_fcm()
-    count_plot_from_db_comb_gaussian()
+    # count_plot_from_db_comb_gaussian()
+    count_plot_from_db_final(pillar='funda', currency='USD')

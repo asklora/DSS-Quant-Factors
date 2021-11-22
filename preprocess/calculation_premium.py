@@ -4,7 +4,7 @@ from datetime import datetime
 import multiprocessing as mp
 import itertools
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_query, upsert_data_to_database, trucncate_table_in_database
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
@@ -89,9 +89,9 @@ def insert_prem_and_membership_for_group(*args):
             prem['trim_outlier'] = trim_outlier_
 
             upsert_data_to_database(data=prem.sort_values(by=['group', 'period_end']),
-                                    table=f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
+                                    table=f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
                                     primary_key=["group", "period_end", "factor_name", "trim_outlier"],
-                                    db_url=global_vals.db_url_alibaba_prod,
+                                    db_url=global_vars.db_url_alibaba_prod,
                                     how="append")
     except Exception as e:
         print(e)
@@ -116,24 +116,24 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12):
     else:
         tbl_suffix_extra = '_v2'
 
-    formula_query = f"SELECT * FROM {global_vals.formula_factors_table_prod} WHERE is_active"
-    formula = sql_read_query(formula_query, global_vals.db_url_alibaba_prod)
+    formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active"
+    formula = sql_read_query(formula_query, global_vars.db_url_alibaba_prod)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
     # permium calculate USD only
-    ratio_query = f"SELECT * FROM {global_vals.processed_ratio_table}{tbl_suffix} WHERE currency_code = 'USD'"
-    df = sql_read_query(ratio_query, global_vals.db_url_alibaba_prod)
+    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}{tbl_suffix} WHERE currency_code = 'USD'"
+    df = sql_read_query(ratio_query, global_vars.db_url_alibaba_prod)
     df = df.dropna(subset=['stock_return_y', 'ticker'])
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
 
     print(f'      ------------------------> Groups: {" -> ".join(all_groups)}')
-    print(f'      ------------------------> Save to {global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
+    print(f'      ------------------------> Save to {global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
 
     all_groups = itertools.product([df], all_groups, [tbl_suffix], factor_list, [trim_outlier_])
     all_groups = [tuple(e) for e in all_groups]
 
-    trucncate_table_in_database(f"{global_vals.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
-                                global_vals.db_url_alibaba_prod)
+    trucncate_table_in_database(f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
+                                global_vars.db_url_alibaba_prod)
     with mp.Pool(processes=processes) as pool:
         res = pool.starmap(insert_prem_and_membership_for_group, all_groups)
 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    # remove_tables_with_suffix(global_vals.engine_ali, tbl_suffix_extra)
+    # remove_tables_with_suffix(global_vars.engine_ali, tbl_suffix_extra)
     # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
     calc_premium_all_v2(tbl_suffix='_weekly1', trim_outlier_=False, processes=6)
     # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)

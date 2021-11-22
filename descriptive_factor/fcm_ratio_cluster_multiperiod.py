@@ -14,7 +14,7 @@ from scipy.cluster.hierarchy import single, cophenet
 from scipy.spatial.distance import pdist
 from fcmeans import FCM
 
-import global_vals
+import global_vars
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 import pandas as pd
 import numpy as np

@@ -14,3 +14,4 @@ fuzzy-c-means
 slack_sdk
 pyclustertend
 statsmodels
+firebase_admin

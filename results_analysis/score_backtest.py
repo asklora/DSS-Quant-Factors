@@ -4,7 +4,7 @@ import datetime as dt
 import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler
 
-import global_vals
+import global_vars
 from utils_sql import sql_read_query, sql_read_table, upsert_data_to_database
 from utils_report_to_slack import to_slack
 
@@ -142,14 +142,14 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 def score_history(tbl_suffix='monthly1'):
     ''' calculate score with DROID v2 method & evaluate '''
 
-    factor_formula = sql_read_table(global_vals.formula_factors_table_prod, global_vals.db_url_alibaba_prod)
-    factor_rank = sql_read_table(f"{global_vals.production_factor_rank_table}_history_{tbl_suffix}", global_vals.db_url_alibaba_prod)
+    factor_formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    factor_rank = sql_read_table(f"{global_vars.production_factor_rank_table}_history_{tbl_suffix}", global_vars.db_url_alibaba_prod)
 
-    universe_query = f"SELECT * FROM {global_vals.dl_value_universe_table} WHERE is_active"
-    universe = sql_read_query(universe_query, global_vals.db_url_aws_read)
+    universe_query = f"SELECT * FROM {global_vars.dl_value_universe_table} WHERE is_active"
+    universe = sql_read_query(universe_query, global_vars.db_url_aws_read)
 
-    ratio_query = f"SELECT * FROM {global_vals.processed_ratio_table}_{tbl_suffix} WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') "
-    fundamentals_score = sql_read_query(ratio_query, global_vals.db_url_alibaba_prod)
+    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}_{tbl_suffix} WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') "
+    fundamentals_score = sql_read_query(ratio_query, global_vars.db_url_alibaba_prod)
 
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
     # factor_rank.to_csv('cached_factor_rank.csv', index=False)

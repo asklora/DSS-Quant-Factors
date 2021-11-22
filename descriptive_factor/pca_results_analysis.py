@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
-import global_vals
+import global_vars
 from utils_des import read_item_df
 
 def best_factor():
-    with global_vals.engine_ali.connect() as conn:
+    with global_vars.engine_ali.connect() as conn:
         df = pd.read_sql(f'SELECT * FROM des_factor_trial_original3 WHERE testing_interval=91', conn)
         formula = pd.read_sql('SELECT name, pillar FROM factor_formula_ratios_descriptive', conn).set_index('name')['pillar'].to_dict()
-    global_vals.engine_ali.dispose()
+    global_vars.engine_ali.dispose()
 
     # df['preprocess'] = 'NA'
     # df['pillar'] = df['pillar'].str.replace('avg_','')
