@@ -94,7 +94,7 @@ if __name__ == "__main__":
         waiting = True
         while waiting:
             update_time = sql_read_table("ingestion_update_time", global_vals.db_url_alibaba_prod)
-            update_time = update_time.loc[update_time['table_name'].isin(table_names)]
+            update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
             else:
