@@ -221,19 +221,7 @@ def read_query(query, engine_num=int):
     engine_dict[engine_num].dispose()
     return df
 
-def manual_check_on_score(currency='HKD'):
-    ''' checking ai_score rational by go through reason for top picks in each currency '''
-
-    ai_score_table_name = "universe_rating"
-
-    score = read_query(f"SELECT * FROM {ai_score_table_name} WHERE currency_code='{currency}' LIMIT 10", 0)
-    score = read_query(query, 0)
-    score = read_query(query, 0)
-
 if __name__ == "__main__":
-    topn_ticker()
-
-    exit(200)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
@@ -242,5 +230,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
+    topn_ticker(n=20, DEBUG=args.debug)
     eval = score_eval(SLACK=args.slack, currency=args.currency, DEBUG=args.debug)
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
