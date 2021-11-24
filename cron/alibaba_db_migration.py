@@ -1,6 +1,6 @@
 import global_vars
 import pandas as pd
-from sqlalchemy import Table, MetaData
+from sqlalchemy import Table, MetaData, create_engine
 from sqlalchemy.orm import sessionmaker
 
 def get_table_name_list(engine):
@@ -41,8 +41,10 @@ def ali_migration_to_prod(migrate_tbl_lst):
         raise Exception("Error: Following table hasn't been migrated to Alibaba DB Prod: ", list(fail_migrate_tbl))
 
 if __name__=="__main__":
-    # lst = get_table_name_list(global_vars.engine_ali)
-    # print(lst)
+    engine = create_engine(global_vars.db_url_aws_read)
+    lst = get_table_name_list(engine)
+    print(lst)
+    exit(0)
 
     # 'factor_formula_ratios_prod', 'test_fundamental_score_current_names',  'factor_result_pred_prod',
     # 'iso_currency_code', 'ai_value_lgbm_pred_final_eps', 'ingestion_name',

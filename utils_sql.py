@@ -134,9 +134,13 @@ def uid_maker(df, primary_key):
 
 if __name__=="__main__":
 
-    df = sql_read_table("universe_rating_history")[["ticker", "trading_day", "ai_score"]]
-    df = df.sort_values(by=["ai_score"]).groupby(["trading_day"]).tail(10)
+    df = sql_read_table("universe_rating_history", global_vars.db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
+    universe = sql_read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", global_vars.db_url_aws_read)
+    df = df.merge(universe, on=["ticker"])
+    df = df.sort_values(by=["ai_score"]).groupby(["currency_code", "trading_day"]).tail(10)
+    df["trading_day"] = pd.to_datetime(df["trading_day"])
     df = df.loc[df["trading_day"].isin([dt.datetime(2021,11,15), dt.datetime(2021,11,8), dt.datetime(2021,11,1), dt.datetime(2021,10,25)])]
+    df.to_csv("universe_rating_history.csv")
     print(df)
 
     df = sql_read_table("iso_currency_code")
