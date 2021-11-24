@@ -5,10 +5,50 @@ import global_vars
 import re
 import argparse
 import datetime as dt
+from dateutil.relativedelta import relativedelta
 from utils_report_to_slack import to_slack
 from utils_send_email import send_mail
+from utils_sql import sql_read_query
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
+
+def backdate_by_week(week):
+    return (dt.datetime.now().date() - relativedelta(weeks=week)).strftime("%Y-%m-%d")
+
+def topn_ticker(n=20, DEBUG=False):
+    ''' save stock details for top 25 in each score '''
+
+    query = f"SELECT u.ticker, currency_code, trading_day, ai_score FROM universe_rating_history r "
+    query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker "
+    query += f"WHERE trading_day in ('{backdate_by_week(0)}', '{backdate_by_week(1)}', '{backdate_by_week(2)}', '{backdate_by_week(3)}') "
+    query += f"AND currency_code in ('HKD', 'USD') "
+    df = sql_read_query(query, global_vars.db_url_aws_read)
+
+    df = df.sort_values(by="ai_score", ascending=False).groupby(by=["currency_code", "trading_day"]).head(20)
+
+    writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
+    for name, g in df.groupby(by=["trading_day"]):
+        ddf = g.sort_values(by=["currency_code", "ai_score"], ascending=False).drop(columns=["trading_day"])
+        ddf.to_excel(writer, sheet_name=name.strftime("%Y-%m-%d"), index=False)
+    writer.save()
+
+    to_slack().file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
+    print(dt.datetime.today().weekday())
+    if (dt.datetime.today().weekday() == 0) or DEBUG:  # on Monday send all TOP Picks
+        subject = "Weekly Top 20 Pick (HKD & USD)"
+        if DEBUG:
+            subject = "(Resent) " + subject
+        text = "The attached Excel includes top 20 tickers with the highest ai score for the past 4 week (include this week). " \
+               "This email will be automatically send out every Monday morning. " \
+               "Feel free to contact Clair if there is any issue."
+        file = f"#{suffixes}_ai_score_top{n}.xlsx"
+        send_mail(subject, text, file, "clair.cui@loratechai.com")
+        send_mail(subject, text, file, "stepchoi@loratechai.com")
+        send_mail(subject, text, file, "nick.choi@loratechai.com")
+        send_mail(subject, text, file, "john.kim@loratechai.com")
+        send_mail(subject, text, file, "kenson.lau@loratechai.com")
+        send_mail(subject, text, file, "joseph.chang@loratechai.com")
+        send_mail(subject, text, file, "nickey.kong@loratechai.com")
 
 class score_eval:
     def __init__(self, SLACK=False, currency=None, DEBUG=False):
@@ -51,7 +91,7 @@ class score_eval:
         self.__corr_scale_unscale(score_current)
 
         # 3. save descriptive csv
-        self.__save_topn_ticker(score_current)
+        # self.__save_topn_ticker(score_current)
         self.__save_description(score_current)
 
         # 4. save descriptive plot
@@ -99,46 +139,6 @@ class score_eval:
         r_des = r.describe().transpose()
         r_top = pd.concat([r.sort_values(by='ai_score').head(20), r.sort_values(by='ai_score').tail(20)], axis=0)
         return r_des, r_top
-
-    def __save_topn_ticker(self, df, n=20):
-        ''' save stock details for top 25 in each score '''
-
-        df = df.loc[df['currency_code'].isin(['HKD','USD'])]
-
-        with global_vars.engine.connect() as conn:
-            query = f"SELECT ticker, ticker_fullname FROM universe"
-            universe = pd.read_sql(query, conn)
-        global_vars.engine.dispose()
-
-        writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
-
-        all_df = []
-        for i in ['wts_rating', 'dlp_1m', 'ai_score', 'ai_score2']:
-            idx = df.groupby(['currency_code'])[i].nlargest(n).index.get_level_values(1)
-            ddf = df.loc[idx].sort_values(by=['currency_code',i], ascending=False)
-            all_df.append(ddf)
-            ddf = ddf[['currency_code','ticker',i]].merge(universe, on='ticker', how='left')
-            ddf.to_excel(writer, sheet_name=i, index=False)
-
-        all_occurence_df = pd.concat(all_df, axis=0).drop_duplicates()
-        all_occurence_df.to_excel(writer, sheet_name='original_scores', index=True)
-        writer.save()
-
-        if self.SLACK:
-            to_slack().file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
-            print(dt.datetime.today().weekday())
-            if (dt.datetime.today().weekday() == 0) or self.DEBUG: # on Monday send all TOP Picks
-                subject = "Weekly Top 20 Pick (HKD & USD)"
-                text = "These are top 20 tickers with the highest ai score for this week. This email will be automatically send out every Monday morning. " \
-                       "Feel free to contact Clair if there is any issue."
-                file = f"#{suffixes}_ai_score_top{n}.xlsx"
-                send_mail(subject, text, file, "clair.cui@loratechai.com")
-                send_mail(subject, text, file, "stepchoi@loratechai.com")
-                send_mail(subject, text, file, "nick.choi@loratechai.com")
-                send_mail(subject, text, file, "john.kim@loratechai.com")
-                send_mail(subject, text, file, "kenson.lau@loratechai.com")
-                send_mail(subject, text, file, "joseph.chang@loratechai.com")
-                send_mail(subject, text, file, "nickey.kong@loratechai.com")
 
     def __save_description(self, df):
         ''' write statistics for  '''
@@ -221,19 +221,7 @@ def read_query(query, engine_num=int):
     engine_dict[engine_num].dispose()
     return df
 
-def manual_check_on_score(currency='HKD'):
-    ''' checking ai_score rational by go through reason for top picks in each currency '''
-
-    ai_score_table_name = "universe_rating"
-
-    score = read_query(f"SELECT * FROM {ai_score_table_name} WHERE currency_code='{currency}' LIMIT 10", 0)
-    score = read_query(query, 0)
-    score = read_query(query, 0)
-
 if __name__ == "__main__":
-    # manual_check_on_score()
-    #
-    # exit(200)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
@@ -242,5 +230,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
+    topn_ticker(n=20, DEBUG=args.debug)
     eval = score_eval(SLACK=args.slack, currency=args.currency, DEBUG=args.debug)
     eval.test_current()     # test on universe_rating + test_fundamentals_score_details_{currency}
