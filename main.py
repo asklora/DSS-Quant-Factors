@@ -87,6 +87,8 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
+    group_code_list = ['USD', 'EUR'] # ,
+
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60):
         ''' check if data tables finished ingestion -> then start '''
@@ -122,9 +124,9 @@ if __name__ == "__main__":
                               ticker=None,
                               currency=None)
         if args.mode == 'v2':
-            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False)
+            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False, all_groups=group_code_list)
         elif args.mode == 'v2_trim':
-            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=True)
+            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=True, all_groups=group_code_list)
         else:
             raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
@@ -133,7 +135,6 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
 
-    group_code_list = ['USD'] # ,
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vars.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.4, 0.6]
@@ -177,7 +178,7 @@ if __name__ == "__main__":
     y_type_list.append(list(set(data.x_col_dict['value'])&set(data.factor_list)))
     y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.factor_list)))
 
-    all_groups = product([data], [sql_result], list(range(3)), group_code_list, testing_period_list,
+    all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
     all_groups = [tuple(e) for e in all_groups]
 

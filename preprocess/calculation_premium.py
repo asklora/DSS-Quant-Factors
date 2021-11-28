@@ -99,7 +99,7 @@ def insert_prem_and_membership_for_group(*args):
 
     return True
 
-def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12):
+def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12, all_groups=['USD']):
 
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
@@ -110,7 +110,6 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12):
     # Read stock_return / ratio table
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
-    all_groups = ['USD'] # we test on USD only for now
     if trim_outlier_:
         tbl_suffix_extra = '_v2_trim'
     else:
