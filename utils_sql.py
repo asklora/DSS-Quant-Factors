@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import DATE, DOUBLE_PRECISION, TEXT, INTEGER
 from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
+import re
 
 import global_vars
 from utils_report_to_slack import to_slack
@@ -127,9 +128,12 @@ def record_table_update_time(table):
 
 def uid_maker(df, primary_key):
     ''' create uid columns for table when multiple columns used as primary_key '''
-    df["uid"] = df[primary_key].apply(lambda row: ''.join(row.values.astype(str)), axis=1)
-    for s in [" ", ",", ":", ".", "-", "'","_"]:
-        df["uid"] = df["uid"].str.replace(s, "", regex=False)
+    df["uid"] = ''
+    for i in primary_key:
+        index = df[i].copy()
+        for r in [" ", ",", ":", ".", "-", "'", "_"]:
+            index = index.astype(str).str.replace(r, "", regex=False)
+        df["uid"] += index
     return df
 
 if __name__=="__main__":

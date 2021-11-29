@@ -12,15 +12,15 @@ from utils_sql import sql_read_query
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
-def backdate_by_week(week):
-    return (dt.datetime.now().date() - relativedelta(weeks=week)).strftime("%Y-%m-%d")
+def backdate_by_week_day(week=0, day=0):
+    return (dt.datetime.now().date() - relativedelta(weeks=week) - relativedelta(days=day)).strftime("%Y-%m-%d")
 
 def topn_ticker(n=20, DEBUG=False):
     ''' save stock details for top 25 in each score '''
 
-    query = f"SELECT u.ticker, currency_code, trading_day, ai_score FROM universe_rating_history r "
-    query += f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker "
-    query += f"WHERE trading_day in ('{backdate_by_week(0)}', '{backdate_by_week(1)}', '{backdate_by_week(2)}', '{backdate_by_week(3)}') "
+    query = f"SELECT u.ticker, currency_code, trading_day, ticker_name, ai_score, company_description FROM universe_rating_history r "
+    query += f"INNER JOIN (SELECT ticker, ticker_name, currency_code, company_description FROM universe) u ON r.ticker=u.ticker "
+    query += f"WHERE trading_day in ('{backdate_by_week_day(0,1)}', '{backdate_by_week_day(1,1)}', '{backdate_by_week_day(2,1)}', '{backdate_by_week_day(3,1)}') "
     query += f"AND currency_code in ('HKD', 'USD') "
     df = sql_read_query(query, global_vars.db_url_aws_read)
 
@@ -222,6 +222,8 @@ def read_query(query, engine_num=int):
     return df
 
 if __name__ == "__main__":
+    topn_ticker(20, False)
+    exit(1)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--slack', action='store_true', help='Send message/file to Slack = True')
