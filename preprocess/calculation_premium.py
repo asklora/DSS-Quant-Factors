@@ -33,7 +33,7 @@ def trim_outlier(df, prc=0):
 
     return df
 
-def insert_prem_and_membership_for_group(*args):
+def insert_prem_for_group(*args):
 
     def qcut(series):
         try:
@@ -134,7 +134,7 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12, all_group
     trucncate_table_in_database(f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
                                 global_vars.db_url_alibaba_prod)
     with mp.Pool(processes=processes) as pool:
-        res = pool.starmap(insert_prem_and_membership_for_group, all_groups)
+        res = pool.starmap(insert_prem_for_group, all_groups)
 
     return res
 
@@ -146,10 +146,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    # remove_tables_with_suffix(global_vars.engine_ali, tbl_suffix_extra)
-    # calc_premium_all(stock_last_week_avg=True, use_biweekly_stock=False, save_membership=True)
     calc_premium_all_v2(tbl_suffix='_weekly1', trim_outlier_=False, processes=6)
-    # calc_premium_all_v2(use_biweekly_stock=False, stock_last_week_avg=True, save_membership=True, trim_outlier_=True)
 
     end = datetime.now()
 

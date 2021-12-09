@@ -4,13 +4,14 @@ from pathlib import Path
 
 db_url_aws_read = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # AWS Read url
 db_url_alibaba = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
-db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
+
+# db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
+db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
 
 firebase_url = "../DROID_V2.1/files/file_json/asklora-firebase.json"
 firebase_url = (Path(__file__).parent / firebase_url).resolve()
 
 # TABLE names - results
-membership_table = "factor_membership"
 result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_result_score"
 feature_importance_table = "factor_result_importance"
@@ -22,16 +23,13 @@ descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
 dl_value_universe_table = "universe"
-currency_code_universe = "universe_newcode"     # ALIBABA DB
-worldscope_quarter_summary_table = "data_worldscope_summary"
-ibes_data_table = "data_ibes_monthly"
-macro_data_table = "data_macro_monthly"
-stock_data_table_ohlc = "data_dss"
-stock_data_table_tri = "data_dsws"
+worldscope_quarter_summary_table = "data_worldscope"
+ibes_data_table = "data_ibes"
+macro_data_table = "data_macro"
+stock_data_table_ohlc = "data_ohlcv"
+stock_data_table_tri = "data_tri"
 fundamental_score_mkt_cap = "data_fundamental_score"
-# eikon_mktcap_table = "data_factor_eikon_mktcap"
 eikon_other_table = "data_factor_eikon_others"
-eikon_vix_table = "data_factor_eikon_vix"
 eikon_price_table = "data_factor_eikon_price_daily_final"
 eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
 eikon_fx_table = "data_factor_eikon_others_fx"      # ALIBABA DB
