@@ -6,9 +6,9 @@ import re
 import argparse
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-from utils_report_to_slack import to_slack
-from utils_send_email import send_mail
-from utils_sql import sql_read_query
+from general.utils_report_to_slack import to_slack
+from general.utils_send_email import send_mail
+from general.utils_sql import sql_read_query
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 

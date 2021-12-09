@@ -1,7 +1,5 @@
-import pandas as pd
-import datetime as dt
 import global_vars
-from utils_sql import sql_read_query, sql_read_table
+from general.utils_sql import sql_read_query
 
 rating = sql_read_query("SELECT ticker, trading_day, ai_score, wts_rating FROM universe_rating_history", global_vars.db_url_aws_read)
 sector = sql_read_query("SELECT ticker, icb_code as sector FROM universe WHERE currency_code = 'USD' and icb_code<>'NA'", global_vars.db_url_aws_read)

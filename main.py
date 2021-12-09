@@ -1,10 +1,8 @@
 import datetime as dt
-import pandas as pd
 import numpy as np
 import argparse
 import time
 from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd
 
 import global_vars
 from preprocess.load_data import load_data
@@ -13,11 +11,10 @@ from preprocess.calculation_premium import calc_premium_all_v2
 from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
-from score_evaluate import score_eval
-from utils_report_to_slack import to_slack
-from utils_sql import sql_read_query, sql_read_table, trucncate_table_in_database
+from general.utils_report_to_slack import to_slack
+from general.utils_sql import sql_read_query, sql_read_table, trucncate_table_in_database
 
-from itertools import product, combinations, chain
+from itertools import product
 import multiprocessing as mp
 
 def mp_rf(*mp_args):

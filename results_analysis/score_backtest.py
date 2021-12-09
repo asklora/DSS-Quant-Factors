@@ -2,11 +2,11 @@ from scipy.stats import skew
 import pandas as pd
 import datetime as dt
 import numpy as np
-from sklearn.preprocessing import robust_scale, minmax_scale, MinMaxScaler
+from sklearn.preprocessing import robust_scale, minmax_scale
 
 import global_vars
-from utils_sql import sql_read_query, sql_read_table, upsert_data_to_database
-from utils_report_to_slack import to_slack
+from general.utils_sql import sql_read_query, sql_read_table
+from general.utils_report_to_slack import to_slack
 
 def score_update_scale(fundamentals, calculate_column, universe_currency_code, factor_rank):
 

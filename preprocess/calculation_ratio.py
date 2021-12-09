@@ -4,8 +4,8 @@ from sqlalchemy import text
 import global_vars
 
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-from utils_sql import upsert_data_to_database, sql_read_table, sql_read_query
-from utils_report_to_slack import to_slack
+from general.utils_sql import upsert_data_to_database, sql_read_table, sql_read_query
+from general.utils_report_to_slack import to_slack
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 

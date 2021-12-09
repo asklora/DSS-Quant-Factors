@@ -1,7 +1,7 @@
 import global_vars
 import pandas as pd
-from sqlalchemy import Table, MetaData, create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Table, MetaData
+
 
 def get_table_name_list(engine):
     ''' get full list of tables in certain DB '''
@@ -19,7 +19,7 @@ def ali_migration_to_prod(migrate_tbl_lst, from_url=global_vars.engine_ali, to_u
     print(' === Alibaba Migrate Dev to Prod Start === ')
     metadata = MetaData()
 
-    from utils_sql import uid_maker
+    from general.utils_sql import uid_maker
 
     for t in migrate_tbl_lst:
         try:    # create new tables if not exist
@@ -64,7 +64,5 @@ if __name__=="__main__":
     # 'ai_value_formula_ratios'
     # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
 
-    import time
-    import datetime as dt
     migrate_tbl_lst = ['data_worldscope_summary']
     ali_migration_to_prod(migrate_tbl_lst, from_url=global_vars.engine, to_url=global_vars.engine_ali, tbl_pivot=True, tbl_index=["ticker", "period_end"])

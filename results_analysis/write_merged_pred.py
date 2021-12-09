@@ -6,8 +6,8 @@ import argparse
 import global_vars
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, roc_auc_score, multilabel_confusion_matrix
-from utils_sql import sql_read_query, upsert_data_to_database
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from general.utils_sql import sql_read_query, upsert_data_to_database
 
 stock_pred_dtypes = dict(
     period_end=DATE,

@@ -1,18 +1,13 @@
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
-from sqlalchemy import text
 import global_vars
 import datetime as dt
-from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd
 from sklearn.preprocessing import quantile_transform, scale
-from preprocess.calculation_ratio import check_duplicates, fill_all_day, update_period_end
-from scipy.stats import skew
+from preprocess.calculation_ratio import fill_all_day, update_period_end
 from sklearn.decomposition import PCA
 from sklearn.cluster import AgglomerativeClustering
-from utils_sql import upsert_data_to_database
+from general.utils_sql import upsert_data_to_database
 from s_dbw import S_Dbw
 
 def back_by_month(n=12, str=True):

@@ -1,23 +1,14 @@
 import datetime as dt
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, RandomForestClassifier, ExtraTreesClassifier
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import numpy as np
-import argparse
 import pandas as pd
 import gc
-from dateutil.relativedelta import relativedelta
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
-from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, mean_squared_error
-from sqlalchemy import create_engine, TIMESTAMP, TEXT, BIGINT, NUMERIC
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from pandas.tseries.offsets import MonthEnd
-from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error, accuracy_score, precision_score, \
-    recall_score, f1_score
+from hyperopt import fmin, tpe, hp, Trials
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 
-from preprocess.load_data import load_data
-from utils_sql import upsert_data_to_database
+from general.utils_sql import upsert_data_to_database
 import global_vars
-import sys
+
 
 class rf_HPOT:
     ''' use hyperopt on each set '''
