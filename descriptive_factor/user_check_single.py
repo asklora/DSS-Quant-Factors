@@ -21,9 +21,11 @@ def check_user(user_id):
 
     print(op['current_investment_amount'].sum())
 
+    op["date"] = op["updated"].dt.date
+
     # evaluate top earner by (ticker / bot) for this user
     op_last = op.groupby("position_uid").last()
-    op_ticker_sum = op_last.groupby("ticker").sum()
+    op_ticker_sum = op_last.groupby(["ticker", "date"]).sum()
     op_bot_sum = op_last.groupby("bot_id").sum()
     op_last["current_pnl_amt"] = op_last["current_pnl_amt"]*op_last["exchange_rate"]
     print('Total Profit in Nov:', op_last["current_pnl_amt"].sum())

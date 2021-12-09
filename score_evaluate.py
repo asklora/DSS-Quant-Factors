@@ -15,16 +15,37 @@ suffixes = dt.datetime.today().strftime('%Y%m%d')
 def backdate_by_week_day(week=0, day=0):
     return (dt.datetime.now().date() - relativedelta(weeks=week) - relativedelta(days=day)).strftime("%Y-%m-%d")
 
+def get_weekly_return(tickers):
+    ''' get weekly return for top picks '''
+
+    tickers += [".SPX", ".HSI"]
+
+    query = "SELECT ticker, trading_day, total_return_index as tri FROM master_ohlcvtr "
+    query += f"WHERE trading_day > '{backdate_by_week_day(5,1)}' AND ticker in {tuple(tickers)} "
+    price = sql_read_query(query, global_vars.db_url_aws_read)
+
+    from preprocess.calculation_ratio import fill_all_day
+    price = fill_all_day(price).sort_values(by=["ticker", "trading_day"])
+    dates = price["trading_day"].to_list()
+    price["tri"] = price.groupby(["ticker"])["tri"].ffill()
+    for i in range(4):
+        price[f"{i+1}th-week Return ({dates[-(28-i*7)].strftime('%Y-%m-%d')})"] = \
+            price[f"tri"].shift(28-7*i-7) / price.groupby(["ticker"])["tri"].shift(28-7*i) - 1
+
+    return price.groupby(["ticker"]).last().drop(columns=["tri", "trading_day"])
+
 def topn_ticker(n=20, DEBUG=False):
     ''' save stock details for top 25 in each score '''
 
     query = f"SELECT u.ticker, currency_code, trading_day, ticker_name, ai_score, company_description FROM universe_rating_history r "
     query += f"INNER JOIN (SELECT ticker, ticker_name, currency_code, company_description FROM universe) u ON r.ticker=u.ticker "
-    query += f"WHERE trading_day in ('{backdate_by_week_day(0,1)}', '{backdate_by_week_day(1,1)}', '{backdate_by_week_day(2,1)}', '{backdate_by_week_day(3,1)}') "
+    query += f"WHERE trading_day in ('{backdate_by_week_day(0,1)}', '{backdate_by_week_day(1,1)}', '{backdate_by_week_day(2,1)}', '{backdate_by_week_day(3,1)}', '{backdate_by_week_day(4,1)}') "
     query += f"AND currency_code in ('HKD', 'USD') "
     df = sql_read_query(query, global_vars.db_url_aws_read)
 
     df = df.sort_values(by="ai_score", ascending=False).groupby(by=["currency_code", "trading_day"]).head(20)
+    price = get_weekly_return(df["ticker"].to_list())
+    df = df.merge(price, left_on=["ticker"], right_index=True, how="outer")
 
     writer = pd.ExcelWriter(f'#{suffixes}_ai_score_top{n}.xlsx')
     for name, g in df.groupby(by=["trading_day"]):
@@ -222,7 +243,7 @@ def read_query(query, engine_num=int):
     return df
 
 if __name__ == "__main__":
-    topn_ticker(20, False)
+    topn_ticker(20, DEBUG=True)
     exit(1)
 
     parser = argparse.ArgumentParser()
