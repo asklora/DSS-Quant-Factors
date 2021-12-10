@@ -158,9 +158,6 @@ if __name__ == "__main__":
     # sql_result.pop('tree_type')
     # sql_result.pop('use_pca')
 
-    # --------------------------------- Run Lasso Benchmark -------------------------------------
-    # start_lasso(data, testing_period_list, group_code_list, y_type)
-
     # --------------------------------- Model Training ------------------------------------------
 
     data = load_data(tbl_suffix, mode=args.mode)  # load_data (class) STEP 1
@@ -186,18 +183,18 @@ if __name__ == "__main__":
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
-    download_stock_pred(
-            q=1/3,
-            model='rf_reg',
-            name_sql=sql_result['name_sql'],
-            save_plot=False,
-            save_xls=False,
-            suffix=tbl_suffix[1:],
-        )
-
-    score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
-
-    end_time = dt.datetime.now()
-    print(start_time, end_time, end_time-start_time)
+    # download_stock_pred(
+    #         q=1/3,
+    #         model='rf_reg',
+    #         name_sql=sql_result['name_sql'],
+    #         save_plot=False,
+    #         save_xls=False,
+    #         suffix=tbl_suffix[1:],
+    #     )
+    #
+    # score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+    #
+    # end_time = dt.datetime.now()
+    # print(start_time, end_time, end_time-start_time)
 
 

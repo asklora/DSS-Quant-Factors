@@ -42,9 +42,8 @@ class rf_HPOT:
         trials = Trials()
         best = fmin(fn=self.eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-    def write_db(self):
-        ''' write score/prediction/feature to DB ''' 
-        tbl_suffix = '_rf_reg'
+    def write_db(self, tbl_suffix = ''):
+        ''' write score/prediction/feature to DB '''
 
         # update results
         upsert_data_to_database(self.hpot['best_stock_df'], f"{global_vars.result_pred_table}{tbl_suffix}",

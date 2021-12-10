@@ -1,7 +1,14 @@
 import global_vars
 import pandas as pd
-from sqlalchemy import Table, MetaData
 from sqlalchemy import create_engine
+from general.sql_output import uid_maker
+from multiprocessing import cpu_count
+from sqlalchemy.types import DATE, BIGINT, TEXT, INTEGER, BOOLEAN
+from pangres import upsert
+from general.utils_report_to_slack import to_slack
+
+DB_READ = global_vars.db_url_alibaba_prod
+DB_WRITE = global_vars.db_url_alibaba
 
 def get_table_name_list(engine):
     ''' get full list of tables in certain DB '''
@@ -12,61 +19,67 @@ def get_table_name_list(engine):
 
     return sorted(df['table_name'])
 
-def ali_migration_to_prod(migrate_tbl_lst, from_url=global_vars.engine_ali, to_url=global_vars.engine_ali_prod, tbl_pivot=False
-                          , tbl_index=["ticker", "trading_day"]):
-    ''' migrate list of cron table (i.e. currenctly used in DROID_v2.1) used to Prod DB '''
+def read_query(query):
+    engine = create_engine(DB_READ, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        data = pd.read_sql(query, con=conn)
+    engine.dispose()
+    data = pd.DataFrame(data)
+    print(data)
+    return data
 
-    print(' === Alibaba Migrate Dev to Prod Start === ')
-    metadata = MetaData()
+def upsert_to_database(data, table, primary_key, how="update", type=TEXT):
+    print(data)
+    try:
+        engine = create_engine(DB_WRITE, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
+        if how in ["replace", "append"]:
+            extra = {'con': engine.connect(), 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
+            data.to_sql(table, **extra)
+        else:
+            print(f"=== Upsert Data to Database on Table {table} ===")
+            data = data.drop_duplicates(subset=[primary_key], keep="first", inplace=False)
+            data = data.dropna(subset=[primary_key])
+            data = data.set_index(primary_key)
 
-    from general.sql_output import uid_maker
+            upsert(engine=engine,
+                df=data,
+                table_name=table,
+                if_row_exists=how,
+                chunksize=20000,
+                dtype={primary_key:type},
+                add_new_columns=True)
+            print(f"DATA UPSERT TO {table}")
+            engine.dispose()
+    except Exception as e:
+        print(f"===  ERROR IN UPSERT DB === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN UPSERT DB === Error : {e}")
 
-    for t in migrate_tbl_lst:
-        try:    # create new tables if not exist
-            table = Table(t, metadata, autoload=True, autoload_with=from_url)
-            table.create(bind=to_url)
-            print('---> Create table for: ', t)
-        except Exception as e:
-            print(t, e)
+def data_factor_eikon_price():
+    table_name = "data_factor_eikon_price_daily_final"
+    query = f"select * from {table_name}"
+    data = read_query(query).reset_index().rename(columns={"index": "id"})
 
-        with from_url.connect() as conn_dev, to_url.connect() as conn_prod:
-            df = pd.read_sql(f"SELECT * FROM {t} WHERE ticker='AAPL.O'", conn_dev, chunksize=10000)
-            df = pd.concat(df)
+    table_name = "data_factor_eikon_price"
+    upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
 
-            if tbl_pivot:
-                cols = [x for x in df.select_dtypes(float).columns.to_list() if x not in tbl_index+["uid"]]
-                # df = df.set_index(tbl_index)[cols].stack()
-                df = pd.melt(df, id_vars=tbl_index, value_vars=cols, var_name="field", value_name="value").dropna(how='any')
-                df = uid_maker(df, primary_key=tbl_index+["field"])
-                extra = {'con': conn_prod, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize':10000}
-                df.to_sql(t, **extra)
-            else:
-                extra = {'con': conn_prod, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize':10000}
-                df.to_sql(t, **extra)
-        from_url.dispose()
-        to_url.dispose()
-        print('     ---> Finish migrate: ', t)
+def data_factor_eikon_fx():
+    table_name = "data_factor_eikon_others_fx"
+    query = f"select * from {table_name}"
+    data = read_query(query).reset_index().rename(columns={"index": "id"})
 
-    prod_tbl_lst = get_table_name_list(to_url)
-    fail_migrate_tbl = set(migrate_tbl_lst) - set(prod_tbl_lst)
-    if len(fail_migrate_tbl)>0:
-        raise Exception("Error: Following table hasn't been migrated to Alibaba DB Prod: ", list(fail_migrate_tbl))
+    table_name = "data_factor_eikon_fx"
+    upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
+
+def data_factor_eikon_date():
+    table_name = "data_factor_eikon_others_date"
+    query = f"select * from {table_name}"
+    data = read_query(query).reset_index().rename(columns={"index": "id"})
+
+    table_name = "data_factor_eikon_date"
+    upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
 
 if __name__=="__main__":
-    # engine = create_engine(global_vars.db_url_aws_read)
-    # lst = get_table_name_list(engine)
-    # print(lst)
-    # exit(0)
 
-    # 'factor_formula_ratios_prod', 'test_fundamental_score_current_names',  'factor_result_pred_prod',
-    # 'iso_currency_code', 'ai_value_lgbm_pred_final_eps', 'ingestion_name',
-    # 'factor_result_pred_prod_monthly1', 'factor_result_pred_prod_weekly1','factor_formula_ratios_prod_test'
-    # 'ai_value_formula_ratios'
-    # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
-
-    engine = create_engine(global_vars.db_url_aws_read, max_overflow=-1, isolation_level="AUTOCOMMIT")  # APP cron DB
-    engine_ali = create_engine(global_vars.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")  # research DB
-    engine_ali_prod = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")  # research DB
-
-    migrate_tbl_lst = ['data_worldscope']
-    ali_migration_to_prod(migrate_tbl_lst, from_url=engine, to_url=engine_ali, tbl_pivot=True, tbl_index=["ticker", "period_end"])
+    # data_factor_eikon_price()
+    data_factor_eikon_fx()
+    data_factor_eikon_date()
