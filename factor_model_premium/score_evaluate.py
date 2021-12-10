@@ -24,7 +24,7 @@ def get_weekly_return(tickers):
     query += f"WHERE trading_day > '{backdate_by_week_day(5,1)}' AND ticker in {tuple(tickers)} "
     price = sql_read_query(query, global_vars.db_url_aws_read)
 
-    from preprocess.calculation_ratio import fill_all_day
+    from factor_model_premium.preprocess.calculation_ratio import fill_all_day
     price = fill_all_day(price).sort_values(by=["ticker", "trading_day"])
     dates = price["trading_day"].to_list()
     price["tri"] = price.groupby(["ticker"])["tri"].ffill()

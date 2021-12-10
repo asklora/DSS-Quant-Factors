@@ -161,7 +161,7 @@ def trim_outlier_std(df):
 
     cols = df.select_dtypes(float).columns.to_list()
     for col in cols:
-        if col != 'icb_code':
+        if col != 'industry_code':
             x = trim_scaler(df[col])
         else:
             x = df[col].values
@@ -222,7 +222,7 @@ def plot_pca_scatter_hist(df, cluster_method):
 
 if __name__ == "__main__":
     data = test_cluster(last=-1, testing_interval=30, use_cached=True)
-    # data.history(['icb_code', 'change_tri_fillna', 'skew', 'avg_volume_1w3m',
+    # data.history(['industry_code', 'change_tri_fillna', 'skew', 'avg_volume_1w3m',
     #               'avg_div_payout', 'avg_debt_to_asset', 'avg_fa_turnover'], [6, 12, 24, 36, 48, 60], {'n_clusters':[2], 'm':[2]})    # data = test_cluster(last=-1, testing_interval=91, use_cached=True)
     data.history(None, [1, 3, 6, 12, 24, 36, 48], {'n_clusters':[2], 'm':[2]})
     # data.stepwise_test({'n_clusters':[1], 'm':[1.25]})    # data = test_cluster(last=-1, testing_interval=91, use_cached=True)

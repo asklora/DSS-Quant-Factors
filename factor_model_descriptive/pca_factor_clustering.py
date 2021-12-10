@@ -1,35 +1,25 @@
-import numpy as np
-from sqlalchemy import create_engine
 import global_vars
 import pandas as pd
 import datetime as dt
 
 import matplotlib.pyplot as plt
-from matplotlib import colors as mcolors
 from collections import Counter
 
-from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
-from hierarchy_ratio_cluster import trim_outlier_std
 # from utils_report_to_slack import report_to_slack
 
-import gc
 import itertools
-import multiprocessing as mp
 
 from fcmeans import FCM
 from descriptive_factor.fuzzy_metrics import *
-from sklearn.cluster import FeatureAgglomeration, AgglomerativeClustering
-from sklearn.mixture import GaussianMixture
+from sklearn.cluster import FeatureAgglomeration
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import scale, minmax_scale
+from sklearn.preprocessing import scale
 from sklearn import metrics
 from s_dbw import S_Dbw
 from descriptive_factor.fuzzy_metrics import xie_beni_index
 
-from hierarchy_ratio_cluster import good_cols, fill_all_day_interpolate, relativedelta, test_missing, good_mom_cols, trim_outlier_std
-from hierarchy_ratio_cluster import test_method as h_test_cluster
-from fcm_ratio_cluster import test_method as f_test_cluster
-from gaussian_ratio_cluster import test_method as g_test_cluster
+from hierarchy_ratio_cluster import relativedelta, trim_outlier_std
+
 
 # --------------------------------- Test subset composition ------------------------------------------
 
@@ -104,13 +94,13 @@ def feature_subset_pca(testing_interval=7):
     all_df_all['trading_day'] = pd.to_datetime(all_df_all['trading_day'])
 
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vars.formula_factors_table}_descriptive', conn)
+        formula = pd.read_sql(f'SELECT pillar, name FROM {descriptive_formula_factors_table}', conn)
     global_vars.engine_ali.dispose()
 
     org_name = formula.loc[formula['pillar']=='momentum', 'name'].to_list()
     org_name = org_name + ['avg_' + x for x in org_name] + ['change_' + x for x in org_name]
 
-    # org_name = ['change_tri_fillna', 'avg_volume_1w3m', 'ret_momentum', 'vol', 'icb_code']
+    # org_name = ['change_tri_fillna', 'avg_volume_1w3m', 'ret_momentum', 'vol', 'industry_code']
 
     all_df_all = all_df_all.fillna(0).filter(['trading_day','ticker']+org_name)
     print(all_df_all.columns.to_list()[2:])
@@ -134,20 +124,20 @@ def feature_subset_cluster(testing_interval=7):
     all_df_all['trading_day'] = pd.to_datetime(all_df_all['trading_day'])
     all_df_all = all_df_all.loc[all_df_all['trading_day'] == all_df_all['trading_day'].max()]
 
-    d_icb = all_df_all['icb_code'].values
+    d_icb = all_df_all['industry_code'].values
     # d_icb = np.array([np.cos(d_icb/85103035*2*np.pi), np.sin(d_icb/85103035*2*np.pi)]).T
     # d_icb = scipy.spatial.distance.pdist(d_icb, 'cosine')
     # d_icb = scipy.spatial.distance.squareform(d_icb)
-    all_df_all[['icb_code1', 'icb_code2']] = np.array(
+    all_df_all[['industry_code1', 'industry_code2']] = np.array(
         [scale(np.cos(d_icb / 85103035 * 2 * np.pi)), scale(np.sin(d_icb / 85103035 * 2 * np.pi))]).T
 
-    org_name = ['icb_code']
+    org_name = ['industry_code']
 
     r = {}
     for col in all_df_all.columns.to_list():
         if col not in org_name + ['trading_day','ticker']:
             org_name += [col]
-            # org_name += ['icb_code1', 'icb_code2']
+            # org_name += ['industry_code1', 'industry_code2']
             df = all_df_all.fillna(0).filter(['trading_day','ticker'] + org_name)
             # print(org_name)
 
@@ -412,7 +402,7 @@ def sample_port_var(testing_interval=91):
     df = df.append(df_max)
     df = df.drop_duplicates(subset=['trading_day','ticker'], keep='last')
 
-    from preprocess.calculation_ratio import fill_all_day
+    from factor_model_premium.preprocess.calculation_ratio import fill_all_day
     df = fill_all_day(df).sort_values(by=['ticker','trading_day'])
     num_col = df.select_dtypes(float).columns.to_list()
     df[num_col] = df[num_col].ffill()
@@ -449,7 +439,7 @@ def sample_port_var(testing_interval=91):
 
     X = std.values
     n_clusters = 2
-    from utils_des import cluster_hierarchical, cluster_fcm
+    from utils_des import cluster_fcm
     score, y = cluster_fcm(X)
     std['cluster'] = y
     print(score)
@@ -462,7 +452,7 @@ if __name__ == "__main__":
     # df = df.loc[df['trading_day']==df['trading_day'].max()]
     # df = df.loc[df['ticker'].str[-3:]=='.HK']
     # df.iloc[:, 2:] = trim_outlier_std(df.iloc[:, 2:].fillna(0))
-    # plt.scatter(df['icb_code'], df['change_volume'], alpha=.5)
+    # plt.scatter(df['industry_code'], df['change_volume'], alpha=.5)
     # plt.show()
     # exit(200)
 

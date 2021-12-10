@@ -6,7 +6,7 @@ from utils_des import read_item_df, feature_hierarchical_plot, selection_feature
 
 def define_pillars(df):
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT pillar, name FROM {global_vars.formula_factors_table}_descriptive', conn)
+        formula = pd.read_sql(f'SELECT pillar, name FROM {descriptive_formula_factors_table}', conn)
     global_vars.engine_ali.dispose()
 
     lst = []
@@ -24,7 +24,7 @@ class test_factor:
         self.info = {'years': start, 'testing_interval': testing_interval}
     
         df = self.data.item_df
-        df = df.drop(columns=['avg_mkt_cap','icb_code'])        # columns will be evaluate separately
+        df = df.drop(columns=['avg_mkt_cap','industry_code'])        # columns will be evaluate separately
         # feature_hierarchical_plot(df.iloc[:, 2:])
         # cols = selection_feature_hierarchical(df.iloc[:, 2:])
         self.cols = define_pillars(df)
@@ -113,7 +113,7 @@ def plot_test_factor():
     data.time_after(5, 0)
 
     # df = data.item_df
-    # df = df.drop(columns=['avg_market_cap_usd', 'icb_code'])  # columns will be evaluate separately
+    # df = df.drop(columns=['avg_market_cap_usd', 'industry_code'])  # columns will be evaluate separately
     # pillars = define_pillars(df)
     # for col in pillars:
     #     print(col)
@@ -152,7 +152,7 @@ def test_grid_search(testing_interval, start):
     info = {'years': start, 'testing_interval': testing_interval}
 
     df = data.item_df
-    df = df.drop(columns=['avg_mkt_cap', 'icb_code'])  # columns will be evaluate separately
+    df = df.drop(columns=['avg_mkt_cap', 'industry_code'])  # columns will be evaluate separately
     cols = define_pillars(df)
 
     cluster_method = [cluster_hierarchical]

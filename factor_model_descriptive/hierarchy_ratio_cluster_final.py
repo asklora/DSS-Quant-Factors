@@ -84,8 +84,8 @@ class test_cluster:
     def stepwise_test(self, cluster_method, kwargs):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
-        # cols = ['icb_code','avg_inv_turnover', 'change_dividend', 'avg_market_cap_usd', 'avg_roic']
-        cols = ['icb_code','change_tri_fillna', 'vol']
+        # cols = ['industry_code','avg_inv_turnover', 'change_dividend', 'avg_market_cap_usd', 'avg_roic']
+        cols = ['industry_code','change_tri_fillna', 'vol']
 
         X = self.df[cols].values
         X = np.nan_to_num(X, -1)
@@ -134,7 +134,7 @@ def trim_outlier_std(df):
 
     cols = df.select_dtypes(float).columns.to_list()
     for col in cols:
-        if col != 'icb_code':
+        if col != 'industry_code':
             x = trim_scaler(df[col])
         else:
             x = df[col].values

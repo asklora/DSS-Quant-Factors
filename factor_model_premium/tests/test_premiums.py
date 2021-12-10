@@ -170,7 +170,7 @@ def test_premiums(name):
 
     with global_vars.engine_ali.connect() as conn:
         df = pd.read_sql(f'SELECT * FROM {global_vars.factor_premium_table}_{name} WHERE not trim_outlier', conn)
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}', conn)
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table_prod}', conn)
     global_vars.engine_ali.dispose()
 
     df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
@@ -195,10 +195,10 @@ def test_premiums(name):
     df['score'] = 1 - minmax_scale(df['corr']) + minmax_scale(df['mean'])
 
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}', conn)
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table_prod}', conn)
         formula['rank'] = formula['name'].map(df['score'].to_dict())
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        formula.to_sql(global_vars.formula_factors_table, **extra)
+        formula.to_sql(global_vars.formula_factors_table_prod, **extra)
     global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":

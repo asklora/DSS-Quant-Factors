@@ -21,7 +21,7 @@ def get_tri(save=True, currency=None, ticker=None):
     print(f'===========================================================================================')
     query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                  f"FROM {global_vars.stock_data_table_tri} T "
-                 f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
+                 f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {global_vars.universe_table} U ON T.ticker = U.ticker "
                  f"WHERE {' AND '.join(conditions)}")
     tri = sql_read_query(query, global_vars.db_url_aws_read)
@@ -29,8 +29,9 @@ def get_tri(save=True, currency=None, ticker=None):
     query1 = f"SELECT * FROM {global_vars.eikon_price_table} ORDER BY ticker, trading_day"
     eikon_price = sql_read_query(query1, global_vars.db_url_alibaba)
 
-    query2 = f"SELECT ticker, mkt_cap FROM {global_vars.anchor_table_mkt_cap}"
+    query2 = f"SELECT * FROM {global_vars.anchor_table_mkt_cap} WHERE field='mkt_cap'"
     market_cap_anchor = sql_read_query(query2, global_vars.db_url_aws_read)
+    market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
 
     if save:
         tri.to_csv('cache_tri.csv', index=False)
@@ -267,11 +268,13 @@ def download_clean_worldscope_ibes(save, currency, ticker):
     print(f"==================================================================================================")
     query_ws = f"select * from {global_vars.worldscope_quarter_summary_table} WHERE {' AND '.join(conditions)}"
     ws = sql_read_query(query_ws, global_vars.db_url_aws_read)
+    ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
 
     query_ibes = f"SELECT * FROM {global_vars.ibes_data_table} WHERE {' AND '.join(conditions)}"
     ibes = sql_read_query(query_ibes, global_vars.db_url_aws_read)
+    ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
 
-    query_universe = f"SELECT ticker, currency_code, icb_code FROM {global_vars.universe_table}"
+    query_universe = f"SELECT ticker, currency_code, industry_code FROM {global_vars.universe_table}"
     universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
 
     def fill_missing_ws(ws):
@@ -420,10 +423,10 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
     check_duplicates(ibes, 'ibes')
 
     # Use 6-digit ICB code in industry groups
-    universe['icb_code'] = universe['icb_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
+    universe['industry_code'] = universe['industry_code'].replace('NA',np.nan).dropna().astype(int).astype(str).\
         replace({'10102010':'101021','10102015':'101022','10102020':'101023','10102030':'101024','10102035':'101024'})   # split industry 101020 - software (100+ samples)
-    # print(universe['icb_code'].unique())
-    universe['icb_code'] = universe['icb_code'].astype(str).str[:6]
+    # print(universe['industry_code'].unique())
+    universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
@@ -463,7 +466,7 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
     else:
         raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'weekly' got ", sample_interval)
 
-    df = df.merge(universe, on=['ticker'], how='left')      # label icb_code, currency_code for each ticker
+    df = df.merge(universe, on=['ticker'], how='left')      # label industry_code, currency_code for each ticker
 
     if save:
         df.to_csv('cache_all_data.csv')  # for debug
@@ -530,7 +533,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     if use_cached:
         try:
-            df = pd.read_csv('cache_all_data.csv', dtype={"icb_code": str})
+            df = pd.read_csv('cache_all_data.csv', dtype={"industry_code": str})
             stocks_col = pd.read_csv('cache_stocks_col.csv').iloc[:, 0].to_list()
         except Exception as e:
             print(e)
@@ -542,7 +545,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     formula = formula.loc[formula['is_active']]
 
     print(f'============================================================================================')
-    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table}')
+    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table_prod}')
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
@@ -625,7 +628,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # save calculated ratios to DB
     filter_col = set(df.columns.to_list()) & set(
-        ['ticker', 'period_end', 'currency_code', 'icb_code', 'stock_return_y'] + formula['name'].to_list())
+        ['ticker', 'period_end', 'currency_code', 'industry_code', 'stock_return_y'] + formula['name'].to_list())
     ddf = df[list(filter_col)]
     ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
     upsert_data_to_database(ddf, db_table_name, primary_key=["ticker","period_end"], db_url=global_vars.db_url_alibaba_prod, how="replace")

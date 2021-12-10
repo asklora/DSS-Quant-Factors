@@ -29,23 +29,23 @@ clustering_metrics1 = [
 
 select_cols = [
     'avg_market_cap_usd', 'avg_ca_turnover_re', 'avg_roe', 'avg_volume', 'change_earnings',  # hierarchical
-    'avg_volume_1w3m', 'avg_debt_to_asset', 'change_volume', 'skew', 'icb_code', 'avg_div_yield', 'avg_gross_margin', 'change_tri_fillna', # fcm
-    'avg_ca_turnover_re', 'icb_code', 'avg_fa_turnover_re', 'avg_market_cap_usd'    # gaussian
+    'avg_volume_1w3m', 'avg_debt_to_asset', 'change_volume', 'skew', 'industry_code', 'avg_div_yield', 'avg_gross_margin', 'change_tri_fillna', # fcm
+    'avg_ca_turnover_re', 'industry_code', 'avg_fa_turnover_re', 'avg_market_cap_usd'    # gaussian
 ]
 
 # select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'change_dividend', 'avg_cash_ratio', 'avg_roic',
-#                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
-#                'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'change_dividend', 'avg_div_yield']
+#                'avg_gross_margin', 'avg_debt_to_asset', 'industry_code', 'change_tri_fillna', 'skew', 'change_volume',
+#                'avg_volume_1w3m', 'industry_code', 'avg_inv_turnover', 'change_dividend', 'avg_div_yield']
 
 # select_cols = ['change_earnings', 'avg_roe', 'avg_inv_turnover', 'avg_market_cap_usd', 'avg_cash_ratio', 'avg_roic',
-#                'avg_gross_margin', 'avg_debt_to_asset', 'icb_code', 'change_tri_fillna', 'skew', 'change_volume',
-#                'avg_volume_1w3m', 'icb_code', 'avg_inv_turnover', 'avg_div_yield']
+#                'avg_gross_margin', 'avg_debt_to_asset', 'industry_code', 'change_tri_fillna', 'skew', 'change_volume',
+#                'avg_volume_1w3m', 'industry_code', 'avg_inv_turnover', 'avg_div_yield']
 
 select_cols = list(set(select_cols))
 
 high_corr_removed_cols = [
-    # 'avg_cash_ratio',   # icb_code
-    # 'avg_capex_to_dds', # icb_code
+    # 'avg_cash_ratio',   # industry_code
+    # 'avg_capex_to_dds', # industry_code
     # 'avg_volume_1w3m',  # change_tri_fillna, vol
     'avg_gross_margin',     # avg_fx_turnover_re
     'avg_ca_turnover_re',   # avg_fx_turnover_re
@@ -317,7 +317,7 @@ def trim_outlier_std(df):
 
     cols = df.select_dtypes(float).columns.to_list()
     for col in cols:
-        if col != 'icb_code':
+        if col != 'industry_code':
             x = trim_scaler(df[col])
         else:
             x = df[col].values

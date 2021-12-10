@@ -64,7 +64,7 @@ class read_item_df:
                 fig = plt.figure(figsize=(8, 4), dpi=60, constrained_layout=True)
                 ax1 = fig.add_subplot(1, 2, 1)
                 ax1.hist(df[col], bins=20)
-            if col != 'icb_code':
+            if col != 'industry_code':
                 x = trim_scaler(df[col])
             else:
                 x = df[col].values

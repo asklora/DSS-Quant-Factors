@@ -1,14 +1,9 @@
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-from sqlalchemy import text
 import global_vars
-import datetime as dt
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from pandas.tseries.offsets import MonthEnd
-from preprocess.calculation_ratio import check_duplicates, fill_all_day, update_period_end
-from scipy.stats import skew
+from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_period_end
+
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 def get_tri(save=True, conditions=None):
@@ -53,8 +48,8 @@ def get_worldscope(save=True, conditions=None):
         ws_conditions.extend(conditions)
     with global_vars.engine.connect() as conn:
         print(f'      ------------------------> Download worldscope data from {global_vars.worldscope_quarter_summary_table}')
-        query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vars.worldscope_quarter_summary_table} C '
-        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
+        query_ws = f'SELECT C.*, U.currency_code, U.industry_code FROM {global_vars.worldscope_quarter_summary_table} C '
+        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, industry_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
         query_ws += f"WHERE {' AND '.join(ws_conditions)} "
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
@@ -91,7 +86,7 @@ def get_worldscope(save=True, conditions=None):
     ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws = ws.drop(['period_end'], axis=1)
     # ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
-    ws['icb_code'] = pd.to_numeric(ws['icb_code'], errors='coerce')
+    ws['industry_code'] = pd.to_numeric(ws['industry_code'], errors='coerce')
 
     if save:
         ws.to_csv('dcache_ws.csv', index=False)
@@ -158,11 +153,11 @@ class combine_tri_worldscope:
         self.df[ws_col+ibes_col] = self.df.groupby(['ticker'])[ws_col+ibes_col].ffill()
 
         self.df, self.mom_factor, self.nonmom_factor, self.change_factor, self.avg_factor = calc_factor_variables(self.df)
-        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','icb_code'])
+        self.df = self.df.filter(tri.columns.to_list()+self.nonmom_factor+['currency_code','industry_code'])
     
         # Fill NaN in fundamental records with interpolate + tri with
         self.df['tri_fillna'] = self.df.groupby(['ticker'])['tri'].ffill()
-        self.df[['currency_code','icb_code']] = self.df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
+        self.df[['currency_code','industry_code']] = self.df.groupby(['ticker'])[['currency_code','industry_code']].ffill().bfill()
 
     def calculate_final_results(self, interval=7):
         ''' calculate period average / change / skew / tri '''
@@ -193,7 +188,7 @@ class combine_tri_worldscope:
 
             # create label array (ticker, trading_day - period_end)
             arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
-            arr_curind = arr[:, :, -1, [cols.index('currency_code'), cols.index('icb_code')]]
+            arr_curind = arr[:, :, -1, [cols.index('currency_code'), cols.index('industry_code')]]
 
             # factor for changes (change over time) + factor for average (point in time)
             arr_change = get_avg_change(arr[:,:,:,change_idx])[:,:,0,:]     # calculate average change between two period
@@ -208,7 +203,7 @@ class combine_tri_worldscope:
             # concat all array & columns name
             final_arr = np.concatenate((arr_label, arr_vol, arr_skew, arr_tri_momentum, arr_change, arr_average, arr_curind), axis=2)
             self.final_col = ['ticker','trading_day', 'vol', 'skew','ret_momentum'] + ['change_'+x for x in self.change_factor] + \
-                             ['avg_'+x for x in self.avg_factor] + ['currency_code', 'icb_code']
+                             ['avg_'+x for x in self.avg_factor] + ['currency_code', 'industry_code']
     
         return final_arr
 
@@ -321,7 +316,7 @@ def calc_fx_conversion(df):
 
     with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}", conn)     # map ibes/ws currency for each ticker
-        fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_other_table}_fx", conn_ali)
+        fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_fx_table}", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vars.currency_history_table}", conn)
         fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
@@ -365,13 +360,13 @@ def calc_factor_variables(df):
     ''' Calculate all factor used referring to DB ratio table '''
 
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}_descriptive', conn)  # ratio calculation used
+        formula = pd.read_sql(f'SELECT * FROM {descriptive_formula_factors_table}', conn)  # ratio calculation used
     global_vars.engine_ali.dispose()
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
 
-    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table}')
+    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table_prod}')
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].to_numpy().flatten()
     add_minus_fields = [i for i in filter(None, list(set(add_minus_fields))) if any(['-' in i, '+' in i, '*' in i])]

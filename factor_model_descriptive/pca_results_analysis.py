@@ -41,7 +41,7 @@ def test_selection_score():
     data.time_after(5, 0)
 
     cols1 ='avg_mkt_cap,'
-    cols1 +='icb_code,'
+    cols1 +='industry_code,'
     # cols1 = 'avg_debt_to_asset,avg_roe,avg_div_yield,change_earnings,change_tri_fillna,avg_volume'
     # cols1 = 'avg_ca_turnover_re,avg_interest_to_earnings,'
     # cols1 +='change_ebtda,avg_div_yield,'

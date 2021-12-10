@@ -79,7 +79,7 @@ def get_most_close_ticker():
     # print(cols)
 
     cols = ['vol', 'skew', 'avg_inv_turnover', 'avg_capex_to_dda', 'change_tri_fillna', 'avg_earnings_yield',
-            'avg_gross_margin', 'avg_market_cap_usd', 'avg_roe', 'currency_code','icb_code']
+            'avg_gross_margin', 'avg_market_cap_usd', 'avg_roe', 'currency_code','industry_code']
 
     df_last = df.groupby(['ticker'])[cols].last()
     X = df_last.values
@@ -173,7 +173,7 @@ def final_test_cluster(use_cached=True):
                 df_last = df.groupby(['ticker']).nth(-t).reset_index()
                 df_last = trim_outlier_quantile(df_last)
 
-                cols = init_cols = ['icb_code']
+                cols = init_cols = ['industry_code']
                 all_results_all = []
                 while len(cols) < 5:
                     all_results = []
@@ -238,8 +238,8 @@ class test_cluster:
             self.df = self.df.replace([-np.inf, np.inf], [np.nan, np.nan])
 
         self.label_cols = ['ticker', 'trading_day']
-        self.cols = ['icb_code']
-        # self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+        self.cols = ['industry_code']
+        # self.cols = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, industry_code, change_volume, change_earnings, ' \
         #             'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
         #             'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
         # self.cols = self.df.select_dtypes(float).columns.to_list()
@@ -270,7 +270,7 @@ class test_cluster:
 
     # def hopkin_static(self):
     #     from pyclustertend import hopkins, assess_tendency_by_mean_metric_score, assess_tendency_by_metric
-    #     cols = ['icb_code', 'vol', 'change_tri_fillna']
+    #     cols = ['industry_code', 'vol', 'change_tri_fillna']
     #     X = np.nan_to_num(self.df[list(cols)].values, -1)
     #     h = hopkins(X, round(X.shape[0]*0.3))
     #     n_clusters = assess_tendency_by_metric(X, metric="silhouette", n_cluster=10)
@@ -279,7 +279,7 @@ class test_cluster:
     def stepwise_test_method(self, cluster_method, iter_conditions_dict):
         ''' test on different factors combinations -> based on initial factors groups -> add least correlated one first '''
 
-        self.cols = ['icb_code']    # step wise start with icb_code
+        self.cols = ['industry_code']    # step wise start with industry_code
 
         all_results = []
         while len(self.cols) <= 10:
@@ -325,11 +325,11 @@ class test_cluster:
 
         print(self.df.shape)
         print(self.df.describe().transpose())
-        cols = init_cols = ['icb_code']
+        cols = init_cols = ['industry_code']
         score_col = 'xie_beni_index'
         # cols_tested = []
         # c = self.df.corr().unstack().abs().reset_index()
-        # cols_list = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, icb_code, change_volume, change_earnings, ' \
+        # cols_list = 'avg_market_cap_usd, avg_ebitda_to_ev, vol, change_tri_fillna, industry_code, change_volume, change_earnings, ' \
         #             'ret_momentum, avg_interest_to_earnings, change_ebtda, avg_roe, avg_ni_to_cfo, avg_div_payout, change_dividend, ' \
         #             'avg_inv_turnover, change_assets, avg_gross_margin, avg_debt_to_asset, skew, avg_fa_turnover'.split(', ')
 
@@ -364,7 +364,7 @@ class test_cluster:
                 # testing on FCM
                 if col not in init_cols:
                     cols = init_cols + [col]
-                # cols = ['icb_code', 'change_tri_fillna', 'avg_fa_turnover', 'ret_momentum','avg_ni_to_cfo','vol']
+                # cols = ['industry_code', 'change_tri_fillna', 'avg_fa_turnover', 'ret_momentum','avg_ni_to_cfo','vol']
                 print(f'cols: {cols}')
 
                 for i in [0.01, 0.02, 0.05]:  # try n_cluster = 1/100, 1/50, 1/20 of the samples
@@ -398,7 +398,7 @@ class test_cluster:
         ''' test cluster using features manually classified to 4 pillar '''
 
         with global_vars.engine_ali.connect() as conn:
-            uni = pd.read_sql(f'SELECT name, pillar FROM {global_vars.formula_factors_table}_descriptive', conn)
+            uni = pd.read_sql(f'SELECT name, pillar FROM {descriptive_formula_factors_table}', conn)
         global_vars.engine_ali.dispose()
 
         all_results = []
@@ -528,7 +528,7 @@ def trim_outlier_std(df):
         return x
 
     for col in df.select_dtypes(float).columns.to_list():
-        if col != 'icb_code':
+        if col != 'industry_code':
             x = trim_scaler(df[col])
         else:
             x = df[col].values

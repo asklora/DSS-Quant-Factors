@@ -1,7 +1,7 @@
 import global_vars
 import pandas as pd
 from sqlalchemy import Table, MetaData
-
+from sqlalchemy import create_engine
 
 def get_table_name_list(engine):
     ''' get full list of tables in certain DB '''
@@ -64,5 +64,9 @@ if __name__=="__main__":
     # 'ai_value_formula_ratios'
     # 'data_factor_eikon_others_date', 'data_factor_eikon_others_fx'
 
-    migrate_tbl_lst = ['data_worldscope_summary']
-    ali_migration_to_prod(migrate_tbl_lst, from_url=global_vars.engine, to_url=global_vars.engine_ali, tbl_pivot=True, tbl_index=["ticker", "period_end"])
+    engine = create_engine(global_vars.db_url_aws_read, max_overflow=-1, isolation_level="AUTOCOMMIT")  # APP cron DB
+    engine_ali = create_engine(global_vars.db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")  # research DB
+    engine_ali_prod = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")  # research DB
+
+    migrate_tbl_lst = ['data_worldscope']
+    ali_migration_to_prod(migrate_tbl_lst, from_url=engine, to_url=engine_ali, tbl_pivot=True, tbl_index=["ticker", "period_end"])

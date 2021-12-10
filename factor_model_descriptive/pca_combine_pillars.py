@@ -14,7 +14,7 @@ class test_91_factor:
 
         cols1 = 'avg_volume,change_volume,'
         cols1 += 'avg_mkt_cap,'
-        cols1 += 'icb_code'
+        cols1 += 'industry_code'
         cols1 = cols1.split(',')
         x1 = self.data.org_x(cols1)
 
@@ -65,7 +65,7 @@ class test_7_factor:
 
         cols1 = 'change_volume,avg_volume,avg_volume_1w3m,'
         cols1 += 'avg_mkt_cap,'
-        cols1 += 'icb_code'
+        cols1 += 'industry_code'
         cols1 = cols1.split(',')
         x1 = self.data.org_x(cols1)
 
@@ -132,7 +132,7 @@ def test_icb_mkt(testing_interval=91, years=5):
 
     from sklearn.preprocessing import quantile_transform, scale
     item_df['avg_mkt_cap'] = quantile_transform(item_df[['avg_mkt_cap']], output_distribution='normal', n_quantiles=1000)[:,0]
-    X = item_df[['icb_code', 'avg_mkt_cap']].dropna(how='any').values
+    X = item_df[['industry_code', 'avg_mkt_cap']].dropna(how='any').values
 
     import scipy
     def string_match_distance(u, v):
@@ -145,7 +145,7 @@ def test_icb_mkt(testing_interval=91, years=5):
                 break
         return d
 
-    # icb = item_df['icb_code'].astype(int).astype(str).str.split('',expand=True).iloc[:,1:-1]
+    # icb = item_df['industry_code'].astype(int).astype(str).str.split('',expand=True).iloc[:,1:-1]
     mkt = scipy.spatial.distance.pdist(X[:, [-1]], 'euclidean')
     mkt = scipy.spatial.distance.squareform(mkt)
     icb = scipy.spatial.distance.pdist(X[:, [0]], string_match_distance)
@@ -182,7 +182,7 @@ def test_case(suffixes, testing_interval=91, years=5):
     # cols +='avg_volume,change_volume,avg_volume_1w3m,'
     # cols +='vol,change_tri_fillna,avg_volume'
     # cols +='avg_book_to_price,avg_earnings_yield,change_revenue'
-    # cols += 'icb_code,'
+    # cols += 'industry_code,'
     cols += 'avg_div_yield,avg_inv_turnover_re,avg_cash_ratio'
 
     cols = cols.strip(',').split(',')

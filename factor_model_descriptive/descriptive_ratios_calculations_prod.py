@@ -4,7 +4,7 @@ import global_vars
 import datetime as dt
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import quantile_transform, scale
-from preprocess.calculation_ratio import fill_all_day, update_period_end
+from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_period_end
 from sklearn.decomposition import PCA
 from sklearn.cluster import AgglomerativeClustering
 from general.sql_output import upsert_data_to_database
@@ -61,8 +61,8 @@ def get_worldscope(conditions=None):
         ws_conditions.extend(conditions)
     with global_vars.engine.connect() as conn:
         print(f'      ------------------------> Download worldscope data from {global_vars.worldscope_quarter_summary_table}')
-        query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vars.worldscope_quarter_summary_table} C '
-        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
+        query_ws = f'SELECT C.*, U.currency_code, U.industry_code FROM {global_vars.worldscope_quarter_summary_table} C '
+        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, industry_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
         query_ws += f"WHERE {' AND '.join(ws_conditions)} "
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
@@ -99,7 +99,7 @@ def get_worldscope(conditions=None):
     ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws = ws.drop(['period_end'], axis=1)
     # ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
-    ws['icb_code'] = pd.to_numeric(ws['icb_code'], errors='coerce')
+    ws['industry_code'] = pd.to_numeric(ws['industry_code'], errors='coerce')
 
     return ws, ibes
 
@@ -137,12 +137,12 @@ def combine_tri_worldscope(currency=None, ticker=None):
     df[ws_col+ibes_col] = df.groupby(['ticker'])[ws_col+ibes_col].ffill()
 
     df, mom_factor, nonmom_factor, change_factor, avg_factor = calc_factor_variables(df)
-    df = df.filter(tri.columns.to_list()+nonmom_factor+['currency_code','icb_code'])
+    df = df.filter(tri.columns.to_list()+nonmom_factor+['currency_code','industry_code'])
 
     # Fill NaN in fundamental records with interpolate + tri
     df = fill_all_day(df, date_col='trading_day').sort_values(by=["ticker","trading_day"])
     df['tri_fillna'] = df.groupby(['ticker'])['tri'].ffill()
-    df[['currency_code','icb_code']] = df.groupby(['ticker'])[['currency_code','icb_code']].ffill().bfill()
+    df[['currency_code','industry_code']] = df.groupby(['ticker'])[['currency_code','industry_code']].ffill().bfill()
 
     # vol + factor for changes (change over time) + factor for average (point in time)
     df = get_rogers_satchell(df, list_of_start_end=[[0,7], [0,91]])    # calculate tri volatility
@@ -206,7 +206,7 @@ def calc_fx_conversion(df):
 
     with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}", conn)     # map ibes/ws currency for each ticker
-        fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_other_table}_fx", conn_ali)
+        fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_fx_table}", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vars.currency_history_table}", conn)
         fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
@@ -250,13 +250,13 @@ def calc_factor_variables(df):
     ''' Calculate all factor used referring to DB ratio table '''
 
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table}_descriptive', conn)  # ratio calculation used
+        formula = pd.read_sql(f'SELECT * FROM {descriptive_formula_factors_table}', conn)  # ratio calculation used
     global_vars.engine_ali.dispose()
 
     # Foreign exchange conversion on absolute value items
     df = calc_fx_conversion(df)
 
-    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table}')
+    print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table_prod}')
     # Prepare for field requires add/minus
     add_minus_fields = formula[['field_num', 'field_denom']].to_numpy().flatten()
     add_minus_fields = [i for i in filter(None, list(set(add_minus_fields))) if any(['-' in i, '+' in i, '*' in i])]
@@ -323,7 +323,7 @@ def get_cluster_dimensions(ticker=None, currency=None):
     _, df_cluster["tech_3m_cluster"] = cluster_hierarchical(df_cluster[["tech_3m_volatility", "tech_3m_volume"]].values)
 
     # id pillar
-    id_factor = ["1w_avg_mkt_cap", "icb_code", "3m_avg_mkt_cap"]
+    id_factor = ["1w_avg_mkt_cap", "industry_code", "3m_avg_mkt_cap"]
     id_factor_newname = ["id_1w_size", "id_icb"]
     id_factor_newname += ["id_3m_size"]
     df_cluster[id_factor_newname] = trim_outlier_std(df.groupby(["ticker"])[id_factor].ffill().fillna(0))
@@ -354,7 +354,7 @@ def trim_outlier_std(df):
     cols = df.select_dtypes(float).columns.to_list()
     for col in cols:
         print(col, df[col].isnull().sum())
-        if col != 'icb_code':
+        if col != 'industry_code':
             x = trim_scaler(df[col])
         else:
             x = df[col].values

@@ -1,15 +1,8 @@
-from sqlalchemy import create_engine
-import os
-from pathlib import Path
-
 db_url_aws_read = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres" # AWS Read url
 db_url_alibaba = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
 
 # db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
 db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
-
-firebase_url = "../DROID_V2.1/files/file_json/asklora-firebase.json"
-firebase_url = (Path(__file__).parent / firebase_url).resolve()
 
 # TABLE names - factor model results
 result_pred_table = "factor_model"     # + "_lgbm"/"_rf" + "_reg/class"
@@ -22,8 +15,6 @@ production_factor_rank_history_table = "factor_result_rank_history"
 production_score_current = "universe_rating" # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
 
-# TABLE names - descriptive results
-descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
 universe_table = "universe"
@@ -32,33 +23,21 @@ ibes_data_table = "data_ibes"
 macro_data_table = "data_macro"
 stock_data_table_ohlc = "data_ohlcv"
 stock_data_table_tri = "data_tri"
-anchor_table_mkt_cap = "data_fundamental_score"
+anchor_table_mkt_cap = "data_dsws_addition"
 
-eikon_other_table = "data_factor_eikon_others"
-eikon_price_table = "data_factor_eikon_price_daily_final"
-eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
-eikon_fx_table = "data_factor_eikon_others_fx"      # ALIBABA DB
-currency_history_table = "currency_price_history"      # ALIBABA DB
+eikon_price_table = "data_factor_eikon_price"           # Django Managed here
+eikon_report_date_table = "data_factor_eikon_date"      # Django Managed here
+eikon_fx_table = "data_factor_eikon_fx"                 # Django Managed here
+currency_history_table = "currency_price_history"
 ingestion_name_table = "ingestion_name"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "factor_processed_ratio"
 factor_premium_table = "factor_processed_factor_premium"
-# processed_group_ratio_table = "processed_group_ratio"
-processed_cutbins_table = "processed_cutbins"
-processed_pca_table = 'processed_pca'
 
 # TABLE names - preprocess formula
-formula_factors_table = "factor_formula_ratios"
 formula_factors_table_prod = "factor_formula_ratios_prod"
 update_time_table = "ingestion_update_time"     # all table update time record in this table
 
-# COLUMN names - preprocess
-ticker_column = "ticker"
-date_column = "period_end"
-icb_column = "industry_code"
-index_column = "currency_code"
-
-engine = create_engine(db_url_aws_read, max_overflow=-1, isolation_level="AUTOCOMMIT")              # APP cron DB
-engine_ali = create_engine(db_url_alibaba, max_overflow=-1, isolation_level="AUTOCOMMIT")        # research DB
-engine_ali_prod = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")        # research DB
+# TABLE names - descriptive preprocess formula
+descriptive_formula_factors_table = "factor_formula_ratios_descriptive"
