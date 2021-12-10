@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale
 
 import global_vars
-from general.utils_sql import sql_read_query, sql_read_table
+from general.sql_output import sql_read_query, sql_read_table
 from general.utils_report_to_slack import to_slack
 
 def score_update_scale(fundamentals, calculate_column, universe_currency_code, factor_rank):
@@ -145,7 +145,7 @@ def score_history(tbl_suffix='monthly1'):
     factor_formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     factor_rank = sql_read_table(f"{global_vars.production_factor_rank_table}_history_{tbl_suffix}", global_vars.db_url_alibaba_prod)
 
-    universe_query = f"SELECT * FROM {global_vars.dl_value_universe_table} WHERE is_active"
+    universe_query = f"SELECT * FROM {global_vars.universe_table} WHERE is_active"
     universe = sql_read_query(universe_query, global_vars.db_url_aws_read)
 
     ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}_{tbl_suffix} WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') "

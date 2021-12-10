@@ -11,24 +11,29 @@ db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rd
 firebase_url = "../DROID_V2.1/files/file_json/asklora-firebase.json"
 firebase_url = (Path(__file__).parent / firebase_url).resolve()
 
-# TABLE names - results
-result_pred_table = "factor_result_pred"     # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_result_score"
+# TABLE names - factor model results
+result_pred_table = "factor_model"     # + "_lgbm"/"_rf" + "_reg/class"
+result_score_table = "factor_model_stock"
 feature_importance_table = "factor_result_importance"
-production_factor_rank_table = "factor_result_pred_prod"
-production_score_history = "data_fundamental_score_history_testing"
+production_factor_rank_table = "factor_result_rank"
+production_factor_rank_history_table = "factor_result_rank_history"
+
+# TABLE names - universe rating results
 production_score_current = "universe_rating" # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
+
+# TABLE names - descriptive results
 descriptive_factor_table = "descriptive_factor"
 
 # TABLE names - raw data
-dl_value_universe_table = "universe"
+universe_table = "universe"
 worldscope_quarter_summary_table = "data_worldscope"
 ibes_data_table = "data_ibes"
 macro_data_table = "data_macro"
 stock_data_table_ohlc = "data_ohlcv"
 stock_data_table_tri = "data_tri"
-fundamental_score_mkt_cap = "data_fundamental_score"
+anchor_table_mkt_cap = "data_fundamental_score"
+
 eikon_other_table = "data_factor_eikon_others"
 eikon_price_table = "data_factor_eikon_price_daily_final"
 eikon_report_date_table = "data_factor_eikon_others_date"      # ALIBABA DB
@@ -51,7 +56,7 @@ update_time_table = "ingestion_update_time"     # all table update time record i
 # COLUMN names - preprocess
 ticker_column = "ticker"
 date_column = "period_end"
-icb_column = "icb_code"
+icb_column = "industry_code"
 index_column = "currency_code"
 
 engine = create_engine(db_url_aws_read, max_overflow=-1, isolation_level="AUTOCOMMIT")              # APP cron DB

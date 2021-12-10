@@ -19,7 +19,7 @@ def ali_migration_to_prod(migrate_tbl_lst, from_url=global_vars.engine_ali, to_u
     print(' === Alibaba Migrate Dev to Prod Start === ')
     metadata = MetaData()
 
-    from general.utils_sql import uid_maker
+    from general.sql_output import uid_maker
 
     for t in migrate_tbl_lst:
         try:    # create new tables if not exist

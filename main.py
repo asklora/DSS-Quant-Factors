@@ -12,7 +12,7 @@ from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
 from results_analysis.score_backtest import score_history
 from general.utils_report_to_slack import to_slack
-from general.utils_sql import sql_read_query, sql_read_table, trucncate_table_in_database
+from general.sql_output import sql_read_query, sql_read_table, trucncate_table_in_database
 
 from itertools import product
 import multiprocessing as mp

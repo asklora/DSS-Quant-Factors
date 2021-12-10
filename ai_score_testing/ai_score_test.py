@@ -1,6 +1,6 @@
 import global_vars
 import pandas as pd
-from general.utils_sql import sql_read_query
+from general.sql_output import sql_read_query
 from preprocess.calculation_ratio import fill_all_day
 
 def top_pick_return():

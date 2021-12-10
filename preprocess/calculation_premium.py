@@ -5,7 +5,7 @@ import multiprocessing as mp
 import itertools
 
 import global_vars
-from general.utils_sql import sql_read_query, upsert_data_to_database, trucncate_table_in_database
+from general.sql_output import sql_read_query, upsert_data_to_database, trucncate_table_in_database
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.sql.sqltypes import BOOLEAN

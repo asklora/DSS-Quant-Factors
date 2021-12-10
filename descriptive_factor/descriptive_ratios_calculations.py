@@ -20,12 +20,12 @@ def get_tri(save=True, conditions=None):
         query_tri = f"SELECT C.ticker, trading_day, total_return_index as tri, open, high, low, close, volume "
         query_tri += f"FROM {global_vars.stock_data_table_ohlc} C "
         query_tri += f"INNER JOIN (SELECT dsws_id, total_return_index FROM {global_vars.stock_data_table_tri}) T ON T.dsws_id = C.dss_id "
-        query_tri += f"INNER JOIN (SELECT ticker, is_active, currency_code FROM {global_vars.dl_value_universe_table}) U ON U.ticker = C.ticker "
+        query_tri += f"INNER JOIN (SELECT ticker, is_active, currency_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
         query_tri += f"WHERE {' AND '.join(conditions)} "
         query_tri += f"ORDER BY C.ticker, trading_day"
         tri = pd.read_sql(query_tri, con=conn_droid, chunksize=10000)
         tri = pd.concat(tri, axis=0, ignore_index=True)
-        mkt_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vars.fundamental_score_mkt_cap}', conn_droid)
+        mkt_cap_anchor = pd.read_sql(f'SELECT ticker, mkt_cap FROM {global_vars.anchor_table_mkt_cap}', conn_droid)
     global_vars.engine.dispose()
 
     # update mkt_cap/market_cap_usd/tri_adjusted_close refer to tri for each period
@@ -54,7 +54,7 @@ def get_worldscope(save=True, conditions=None):
     with global_vars.engine.connect() as conn:
         print(f'      ------------------------> Download worldscope data from {global_vars.worldscope_quarter_summary_table}')
         query_ws = f'SELECT C.*, U.currency_code, U.icb_code FROM {global_vars.worldscope_quarter_summary_table} C '
-        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vars.dl_value_universe_table}) U ON U.ticker = C.ticker "
+        query_ws += f"INNER JOIN (SELECT ticker, currency_code, is_active, icb_code FROM {global_vars.universe_table}) U ON U.ticker = C.ticker "
         query_ws += f"WHERE {' AND '.join(ws_conditions)} "
         ws = pd.read_sql(query_ws, conn, chunksize=10000)  # quarterly records
         ws = pd.concat(ws, axis=0, ignore_index=True)
@@ -320,7 +320,7 @@ def calc_fx_conversion(df):
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
     with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
-        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.dl_value_universe_table}", conn)     # map ibes/ws currency for each ticker
+        curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_other_table}_fx", conn_ali)
         fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
                           f"FROM {global_vars.currency_history_table}", conn)

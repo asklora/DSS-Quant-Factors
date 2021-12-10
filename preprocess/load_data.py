@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn import linear_model
 
 import global_vars
-from general.utils_sql import sql_read_table, sql_read_query
+from general.sql_output import sql_read_table, sql_read_query
 
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)

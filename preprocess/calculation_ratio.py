@@ -4,7 +4,7 @@ from sqlalchemy import text
 import global_vars
 
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-from general.utils_sql import upsert_data_to_database, sql_read_table, sql_read_query
+from general.sql_output import upsert_data_to_database, sql_read_table, sql_read_query
 from general.utils_report_to_slack import to_slack
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
@@ -22,14 +22,14 @@ def get_tri(save=True, currency=None, ticker=None):
     query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                  f"FROM {global_vars.stock_data_table_tri} T "
                  f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.dsws_id = C.dss_id "
-                 f"INNER JOIN {global_vars.dl_value_universe_table} U ON T.ticker = U.ticker "
+                 f"INNER JOIN {global_vars.universe_table} U ON T.ticker = U.ticker "
                  f"WHERE {' AND '.join(conditions)}")
     tri = sql_read_query(query, global_vars.db_url_aws_read)
 
     query1 = f"SELECT * FROM {global_vars.eikon_price_table} ORDER BY ticker, trading_day"
     eikon_price = sql_read_query(query1, global_vars.db_url_alibaba)
 
-    query2 = f"SELECT ticker, mkt_cap FROM {global_vars.fundamental_score_mkt_cap}"
+    query2 = f"SELECT ticker, mkt_cap FROM {global_vars.anchor_table_mkt_cap}"
     market_cap_anchor = sql_read_query(query2, global_vars.db_url_aws_read)
 
     if save:
@@ -271,7 +271,7 @@ def download_clean_worldscope_ibes(save, currency, ticker):
     query_ibes = f"SELECT * FROM {global_vars.ibes_data_table} WHERE {' AND '.join(conditions)}"
     ibes = sql_read_query(query_ibes, global_vars.db_url_aws_read)
 
-    query_universe = f"SELECT ticker, currency_code, icb_code FROM {global_vars.dl_value_universe_table}"
+    query_universe = f"SELECT ticker, currency_code, icb_code FROM {global_vars.universe_table}"
     universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
 
     def fill_missing_ws(ws):
@@ -310,7 +310,7 @@ def update_period_end(ws=None):
 
     print(f'      ------------------------> Update period_end in {global_vars.worldscope_quarter_summary_table} ')
 
-    query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vars.dl_value_universe_table}"
+    query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vars.universe_table}"
     universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
     eikon_report_date = sql_read_table(global_vars.eikon_report_date_table, global_vars.db_url_alibaba_prod)
 
@@ -477,7 +477,7 @@ def calc_fx_conversion(df):
 
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
-    curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.dl_value_universe_table}"
+    curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}"
     curr_code = sql_read_query(curr_code_query, global_vars.db_url_aws_read)
 
     # combine download fx data from eikon & daily currency price ingestion

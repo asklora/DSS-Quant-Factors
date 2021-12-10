@@ -8,7 +8,7 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 from general.utils_report_to_slack import to_slack
 from general.utils_send_email import send_mail
-from general.utils_sql import sql_read_query
+from general.sql_output import sql_read_query
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
