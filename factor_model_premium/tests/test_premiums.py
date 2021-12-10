@@ -69,10 +69,10 @@ def sharpe_ratio(factors, col_list):
     ''' calculate the sharpe ratio '''
 
     print('======= Sharpe Ratio ========')
-    factors['period_end'] = pd.to_datetime(factors['period_end'])
+    factors['trading_day'] = pd.to_datetime(factors['trading_day'])
 
-    factors['year'] = factors['period_end'].dt.year
-    factors['month'] = factors['period_end'].dt.month
+    factors['year'] = factors['trading_day'].dt.year
+    factors['month'] = factors['trading_day'].dt.month
 
     def calc(f):
         ret = f.mean(axis=0)
@@ -138,10 +138,10 @@ def test_performance(df, col_list):
     df[col_list] = df[col_list].mask(m, -df[col_list])
 
     plt.figure(figsize=(16, 16))
-    g = df.groupby(['period_end']).mean().reset_index(drop=False)
+    g = df.groupby(['trading_day']).mean().reset_index(drop=False)
 
     g = g.fillna(0)
-    date_list = g['period_end'].to_list()
+    date_list = g['trading_day'].to_list()
     new_g = g[col_list].transpose().values
     new_g = np.cumprod(new_g/4 + 1, axis=1)
     ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
@@ -173,8 +173,8 @@ def test_premiums(name):
         formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table_prod}', conn)
     global_vars.engine_ali.dispose()
 
-    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
-    df = df.pivot_table(index=['period_end', 'group'], columns=['factor_name'], values=['premium']).droplevel(0, axis=1)
+    df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
+    df = df.pivot_table(index=['trading_day', 'group'], columns=['factor_name'], values=['premium']).droplevel(0, axis=1)
     df.columns.name = None
     df = df.reset_index()
 
@@ -202,4 +202,4 @@ def test_premiums(name):
     global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
-    test_premiums('weekly1_v2')
+    test_premiums('weekly1')

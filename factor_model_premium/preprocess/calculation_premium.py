@@ -15,7 +15,7 @@ icb_num = 6
 # define dtypes for final_member_df & final_results_df when writing to DB
 results_dtypes = dict(
     group=TEXT,
-    period_end=DATE,
+    trading_day=DATE,
     factor_name=TEXT,
     stock_return_y=DOUBLE_PRECISION,
     trim_outlier=BOOLEAN
@@ -65,21 +65,21 @@ def insert_prem_for_group(*args):
     print(group, tbl_suffix, factor, trim_outlier_)
 
     try:
-        df = df[['period_end','stock_return_y', factor]].dropna(how='any')
+        df = df[['trading_day','stock_return_y', factor]].dropna(how='any')
         if len(df) == 0:
             raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
 
         if trim_outlier_:
             df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
-            tbl_suffix_extra = '_v2_trim'
+            tbl_suffix_extra = '_trim'
         else:
-            tbl_suffix_extra = '_v2'
+            tbl_suffix_extra = ''
 
         if factor in df.columns.to_list():
-            df['quantile_group'] = df.groupby(['period_end'])[factor].transform(qcut)
+            df['quantile_group'] = df.groupby(['trading_day'])[factor].transform(qcut)
             df = df.dropna(subset=['quantile_group']).copy()
             df['quantile_group'] = df['quantile_group'].astype(int)
-            prem = df.groupby(['period_end', 'quantile_group'])['stock_return_y'].mean().unstack()
+            prem = df.groupby(['trading_day', 'quantile_group'])['stock_return_y'].mean().unstack()
 
             # Calculate small minus big
             prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
@@ -87,9 +87,9 @@ def insert_prem_for_group(*args):
             prem['factor_name'] = factor
             prem['trim_outlier'] = trim_outlier_
 
-            upsert_data_to_database(data=prem.sort_values(by=['group', 'period_end']),
+            upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
                                     table=f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
-                                    primary_key=["group", "period_end", "factor_name", "trim_outlier"],
+                                    primary_key=["group", "trading_day", "factor_name", "trim_outlier"],
                                     db_url=global_vars.db_url_alibaba_prod,
                                     how="append")
     except Exception as e:
@@ -98,7 +98,7 @@ def insert_prem_for_group(*args):
 
     return True
 
-def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12, all_groups=['USD']):
+def calc_premium_all(tbl_suffix, trim_outlier_=False, processes=12, all_groups=['USD']):
 
     ''' calculate factor premium for different configurations:
         1. monthly sample + using last day price
@@ -110,9 +110,9 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12, all_group
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
     if trim_outlier_:
-        tbl_suffix_extra = '_v2_trim'
+        tbl_suffix_extra = '_trim'
     else:
-        tbl_suffix_extra = '_v2'
+        tbl_suffix_extra = ''
 
     formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active"
     formula = sql_read_query(formula_query, global_vars.db_url_alibaba_prod)
@@ -141,11 +141,11 @@ def calc_premium_all_v2(tbl_suffix, trim_outlier_=False, processes=12, all_group
 if __name__ == "__main__":
 
     last_update = datetime.now()
-    # tbl_suffix_extra = '_v2'
+    # tbl_suffix_extra = ''
 
     start = datetime.now()
 
-    calc_premium_all_v2(tbl_suffix='_weekly1', trim_outlier_=False, processes=6)
+    calc_premium_all(tbl_suffix='_weekly1', trim_outlier_=False, processes=6)
 
     end = datetime.now()
 

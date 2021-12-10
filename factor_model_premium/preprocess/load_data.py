@@ -32,7 +32,7 @@ def download_clean_macros(main_df):
     macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
 
     # combine macros & vix data
-    macros["period_end"] = pd.to_datetime(macros["trading_day"])
+    macros["trading_day"] = pd.to_datetime(macros["trading_day"])
     # print(num_col)
 
     # create map for macros (currency + type of data)
@@ -42,11 +42,11 @@ def download_clean_macros(main_df):
     macro_map['type'] = macro_map['name'].str[2:].replace(['inter3','gbill','mshort'],['ibor3','gbond','ibor3'])
 
     # add vix to macro_data
-    df_date_list = main_df['period_end'].drop_duplicates().sort_values()
-    macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['period_end']), on=['period_end'],
-                          how='outer').sort_values(['period_end'])
+    df_date_list = main_df['trading_day'].drop_duplicates().sort_values()
+    macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['trading_day']), on=['trading_day'],
+                          how='outer').sort_values(['trading_day'])
     macros = macros.fillna(method='ffill')
-    macros = macros.loc[macros['period_end'].isin(df_date_list)]
+    macros = macros.loc[macros['trading_day'].isin(df_date_list)]
 
     return macros.drop(['trading_day'], axis=1)
 
@@ -61,14 +61,14 @@ def download_index_return(tbl_suffix):
     index_ret = sql_read_query(index_query, global_vars.db_url_alibaba_prod)
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
-    major_index = ['period_end','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
+    major_index = ['trading_day','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
 
     index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_ww2_1', 'stock_return_ww4_2', 'stock_return_r12_7','stock_return_r6_2'}
-    index_ret = index_ret.set_index(['period_end', 'ticker'])[list(index_col)].unstack()
+    index_ret = index_ret.set_index(['trading_day', 'ticker'])[list(index_col)].unstack()
     index_ret.columns = [f'{x[1]}_{x[0][0]}{x[0][-1]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
-    index_ret['period_end'] = pd.to_datetime(index_ret['period_end'])
+    index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'])
 
     return index_ret
 
@@ -85,7 +85,7 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
     
     if isinstance(update_since, datetime):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
-        conditions.append(f"period_end >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
+        conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     if mode == 'v2_trim':
         conditions.append('trim_outlier')
@@ -94,10 +94,10 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
     else:
         raise Exception('Unknown mode')
 
-    prem_query = f'SELECT period_end, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
+    prem_query = f'SELECT trading_day, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
     df = sql_read_query(prem_query, global_vars.db_url_alibaba_prod)
-    df['period_end'] = pd.to_datetime(df['period_end'], format='%Y-%m-%d')  # convert to datetime
-    df = df.pivot(['period_end', 'group'], ['factor_name']).droplevel(0, axis=1)
+    df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
+    df = df.pivot(['trading_day', 'group'], ['factor_name']).droplevel(0, axis=1)
     df.columns.name = None
     df = df.reset_index()
 
@@ -111,7 +111,7 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar']==p, 'name'].to_list()         # factor for each pillar
 
-    # df = df.loc[df['period_end'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
+    # df = df.loc[df['trading_day'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
     macros = download_clean_macros(df)
@@ -123,19 +123,19 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
 
     # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
     # Therefore, we should also know other data (macro/index/group fundamental) as at T1
-    non_factor_inputs = macros.merge(index_ret, on=['period_end'], how='outer')
+    non_factor_inputs = macros.merge(index_ret, on=['trading_day'], how='outer')
     if 'weekly' in tbl_suffix:
-        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x-relativedelta(weeks=int(tbl_suffix[-1])))
+        non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x-relativedelta(weeks=int(tbl_suffix[-1])))
     elif 'monthly' in tbl_suffix:
-        non_factor_inputs['period_end'] = non_factor_inputs['period_end'].apply(lambda x: x - relativedelta(months=int(tbl_suffix[-1])))
-    df = df.merge(non_factor_inputs, on=['period_end'], how='left').sort_values(['group','period_end'])
+        non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x - relativedelta(months=int(tbl_suffix[-1])))
+    df = df.merge(non_factor_inputs, on=['trading_day'], how='left').sort_values(['group','trading_day'])
 
     # make up for all missing date in df
-    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['period_end'].unique()], names=['group', 'period_end']).to_frame().reset_index(drop=True)
-    df = pd.merge(df, indexes, on=['group', 'period_end'], how='right')
+    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()], names=['group', 'trading_day']).to_frame().reset_index(drop=True)
+    df = pd.merge(df, indexes, on=['group', 'trading_day'], how='right')
     print('      ------------------------> Factors: ', x_col['factor'])
 
-    return df.sort_values(by=['group', 'period_end']), x_col['factor'], x_col
+    return df.sort_values(by=['group', 'trading_day']), x_col['factor'], x_col
 
 class load_data:
     ''' main function:
@@ -299,10 +299,10 @@ class load_data:
         y_col = ['y_'+x for x in y_type]
 
         # split training/testing sets based on testing_period
-        # self.train = current_group.loc[(current_group['period_end'] < testing_period)].copy()
-        self.train = current_group.loc[(start <= current_group['period_end'].dt.date) &
-                                       (current_group['period_end'].dt.date < testing_period)].copy()
-        self.test = current_group.loc[current_group['period_end'].dt.date == testing_period].reset_index(drop=True).copy()
+        # self.train = current_group.loc[(current_group['trading_day'] < testing_period)].copy()
+        self.train = current_group.loc[(start <= current_group['trading_day'].dt.date) &
+                                       (current_group['trading_day'].dt.date < testing_period)].copy()
+        self.test = current_group.loc[current_group['trading_day'].dt.date == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change, y_type)
@@ -396,8 +396,8 @@ class load_data:
             gkf = []
             for n in range(1, n_splits+1):
                 valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
-                test_index = self.train.loc[self.train['period_end'].dt.date >= valid_period].index.to_list()
-                train_index = self.train.loc[self.train['period_end'].dt.date < valid_period].index.to_list()
+                test_index = self.train.loc[self.train['trading_day'].dt.date >= valid_period].index.to_list()
+                train_index = self.train.loc[self.train['trading_day'].dt.date < valid_period].index.to_list()
                 gkf.append((train_index, test_index))
         else:
             raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)

@@ -148,7 +148,7 @@ def score_history(tbl_suffix='monthly1'):
     universe_query = f"SELECT * FROM {global_vars.universe_table} WHERE is_active"
     universe = sql_read_query(universe_query, global_vars.db_url_aws_read)
 
-    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}_{tbl_suffix} WHERE (period_end>='2017-10-30') AND (ticker not like '.%%') "
+    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}_{tbl_suffix} WHERE (trading_day>='2017-10-30') AND (ticker not like '.%%') "
     fundamentals_score = sql_read_query(ratio_query, global_vars.db_url_alibaba_prod)
 
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
@@ -156,10 +156,10 @@ def score_history(tbl_suffix='monthly1'):
     # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
-    factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['period_end','factor_name','group'], keep='last')
+    factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
 
-    fundamentals_score['period_end'] = pd.to_datetime(fundamentals_score['period_end'])
-    # fundamentals_score = fundamentals_score.loc[fundamentals_score['period_end']>dt.datetime(2021,9,4)]
+    fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])
+    # fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>dt.datetime(2021,9,4)]
 
     fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
     print(len(set(fundamentals_score['ticker'].to_list())))
@@ -185,19 +185,19 @@ def score_history(tbl_suffix='monthly1'):
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-    fundamentals = fundamentals_score[['ticker','period_end','currency_code','stock_return_y']+calculate_column]
+    fundamentals = fundamentals_score[['ticker','trading_day','currency_code','stock_return_y']+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)
 
-    fundamentals = fundamentals.dropna(subset=["currency_code",'period_end'], how='any')
+    fundamentals = fundamentals.dropna(subset=["currency_code",'trading_day'], how='any')
 
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
     # fundamentals[['dlp_1m', 'wts_rating','earnings_pred_minmax_currency_code','revenue_pred_minmax_currency_code']] = np.nan  # ignore ai_value / DLPA
-    # fundamentals['period_end'] = fundamentals['period_end'].dt.strftime('%Y-%m-%d')
+    # fundamentals['trading_day'] = fundamentals['trading_day'].dt.strftime('%Y-%m-%d')
 
     score_col = ['ai_score', 'fundamentals_value','fundamentals_quality','fundamentals_momentum','fundamentals_extra']
-    label_col = ['ticker', 'period_end', 'currency_code', 'stock_return_y']
+    label_col = ['ticker', 'trading_day', 'currency_code', 'stock_return_y']
 
     mean_ret_all = {}
     best_10_tickers_all = {}
@@ -209,9 +209,9 @@ def score_history(tbl_suffix='monthly1'):
 
     fundamentals_all = []
 
-    for name, g in fundamentals.groupby(['period_end']):
+    for name, g in fundamentals.groupby(['trading_day']):
         print(name)
-        factor_rank_period = factor_rank.loc[factor_rank['period_end'].astype(str)==name.strftime('%Y-%m-%d')]
+        factor_rank_period = factor_rank.loc[factor_rank['trading_day'].astype(str)==name.strftime('%Y-%m-%d')]
         if len(factor_rank_period)==0:
             continue
 
@@ -222,7 +222,7 @@ def score_history(tbl_suffix='monthly1'):
         fundamentals_all.append(fundamentals)
 
         for p, df in mean_ret_detail.items():
-            df['period_end'] = name
+            df['trading_day'] = name
             mean_ret_detail_all[p].append(df)
 
     fundamentals = pd.concat(fundamentals_all, axis=0)

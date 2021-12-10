@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 import global_vars
 from factor_model_premium.preprocess.load_data import load_data
 from factor_model_premium.preprocess.calculation_ratio import calc_factor_variables
-from factor_model_premium.preprocess.calculation_premium import calc_premium_all_v2
+from factor_model_premium.preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
 from factor_model_premium.results_analysis.write_merged_pred import download_stock_pred
 from factor_model_premium.results_analysis.score_backtest import score_history
@@ -74,13 +74,13 @@ if __name__ == "__main__":
 
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--mode', default='v2', type=str)
     parser.add_argument('--tbl_suffix', default='_weekly1', type=str)
     parser.add_argument('--processes', default=8, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
+    parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -120,15 +120,10 @@ if __name__ == "__main__":
                               save=False,
                               ticker=None,
                               currency=None)
-        if args.mode == 'v2':
-            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=False, all_groups=group_code_list)
-        elif args.mode == 'v2_trim':
-            calc_premium_all_v2(tbl_suffix, processes=args.processes, trim_outlier_=True, all_groups=group_code_list)
-        else:
-            raise ValueError("Invalid mode. Expecting 'default', 'v2', or 'v2_trim' got ", args.mode)
 
-        end_time = dt.datetime.now()
-        print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
+        calc_premium_all(tbl_suffix, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
+    end_time = dt.datetime.now()
+    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -138,9 +133,9 @@ if __name__ == "__main__":
     # use_pca_list = [0.4]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT period_end FROM {global_vars.factor_premium_table}{tbl_suffix}_{args.mode}"
+    query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}{tbl_suffix}_{args.mode}"
     last_test_date = sql_read_query(query, db_url=global_vars.db_url_alibaba_prod)
-    testing_period_list = sorted(last_test_date['period_end'])[-args.backtest_period:]
+    testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
@@ -183,18 +178,18 @@ if __name__ == "__main__":
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
-    # download_stock_pred(
-    #         q=1/3,
-    #         model='rf_reg',
-    #         name_sql=sql_result['name_sql'],
-    #         save_plot=False,
-    #         save_xls=False,
-    #         suffix=tbl_suffix[1:],
-    #     )
-    #
-    # score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
-    #
-    # end_time = dt.datetime.now()
-    # print(start_time, end_time, end_time-start_time)
+    download_stock_pred(
+            q=1/3,
+            model='rf_reg',
+            name_sql=sql_result['name_sql'],
+            save_plot=False,
+            save_xls=False,
+            suffix=tbl_suffix[1:],
+        )
+
+    score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+
+    end_time = dt.datetime.now()
+    print(start_time, end_time, end_time-start_time)
 
 

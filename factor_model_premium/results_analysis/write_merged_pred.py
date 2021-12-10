@@ -10,7 +10,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from general.sql_output import sql_read_query, upsert_data_to_database
 
 stock_pred_dtypes = dict(
-    period_end=DATE,
+    trading_day=DATE,
     factor_name=TEXT,
     group=TEXT,
     factor_weight=INTEGER,
@@ -38,7 +38,7 @@ def download_stock_pred(
 
     # download training history
     query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, "
-                 f"S.testing_period as period_end, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
+                 f"S.testing_period as trading_day, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                  f"FROM {global_vars.result_pred_table}_{model} P "
                  f"INNER JOIN {global_vars.result_score_table}_{model} S ON S.finish_timing = P.finish_timing "
                  f"WHERE S.name_sql like '{name_sql}%' "
@@ -46,8 +46,8 @@ def download_stock_pred(
                  f"ORDER BY S.finish_timing")
     result_all_all = sql_read_query(query, global_vars.db_url_alibaba_prod)
 
-    # result_all_all['year_month'] = result_all_all['period_end'].dt.strftime('%Y-%m').copy()
-    # result_all_all = result_all_all.sort_values(by=['period_end']).drop_duplicates(
+    # result_all_all['year_month'] = result_all_all['trading_day'].dt.strftime('%Y-%m').copy()
+    # result_all_all = result_all_all.sort_values(by=['trading_day']).drop_duplicates(
     #     ['group', 'year_month', 'factor_name', 'cv_number','y_type']+other_group_col, keep='first')
     # result_all_all = result_all_all.drop(columns=['year_month'])
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
@@ -61,15 +61,15 @@ def download_stock_pred(
             continue
 
         # remove duplicate samples from running twice when testing
-        result_all = result_all.drop_duplicates(subset=['group', 'period_end', 'factor_name', 'cv_number']+other_group_col, keep='last')
-        result_all['period_end'] = pd.to_datetime(result_all['period_end'])
+        result_all = result_all.drop_duplicates(subset=['group', 'trading_day', 'factor_name', 'cv_number']+other_group_col, keep='last')
+        result_all['trading_day'] = pd.to_datetime(result_all['trading_day'])
 
-        result_all_avg = result_all.groupby(['group', 'period_end'])['actual'].mean()   # actual factor premiums
-        dict_neg_factor = result_all[['period_end', 'group', 'neg_factor']].drop_duplicates(subset=['period_end', 'group'], keep='last')
-        dict_neg_factor = dict_neg_factor.set_index(['group','period_end'])['neg_factor'].unstack().to_dict()  # negative value columns
+        result_all_avg = result_all.groupby(['group', 'trading_day'])['actual'].mean()   # actual factor premiums
+        dict_neg_factor = result_all[['trading_day', 'group', 'neg_factor']].drop_duplicates(subset=['trading_day', 'group'], keep='last')
+        dict_neg_factor = dict_neg_factor.set_index(['group','trading_day'])['neg_factor'].unstack().to_dict()  # negative value columns
 
         # use average predictions from different validation sets
-        result_all = result_all.groupby(['period_end','factor_name', 'group']+other_group_col)[['pred', 'actual']].mean()
+        result_all = result_all.groupby(['trading_day','factor_name', 'group']+other_group_col)[['pred', 'actual']].mean()
 
         # --------------------------------- Add Rank & Evaluation Metrics ------------------------------------------
 
@@ -78,7 +78,7 @@ def download_stock_pred(
         q_ = [0., q, 1.-q, 1.]
 
         # rank within current testing_period
-        groupby_keys = ['group','period_end'] + other_group_col
+        groupby_keys = ['group','trading_day'] + other_group_col
         result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_) - 1), duplicates='drop'))
 
         # calculate pred_z using mean & std of all predictions in entire testing history
@@ -105,10 +105,10 @@ def download_stock_pred(
 
             return pd.Series(ret_dict)
 
-        result_all_comb = result_all.groupby(level=['group', 'period_end']+other_group_col).apply(get_summary_stats_in_group)
-        result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('period_end')<result_all_comb.index.get_level_values('period_end').max()]
+        result_all_comb = result_all.groupby(level=['group', 'trading_day']+other_group_col).apply(get_summary_stats_in_group)
+        result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day')<result_all_comb.index.get_level_values('trading_day').max()]
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
-        result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'period_end']).reset_index()
+        result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day']).reset_index()
         result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
         print(result_all_comb_mean)
         print(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
@@ -119,7 +119,7 @@ def download_stock_pred(
             writer = pd.ExcelWriter(f'#{model}_pred_{name_sql}_{y_type}.xlsx')
             result_all_comb_mean.to_excel(writer, sheet_name='average', index=False)
             result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
-            pd.pivot_table(result_all, index=['group', 'period_end'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
+            pd.pivot_table(result_all, index=['group', 'trading_day'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
             writer.save()
 
         if save_plot:    # save local for evaluation
@@ -159,18 +159,18 @@ def download_stock_pred(
         # --------------------------------- Save Prod Table to DB ------------------------------------------
 
         # count rank for debugging
-        # factor_rank = result_all.set_index(['period_end','factor_name','group'])['factor_weight'].unstack()
-        rank_count = result_all.groupby(['group','period_end'])['factor_weight'].apply(pd.value_counts)
+        # factor_rank = result_all.set_index(['trading_day','factor_name','group'])['factor_weight'].unstack()
+        rank_count = result_all.groupby(['group','trading_day'])['factor_weight'].apply(pd.value_counts)
         rank_count = rank_count.unstack().fillna(0)
         print(rank_count)
 
-        for period in result_all['period_end'].unique():
+        for period in result_all['trading_day'].unique():
             print(period)
-            result_col = ['group','period_end','factor_name','pred_z','factor_weight']
-            df = result_all.loc[result_all['period_end']==period, result_col].copy().reset_index(drop=True)
+            result_col = ['group','trading_day','factor_name','pred_z','factor_weight']
+            df = result_all.loc[result_all['trading_day']==period, result_col].copy().reset_index(drop=True)
 
             # basic info
-            # df['period_end'] = df['period_end'] + MonthEnd(1)
+            # df['trading_day'] = df['trading_day'] + MonthEnd(1)
             df['factor_weight'] = df['factor_weight'].astype(int)
             df['long_large'] = False             # original premium is "small - big" = short_large -> those marked neg_factor = long_large
             df['last_update'] = dt.datetime.now()
@@ -182,11 +182,11 @@ def download_stock_pred(
 
             # append to history / currency df list
             all_history.append(df.sort_values(['group', 'pred_z']))
-            if (period == result_all['period_end'].max()):  # if keep_all_history also write to prod table
+            if (period == result_all['trading_day'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
     tbl_name_history = global_vars.production_factor_rank_table + f"_history_{suffix}"
-    upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","period_end","factor_name"],
+    upsert_data_to_database(pd.concat(all_history, axis=0), tbl_name_history, primary_key=["group","trading_day","factor_name"],
                             db_url=global_vars.db_url_alibaba_prod, try_drop_table=False)
 
     tbl_name_current = global_vars.production_factor_rank_table + f"_{suffix}"

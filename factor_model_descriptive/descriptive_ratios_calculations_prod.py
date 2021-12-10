@@ -4,7 +4,7 @@ import global_vars
 import datetime as dt
 from dateutil.relativedelta import relativedelta
 from sklearn.preprocessing import quantile_transform, scale
-from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_period_end
+from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_trading_day
 from sklearn.decomposition import PCA
 from sklearn.cluster import AgglomerativeClustering
 from general.sql_output import upsert_data_to_database
@@ -56,7 +56,7 @@ def get_worldscope(conditions=None):
     ''' get fundamental data related data from Worldscope '''
 
     ws_conditions = ["C.ticker IS NOT NULL"]
-    conditions.append(f"period_end > '{back_by_month(24)}'")
+    conditions.append(f"trading_day > '{back_by_month(24)}'")
     if conditions:
         ws_conditions.extend(conditions)
     with global_vars.engine.connect() as conn:
@@ -76,7 +76,7 @@ def get_worldscope(conditions=None):
 
         print(f'      ------------------------> Drop duplicates in {global_vars.worldscope_quarter_summary_table} ')
         df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
-        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
+        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'trading_day'], keep='first')
         return df.drop('count', axis=1)
 
     ws = drop_dup(ws)  # drop duplicate and retain the most complete record
@@ -93,11 +93,11 @@ def get_worldscope(conditions=None):
         return ws
 
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
-    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
+    ws = update_trading_day(ws)      # correct timestamp for worldscope data (i.e. trading_day)
 
-    # label period_end with month end of trading_day (update_date)
-    ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ws = ws.drop(['period_end'], axis=1)
+    # label trading_day with month end of trading_day (update_date)
+    ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+    ws = ws.drop(['trading_day'], axis=1)
     # ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
     ws['industry_code'] = pd.to_numeric(ws['industry_code'], errors='coerce')
 
@@ -207,10 +207,10 @@ def calc_fx_conversion(df):
     with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_fx_table}", conn_ali)
-        fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
+        fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day "
                           f"FROM {global_vars.currency_history_table}", conn)
-        fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
-        fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
+        fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
+        fx = fx.append(fx2).drop_duplicates(subset=['ticker','trading_day'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vars.engine.dispose()
     global_vars.engine_ali_prod.dispose()
@@ -219,11 +219,11 @@ def calc_fx_conversion(df):
     # df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
 
     # map fx rate for conversion for each ticker
-    fx = fx.drop_duplicates(subset=['ticker','period_end'], keep='last')
-    fx = fill_all_day(fx, date_col='period_end')
+    fx = fx.drop_duplicates(subset=['ticker','trading_day'], keep='last')
+    fx = fill_all_day(fx, date_col='trading_day')
     fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
-    fx['period_end'] = fx['period_end'].dt.strftime("%Y-%m-%d")
-    fx = fx.set_index(['ticker', 'period_end'])['fx_rate'].to_dict()
+    fx['trading_day'] = fx['trading_day'].dt.strftime("%Y-%m-%d")
+    fx = fx.set_index(['ticker', 'trading_day'])['fx_rate'].to_dict()
 
     currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
     fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']

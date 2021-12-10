@@ -1207,6 +1207,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_model_premium/preprocess/calculation_ratio.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_premium.csv">
           <value>
             <Attribute>

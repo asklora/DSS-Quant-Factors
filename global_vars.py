@@ -2,6 +2,9 @@ db_url_aws_read = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.c
 db_url_alibaba = "postgres://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
 db_url_alibaba_prod = "postgres://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
 
+db_url_read = db_url_alibaba
+db_url_write = db_url_alibaba
+
 # TABLE names - factor model results
 result_pred_table = "factor_model"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_model_stock"
@@ -13,7 +16,6 @@ production_factor_rank_history_table = "factor_result_rank_history"
 # TABLE names - universe rating results
 production_score_current = "universe_rating" # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
-
 
 # TABLE names - raw data
 universe_table = "universe"

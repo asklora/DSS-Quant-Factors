@@ -31,7 +31,7 @@ print(df)
 # os.chdir('./results_analysis')
 # df_list = []
 # for f in os.listdir():
-#     if re.match('^#rf_reg_pred_v2_weekly._20211014_debug_testy_.*.xlsx$', f):
+#     if re.match('^#rf_reg_pred_weekly._20211014_debug_testy_.*.xlsx$', f):
 #         s = pd.read_excel(f, sheet_name='average')[['max_ret','actual']].mean().to_frame().transpose()
 #         s.index = [f]
 #         df_list.append(s)

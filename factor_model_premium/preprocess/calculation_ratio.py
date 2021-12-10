@@ -24,14 +24,14 @@ def get_tri(save=True, currency=None, ticker=None):
                  f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {global_vars.universe_table} U ON T.ticker = U.ticker "
                  f"WHERE {' AND '.join(conditions)}")
-    tri = sql_read_query(query, global_vars.db_url_aws_read)
+    tri = sql_read_query(query, global_vars.db_url_read)
 
     query1 = f"SELECT * FROM {global_vars.eikon_price_table} ORDER BY ticker, trading_day"
-    eikon_price = sql_read_query(query1, global_vars.db_url_alibaba)
+    eikon_price = sql_read_query(query1, global_vars.db_url_read)
 
     query2 = f"SELECT * FROM {global_vars.anchor_table_mkt_cap} WHERE field='mkt_cap'"
-    market_cap_anchor = sql_read_query(query2, global_vars.db_url_aws_read)
-    market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
+    market_cap_anchor = sql_read_query(query2, global_vars.db_url_read)
+    market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     if save:
         tri.to_csv('cache_tri.csv', index=False)
@@ -267,15 +267,15 @@ def download_clean_worldscope_ibes(save, currency, ticker):
 
     print(f"==================================================================================================")
     query_ws = f"select * from {global_vars.worldscope_quarter_summary_table} WHERE {' AND '.join(conditions)}"
-    ws = sql_read_query(query_ws, global_vars.db_url_aws_read)
-    ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
+    ws = sql_read_query(query_ws, global_vars.db_url_read)
+    ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     query_ibes = f"SELECT * FROM {global_vars.ibes_data_table} WHERE {' AND '.join(conditions)}"
-    ibes = sql_read_query(query_ibes, global_vars.db_url_aws_read)
-    ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], value="value").reset_index()
+    ibes = sql_read_query(query_ibes, global_vars.db_url_read)
+    ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     query_universe = f"SELECT ticker, currency_code, industry_code FROM {global_vars.universe_table}"
-    universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
+    universe = sql_read_query(query_universe, global_vars.db_url_read)
 
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
@@ -291,10 +291,10 @@ def download_clean_worldscope_ibes(save, currency, ticker):
 
     ws = drop_dup(ws)  # drop duplicate and retain the most complete record
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
-    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
+    ws = update_trading_day(ws)      # correct timestamp for worldscope data (i.e. trading_day)
 
-    # label period_end with month end of trading_day (update_date)
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
+    # label trading_day with month end of trading_day (update_date)
+    ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
 
     if save:
         ws.to_csv('cache_ws.csv', index=False)
@@ -304,25 +304,26 @@ def download_clean_worldscope_ibes(save, currency, ticker):
     return ws, ibes, universe
 
 def check_duplicates(df, name=''):
-    df1 = df.drop_duplicates(subset=['period_end','ticker'])
+    df1 = df.drop_duplicates(subset=['trading_day','ticker'])
     if df.shape != df1.shape:
         raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
 
-def update_period_end(ws=None):
-    ''' map icb_sector, member_ric, period_end -> last_year_end for each identifier + frequency_number * 3m '''
+def update_trading_day(ws=None):
+    ''' map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m '''
 
-    print(f'      ------------------------> Update period_end in {global_vars.worldscope_quarter_summary_table} ')
+    print(f'      ------------------------> Update trading_day in {global_vars.worldscope_quarter_summary_table} ')
 
     query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vars.universe_table}"
-    universe = sql_read_query(query_universe, global_vars.db_url_aws_read)
-    eikon_report_date = sql_read_table(global_vars.eikon_report_date_table, global_vars.db_url_alibaba_prod)
+    universe = sql_read_query(query_universe, global_vars.db_url_read)
+    eikon_report_date = sql_read_table(global_vars.eikon_report_date_table, global_vars.db_url_read)
 
-    ws = ws.dropna(subset=['year'])
+    ws["trading_day"] = pd.to_datetime(ws["trading_day"])
+    ws["year"] = pd.DatetimeIndex(ws["trading_day"]).year
+    ws["frequency_number"] = np.ceil(pd.DatetimeIndex(ws["trading_day"]).month/3)
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
     # ws = ws.loc[ws['fiscal_year_end'].isin(['MAR','JUN','SEP','DEC'])]      # select identifier with correct year end
 
-    ws['period_end'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
     ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y-%m-%d')
     ws['fiscal_year_end'] = (pd.to_datetime(ws['fiscal_year_end'], format='%b') + MonthEnd(0)).dt.strftime('%m%d')
 
@@ -330,13 +331,13 @@ def update_period_end(ws=None):
     ws['last_year_end'] = (ws['year'].astype(int)-1).astype(str) + ws['fiscal_year_end']
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
-    ws = ws.merge(eikon_report_date, on=['ticker', 'period_end'], suffixes=('', '_ek'), how='left')
+    ws = ws.merge(eikon_report_date, on=['ticker', 'trading_day'], suffixes=('', '_ek'), how='left')
 
     ws['report_date'] = ws['report_date'].fillna(ws['report_date_ek'])
-    ws['period_end'] = ws['period_end'].mask(ws['report_date'] < ws['period_end'], ws['report_date'] + QuarterEnd(-1))
-    ws['report_date'] = ws['report_date'].fillna(ws['period_end'] + QuarterEnd(1))
+    ws['trading_day'] = ws['trading_day'].mask(ws['report_date'] < ws['trading_day'], ws['report_date'] + QuarterEnd(-1))
+    ws['report_date'] = ws['report_date'].fillna(ws['trading_day'] + QuarterEnd(1))
 
-    ws['period_end'] = ws['report_date']
+    ws['trading_day'] = ws['report_date']
     ws = drop_dup(ws)  # drop duplicate and retain the most complete record
 
     return ws.drop(['last_year_end','fiscal_year_end','year','frequency_number','fiscal_quarter_end','report_date','report_date_ek'], axis=1)
@@ -346,32 +347,32 @@ def fill_all_given_date(result, ref):
 
     # Construct indexes for all date / ticker used in ref (reference dataframe)
     try:
-        result['period_end'] = result['trading_day']  # rename trading to period_end for later merge with other df
+        result['trading_day'] = result['trading_day']  # rename trading to trading_day for later merge with other df
         result = result.drop(['trading_day'], axis=1)
     except Exception as e:
-        print("No need to convert column name 'trading_day' to 'period_end'", e)
+        print("No need to convert column name 'trading_day' to 'trading_day'", e)
 
-    result['period_end'] = pd.to_datetime(result['period_end'], format='%Y-%m-%d')
+    result['trading_day'] = pd.to_datetime(result['trading_day'], format='%Y-%m-%d')
     date_list = ref['trading_day'].unique()
     ticker_list = ref['ticker'].unique()
     indexes = pd.MultiIndex.from_product([ticker_list, date_list],
-                                         names=['ticker', 'period_end']).to_frame(index=False, name=['ticker', 'period_end'])
+                                         names=['ticker', 'trading_day']).to_frame(index=False, name=['ticker', 'trading_day'])
     print(f"      ------------------------> Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
 
     # Insert weekend/before first trading date to df
-    indexes['period_end'] = pd.to_datetime(indexes['period_end'])
-    result = result.merge(indexes, on=['ticker', 'period_end'], how='outer')
-    result = result.sort_values(by=['ticker', 'period_end'], ascending=True)
+    indexes['trading_day'] = pd.to_datetime(indexes['trading_day'])
+    result = result.merge(indexes, on=['ticker', 'trading_day'], how='outer')
+    result = result.sort_values(by=['ticker', 'trading_day'], ascending=True)
     # x = result.loc[result['ticker']=='AAPL.O']
     result.update(result.groupby(['ticker']).fillna(method='ffill'))        # fill forward for date
     # x = result.loc[result['ticker']=='AAPL.O']
 
-    result = result.loc[(result['period_end'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
-    result = result.drop_duplicates(subset=['period_end','ticker'], keep='last')   # remove ibes duplicates
+    result = result.loc[(result['trading_day'].isin(date_list)) & (result['ticker'].isin(ticker_list))]
+    result = result.drop_duplicates(subset=['trading_day','ticker'], keep='last')   # remove ibes duplicates
 
     return result
 
-def drop_dup(df, col='period_end'):
+def drop_dup(df, col='trading_day'):
     ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
     print(f'      ------------------------> Drop duplicates in {global_vars.worldscope_quarter_summary_table} ')
@@ -396,10 +397,10 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
     else:
         tri, stocks_col = calc_stock_return(price_sample, sample_interval, rolling_period, use_cached, save, currency, ticker)
 
-    tri['period_end'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
-    # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['period_end'], ascending=False).head(100)
+    # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['trading_day'], ascending=False).head(100)
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
@@ -419,7 +420,7 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
     ws = fill_all_given_date(ws, tri)
     ibes = fill_all_given_date(ibes, tri)
 
-    check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + period_end
+    check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + trading_day
     check_duplicates(ibes, 'ibes')
 
     # Use 6-digit ICB code in industry groups
@@ -430,9 +431,9 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
 
     # Combine all data for table (1) - (6) above
     print(f'      ------------------------> Merge all dataframes ')
-    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'period_end'], how='left', suffixes=('','_ws'))
-    df = df.merge(ibes, on=['ticker', 'period_end'], how='left', suffixes=('','_ibes'))
-    df = df.sort_values(by=['ticker', 'period_end'])
+    df = pd.merge(tri.drop("trading_day", axis=1), ws, on=['ticker', 'trading_day'], how='left', suffixes=('','_ws'))
+    df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('','_ibes'))
+    df = df.sort_values(by=['ticker', 'trading_day'])
 
     # Update close price to adjusted value
     def adjust_close(df):
@@ -440,12 +441,12 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
 
         print(f'      ------------------------> Adjust closing price with market cap ')
 
-        df = df[['ticker','period_end','market_cap','close']].dropna(how='any')
+        df = df[['ticker','trading_day','market_cap','close']].dropna(how='any')
         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
         df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
         df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
 
-        return df[['ticker','period_end','close']]
+        return df[['ticker','trading_day','close']]
 
     df.update(adjust_close(df))
 
@@ -455,14 +456,14 @@ def combine_stock_factor_data(price_sample, fill_method, sample_interval, rollin
     if fill_method == 'fill_all':           # e.g. Quarterly June -> Monthly July/Aug
         df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
     elif fill_method == 'fill_monthly':     # e.g. only 1 June -> 30 June
-        df.update(df.groupby(['ticker', 'period_end'])[cols].fillna(method='ffill'))
+        df.update(df.groupby(['ticker', 'trading_day'])[cols].fillna(method='ffill'))
     else:
         raise ValueError("Invalid fill_method. Expecting 'fill_all' or 'fill_monthly' got ", fill_method)
 
     if sample_interval == 'monthly':
-        df = resample_to_monthly(df, date_col='period_end')  # Resample to monthly stock tri
+        df = resample_to_monthly(df, date_col='trading_day')  # Resample to monthly stock tri
     elif sample_interval == 'weekly':
-        df = resample_to_weekly(df, date_col='period_end')  # Resample to monthly stock tri
+        df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
     else:
         raise ValueError("Invalid sample_interval method. Expecting 'monthly' or 'weekly' got ", sample_interval)
 
@@ -481,37 +482,37 @@ def calc_fx_conversion(df):
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
     curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}"
-    curr_code = sql_read_query(curr_code_query, global_vars.db_url_aws_read)
+    curr_code = sql_read_query(curr_code_query, global_vars.db_url_read)
 
     # combine download fx data from eikon & daily currency price ingestion
-    fx = sql_read_table(global_vars.eikon_fx_table, global_vars.db_url_alibaba_prod)
-    fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end FROM {global_vars.currency_history_table}"
-    fx2 = sql_read_query(fx2_query, global_vars.db_url_aws_read)
-    fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
-    fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
+    fx = sql_read_table(global_vars.eikon_fx_table, global_vars.db_url_read)
+    fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day FROM {global_vars.currency_history_table}"
+    fx2 = sql_read_query(fx2_query, global_vars.db_url_read)
+    fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
+    fx = fx.append(fx2).drop_duplicates(subset=['ticker','trading_day'], keep='last')
 
-    ingestion_source = sql_read_table(global_vars.ingestion_name_table, global_vars.db_url_alibaba_prod)
+    ingestion_source = sql_read_table(global_vars.ingestion_name_table, global_vars.db_url_read)
 
     df = df.merge(curr_code, on='ticker', how='inner')
     df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
 
     # map fx rate for conversion for each ticker
-    fx = fx.drop_duplicates(subset=['ticker','period_end'])
-    fx = fill_all_day(fx, date_col='period_end')
+    fx = fx.drop_duplicates(subset=['ticker','trading_day'])
+    fx = fill_all_day(fx, date_col='trading_day')
     fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
-    fx['period_end'] = fx['period_end'].dt.strftime("%Y-%m-%d")
-    fx = fx.set_index(['ticker', 'period_end'])['fx_rate'].to_dict()
+    fx['trading_day'] = fx['trading_day'].dt.strftime("%Y-%m-%d")
+    fx = fx.set_index(['ticker', 'trading_day'])['fx_rate'].to_dict()
 
     currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
     fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
-    df['period_end'] = pd.to_datetime(df['period_end']).dt.strftime("%Y-%m-%d")
+    df['trading_day'] = pd.to_datetime(df['trading_day']).dt.strftime("%Y-%m-%d")
     for cur_col, fx_col in zip(currency_code_cols, fx_cols):
-        df = df.set_index([cur_col, 'period_end'])
+        df = df.set_index([cur_col, 'trading_day'])
         df['index'] = df.index.to_numpy()
         df[fx_col] = df['index'].map(fx)
         df = df.reset_index()
 
-    df['period_end'] = pd.to_datetime(df['period_end'])
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
     ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]     # no fx conversion for ratio items
 
     for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
@@ -541,7 +542,7 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
     else:
         df, stocks_col = combine_stock_factor_data(price_sample, fill_method, sample_interval, rolling_period, use_cached, save, currency, ticker)
 
-    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
     formula = formula.loc[formula['is_active']]
 
     print(f'============================================================================================')
@@ -628,10 +629,10 @@ def calc_factor_variables(price_sample='last_day', fill_method='fill_all', sampl
 
     # save calculated ratios to DB
     filter_col = set(df.columns.to_list()) & set(
-        ['ticker', 'period_end', 'currency_code', 'industry_code', 'stock_return_y'] + formula['name'].to_list())
+        ['ticker', 'trading_day', 'currency_code', 'industry_code', 'stock_return_y'] + formula['name'].to_list())
     ddf = df[list(filter_col)]
-    ddf['peroid_end'] = pd.to_datetime(ddf['period_end'])
-    upsert_data_to_database(ddf, db_table_name, primary_key=["ticker","period_end"], db_url=global_vars.db_url_alibaba_prod, how="replace")
+    ddf['peroid_end'] = pd.to_datetime(ddf['trading_day'])
+    upsert_data_to_database(ddf, db_table_name, primary_key=["ticker","trading_day"], db_url=global_vars.db_url_write, how="replace")
     return df, stocks_col, formula
 
 def test_missing(df_org, formula, ingestion_cols):
@@ -659,12 +660,12 @@ def test_missing(df_org, formula, ingestion_cols):
         # print(df)
 
 if __name__ == "__main__":
-    # update_period_end()
+    # update_trading_day()
     calc_factor_variables(price_sample='last_week_avg',
                           fill_method='fill_all',
                           sample_interval='weekly',
                           rolling_period=1,
                           use_cached=False,
                           save=True,
-                          ticker=None,
+                          ticker="AAPL.O",
                           currency=None)

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import global_vars
-from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_period_end
+from factor_model_premium.preprocess.calculation_ratio import fill_all_day, update_trading_day
 
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
@@ -63,7 +63,7 @@ def get_worldscope(save=True, conditions=None):
 
         print(f'      ------------------------> Drop duplicates in {global_vars.worldscope_quarter_summary_table} ')
         df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
-        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'period_end'], keep='first')
+        df = df.sort_values(['count']).drop_duplicates(subset=['ticker', 'trading_day'], keep='first')
         return df.drop('count', axis=1)
 
     ws = drop_dup(ws)  # drop duplicate and retain the most complete record
@@ -80,11 +80,11 @@ def get_worldscope(save=True, conditions=None):
         return ws
 
     ws = fill_missing_ws(ws)        # selectively fill some missing fields
-    ws = update_period_end(ws)      # correct timestamp for worldscope data (i.e. period_end)
+    ws = update_trading_day(ws)      # correct timestamp for worldscope data (i.e. trading_day)
 
-    # label period_end with month end of trading_day (update_date)
-    ws['trading_day'] = pd.to_datetime(ws['period_end'], format='%Y-%m-%d')
-    ws = ws.drop(['period_end'], axis=1)
+    # label trading_day with month end of trading_day (update_date)
+    ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+    ws = ws.drop(['trading_day'], axis=1)
     # ws['currency_code'] = ws['currency_code'].replace(['EUR','GBP','USD','HKD','CNY','KRW'], list(np.arange(6)))
     ws['industry_code'] = pd.to_numeric(ws['industry_code'], errors='coerce')
 
@@ -186,7 +186,7 @@ class combine_tri_worldscope:
             average_idx = [cols.index(x) for x in self.avg_factor]
             arr = reshape_by_interval(self.df.copy(), interval)
 
-            # create label array (ticker, trading_day - period_end)
+            # create label array (ticker, trading_day - trading_day)
             arr_label = arr[:, :, -1, [cols.index('ticker'), cols.index('trading_day')]]
             arr_curind = arr[:, :, -1, [cols.index('currency_code'), cols.index('industry_code')]]
 
@@ -246,7 +246,7 @@ def reshape_by_interval(df, interval=7):
     num_period   = int(np.ceil(num_day/num_interval))
     num_factor   = int(df.shape[1])
 
-    arr = np.reshape(df.values, (num_ticker, num_day, num_factor), order='C')       # reshape to (ticker, period_end, interval)
+    arr = np.reshape(df.values, (num_ticker, num_day, num_factor), order='C')       # reshape to (ticker, trading_day, interval)
     arr = np.pad(arr, ((0,0), (int(num_period*num_interval-num_day),0), (0,0)), mode='constant', constant_values=np.nan)   # fill for dates
     arr = np.reshape(arr, (num_ticker, num_period, num_interval, num_factor), order='C')    # reshape to different interval partition
 
@@ -317,10 +317,10 @@ def calc_fx_conversion(df):
     with global_vars.engine.connect() as conn, global_vars.engine_ali_prod.connect() as conn_ali:
         curr_code = pd.read_sql(f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}", conn)     # map ibes/ws currency for each ticker
         fx = pd.read_sql(f"SELECT * FROM {global_vars.eikon_fx_table}", conn_ali)
-        fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as period_end "
+        fx2 = pd.read_sql(f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day "
                           f"FROM {global_vars.currency_history_table}", conn)
-        fx['period_end'] = pd.to_datetime(fx['period_end']).dt.tz_localize(None)
-        fx = fx.append(fx2).drop_duplicates(subset=['ticker','period_end'], keep='last')
+        fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
+        fx = fx.append(fx2).drop_duplicates(subset=['ticker','trading_day'], keep='last')
         ingestion_source = pd.read_sql(f"SELECT * FROM ingestion_name", conn_ali)
     global_vars.engine.dispose()
     global_vars.engine_ali_prod.dispose()
@@ -329,11 +329,11 @@ def calc_fx_conversion(df):
     # df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
 
     # map fx rate for conversion for each ticker
-    fx = fx.drop_duplicates(subset=['ticker','period_end'], keep='last')
-    fx = fill_all_day(fx, date_col='period_end')
+    fx = fx.drop_duplicates(subset=['ticker','trading_day'], keep='last')
+    fx = fill_all_day(fx, date_col='trading_day')
     fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
-    fx['period_end'] = fx['period_end'].dt.strftime("%Y-%m-%d")
-    fx = fx.set_index(['ticker', 'period_end'])['fx_rate'].to_dict()
+    fx['trading_day'] = fx['trading_day'].dt.strftime("%Y-%m-%d")
+    fx = fx.set_index(['ticker', 'trading_day'])['fx_rate'].to_dict()
 
     currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
     fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
