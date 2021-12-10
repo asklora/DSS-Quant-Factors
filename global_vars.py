@@ -9,6 +9,7 @@ result_pred_table = "factor_model"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_model_stock"
 feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
+production_factor_rank_ratio_table = "factor_result_rank_ratio"
 production_factor_rank_history_table = "factor_result_rank_history"
 
 # TABLE names - universe rating results
@@ -33,10 +34,10 @@ ingestion_name_table = "ingestion_name"
 
 # TABLE names - preprocessed data
 processed_ratio_table = "factor_processed_ratio"
-factor_premium_table = "factor_processed_factor_premium"
+factor_premium_table = "factor_processed_premium"
 
 # TABLE names - preprocess formula
-formula_factors_table_prod = "factor_formula_ratios_prod"
+formula_factors_table_prod = "factor_formula_ratios_prod"   # Django Managed here
 update_time_table = "ingestion_update_time"     # all table update time record in this table
 
 # TABLE names - descriptive preprocess formula
