@@ -1207,7 +1207,35 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_model_premium/preprocess/cache_all_data.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_model_premium/preprocess/cache_stocks_col.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_model_premium/preprocess/cache_tri_ratio.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_model_premium/preprocess/calculation_ratio.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_model_premium/preprocess/dsws_missing_ingestion_USD.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -1298,7 +1326,35 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/postgres_public_data_factor_eikon_fund_holdings.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/postgres_public_data_factor_eikon_fund_size.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/postgres_public_factor_formula_ratios.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/postgres_public_factor_formula_ratios_descriptive.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/postgres_public_factor_formula_ratios_prod.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

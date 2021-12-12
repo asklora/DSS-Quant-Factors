@@ -5,7 +5,7 @@ import multiprocessing as mp
 import itertools
 
 import global_vars
-from general.sql_output import sql_read_query, upsert_data_to_database, trucncate_table_in_database
+from general.sql_output import sql_read_query, upsert_data_to_database, trucncate_table_in_database,uid_maker
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -61,77 +61,70 @@ def insert_prem_for_group(*args):
             print(e)
             return series.map(lambda _: np.nan)
 
-    df, group, tbl_suffix, factor, trim_outlier_ = args
-    print(group, tbl_suffix, factor, trim_outlier_)
+    df, group, factor, trim_outlier_, y_col, weeks_to_expire = args
+    print(group, factor, trim_outlier_)
 
     try:
-        df = df[['trading_day','stock_return_y', factor]].dropna(how='any')
+        df = df[['trading_day', y_col, factor]].dropna(how='any')
         if len(df) == 0:
             raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
 
         if trim_outlier_:
-            df['stock_return_y'] = trim_outlier(df['stock_return_y'], prc=.05)
-            tbl_suffix_extra = '_trim'
-        else:
-            tbl_suffix_extra = ''
+            df[y_col] = trim_outlier(df[y_col], prc=.05)
 
-        if factor in df.columns.to_list():
-            df['quantile_group'] = df.groupby(['trading_day'])[factor].transform(qcut)
-            df = df.dropna(subset=['quantile_group']).copy()
-            df['quantile_group'] = df['quantile_group'].astype(int)
-            prem = df.groupby(['trading_day', 'quantile_group'])['stock_return_y'].mean().unstack()
+        df['quantile_group'] = df.groupby(['trading_day'])[factor].transform(qcut)
+        df = df.dropna(subset=['quantile_group']).copy()
+        df['quantile_group'] = df['quantile_group'].astype(int)
+        prem = df.groupby(['trading_day', 'quantile_group'])[y_col].mean().unstack()
 
-            # Calculate small minus big
-            prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
-            prem['group'] = group
-            prem['factor_name'] = factor
-            prem['trim_outlier'] = trim_outlier_
+        # Calculate small minus big
+        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
+        prem['group'] = group
+        prem['field'] = factor
+        prem['weeks_to_expire'] = weeks_to_expire
+        if trim_outlier_:
+            prem['field'] = 'trim_'+prem['field']
+        prem = uid_maker(prem, primary_key=['group','trading_day','field'])
 
-            upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
-                                    table=f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
-                                    primary_key=["group", "trading_day", "factor_name", "trim_outlier"],
-                                    db_url=global_vars.db_url_alibaba_prod,
-                                    how="append")
+        upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
+                                table=global_vars.factor_premium_table,
+                                primary_key=["uid"],
+                                db_url=global_vars.db_url_write,
+                                how="append")
     except Exception as e:
         print(e)
         return False
 
     return True
 
-def calc_premium_all(tbl_suffix, trim_outlier_=False, processes=12, all_groups=['USD']):
+def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_groups=['USD','EUR']):
 
-    ''' calculate factor premium for different configurations:
-        1. monthly sample + using last day price
-        2. biweekly sample + using last day price
-        3. monthly sample + using average price of last week
-    '''
+    ''' calculate factor premium for different configurations '''
 
     # Read stock_return / ratio table
     print(f'#################################################################################################')
     print(f'      ------------------------> Download ratio data from DB')
-    if trim_outlier_:
-        tbl_suffix_extra = '_trim'
-    else:
-        tbl_suffix_extra = ''
 
     formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active"
-    formula = sql_read_query(formula_query, global_vars.db_url_alibaba_prod)
+    formula = sql_read_query(formula_query, global_vars.db_url_write)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
-    # permium calculate USD only
-    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}{tbl_suffix} WHERE currency_code = 'USD'"
-    df = sql_read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    df = df.dropna(subset=['stock_return_y', 'ticker'])
+    # premium calculate currency only
+    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker in " \
+                  f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
+    df = sql_read_query(ratio_query, global_vars.db_url_write)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
+    df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value')
+    y_col = f'stock_return_y_{weeks_to_expire}week'
+    df = df.dropna(subset=[y_col, 'ticker'])
 
     print(f'      ------------------------> Groups: {" -> ".join(all_groups)}')
-    print(f'      ------------------------> Save to {global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}')
+    print(f'      ------------------------> Save to {global_vars.factor_premium_table}')
 
-    all_groups = itertools.product([df], all_groups, [tbl_suffix], factor_list, [trim_outlier_])
+    all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col], [weeks_to_expire])
     all_groups = [tuple(e) for e in all_groups]
 
-    trucncate_table_in_database(f"{global_vars.factor_premium_table}{tbl_suffix}{tbl_suffix_extra}",
-                                global_vars.db_url_alibaba_prod)
+    trucncate_table_in_database(f"{global_vars.factor_premium_table}", global_vars.db_url_write)
     with mp.Pool(processes=processes) as pool:
         res = pool.starmap(insert_prem_for_group, all_groups)
 
@@ -145,7 +138,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(tbl_suffix='_weekly1', trim_outlier_=False, processes=6)
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=6)
 
     end = datetime.now()
 

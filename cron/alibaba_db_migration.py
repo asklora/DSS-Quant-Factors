@@ -57,7 +57,7 @@ def upsert_to_database(data, table, primary_key, how="update", type=TEXT):
 def data_factor_eikon_price():
     table_name = "data_factor_eikon_price_daily_final"
     query = f"select * from {table_name}"
-    data = read_query(query).reset_index().rename(columns={"index": "id"})
+    data = read_query(query).reset_index().rename(columns={"index": "id", "period_end": "trading_day"})
 
     table_name = "data_factor_eikon_price"
     upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
@@ -65,7 +65,7 @@ def data_factor_eikon_price():
 def data_factor_eikon_fx():
     table_name = "data_factor_eikon_others_fx"
     query = f"select * from {table_name}"
-    data = read_query(query).reset_index().rename(columns={"index": "id"})
+    data = read_query(query).reset_index().rename(columns={"index": "id", "period_end": "trading_day"}).dropna(how='any')
 
     table_name = "data_factor_eikon_fx"
     upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
@@ -73,13 +73,20 @@ def data_factor_eikon_fx():
 def data_factor_eikon_date():
     table_name = "data_factor_eikon_others_date"
     query = f"select * from {table_name}"
-    data = read_query(query).reset_index().rename(columns={"index": "id"})
+    data = read_query(query).reset_index().rename(columns={"index": "id", "period_end": "trading_day"}).dropna(how='any')
 
     table_name = "data_factor_eikon_date"
     upsert_to_database(data, table_name, "id", how="append", type=INTEGER)
 
+def factor_formula_ratios_prod():
+    table_name = "factor_formula_ratios_prod"
+    query = f"select * from {table_name}"
+    data = read_query(query)
+    upsert_to_database(data, table_name, "id", how="replace", type=INTEGER)
+
 if __name__=="__main__":
 
     # data_factor_eikon_price()
-    data_factor_eikon_fx()
-    data_factor_eikon_date()
+    # data_factor_eikon_fx()
+    # data_factor_eikon_date()
+    factor_formula_ratios_prod()

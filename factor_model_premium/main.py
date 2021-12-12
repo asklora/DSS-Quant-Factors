@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 
 import global_vars
 from factor_model_premium.preprocess.load_data import load_data
-from factor_model_premium.preprocess.calculation_ratio import calc_factor_variables
+from factor_model_premium.preprocess.calculation_ratio import calc_factor_variables_multi
 from factor_model_premium.preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
 from factor_model_premium.results_analysis.write_merged_pred import download_stock_pred
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--objective', default='mse')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--tbl_suffix', default='_weekly1', type=str)
+    parser.add_argument('--weeks_to_expire', default=1, type=int)
     parser.add_argument('--processes', default=8, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
@@ -110,18 +110,10 @@ if __name__ == "__main__":
         start_on_update()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    tbl_suffix = args.tbl_suffix
+    weeks_to_expire = args.time_to_expire
     if args.recalc_premium:
-        calc_factor_variables(price_sample='last_week_avg',
-                              fill_method='fill_all',
-                              sample_interval=tbl_suffix[1:-1],
-                              rolling_period=int(tbl_suffix[-1]),
-                              use_cached=False,
-                              save=False,
-                              ticker=None,
-                              currency=None)
-
-        calc_premium_all(tbl_suffix, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
+        calc_factor_variables_multi(processes=args.processes)
+        calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
     end_time = dt.datetime.now()
     print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
@@ -133,7 +125,7 @@ if __name__ == "__main__":
     # use_pca_list = [0.4]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}{tbl_suffix}_{args.mode}"
+    query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}"
     last_test_date = sql_read_query(query, db_url=global_vars.db_url_alibaba_prod)
     testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
@@ -141,7 +133,7 @@ if __name__ == "__main__":
     # --------------------------------- Prepare Training Set -------------------------------------
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'{args.mode}{tbl_suffix}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:
         sql_result['name_sql'] += f'_debug_sep'
     sql_result.pop('backtest_period')
@@ -155,7 +147,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(tbl_suffix, mode=args.mode)  # load_data (class) STEP 1
+    data = load_data(weeks_to_expire, mode=args.mode)  # load_data (class) STEP 1
 
     # y_type_list = [data.x_col_dict['y_col']]
     # y_type_list = list(combinations(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col']), 5))
@@ -172,8 +164,8 @@ if __name__ == "__main__":
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
-    trucncate_table_in_database(f"{global_vars.result_pred_table}{tbl_suffix}", global_vars.db_url_alibaba_prod)
-    trucncate_table_in_database( f"{global_vars.feature_importance_table}{tbl_suffix}", global_vars.db_url_alibaba_prod)
+    trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_alibaba_prod)
+    trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_alibaba_prod)
     with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 
@@ -184,10 +176,10 @@ if __name__ == "__main__":
             name_sql=sql_result['name_sql'],
             save_plot=False,
             save_xls=False,
-            suffix=tbl_suffix[1:],
+            suffix=weeks_to_expire,
         )
 
-    score_history(tbl_suffix[1:])     # calculate score with DROID v2 method & evaluate
+    score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
     end_time = dt.datetime.now()
     print(start_time, end_time, end_time-start_time)
