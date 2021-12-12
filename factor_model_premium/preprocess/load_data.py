@@ -23,7 +23,8 @@ def download_clean_macros(main_df):
     print(f'#################################################################################################')
     print(f'      ------------------------> Download macro data from {global_vars.macro_data_table}')
 
-    macros = sql_read_table(global_vars.macro_data_table, global_vars.db_url_aws_read)
+    macros = sql_read_table(global_vars.macro_data_table, global_vars.db_url_read)
+    macros = macros.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
     yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
@@ -48,17 +49,18 @@ def download_clean_macros(main_df):
     macros = macros.fillna(method='ffill')
     macros = macros.loc[macros['trading_day'].isin(df_date_list)]
 
-    return macros.drop(['trading_day'], axis=1)
+    return macros
 
-def download_index_return(tbl_suffix):
+def download_index_return():
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Download index return data from {global_vars.processed_ratio_table}')
 
     # read stock return from ratio calculation table
-    index_query = f"SELECT * FROM {global_vars.processed_ratio_table}{tbl_suffix} WHERE ticker like '.%%'"
-    index_ret = sql_read_query(index_query, global_vars.db_url_alibaba_prod)
+    index_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker like '.%%'"
+    index_ret = sql_read_query(index_query, global_vars.db_url_read)
+    index_ret = index_ret.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
     major_index = ['trading_day','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
@@ -72,36 +74,36 @@ def download_index_return(tbl_suffix):
 
     return index_ret
 
-def combine_data(tbl_suffix, update_since=None, mode='v2'):
+def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
 
-    # Read sql from different tables
+    # Read premium sql from different tables
     factor_table_name = global_vars.factor_premium_table
 
-    print(f'      ------------------------> Use {tbl_suffix} ratios')
+    print(f'      ------------------------> Use {weeks_to_expire} week premium')
     conditions = ['"group" IS NOT NULL']
     
     if isinstance(update_since, datetime):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
-    if mode == 'v2_trim':
-        conditions.append('trim_outlier')
-    elif mode == 'v2':
-        conditions.append('not trim_outlier')
-    else:
-        raise Exception('Unknown mode')
+    prem_query = f'SELECT * FROM {factor_table_name} WHERE {" AND ".join(conditions)};'
+    df = sql_read_query(prem_query, global_vars.db_url_write)
+    df = df.pivot(index=['trading_day', 'group'], columns=['field'], values="value")
 
-    prem_query = f'SELECT trading_day, "group", factor_name, premium FROM {factor_table_name}{tbl_suffix}_{mode} WHERE {" AND ".join(conditions)};'
-    df = sql_read_query(prem_query, global_vars.db_url_alibaba_prod)
-    df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
-    df = df.pivot(['trading_day', 'group'], ['factor_name']).droplevel(0, axis=1)
+    if mode == 'trim':
+        df = df.filter(regex='^trim_')
+    elif mode == 'v2':
+        df = df.drop(regex='^trim_')
+
     df.columns.name = None
     df = df.reset_index()
+    df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
-    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    # read formula table
+    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]       # filter existing columns from factors
 
     # Research stage using 10 selected factor only
@@ -118,16 +120,15 @@ def combine_data(tbl_suffix, update_since=None, mode='v2'):
     x_col['macro'] = macros.columns.to_list()[1:]              # add macros variables name to x_col
 
     # 2. Add index return variables
-    index_ret = download_index_return(tbl_suffix)
+    index_ret = download_index_return()
     x_col['index'] = index_ret.columns.to_list()[1:]           # add index variables name to x_col
 
     # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
     # Therefore, we should also know other data (macro/index/group fundamental) as at T1
+    index_ret["trading_day"] = pd.to_datetime(index_ret["trading_day"])
+    macros["trading_day"] = pd.to_datetime(macros["trading_day"])
     non_factor_inputs = macros.merge(index_ret, on=['trading_day'], how='outer')
-    if 'weekly' in tbl_suffix:
-        non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x-relativedelta(weeks=int(tbl_suffix[-1])))
-    elif 'monthly' in tbl_suffix:
-        non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x - relativedelta(months=int(tbl_suffix[-1])))
+    non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x-relativedelta(weeks=weeks_to_expire))
     df = df.merge(non_factor_inputs, on=['trading_day'], how='left').sort_values(['group','trading_day'])
 
     # make up for all missing date in df
@@ -142,22 +143,22 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    def __init__(self, tbl_suffix, update_since=None, mode='default'):
+    def __init__(self, weeks_to_expire, update_since=None, mode=''):
         ''' combine all possible data to be used 
         
         Parameters
         ----------
-        tbl_suffix : text
+        weeks_to_expire : text
         update_since : bool, optional
-        mode : {default 'default', 'v2', 'v2_trim'}, optional
-        
+        mode : {''(default), 'trim'}, optional
+
         '''
 
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
         self.main, self.factor_list, self.x_col_dict = combine_data(
-            tbl_suffix,
+            weeks_to_expire,
             update_since=update_since,
             mode=mode)    # combine all data
 
@@ -300,9 +301,9 @@ class load_data:
 
         # split training/testing sets based on testing_period
         # self.train = current_group.loc[(current_group['trading_day'] < testing_period)].copy()
-        self.train = current_group.loc[(start <= current_group['trading_day'].dt.date) &
-                                       (current_group['trading_day'].dt.date < testing_period)].copy()
-        self.test = current_group.loc[current_group['trading_day'].dt.date == testing_period].reset_index(drop=True).copy()
+        self.train = current_group.loc[(start <= current_group['trading_day']) &
+                                       (current_group['trading_day'] < testing_period)].copy()
+        self.test = current_group.loc[current_group['trading_day'] == testing_period].reset_index(drop=True).copy()
 
         # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change, y_type)
@@ -396,8 +397,8 @@ class load_data:
             gkf = []
             for n in range(1, n_splits+1):
                 valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
-                test_index = self.train.loc[self.train['trading_day'].dt.date >= valid_period].index.to_list()
-                train_index = self.train.loc[self.train['trading_day'].dt.date < valid_period].index.to_list()
+                test_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
+                train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
                 gkf.append((train_index, test_index))
         else:
             raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)
@@ -421,7 +422,7 @@ if __name__ == '__main__':
     testing_period = dt.datetime(2021,9,5)
     group_code = 'USD'
 
-    data = load_data(tbl_suffix='_weekly4', mode='v2')
+    data = load_data(weeks_to_expire=4)
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)

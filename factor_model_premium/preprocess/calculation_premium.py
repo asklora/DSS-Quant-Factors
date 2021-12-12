@@ -78,7 +78,7 @@ def insert_prem_for_group(*args):
         prem = df.groupby(['trading_day', 'quantile_group'])[y_col].mean().unstack()
 
         # Calculate small minus big
-        prem = (prem[0] - prem[2]).dropna().rename('premium').reset_index()
+        prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
         prem['group'] = group
         prem['field'] = factor
         prem['weeks_to_expire'] = weeks_to_expire
@@ -106,7 +106,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     print(f'      ------------------------> Download ratio data from DB')
 
     formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active"
-    formula = sql_read_query(formula_query, global_vars.db_url_write)
+    formula = sql_read_query(formula_query, global_vars.db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
     # premium calculate currency only
@@ -114,9 +114,14 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
                   f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
     df = sql_read_query(ratio_query, global_vars.db_url_write)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
-    df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value')
+    df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
     y_col = f'stock_return_y_{weeks_to_expire}week'
     df = df.dropna(subset=[y_col, 'ticker'])
+
+    # resample df to match the weeks_to_expire
+    date_list = reversed(df["trading_day"].unique())
+    date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_expire == 0)]
+    df = df.loc[df["trading_day"].isin(date_list)]
 
     print(f'      ------------------------> Groups: {" -> ".join(all_groups)}')
     print(f'      ------------------------> Save to {global_vars.factor_premium_table}')
