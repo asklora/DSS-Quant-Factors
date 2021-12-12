@@ -35,6 +35,7 @@ def mp_rf(*mp_args):
 
         load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
                             'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
+        testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
         cv_number = 1  # represent which cross-validation sets
 
@@ -59,6 +60,7 @@ def mp_rf(*mp_args):
                     y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     except Exception as e:
+        print(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
         to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
 
 if __name__ == "__main__":
@@ -110,7 +112,7 @@ if __name__ == "__main__":
         start_on_update()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    weeks_to_expire = args.time_to_expire
+    weeks_to_expire = args.weeks_to_expire
     if args.recalc_premium:
         calc_factor_variables_multi(processes=args.processes)
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
@@ -126,7 +128,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}"
-    last_test_date = sql_read_query(query, db_url=global_vars.db_url_alibaba_prod)
+    last_test_date = sql_read_query(query, db_url=global_vars.db_url_write)
     testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
@@ -141,13 +143,14 @@ if __name__ == "__main__":
     sql_result.pop('recalc_premium')
     sql_result.pop('debug')
     sql_result.pop('processes')
-    sql_result.pop('tbl_suffix')
+    sql_result.pop('weeks_to_expire')
     # sql_result.pop('tree_type')
     # sql_result.pop('use_pca')
 
     # --------------------------------- Model Training ------------------------------------------
 
-    data = load_data(weeks_to_expire, mode=args.mode)  # load_data (class) STEP 1
+    mode = 'trim' if args.trim else ''
+    data = load_data(weeks_to_expire, mode=mode)  # load_data (class) STEP 1
 
     # y_type_list = [data.x_col_dict['y_col']]
     # y_type_list = list(combinations(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col']), 5))
@@ -164,24 +167,24 @@ if __name__ == "__main__":
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
-    trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_alibaba_prod)
-    trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_alibaba_prod)
+    trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
+    trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
     with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(
             q=1/3,
-            model='rf_reg',
+            model='',
             name_sql=sql_result['name_sql'],
             save_plot=False,
             save_xls=False,
             suffix=weeks_to_expire,
         )
-
-    score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
-
-    end_time = dt.datetime.now()
-    print(start_time, end_time, end_time-start_time)
+    #
+    # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
+    #
+    # end_time = dt.datetime.now()
+    # print(start_time, end_time, end_time-start_time)
 
 

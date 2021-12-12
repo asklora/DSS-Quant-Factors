@@ -6,8 +6,8 @@ db_url_read = db_url_alibaba
 db_url_write = db_url_alibaba
 
 # TABLE names - factor model results
-result_pred_table = "factor_model"     # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_model_stock"
+result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
+result_score_table = "factor_model"
 feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
 production_factor_rank_ratio_table = "factor_result_rank_ratio"

@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=6)
+    calc_premium_all(weeks_to_expire=4, trim_outlier_=False, processes=12)
 
     end = datetime.now()
 

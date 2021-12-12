@@ -46,10 +46,10 @@ class rf_HPOT:
         ''' write score/prediction/feature to DB '''
 
         # update results
-        upsert_data_to_database(self.hpot['best_stock_df'], f"{global_vars.result_pred_table}{tbl_suffix}",
-                                db_url=global_vars.db_url_alibaba_prod, how="append", verbose=-1)
-        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), f"{global_vars.result_score_table}{tbl_suffix}",
-                                db_url=global_vars.db_url_alibaba_prod, how="append", verbose=-1)
+        upsert_data_to_database(self.hpot['best_stock_df'], global_vars.result_pred_table,
+                                db_url=global_vars.db_url_write, how="append", verbose=-1)
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), global_vars.result_score_table,
+                                db_url=global_vars.db_url_write, how="append", verbose=-1)
         # upsert_data_to_database(self.hpot['best_stock_feature'], f"{global_vars.feature_importance_table}{tbl_suffix}",
         #                         db_url=global_vars.db_url_alibaba_prod, how="append", verbose=-1)
 

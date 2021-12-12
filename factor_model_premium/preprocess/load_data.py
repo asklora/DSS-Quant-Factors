@@ -83,7 +83,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     factor_table_name = global_vars.factor_premium_table
 
     print(f'      ------------------------> Use {weeks_to_expire} week premium')
-    conditions = ['"group" IS NOT NULL']
+    conditions = ['"group" IS NOT NULL', f"weeks_to_expire={weeks_to_expire}"]
     
     if isinstance(update_since, datetime):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
