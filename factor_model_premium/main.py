@@ -81,7 +81,8 @@ if __name__ == "__main__":
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)
     parser.add_argument('--n_jobs', default=1, type=int)
-    parser.add_argument('--recalc_premium', action='store_true', help='Recalculate ratios & premiums = True')
+    parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
+    parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
@@ -113,8 +114,9 @@ if __name__ == "__main__":
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     weeks_to_expire = args.weeks_to_expire
-    if args.recalc_premium:
+    if args.recalc_ratio:
         calc_factor_variables_multi(processes=args.processes)
+    if args.recalc_premium:
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
     end_time = dt.datetime.now()
     print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)

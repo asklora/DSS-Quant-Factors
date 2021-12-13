@@ -194,7 +194,5 @@ if __name__ == "__main__":
     # data.multithread_stepwise('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=1)
     data.multithread_combination('{}:{}'.format(testing_name, testing_interval), fcm_args, n_processes=3)
 
-    #TODO: Freddata: manual download
-
 
 

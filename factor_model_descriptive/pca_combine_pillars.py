@@ -186,7 +186,7 @@ def test_case(suffixes, testing_interval=91, years=5):
     cols += 'avg_div_yield,avg_inv_turnover_re,avg_cash_ratio'
 
     cols = cols.strip(',').split(',')
-    n_pca = None       #TODO
+    n_pca = None
     if n_pca:
         X,_ = data.pca_x(cols, n_pca)
     else:
