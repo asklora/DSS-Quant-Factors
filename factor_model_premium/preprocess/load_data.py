@@ -17,39 +17,34 @@ def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
     return pd.concat([df.reset_index(drop=True), add_df], axis=1)
 
-def download_clean_macros(main_df):
+def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
     print(f'#################################################################################################')
     print(f'      ------------------------> Download macro data from {global_vars.macro_data_table}')
 
+    # combine macros & vix data
     macros = sql_read_table(global_vars.macro_data_table, global_vars.db_url_read)
+    vix = sql_read_table(global_vars.vix_data_table, global_vars.db_url_read)
+    vix = vix.rename(columns={"vix_id":"field", "vix_value":"value"})
+    macros = macros.append(vix)
+
     macros = macros.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
 
     yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
-    macros[yoy_col] = (macros[yoy_col] / macros[yoy_col].shift(12)).sub(1)  # convert yoy_col to YoY
+    # update yoy ratios
+    macros_yoy = macros[["trading_day"]+list(yoy_col)]
+    macros_yoy["trading_day"] = macros_yoy["trading_day"].apply(lambda x: x-relativedelta(years=1))
+    macros = macros.merge(macros_yoy, on=["trading_day"], how="outer", suffixes=("","_1yb"))
+    macros = macros.sort_values(by="trading_day").fillna(method='ffill')
+    for i in yoy_col:
+        macros[i] = macros[i]/macros[i+"_1yb"] - 1
+    macros = macros.dropna(subset=num_col, how="all")
 
-    # combine macros & vix data
-    macros["trading_day"] = pd.to_datetime(macros["trading_day"])
-    # print(num_col)
-
-    # create map for macros (currency + type of data)
-    macro_map = pd.DataFrame()
-    macro_map['name'] = num_col[:-2] # except fred_data / data columns
-    macro_map['group'] = macro_map['name'].str[:2].replace(['us','jp','ch','em'],['USD','JPY','CNY','EUR'])
-    macro_map['type'] = macro_map['name'].str[2:].replace(['inter3','gbill','mshort'],['ibor3','gbond','ibor3'])
-
-    # add vix to macro_data
-    df_date_list = main_df['trading_day'].drop_duplicates().sort_values()
-    macros = macros.merge(pd.DataFrame(df_date_list.values, columns=['trading_day']), on=['trading_day'],
-                          how='outer').sort_values(['trading_day'])
-    macros = macros.fillna(method='ffill')
-    macros = macros.loc[macros['trading_day'].isin(df_date_list)]
-
-    return macros
+    return macros[["trading_day"]+list(num_col)]
 
 def download_index_return():
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
@@ -116,7 +111,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     # df = df.loc[df['trading_day'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
 
     # 1. Add Macroeconomic variables - from Datastream
-    macros = download_clean_macros(df)
+    macros = download_clean_macros()
     x_col['macro'] = macros.columns.to_list()[1:]              # add macros variables name to x_col
 
     # 2. Add index return variables
@@ -129,10 +124,13 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     macros["trading_day"] = pd.to_datetime(macros["trading_day"])
     non_factor_inputs = macros.merge(index_ret, on=['trading_day'], how='outer')
     non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(lambda x: x-relativedelta(weeks=weeks_to_expire))
-    df = df.merge(non_factor_inputs, on=['trading_day'], how='left').sort_values(['group','trading_day'])
+    df = df.merge(non_factor_inputs, on=['trading_day'], how='outer').sort_values(['group','trading_day'])
+    df[x_col['macro']+x_col['index']] = df.sort_values(["trading_day", "group"]).groupby(["group"])[x_col['macro']+x_col['index']].ffill()
+    df = df.dropna(subset=["group"])
 
-    # make up for all missing date in df
-    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()], names=['group', 'trading_day']).to_frame().reset_index(drop=True)
+    # use only period_end date
+    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()],
+                                         names=['group', 'trading_day']).to_frame().reset_index(drop=True)
     df = pd.merge(df, indexes, on=['group', 'trading_day'], how='right')
     print('      ------------------------> Factors: ', x_col['factor'])
 
