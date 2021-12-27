@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60):
         ''' check if data tables finished ingestion -> then start '''
-        table_names = ['data_ibes_monthly', 'data_macro_monthly', 'data_worldscope_summary']
+        table_names = ['data_ibes', 'data_macro', 'data_worldscope']
         waiting = True
         while waiting:
             update_time = sql_read_table("ingestion_update_time", global_vars.db_url_alibaba_prod)
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     if not args.debug:
         # Check 1. if monthly -> only first Sunday every month
-        if "monthly" in args.tbl_suffix:
+        if args.weeks_to_expire >= 4:
             if dt.datetime.today().day>7:
                 raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
         # Check 2. if all input data df finished update

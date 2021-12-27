@@ -1207,6 +1207,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_model_descriptive/fcm_ratio_cluster_multiperiod.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_model_premium/main.py">
           <value>
             <Attribute>
@@ -1291,14 +1298,14 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="$USER_HOME$/.local/lib/python3.6/site-packages/fcmeans/fcm.py">
+        <entry key="$PROJECT_DIR$/../.local/lib/python3.6/site-packages/fcmeans/fcm.py">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="$USER_HOME$/python_modules/hyperopt/hyperopt/base.py">
+        <entry key="$PROJECT_DIR$/../python_modules/hyperopt/hyperopt/base.py">
           <value>
             <Attribute>
               <option name="separator" value="," />
