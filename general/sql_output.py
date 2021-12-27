@@ -1,9 +1,8 @@
 from pangres import upsert
-from sqlalchemy.dialects.postgresql import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
+from sqlalchemy.dialects.postgresql import TEXT
 from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
-import re
 
 import global_vars
 from general.utils_report_to_slack import to_slack

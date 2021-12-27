@@ -1,9 +1,8 @@
 import global_vars
 import pandas as pd
 from sqlalchemy import create_engine
-from general.sql_output import uid_maker
 from multiprocessing import cpu_count
-from sqlalchemy.types import DATE, BIGINT, TEXT, INTEGER, BOOLEAN
+from sqlalchemy.types import TEXT, INTEGER
 from pangres import upsert
 from general.utils_report_to_slack import to_slack
 

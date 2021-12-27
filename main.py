@@ -1,3 +1,7 @@
+import os
+
+print(os.getcwd())
+
 import datetime as dt
 import numpy as np
 import argparse
@@ -5,12 +9,11 @@ import time
 from dateutil.relativedelta import relativedelta
 
 import global_vars
-from factor_model_premium.preprocess.load_data import load_data
-from factor_model_premium.preprocess.calculation_ratio import calc_factor_variables_multi
-from factor_model_premium.preprocess.calculation_premium import calc_premium_all
+from preprocess.load_data import load_data
+from preprocess.calculation_ratio import calc_factor_variables_multi
+from preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
-from factor_model_premium.results_analysis.write_merged_pred import download_stock_pred
-from factor_model_premium.results_analysis.score_backtest import score_history
+from results_analysis.write_merged_pred import download_stock_pred
 from general.utils_report_to_slack import to_slack
 from general.sql_output import sql_read_query, sql_read_table, trucncate_table_in_database
 
