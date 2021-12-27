@@ -1,20 +1,14 @@
-from sklearn.cluster import AffinityPropagation, KMeans, DBSCAN, OPTICS, AgglomerativeClustering, MeanShift
+from sklearn.cluster import KMeans
 from fcmeans import FCM
-import matplotlib.animation as animation
-from sklearn.mixture import GaussianMixture
 from sklearn.decomposition import PCA
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import LabelEncoder, StandardScaler, robust_scale, minmax_scale, QuantileTransformer, PowerTransformer, MinMaxScaler
-from sklearn import decomposition
+from sklearn.preprocessing import LabelEncoder, StandardScaler, robust_scale, QuantileTransformer
 from collections import defaultdict
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.neighbors import NearestNeighbors
-from sklearn.neighbors import NearestCentroid
 
 import global_vars
 from descriptive_factor.descriptive_ratios_calculations import combine_tri_worldscope
 import pandas as pd
-import numpy as np
 import datetime as dt
 import matplotlib.pyplot as plt
 
@@ -22,7 +16,6 @@ import gc
 import itertools
 from collections import Counter
 from scipy.cluster.hierarchy import dendrogram
-import scipy.spatial
 
 from sklearn import metrics
 from s_dbw import S_Dbw
