@@ -510,8 +510,8 @@ def calc_factor_variables(*args):
         df = df.replace([np.inf, -np.inf], np.nan)
 
         # test ratio calculation missing rate
-        test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
-        print(f'      ------------------------> Save missing Excel')
+        # test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
+        # print(f'      ------------------------> Save missing Excel')
 
         y_col = [x for x in df.columns.to_list() if x.startswith("stock_return_y")]
         df[[x+'_ffill' for x in y_col]] = df.groupby('ticker')[y_col].ffill()
