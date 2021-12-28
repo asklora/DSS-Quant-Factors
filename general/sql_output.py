@@ -39,8 +39,10 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
 
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
-            extra = {'con': engine.connect(), 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
-            data.to_sql(table, **extra)
+            with engine.connect() as conn:
+                extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
+                data.to_sql(table, **extra)
+            engine.dispose()
         else:
             if len(primary_key) > 1:  # for tables using more than 1 columns as primary key (replace primary with a created "uid")
                 data = uid_maker(data, primary_key)
