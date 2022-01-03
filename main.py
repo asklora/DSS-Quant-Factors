@@ -118,7 +118,7 @@ if __name__ == "__main__":
     # --------------------------------- Rerun Write Premium ------------------------------------------
     weeks_to_expire = args.weeks_to_expire
     if args.recalc_ratio:
-        calc_factor_variables_multi(processes=args.processes)
+        calc_factor_variables_multi(ticker=None, restart=False, processes=args.processes)
     if args.recalc_premium:
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
     end_time = dt.datetime.now()
@@ -172,8 +172,8 @@ if __name__ == "__main__":
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
-    trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
-    trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
+    # trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
+    # trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
     with mp.Pool(processes=args.processes) as pool:
         pool.starmap(mp_rf, all_groups)
 

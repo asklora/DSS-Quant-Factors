@@ -578,7 +578,7 @@ def calc_factor_variables_multi(
 
 if __name__ == "__main__":
 
-    calc_factor_variables_multi(ticker=None, restart=False, processes=12)
+    calc_factor_variables_multi(ticker=None, restart=True, processes=12)
 
 
 

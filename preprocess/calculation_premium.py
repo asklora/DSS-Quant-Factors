@@ -129,7 +129,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col], [weeks_to_expire])
     all_groups = [tuple(e) for e in all_groups]
 
-    trucncate_table_in_database(f"{global_vars.factor_premium_table}", global_vars.db_url_write)
+    # trucncate_table_in_database(f"{global_vars.factor_premium_table}", global_vars.db_url_write)
     with mp.Pool(processes=processes) as pool:
         res = pool.starmap(insert_prem_for_group, all_groups)
 
