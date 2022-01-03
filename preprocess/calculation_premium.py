@@ -84,7 +84,7 @@ def insert_prem_for_group(*args):
         prem['weeks_to_expire'] = weeks_to_expire
         if trim_outlier_:
             prem['field'] = 'trim_'+prem['field']
-        prem = uid_maker(prem, primary_key=['group','trading_day','field'])
+        prem = uid_maker(prem, primary_key=['group','trading_day','field','weeks_to_expire'])
 
         upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
                                 table=global_vars.factor_premium_table,
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=4, trim_outlier_=False, processes=12)
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=32)
 
     end = datetime.now()
 
