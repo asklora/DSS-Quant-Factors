@@ -7,7 +7,13 @@ import global_vars
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from general.sql_output import sql_read_query, upsert_data_to_database, uid_maker, trucncate_table_in_database
+from general.sql_output import (
+    sql_read_query,
+    upsert_data_to_database,
+    uid_maker,
+    trucncate_table_in_database,
+    delete_data_on_database,
+)
 
 stock_pred_dtypes = dict(
     trading_day=DATE,
@@ -35,7 +41,7 @@ def download_stock_pred(
     query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, "
                  f"S.testing_period as trading_day, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
                  f"FROM {global_vars.result_pred_table} P "
-                 f"INNER JOIN {global_vars.result_score_table} S ON S.finish_timing = P.finish_timing "
+                 f"INNER JOIN {global_vars.result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) "
                  f"WHERE S.name_sql like '{name_sql}%' "
                  # f"AND \"group\"='USD' "
                  f"ORDER BY S.finish_timing")
@@ -181,7 +187,7 @@ def download_stock_pred(
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
     tbl_name_history = global_vars.production_factor_rank_history_table
-    trucncate_table_in_database(tbl_name_history, global_vars.db_url_write)
+    # trucncate_table_in_database(tbl_name_history, global_vars.db_url_write)
     df_history = pd.concat(all_history, axis=0)
     df_history["weeks_to_expire"] = suffix
     df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
@@ -189,7 +195,7 @@ def download_stock_pred(
     upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=global_vars.db_url_write, how='append')
 
     tbl_name_current = global_vars.production_factor_rank_table
-    trucncate_table_in_database(tbl_name_current, global_vars.db_url_write)
+    delete_data_on_database(tbl_name_current, global_vars.db_url_write, query=f"weeks_to_expire={suffix}")
     df_current = pd.concat(all_current, axis=0)
     df_current["weeks_to_expire"] = suffix
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
@@ -198,19 +204,16 @@ def download_stock_pred(
 
 if __name__ == "__main__":
 
-    suffix = 4
+    suffix = 1
+    datetime = '20220103'
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='')
-    parser.add_argument('--name_sql', type=str, default=f'week4_20211212_debug_sep')
-    # parser.add_argument('--rank_along_testing_history, action='store_false', help='rank_along_testing_history = True')
-    # parser.add_argument('--keep_all_history', action='store_true', help='keep_last = True')
+    parser.add_argument('--name_sql', type=str, default=f'week{suffix}_{datetime}_debug_sep')
     parser.add_argument('--save_plot', action='store_true', help='save_plot = True')
     parser.add_argument('--save_xls', action='store_true', help='save_xls = True')
-    # parser.add_argument('--return_summary', action='store_true', help='return_summary = True')
-
     args = parser.parse_args()
 
     if args.q.is_integer():

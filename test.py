@@ -1,30 +1,17 @@
 import pandas as pd
-import global_vars
+from global_vars import db_url_write
 from sqlalchemy.dialects.postgresql import TEXT
 import numpy as np
 from sqlalchemy import create_engine
 import datetime as dt
 from dateutil.relativedelta import relativedelta
+from general.sql_output import upsert_data_to_database
 
-# test_url = "postgres://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
-# test_engine = create_engine(test_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+engine = create_engine(db_url_write, max_overflow=-1, isolation_level="AUTOCOMMIT")
+df = pd.DataFrame({"test": {"tc": "tv"}})
+upsert_data_to_database(df, "test", how="append", db_url=db_url_write)
 
-with global_vars.engine_ali.connect() as conn:
-    df = pd.read_sql('SELECT * FROM factor_formula_ratios_descriptive', conn)
-    ingestion_name = pd.read_sql('SELECT dsws_name, our_name FROM ingestion_name', conn)
-    ingestion_name['dsws_name'] = ingestion_name['dsws_name'].str.lower()
-    ingestion_name['dsws_name'] = ingestion_name['dsws_name'].apply(lambda x: 'fn_'+str(int(x[2:-1])) if x[:2]=='wc' else x)
-    ingestion_name = ingestion_name.set_index('dsws_name')['our_name'].to_dict()
-    for i in ['field_num','field_denom']:
-        df[i] = df[i].replace(ingestion_name)
-    extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi'}
-    df.to_sql('factor_formula_ratios_descriptive', **extra)
-global_vars.engine_ali.dispose()
 exit(1)
-
-df = df.loc[df['currency_code']=='USD'].sort_values('ai_score', ascending=False).head(20)
-df = df.loc[(df['wts_rating']==10)&(df['dlp_1m']==10)]
-print(df)
 
 # import os
 # import re

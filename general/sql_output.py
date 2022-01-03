@@ -29,6 +29,20 @@ def drop_table_in_database(table, db_url=global_vars.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
+def delete_data_on_database(table, db_url=global_vars.db_url_alibaba, query=None):
+    ''' delete data from table in databased '''
+    try:
+        engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        if type(query)==type(None):
+            query = "True"
+        with engine.connect() as conn:
+            conn.execute(f"DELETE FROM {table} WHERE {query}")
+        print(f"DELETE TABLE: [{table}]")
+        engine.dispose()
+    except Exception as e:
+        to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
+
+
 def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1, try_drop_table=False):
     ''' upsert Table to DB '''

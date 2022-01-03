@@ -1305,6 +1305,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/factor_model_premium/main.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/../python_modules/hyperopt/hyperopt/base.py">
           <value>
             <Attribute>
