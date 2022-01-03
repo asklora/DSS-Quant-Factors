@@ -113,7 +113,7 @@ if __name__ == "__main__":
             if dt.datetime.today().day>7:
                 raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
         # Check 2. if all input data df finished update
-        start_on_update()
+        # start_on_update()
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     weeks_to_expire = args.weeks_to_expire
@@ -186,7 +186,7 @@ if __name__ == "__main__":
             save_xls=False,
             suffix=weeks_to_expire,
         )
-    #
+
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
     #
     # end_time = dt.datetime.now()
