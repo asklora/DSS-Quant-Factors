@@ -323,6 +323,16 @@ def combine_stock_factor_data(ticker):
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
+    if ticker[0]=='.':  # if ticker=index, write stock return to DB first -> later report error and stop process due to lack of worldscope data
+        stock_return_col = tri.filter(regex='^stock_return_').columns.to_list()
+        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stock_return_col, var_name="field",
+                      value_name="value").dropna(subset=["value"])
+        tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
+
+        # save calculated ratios to DB
+        db_table_name = global_vars.processed_ratio_table
+        upsert_data_to_database(tri, db_table_name, primary_key=["uid"], db_url=global_vars.db_url_write, how="append")
+
     # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['trading_day'], ascending=False).head(100)
 
     # 2. Fundamental financial data - from Worldscope
@@ -432,79 +442,77 @@ def calc_factor_variables(*args):
         formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
         formula = formula.loc[formula['is_active']]
 
-        if ticker[0] != '.':    # calculate fundamental ratios only if ticker != index
+        print(f'============================================================================================')
+        print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table_prod}')
 
-            print(f'============================================================================================')
-            print(f'      ------------------------> Calculate all factors in {global_vars.formula_factors_table_prod}')
+        # Foreign exchange conversion on absolute value items
+        df = calc_fx_conversion(df)
+        ingestion_cols = df.columns.to_list()
 
-            # Foreign exchange conversion on absolute value items
-            df = calc_fx_conversion(df)
-            ingestion_cols = df.columns.to_list()
+        # Prepare for field requires add/minus
+        add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
+        add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
 
-            # Prepare for field requires add/minus
-            add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
-            add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
-
-            for i in add_minus_fields:
-                x = [op.strip() for op in i.split()]
-                if x[0] in "*+-": raise Exception("Invalid formula")
-                n = 1
+        for i in add_minus_fields:
+            x = [op.strip() for op in i.split()]
+            if x[0] in "*+-": raise Exception("Invalid formula")
+            n = 1
+            try:
+                temp = df[x[0]].copy()
+            except:
+                temp = np.empty((len(df), 1))
+            while n < len(x):
                 try:
-                    temp = df[x[0]].copy()
-                except:
-                    temp = np.empty((len(df), 1))
-                while n < len(x):
-                    try:
-                        if x[n] == '+':
-                            temp += df[x[n + 1]].replace(np.nan, 0)
-                        elif x[n] == '-':
-                            temp -= df[x[n + 1]].replace(np.nan, 0)
-                        elif x[n] == '*':
-                            temp *= df[x[n + 1]]
-                        else:
-                            raise Exception(f"Unexpected operand/operator: {x[n]}")
-                    except Exception as e:
-                        print(f"ERROR on {add_minus_fields}: {e}")
-                    n += 2
-                df[i] = temp
-
-            # a) Keep original values
-            keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
-            for new_name, old_name in formula.loc[keep_original_mask, ['name','field_num']].to_numpy():
-                print('Calculating:', new_name)
-                try:
-                    df[new_name] = df[old_name]
+                    if x[n] == '+':
+                        temp += df[x[n + 1]].replace(np.nan, 0)
+                    elif x[n] == '-':
+                        temp -= df[x[n + 1]].replace(np.nan, 0)
+                    elif x[n] == '*':
+                        temp *= df[x[n + 1]]
+                    else:
+                        raise Exception(f"Unexpected operand/operator: {x[n]}")
                 except Exception as e:
-                    print(f'factor ratio calculation: {e}')
-                    # to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
+                    print(f"ERROR on {add_minus_fields}: {e}")
+                n += 2
+            df[i] = temp
 
-            # b) Time series ratios (Calculate 1m change first)
-            print(f'      ------------------------> Calculate time-series ratio ')
-            period_yr = 52
-            period_q = 12
-            for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
-                    orient='records'):  # minus calculation for ratios
+        # a) Keep original values
+        keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
+        for new_name, old_name in formula.loc[keep_original_mask, ['name','field_num']].to_numpy():
+            print('Calculating:', new_name)
+            try:
+                df[new_name] = df[old_name]
+            except Exception as e:
+                print(f'factor ratio calculation: {e}')
+                # to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
+
+        # b) Time series ratios (Calculate 1m change first)
+        print(f'      ------------------------> Calculate time-series ratio ')
+        period_yr = 52
+        period_q = 12
+        for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
+                orient='records'):  # minus calculation for ratios
+            print('Calculating:', r['name'])
+            try:
+                if r['name'][-2:] == 'yr':
+                    df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
+                    df.loc[df.groupby('ticker').head(period_yr).index, r['name']] = np.nan
+                elif r['name'][-1] == 'q':
+                    df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_q) - 1
+                    df.loc[df.groupby('ticker').head(period_q).index, r['name']] = np.nan
+            except Exception as e:
+                print(f'factor ratio calculation: {e}')
+                # to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
+
+        # c) Divide ratios
+        print(f'      ------------------------> Calculate dividing ratios ')
+        for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
+                orient='records'):  # minus calculation for ratios
+            try:
                 print('Calculating:', r['name'])
-                try:
-                    if r['name'][-2:] == 'yr':
-                        df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
-                        df.loc[df.groupby('ticker').head(period_yr).index, r['name']] = np.nan
-                    elif r['name'][-1] == 'q':
-                        df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_q) - 1
-                        df.loc[df.groupby('ticker').head(period_q).index, r['name']] = np.nan
-                except Exception as e:
-                    print(f'factor ratio calculation: {e}')
-                    # to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
-
-            # c) Divide ratios
-            print(f'      ------------------------> Calculate dividing ratios ')
-            for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
-                    orient='records'):  # minus calculation for ratios
-                try:
-                    print('Calculating:', r['name'])
-                    df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
-                except Exception as e:
-                    to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
+                df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
+            except Exception as e:
+                to_slack("clair").message_to_slack(f'factor ratio calculation: {e}')
 
         # drop records with no stock_return_y & any ratios
         dropna_col = set(df.columns.to_list()) & set(formula['name'].to_list())
@@ -579,7 +587,7 @@ def calc_factor_variables_multi(
 
 if __name__ == "__main__":
 
-    calc_factor_variables_multi(ticker=None, restart=True, processes=12)
+    calc_factor_variables_multi(ticker=".SPX", restart=True, processes=1)
 
 
 
