@@ -63,7 +63,7 @@ def download_index_return():
 
     index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_ww2_1', 'stock_return_ww4_2', 'stock_return_r12_7','stock_return_r6_2'}
     index_ret = index_ret.set_index(['trading_day', 'ticker'])[list(index_col)].unstack()
-    index_ret.columns = [f'{x[1]}_{x[0][0]}{x[0][-1]}' for x in index_ret.columns.to_list()]
+    index_ret.columns = [f'{x[1]}_{x[0]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'])
 
