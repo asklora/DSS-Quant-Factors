@@ -123,7 +123,7 @@ class rf_HPOT:
             self.sql_result['train_std'] = np.nanstd(Y_train_pred.flatten())
 
         if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
-            self.sample_set['test_y'] = np.zeros(Y_test_pred)
+            self.sample_set['test_y'] = np.zeros(Y_test_pred.shape)
 
         ret, best_factor = self._eval_test_return(self.sample_set['test_y'], Y_test_pred, Y_test_pred)
         if rerun:
