@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
+from tqdm import tqdm
 from general.report_to_slack import to_slack
 
 import global_vars
@@ -130,10 +131,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
 
     # trucncate_table_in_database(f"{global_vars.factor_premium_table}", global_vars.db_url_write)
     with mp.Pool(processes=processes) as pool:
-        res = pool.starmap(insert_prem_for_group, all_groups)
-
-    return res
-
+        tqdm(pool.starmap(insert_prem_for_group, all_groups))
 
 if __name__ == "__main__":
 

@@ -4,6 +4,7 @@ from sqlalchemy import text
 import global_vars
 import multiprocessing as mp
 from contextlib import suppress
+from tqdm import tqdm
 
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
@@ -588,7 +589,7 @@ def calc_factor_variables_multi(
 
     tickers = [tuple([e]) for e in tickers]
     with mp.Pool(processes=processes) as pool:
-        pool.starmap(calc_factor_variables, tickers)
+        tqdm(pool.starmap(calc_factor_variables, tickers), total=len(tickers))
 
 if __name__ == "__main__":
 
