@@ -3,9 +3,10 @@ import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
+from general.report_to_slack import to_slack
 
 import global_vars
-from general.sql_output import sql_read_query, upsert_data_to_database, trucncate_table_in_database,uid_maker
+from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database,uid_maker
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -90,29 +91,27 @@ def insert_prem_for_group(*args):
                                 table=global_vars.factor_premium_table,
                                 primary_key=["uid"],
                                 db_url=global_vars.db_url_write,
-                                how="append")
+                                how="update")
     except Exception as e:
-        print(e)
+        to_slack("clair").message_to_slack(f"*ERROR in Calculate Premium*: {e}")
         return False
 
     return True
 
-def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_groups=['USD','EUR']):
-
+def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_groups=['USD','EUR'], start_date=None):
     ''' calculate factor premium for different configurations '''
 
-    # Read stock_return / ratio table
-    print(f'#################################################################################################')
-    print(f'      ------------------------> Download ratio data from DB')
-
-    formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active"
-    formula = sql_read_query(formula_query, global_vars.db_url_read)
+    print(f'\n=== Get {global_vars.formula_factors_table_prod} ===')
+    formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active "
+    formula = read_query(formula_query, global_vars.db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
     # premium calculate currency only
     ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker in " \
                   f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
-    df = sql_read_query(ratio_query, global_vars.db_url_write)
+    if start_date:
+        ratio_query += f" AND trading_day>'{start_date}' "
+    df = read_query(ratio_query, global_vars.db_url_write)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
     df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
     y_col = f'stock_return_y_{weeks_to_expire}week'
@@ -143,7 +142,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=32)
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=1, start_date='2021-12-12')
 
     end = datetime.now()
 

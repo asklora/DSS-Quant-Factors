@@ -1683,6 +1683,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/universe_rating_audit.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/write_merged_pred.py">
           <value>
             <Attribute>

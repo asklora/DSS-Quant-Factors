@@ -7,8 +7,13 @@ from contextlib import suppress
 
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-from general.sql_output import upsert_data_to_database, sql_read_table, sql_read_query, uid_maker, trucncate_table_in_database
-from general.utils_report_to_slack import to_slack
+from general.sql_process import upsert_data_to_database, read_table, read_query, uid_maker, trucncate_table_in_database
+from general.report_to_slack import to_slack
+
+import sys
+gettrace = getattr(sys, 'gettrace', None)
+DEBUG = gettrace() is not None
+print('DEBUG: ', DEBUG)
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
@@ -21,14 +26,14 @@ def get_tri(ticker=None):
                  f"INNER JOIN {global_vars.stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {global_vars.universe_table} U ON T.ticker = U.ticker "
                  f"WHERE T.ticker = '{ticker}'")
-    tri = sql_read_query(query, global_vars.db_url_read)
+    tri = read_query(query, global_vars.db_url_read)
 
     query1 = f"SELECT * FROM {global_vars.eikon_price_table} "
     query1 += f"WHERE ticker = '{ticker}' ORDER BY trading_day "
-    eikon_price = sql_read_query(query1, global_vars.db_url_read)
+    eikon_price = read_query(query1, global_vars.db_url_read)
 
     query2 = f"SELECT * FROM {global_vars.anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker = '{ticker}'"
-    market_cap_anchor = sql_read_query(query2, global_vars.db_url_read)
+    market_cap_anchor = read_query(query2, global_vars.db_url_read)
     market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     return tri, eikon_price, market_cap_anchor
@@ -210,15 +215,15 @@ def download_clean_worldscope_ibes(ticker):
 
     print(f"==================================================================================================")
     query_ws = f"select * from {global_vars.worldscope_quarter_summary_table} WHERE ticker = '{ticker}'"
-    ws = sql_read_query(query_ws, global_vars.db_url_read)
+    ws = read_query(query_ws, global_vars.db_url_read)
     ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     query_ibes = f"SELECT * FROM {global_vars.ibes_data_table} WHERE ticker = '{ticker}'"
-    ibes = sql_read_query(query_ibes, global_vars.db_url_read)
+    ibes = read_query(query_ibes, global_vars.db_url_read)
     ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     query_universe = f"SELECT ticker, currency_code, industry_code FROM {global_vars.universe_table} WHERE ticker = '{ticker}'"
-    universe = sql_read_query(query_universe, global_vars.db_url_read)
+    universe = read_query(query_universe, global_vars.db_url_read)
 
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
@@ -254,7 +259,7 @@ def update_trading_day(ws=None):
     print(f'      ------------------------> Update trading_day in {global_vars.worldscope_quarter_summary_table} ')
 
     query_universe = f"SELECT ticker, fiscal_year_end FROM {global_vars.universe_table}"
-    universe = sql_read_query(query_universe, global_vars.db_url_read)
+    universe = read_query(query_universe, global_vars.db_url_read)
 
     ws = pd.merge(ws, universe, on='ticker', how='left')   # map static information for each company
 
@@ -389,16 +394,16 @@ def calc_fx_conversion(df):
     org_cols = df.columns.to_list()     # record original columns for columns to return
 
     curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {global_vars.universe_table}"
-    curr_code = sql_read_query(curr_code_query, global_vars.db_url_read)
+    curr_code = read_query(curr_code_query, global_vars.db_url_read)
 
     # combine download fx data from eikon & daily currency price ingestion
-    fx = sql_read_table(global_vars.eikon_fx_table, global_vars.db_url_read)
+    fx = read_table(global_vars.eikon_fx_table, global_vars.db_url_read)
     fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day FROM {global_vars.currency_history_table}"
-    fx2 = sql_read_query(fx2_query, global_vars.db_url_read)
+    fx2 = read_query(fx2_query, global_vars.db_url_read)
     fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
     fx = fx.append(fx2).drop_duplicates(subset=['ticker','trading_day'], keep='last')
 
-    ingestion_source = sql_read_table(global_vars.ingestion_name_table, global_vars.db_url_read)
+    ingestion_source = read_table(global_vars.ingestion_name_table, global_vars.db_url_read)
 
     df = df.merge(curr_code, on='ticker', how='inner')
     df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
@@ -439,7 +444,7 @@ def calc_factor_variables(*args):
     try:
         df, stocks_col = combine_stock_factor_data(ticker)
 
-        formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
+        formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
         formula = formula.loc[formula['is_active']]
 
         print(f'============================================================================================')
@@ -571,14 +576,14 @@ def calc_factor_variables_multi(
     if ticker:
         tickers = [ticker]
     elif currency:
-        tickers = sql_read_query(f"SELECT ticker FROM universe WHERE is_active AND currency_code='{currency}'")["ticker"].to_list()
+        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active AND currency_code='{currency}'")["ticker"].to_list()
     else:
-        tickers = sql_read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
+        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
     if restart:
         trucncate_table_in_database(f"{global_vars.processed_ratio_table}", global_vars.db_url_write)
     else:
-        tickers_exist = sql_read_query(f"SELECT distinct ticker FROM {global_vars.processed_ratio_table}", global_vars.db_url_read)
+        tickers_exist = read_query(f"SELECT distinct ticker FROM {global_vars.processed_ratio_table}", global_vars.db_url_read)
         tickers = list(set(tickers)-set(tickers_exist))
 
     tickers = [tuple([e]) for e in tickers]
@@ -587,7 +592,9 @@ def calc_factor_variables_multi(
 
 if __name__ == "__main__":
 
-    calc_factor_variables_multi(ticker=".SPX", restart=True, processes=1)
+    restart = not DEBUG
+    restart = True
+    calc_factor_variables_multi(ticker="AAPL.O", restart=restart, processes=1)
 
 
 

@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from multiprocessing import cpu_count
 from sqlalchemy.types import TEXT, INTEGER
 from pangres import upsert
-from general.utils_report_to_slack import to_slack
+from general.report_to_slack import to_slack
 
 DB_READ = global_vars.db_url_alibaba_prod
 DB_WRITE = global_vars.db_url_alibaba

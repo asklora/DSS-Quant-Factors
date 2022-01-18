@@ -7,8 +7,8 @@ import global_vars
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from general.sql_output import (
-    sql_read_query,
+from general.sql_process import (
+    read_query,
     upsert_data_to_database,
     uid_maker,
     trucncate_table_in_database,
@@ -45,7 +45,7 @@ def download_stock_pred(
                  f"WHERE S.name_sql like '{name_sql}%' "
                  # f"AND \"group\"='USD' "
                  f"ORDER BY S.finish_timing")
-    result_all_all = sql_read_query(query, global_vars.db_url_write)
+    result_all_all = read_query(query, global_vars.db_url_write)
 
     # result_all_all['year_month'] = result_all_all['trading_day'].dt.strftime('%Y-%m').copy()
     # result_all_all = result_all_all.sort_values(by=['trading_day']).drop_duplicates(

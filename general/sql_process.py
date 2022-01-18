@@ -5,7 +5,7 @@ import pandas as pd
 import datetime as dt
 
 import global_vars
-from general.utils_report_to_slack import to_slack
+from general.report_to_slack import to_slack
 
 def trucncate_table_in_database(table, db_url=global_vars.db_url_alibaba):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
@@ -103,7 +103,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
         else:
             to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
 
-def sql_read_query(query, db_url=global_vars.db_url_alibaba):
+def read_query(query, db_url=global_vars.db_url_alibaba):
     ''' Read specific query from SQL '''
 
     print(f'      ------------------------> Download Table with query: [{query}]')
@@ -114,7 +114,7 @@ def sql_read_query(query, db_url=global_vars.db_url_alibaba):
     engine.dispose()
     return df
 
-def sql_read_table(table, db_url=global_vars.db_url_alibaba):
+def read_table(table, db_url=global_vars.db_url_alibaba):
     ''' Read entire table from SQL '''
 
     print(f'      ------------------------> Download Entire Table from [{table}]')
@@ -153,8 +153,8 @@ def uid_maker(df, primary_key):
 
 if __name__=="__main__":
 
-    df = sql_read_table("universe_rating_history", global_vars.db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
-    universe = sql_read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", global_vars.db_url_aws_read)
+    df = read_table("universe_rating_history", global_vars.db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
+    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", global_vars.db_url_aws_read)
     df = df.merge(universe, on=["ticker"])
     df = df.sort_values(by=["ai_score"]).groupby(["currency_code", "trading_day"]).tail(10)
     df["trading_day"] = pd.to_datetime(df["trading_day"])
@@ -162,7 +162,7 @@ if __name__=="__main__":
     df.to_csv("universe_rating_history.csv")
     print(df)
 
-    df = sql_read_table("iso_currency_code")
+    df = read_table("iso_currency_code")
     uid_maker(df, ["nation_code","nation_name"])
     # data = data.loc[data['nation_code']=='372']
     # data['currency_code'] = "test"

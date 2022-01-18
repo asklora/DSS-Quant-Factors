@@ -6,7 +6,7 @@ import gc
 from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 
-from general.sql_output import upsert_data_to_database
+from general.sql_process import upsert_data_to_database
 import global_vars
 
 

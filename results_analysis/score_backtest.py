@@ -5,8 +5,8 @@ import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale
 
 import global_vars
-from general.sql_output import sql_read_query, sql_read_table
-from general.utils_report_to_slack import to_slack
+from general.sql_process import read_query, read_table
+from general.report_to_slack import to_slack
 
 def score_update_scale(fundamentals, calculate_column, universe_currency_code, factor_rank):
 
@@ -139,33 +139,31 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
-def score_history(tbl_suffix='monthly1'):
+def test_score_history(weeks_to_expire=1):
     ''' calculate score with DROID v2 method & evaluate '''
 
-    factor_formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
-    factor_rank = sql_read_table(f"{global_vars.production_factor_rank_table}_history_{tbl_suffix}", global_vars.db_url_alibaba_prod)
+    print("=== Get factor rank history ===")
+    factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_table}_history "
+                                 f"WHERE weeks_to_expire={weeks_to_expire}", global_vars.db_url_alibaba_prod)
 
-    universe_query = f"SELECT * FROM {global_vars.universe_table} WHERE is_active"
-    universe = sql_read_query(universe_query, global_vars.db_url_aws_read)
+    print("=== Get factor rank history ===")
+    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table} " \
+                  f"WHERE (trading_day>='2021-11-01') AND (ticker not like '.%%') " \
+                  f"AND (ticker in (SELECT ticker FROM universe WHERE is_active))"
+    fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+    fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
-    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table}_{tbl_suffix} WHERE (trading_day>='2017-10-30') AND (ticker not like '.%%') "
-    fundamentals_score = sql_read_query(ratio_query, global_vars.db_url_alibaba_prod)
-
-    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
     # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     # factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
-
     fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])
-    # fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>dt.datetime(2021,9,4)]
-
-    fundamentals_score = fundamentals_score.loc[fundamentals_score['ticker'].isin(universe['ticker'].to_list())]
-    print(len(set(fundamentals_score['ticker'].to_list())))
 
     # for currency not predicted by Factor Model -> Use factor of USD
-    universe_currency_code = list(filter(None, universe['currency_code'].unique()))
+    universe_currency_code = ['USD', 'HKD', 'EUR']
     for i in set(universe_currency_code) - set(factor_rank['group'].unique()):
         replace_rank = factor_rank.loc[factor_rank['group'] == 'USD'].copy()
         replace_rank['group'] = i
@@ -293,4 +291,4 @@ def qcut_eval(fundamentals, score_col):
         to_slack("clair").df_to_slack(f'qcut_ret_{i}', mean_ret.transpose())
 
 if __name__ == "__main__":
-    score_history('weekly1')
+    test_score_history(weeks_to_expire=1)

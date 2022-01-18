@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn import linear_model
 
 import global_vars
-from general.sql_output import sql_read_table, sql_read_query
+from general.sql_process import read_table, read_query
 
 def add_arr_col(df, arr, col_name):
     add_df = pd.DataFrame(arr, columns=col_name)
@@ -24,8 +24,8 @@ def download_clean_macros():
     print(f'      ------------------------> Download macro data from {global_vars.macro_data_table}')
 
     # combine macros & vix data
-    macros = sql_read_table(global_vars.macro_data_table, global_vars.db_url_read)
-    vix = sql_read_table(global_vars.vix_data_table, global_vars.db_url_read)
+    macros = read_table(global_vars.macro_data_table, global_vars.db_url_read)
+    vix = read_table(global_vars.vix_data_table, global_vars.db_url_read)
     vix = vix.rename(columns={"vix_id":"field", "vix_value":"value"})
     macros = macros.append(vix)
 
@@ -54,7 +54,7 @@ def download_index_return():
 
     # read stock return from ratio calculation table
     index_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker like '.%%'"
-    index_ret = sql_read_query(index_query, global_vars.db_url_read)
+    index_ret = read_query(index_query, global_vars.db_url_read)
     index_ret = index_ret.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
@@ -85,7 +85,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     prem_query = f'SELECT * FROM {factor_table_name} WHERE {" AND ".join(conditions)};'
-    df = sql_read_query(prem_query, global_vars.db_url_write)
+    df = read_query(prem_query, global_vars.db_url_write)
     df = df.pivot(index=['trading_day', 'group'], columns=['field'], values="value")
 
     if mode == 'trim':
@@ -98,7 +98,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
     # read formula table
-    formula = sql_read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
+    formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]       # filter existing columns from factors
 
     # Research stage using 10 selected factor only

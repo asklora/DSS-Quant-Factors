@@ -5,7 +5,7 @@ import numpy as np
 from sqlalchemy import create_engine
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-from general.sql_output import upsert_data_to_database
+from general.sql_process import upsert_data_to_database
 
 engine = create_engine(db_url_write, max_overflow=-1, isolation_level="AUTOCOMMIT")
 df = pd.DataFrame({"test": {"tc": "tv"}})

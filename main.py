@@ -14,8 +14,8 @@ from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
 from results_analysis.write_merged_pred import download_stock_pred
-from general.utils_report_to_slack import to_slack
-from general.sql_output import sql_read_query, sql_read_table, trucncate_table_in_database
+from general.report_to_slack import to_slack
+from general.sql_process import read_query, read_table, trucncate_table_in_database
 
 from itertools import product
 import multiprocessing as mp
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         table_names = ['data_ibes', 'data_macro', 'data_worldscope']
         waiting = True
         while waiting:
-            update_time = sql_read_table("ingestion_update_time", global_vars.db_url_alibaba_prod)
+            update_time = read_table("ingestion_update_time", global_vars.db_url_alibaba_prod)
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}"
-    last_test_date = sql_read_query(query, db_url=global_vars.db_url_write)
+    last_test_date = read_query(query, db_url=global_vars.db_url_write)
     testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
     # testing_period_list = [dt.date(2021,4,30)]
 
@@ -174,8 +174,8 @@ if __name__ == "__main__":
     # Reset results table everytimes
     # trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
     # trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
-    # with mp.Pool(processes=args.processes) as pool:
-    #     pool.starmap(mp_rf, all_groups)
+    with mp.Pool(processes=args.processes) as pool:
+        pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(
