@@ -141,8 +141,8 @@ if __name__ == "__main__":
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
-    if args.debug:
-        sql_result['name_sql'] += f'_debug_sep'
+    # if args.debug:
+    #     sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
@@ -174,8 +174,8 @@ if __name__ == "__main__":
     # Reset results table everytimes
     # trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
     # trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
-    with mp.Pool(processes=args.processes) as pool:
-        pool.starmap(mp_rf, all_groups)
+    # with mp.Pool(processes=args.processes) as pool:
+    #     pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(

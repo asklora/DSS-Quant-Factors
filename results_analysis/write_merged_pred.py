@@ -205,13 +205,13 @@ def download_stock_pred(
 if __name__ == "__main__":
 
     suffix = 1
-    datetime = '20220103'
+    datetime = '20220116'
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='')
-    parser.add_argument('--name_sql', type=str, default=f'week{suffix}_{datetime}_debug_sep')
+    parser.add_argument('--name_sql', type=str, default=f'week{suffix}_{datetime}')
     parser.add_argument('--save_plot', action='store_true', help='save_plot = True')
     parser.add_argument('--save_xls', action='store_true', help='save_xls = True')
     args = parser.parse_args()
