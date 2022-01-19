@@ -82,6 +82,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     group_code_list = ['USD', 'EUR']
+    weeks_to_expire = args.weeks_to_expire
 
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60, table_names = ['data_ibes', 'data_macro', 'data_worldscope']):
@@ -92,7 +93,7 @@ if __name__ == "__main__":
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
-                to_slack("clair").message_to_slack(f"*[Start] Factor Model*: week_to_expire=[{args.weeks_to_expire}]\n"
+                to_slack("clair").message_to_slack(f"*[Start] Factor Model*: week_to_expire=[{weeks_to_expire}]\n"
                                                    f"---> Upon update of {table_names}")
             else:
                 logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
@@ -101,7 +102,7 @@ if __name__ == "__main__":
 
     if not args.debug:
         # Check 1: if monthly -> only first Sunday every month
-        if args.weeks_to_expire >= 4:
+        if weeks_to_expire >= 4:
             if dt.datetime.today().day>7:
                 raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
             # Check 2(b): monthly update after weekly update
@@ -110,27 +111,23 @@ if __name__ == "__main__":
             # Check 2(a): weekly update after input data update
             start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'])
 
-
     # --------------------------------- Rerun Write Premium ------------------------------------------
-    weeks_to_expire = args.weeks_to_expire
     if args.recalc_ratio:
         calc_factor_variables_multi(ticker=None, restart=False, processes=args.processes)
     if args.recalc_premium:
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
 
     # --------------------------------- Different Configs -----------------------------------------
-
     tree_type_list = ['rf']
     use_pca_list = [0.6]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table}"
-    last_test_date = read_query(query, db_url=db_url_write)
-    testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
+    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={weeks_to_expire}"
+    testing_period_list_all = read_query(query, db_url=db_url_read)
+    testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period:]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}]')
 
     # --------------------------------- Prepare Training Set -------------------------------------
-
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
     if args.debug:

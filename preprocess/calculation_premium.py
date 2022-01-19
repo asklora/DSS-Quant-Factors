@@ -113,7 +113,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
                   f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
     if start_date:
         ratio_query += f" AND trading_day>='{start_date}' "
-    df = read_query(ratio_query, db_url_write)
+    df = read_query(ratio_query, db_url_read)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
     df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
     y_col = f'stock_return_y_{weeks_to_expire}week'

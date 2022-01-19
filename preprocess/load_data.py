@@ -85,7 +85,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     prem_query = f'SELECT * FROM {factor_table_name} WHERE {" AND ".join(conditions)};'
-    df = read_query(prem_query, global_vars.db_url_write)
+    df = read_query(prem_query, global_vars.db_url_read)
     df = df.pivot(index=['trading_day', 'group'], columns=['field'], values="value")
 
     if mode == 'trim':

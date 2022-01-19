@@ -45,7 +45,7 @@ def download_stock_pred(
                  f"WHERE S.name_sql like '{name_sql}%' "
                  # f"AND \"group\"='USD' "
                  f"ORDER BY S.finish_timing")
-    result_all_all = read_query(query, db_url_write)
+    result_all_all = read_query(query, db_url_read)
 
     # result_all_all['year_month'] = result_all_all['trading_day'].dt.strftime('%Y-%m').copy()
     # result_all_all = result_all_all.sort_values(by=['trading_day']).drop_duplicates(
@@ -195,7 +195,7 @@ def download_stock_pred(
     upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
 
     tbl_name_current = production_factor_rank_table
-    delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
+    delete_data_on_database(tbl_name_current, db_url_read, query=f"weeks_to_expire={suffix}")
     df_current = pd.concat(all_current, axis=0)
     df_current["weeks_to_expire"] = suffix
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])

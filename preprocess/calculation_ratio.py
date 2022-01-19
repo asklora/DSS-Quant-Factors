@@ -568,7 +568,7 @@ def calc_factor_variables_multi(
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
     if restart:
-        trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
+        trucncate_table_in_database(f"{processed_ratio_table}", db_url_read)
     else:
         tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_read)
         tickers = list(set(tickers)-set(tickers_exist))
