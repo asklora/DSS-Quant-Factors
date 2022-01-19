@@ -431,7 +431,7 @@ def calc_factor_variables(*args):
     ''' Calculate all factor used referring to DB ratio table '''
 
     ticker, = args
-    logging.info(f'=== Calculate ratio for {ticker} (n={len(ticker)}) ===')
+    logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     error_universe = []
     try:
         df, stocks_col = combine_stock_factor_data(ticker)
