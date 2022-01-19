@@ -19,7 +19,7 @@ class to_slack:
             raise Exception(e)
 
     def message_to_slack(self, message):
-
+        print(message)
         try:
             client = WebClient(token=self.SLACK_API, timeout=30)
             client.chat_postMessage(

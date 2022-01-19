@@ -1291,7 +1291,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/general/sql_process.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/global_vals.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/global_vars.py">
           <value>
             <Attribute>
               <option name="separator" value=":" />
@@ -1782,6 +1796,13 @@
           </value>
         </entry>
         <entry key="/utils_sql.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/venv/lib/python3.8/site-packages/pandas/core/arrays/datetimelike.py">
           <value>
             <Attribute>
               <option name="separator" value="," />

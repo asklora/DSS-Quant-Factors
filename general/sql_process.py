@@ -1,3 +1,5 @@
+import logging
+
 from pangres import upsert
 from sqlalchemy.dialects.postgresql import TEXT
 from sqlalchemy import create_engine
@@ -13,7 +15,7 @@ def trucncate_table_in_database(table, db_url=global_vars.db_url_alibaba):
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             conn.execute(f"TRUNCATE TABLE {table}")
-        print(f"TRUNCATE TABLE: [{table}]")
+        logging.info(f"TRUNCATE TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
@@ -24,7 +26,7 @@ def drop_table_in_database(table, db_url=global_vars.db_url_alibaba):
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             conn.execute(f"DROP TABLE {table}")
-        print(f"DROP TABLE: [{table}]")
+        logging.info(f"DROP TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
@@ -37,7 +39,7 @@ def delete_data_on_database(table, db_url=global_vars.db_url_alibaba, query=None
             query = "True"
         with engine.connect() as conn:
             conn.execute(f"DELETE FROM {table} WHERE {query}")
-        print(f"DELETE TABLE: [{table}]")
+        logging.info(f"DELETE TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
@@ -48,8 +50,8 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
     ''' upsert Table to DB '''
 
     try:
-        print(f"=== Upsert Data to Database on Table [{table}] ===")
-        print(f"=== URL: {db_url} ===")
+        logging.info(f"=== [{how}] Data to Database on Table [{table}] ===")
+        logging.info(f"=== URL: {db_url} ===")
 
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
@@ -81,7 +83,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
                    if_row_exists=how,
                    chunksize=20000,
                    dtype=data_type)
-            print(f"DATA [{how}] TO {table}")
+            logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose>=0:
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
@@ -96,7 +98,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
                        if_row_exists=how,
                        chunksize=20000,
                        dtype=data_type)
-                print(f"DATA [{how}] TO {table}")
+                logging.debug(f"DATA [{how}] TO {table}")
                 engine.dispose()
             except:
                 to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
@@ -106,7 +108,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
 def read_query(query, db_url=global_vars.db_url_alibaba):
     ''' Read specific query from SQL '''
 
-    print(f'      ------------------------> Download Table with query: [{query}]')
+    logging.debug(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, chunksize=10000)
@@ -117,7 +119,7 @@ def read_query(query, db_url=global_vars.db_url_alibaba):
 def read_table(table, db_url=global_vars.db_url_alibaba):
     ''' Read entire table from SQL '''
 
-    print(f'      ------------------------> Download Entire Table from [{table}]')
+    logging.debug(f'Download Entire Table from [{table}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
@@ -160,7 +162,7 @@ if __name__=="__main__":
     df["trading_day"] = pd.to_datetime(df["trading_day"])
     df = df.loc[df["trading_day"].isin([dt.datetime(2021,11,15), dt.datetime(2021,11,8), dt.datetime(2021,11,1), dt.datetime(2021,10,25)])]
     df.to_csv("universe_rating_history.csv")
-    print(df)
+    pass
 
     df = read_table("iso_currency_code")
     uid_maker(df, ["nation_code","nation_name"])

@@ -1,8 +1,6 @@
-import os
-
-print(os.getcwd())
-
 import datetime as dt
+import logging
+
 import numpy as np
 import argparse
 import time
@@ -19,6 +17,7 @@ from general.sql_process import read_query, read_table, trucncate_table_in_datab
 
 from itertools import product
 import multiprocessing as mp
+from tqdm import tqdm
 
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
@@ -26,7 +25,7 @@ def mp_rf(*mp_args):
     try:
         data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
-        print(f"===== test on y_type", len(y_type), y_type, "=====")
+        logging.DEBUG(f"===== test on y_type", len(y_type), y_type, "=====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
         sql_result['tree_type'] = tree_type + str(i)
         sql_result['testing_period'] = testing_period
@@ -59,16 +58,13 @@ def mp_rf(*mp_args):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             sql_result['neg_factor'] = ','.join(data.neg_factor)
-            rf_HPOT(max_evals=10, sql_result=sql_result, sample_set=sample_set, x_col=data.x_col,
-                    y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
+            rf_HPOT(max_evals=(2 if global_vars.DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
+                    x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     except Exception as e:
-        print(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
         to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
 
 if __name__ == "__main__":
-
-    start_time = dt.datetime.now()
 
     # --------------------------------- Parser ------------------------------------------
 
@@ -103,7 +99,7 @@ if __name__ == "__main__":
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
             else:
-                print(f'-------------------> Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+                logging.INFO(f'-------------------> Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
         return True
 
@@ -121,8 +117,6 @@ if __name__ == "__main__":
         calc_factor_variables_multi(ticker=None, restart=False, processes=args.processes)
     if args.recalc_premium:
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
-    end_time = dt.datetime.now()
-    print('Rerun Premium Time: ', start_time, end_time, end_time-start_time)
 
     # --------------------------------- Different Configs -----------------------------------------
 
@@ -141,15 +135,15 @@ if __name__ == "__main__":
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
-    # if args.debug:
-    #     sql_result['name_sql'] += f'_debug'
+    if args.debug:
+        sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
     sql_result.pop('n_splits')
     sql_result.pop('recalc_premium')
+    sql_result.pop('recalc_ratio')
     sql_result.pop('debug')
     sql_result.pop('processes')
     sql_result.pop('weeks_to_expire')
-    # sql_result.pop('tree_type')
     # sql_result.pop('use_pca')
 
     # --------------------------------- Model Training ------------------------------------------
@@ -175,7 +169,7 @@ if __name__ == "__main__":
     # trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
     # trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
     with mp.Pool(processes=args.processes) as pool:
-        pool.starmap(mp_rf, all_groups)
+        tqdm(pool.starmap(mp_rf, all_groups), total=len(all_groups))
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(
@@ -188,8 +182,5 @@ if __name__ == "__main__":
         )
 
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
-    #
-    # end_time = dt.datetime.now()
-    # print(start_time, end_time, end_time-start_time)
 
 

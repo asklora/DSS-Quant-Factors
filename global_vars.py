@@ -43,3 +43,17 @@ update_time_table = "ingestion_update_time"     # all table update time record i
 
 # TABLE names - descriptive preprocess formula
 descriptive_formula_factors_table = "factor_formula_ratios_descriptive"
+
+# Set DEBUG status
+import sys
+gettrace = getattr(sys, 'gettrace', None)
+DEBUG = gettrace() is not None
+print('DEBUG: ', DEBUG)
+
+# Add Logging
+import logging
+logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+if DEBUG:
+    logging.getLogger().setLevel(logging.DEBUG)
+else:
+    logging.getLogger().setLevel(logging.INFO)
