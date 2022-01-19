@@ -10,7 +10,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
 from sklearn import linear_model
 
-import global_vars
+from global_vars import *
 from general.sql_process import read_table, read_query
 
 def add_arr_col(df, arr, col_name):
@@ -20,12 +20,11 @@ def add_arr_col(df, arr, col_name):
 def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
-    print(f'#################################################################################################')
-    print(f'      ------------------------> Download macro data from {global_vars.macro_data_table}')
+    logging.info(f'Download macro data from {macro_data_table}')
 
     # combine macros & vix data
-    macros = read_table(global_vars.macro_data_table, global_vars.db_url_read)
-    vix = read_table(global_vars.vix_data_table, global_vars.db_url_read)
+    macros = read_table(macro_data_table, db_url_read)
+    vix = read_table(vix_data_table, db_url_read)
     vix = vix.rename(columns={"vix_id":"field", "vix_value":"value"})
     macros = macros.append(vix)
 
@@ -49,12 +48,11 @@ def download_clean_macros():
 def download_index_return():
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
-    print(f'#################################################################################################')
-    print(f'      ------------------------> Download index return data from {global_vars.processed_ratio_table}')
+    logging.info(f'Download index return data from [{processed_ratio_table}]')
 
     # read stock return from ratio calculation table
-    index_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker like '.%%'"
-    index_ret = read_query(index_query, global_vars.db_url_read)
+    index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%'"
+    index_ret = read_query(index_query, db_url_read)
     index_ret = index_ret.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
@@ -75,9 +73,9 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
 
     # Read premium sql from different tables
-    factor_table_name = global_vars.factor_premium_table
+    factor_table_name = factor_premium_table
 
-    print(f'      ------------------------> Use {weeks_to_expire} week premium')
+    logging.info(f'Use [{weeks_to_expire}] week premium')
     conditions = ['"group" IS NOT NULL', f"weeks_to_expire={weeks_to_expire}"]
     
     if isinstance(update_since, datetime):
@@ -85,7 +83,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     prem_query = f'SELECT * FROM {factor_table_name} WHERE {" AND ".join(conditions)};'
-    df = read_query(prem_query, global_vars.db_url_read)
+    df = read_query(prem_query, db_url_read)
     df = df.pivot(index=['trading_day', 'group'], columns=['field'], values="value")
 
     if mode == 'trim':
@@ -98,7 +96,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
     # read formula table
-    formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_read)
+    formula = read_table(formula_factors_table_prod, db_url_read)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]       # filter existing columns from factors
 
     # Research stage using 10 selected factor only
@@ -132,7 +130,7 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()],
                                          names=['group', 'trading_day']).to_frame().reset_index(drop=True)
     df = pd.merge(df, indexes, on=['group', 'trading_day'], how='right')
-    print('      ------------------------> Factors: ', x_col['factor'])
+    logging.info(f"Factors: {x_col['factor']}")
 
     return df.sort_values(by=['group', 'trading_day']), x_col['factor'], x_col
 
@@ -163,7 +161,6 @@ class load_data:
         # calculate y for all factors
         all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
         self.main[all_y_col] = self.main.groupby(['group'])[self.x_col_dict['factor']].shift(-1)
-        # print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
@@ -181,8 +178,6 @@ class load_data:
             self.group = self.main.loc[self.main['group']==group_name]
         else:
             self.group = self.main.loc[self.main['group'].isin(group_name.split(','))]
-
-        print(self.group)
 
     def y_replace_median(self, qcut_q, arr, arr_cut, arr_test, arr_test_cut):
         ''' convert qcut results (e.g. 012) to the median of each group for regression '''
@@ -319,7 +314,7 @@ class load_data:
             arma_pca = arma_pipe.fit(pca_arma_df)
             arma_trans = arma_pca.transform(pca_arma_df)
             self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            print(f"      ------------------------> After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
+            logging.info(f"After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
 
             # write PCA components to DB
             # if write_pca_component:
@@ -327,13 +322,13 @@ class load_data:
             #     df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
             #     df['group'] = self.group_name
             #     df['testing_period'] = testing_period
-            #     with global_vars.engine_ali.connect() as conn:
+            #     with engine_ali.connect() as conn:
             #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-            #         conn.execute(f"DELETE FROM {global_vars.processed_pca_table} "
+            #         conn.execute(f"DELETE FROM {processed_pca_table} "
             #                      f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-            #         df.to_sql(global_vars.processed_pca_table, **extra)
-            #         pd.DataFrame({global_vars.processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(global_vars.update_time_table, **extra)
-            #     global_vars.engine_ali.dispose()
+            #         df.to_sql(processed_pca_table, **extra)
+            #         pd.DataFrame({processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(update_time_table, **extra)
+            #     engine_ali.dispose()
 
             self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
             arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))
@@ -346,7 +341,7 @@ class load_data:
             mi_pca = mi_pipe.fit(pca_mi_df)
             mi_trans = mi_pca.transform(pca_mi_df)
             self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
-            print(f"      ------------------------> After 0.8 PCA [Macros]: {len(self.x_col_dict['mi_pca'])}")
+            logging.info(f"After 0.8 PCA [Macros]: {len(self.x_col_dict['mi_pca'])}")
 
             self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
             arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1))
@@ -361,7 +356,7 @@ class load_data:
             w = np.tanh(w - 0.5) + 0.5
             arma_pca = linear_model.Lasso(alpha=use_pca).fit(pca_arma_df, pca_arma_df_y, sample_weight=w)
             self.x_col_dict['arma_pca'] = list(np.array(all_input)[np.sum(arma_pca.coef_, axis=0)!=0])
-            print(f"      ------------------------> After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
+            logging.info(f"After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
             self.x_col_dict['mi_pca'] = []
 
         def divide_set(df):

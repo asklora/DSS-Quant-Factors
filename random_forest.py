@@ -7,7 +7,7 @@ from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 
 from general.sql_process import upsert_data_to_database
-import global_vars
+from global_vars import *
 
 
 class rf_HPOT:
@@ -46,12 +46,12 @@ class rf_HPOT:
         ''' write score/prediction/feature to DB '''
 
         # update results
-        upsert_data_to_database(self.hpot['best_stock_df'], global_vars.result_pred_table,
-                                db_url=global_vars.db_url_write, how="append", verbose=-1)
-        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), global_vars.result_score_table,
-                                db_url=global_vars.db_url_write, how="append", verbose=-1)
-        # upsert_data_to_database(self.hpot['best_stock_feature'], f"{global_vars.feature_importance_table}{tbl_suffix}",
-        #                         db_url=global_vars.db_url_alibaba_prod, how="append", verbose=-1)
+        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table,
+                                db_url=db_url_write, how="append", verbose=-1)
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table,
+                                db_url=db_url_write, how="append", verbose=-1)
+        # upsert_data_to_database(self.hpot['best_stock_feature'], f"{feature_importance_table}{tbl_suffix}",
+        #                         db_url=db_url_alibaba_prod, how="append", verbose=-1)
 
     def rf_train(self, space, rerun):
         ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -161,12 +161,12 @@ class rf_HPOT:
         gc.collect()
 
         if rerun:
-            print(
+            logging.info(
                 f"RERUN --> {str(result['mse_train'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
                 f"{str(result['net_ret'])[:6]}, {best_factor}")
             return result['mse_train']
         else:
-            print(
+            logging.info(
                 f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
                 f"{str(result['net_ret'])[:6]}, {best_factor}")
             return result['mse_valid']

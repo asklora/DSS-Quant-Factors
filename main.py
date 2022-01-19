@@ -91,7 +91,7 @@ if __name__ == "__main__":
         while waiting:
             update_time = read_table("ingestion_update_time", db_url_alibaba_prod)
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
-            if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
+            if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=3))):
                 waiting = False
                 to_slack("clair").message_to_slack(f"*[Start] Factor Model*: week_to_expire=[{weeks_to_expire}]\n"
                                                    f"---> Upon update of {table_names}")
