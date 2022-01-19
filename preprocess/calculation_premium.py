@@ -5,7 +5,6 @@ import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
-from tqdm import tqdm
 from general.report_to_slack import to_slack
 
 from global_vars import *
@@ -94,7 +93,7 @@ def insert_prem_for_group(*args):
                                 table=factor_premium_table,
                                 primary_key=["uid"],
                                 db_url=db_url_write,
-                                how="update")
+                                how="update", verbose=-1)
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
         return False
@@ -134,7 +133,9 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
 
     # trucncate_table_in_database(f"{factor_premium_table}", db_url_write)
     with mp.Pool(processes=processes) as pool:
-        tqdm(pool.starmap(insert_prem_for_group, all_groups))
+        pool.starmap(insert_prem_for_group, all_groups)
+
+    to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
 if __name__ == "__main__":
 
@@ -143,7 +144,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=12, start_date='2021-12-12')
+    calc_premium_all(weeks_to_expire=4, trim_outlier_=False, processes=12, start_date='2021-10-31')
 
     end = datetime.now()
 
