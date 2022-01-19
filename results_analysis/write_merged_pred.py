@@ -25,38 +25,27 @@ stock_pred_dtypes = dict(
     last_update=TIMESTAMP
 )
 
-def download_stock_pred(
-        q,
-        model,
-        name_sql,
-        save_xls=False,
-        save_plot=False,
-        suffix=None):
+def download_stock_pred(q, model, name_sql, suffix=None):
     ''' organize cron / last period prediction and write weight to DB '''
 
     # --------------------------------- Download Predictions ------------------------------------------
     other_group_col = ['tree_type', 'use_pca']
 
     # download training history
-    query = text(f"SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, "
-                 f"S.testing_period as trading_day, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} "
-                 f"FROM {result_pred_table} P "
-                 f"INNER JOIN {result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) "
-                 f"WHERE S.name_sql like '{name_sql}%' "
-                 # f"AND \"group\"='USD' "
-                 f"ORDER BY S.finish_timing")
+    query = text(f'''
+            SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, 
+            S.testing_period as trading_day, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} 
+            FROM {result_pred_table} P 
+            INNER JOIN {result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) 
+            WHERE S.name_sql like '{name_sql}%' 
+            ORDER BY S.finish_timing''')
     result_all_all = read_query(query, db_url_read)
-
-    # result_all_all['year_month'] = result_all_all['trading_day'].dt.strftime('%Y-%m').copy()
-    # result_all_all = result_all_all.sort_values(by=['trading_day']).drop_duplicates(
-    #     ['group', 'year_month', 'factor_name', 'cv_number','y_type']+other_group_col, keep='first')
-    # result_all_all = result_all_all.drop(columns=['year_month'])
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
 
     all_current = []
     all_history = []
     for y_type, result_all in result_all_all.groupby('y_type'):
-        print(y_type, result_all.shape)
+        logging.info(f'Generate rank for [{y_type}] with results={result_all.shape})')
 
         if len(result_all) < 100:   # test run iteration
             continue
@@ -111,19 +100,20 @@ def download_stock_pred(
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
         result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day']).reset_index()
         result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
-        print(result_all_comb_mean)
-        print(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
+        logging.debug(result_all_comb_mean)
+        logging.debug(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
 
         # --------------------------------- Save Local Evaluation ------------------------------------------
 
-        if save_xls:    # save local for evaluation
-            writer = pd.ExcelWriter(f'#{model}_pred_{name_sql}_{y_type}.xlsx')
+        if DEBUG:    # save local for evaluation
+            file_name = f'#{model}_pred_{name_sql}_{y_type[:10]}.xlsx'
+            writer = pd.ExcelWriter(file_name)
             result_all_comb_mean.to_excel(writer, sheet_name='average', index=False)
             result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
             pd.pivot_table(result_all, index=['group', 'trading_day'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
             writer.save()
+            logging.debug(f'=== save [{file_name}] for evaluation ===')
 
-        if save_plot:    # save local for evaluation
             result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
             num_group = len(result_all_comb['group'].unique())
             num_other_group = len(result_all_comb['other_group'].unique())
@@ -145,14 +135,16 @@ def download_stock_pred(
                 k+=1
             plt.ylabel('-'.join(other_group_col))
             plt.xlabel('group')
-            plt.savefig(f'#{model}_pred_{name_sql}_{y_type}.png')
+            fig_name = f'#{model}_pred_{name_sql}_{y_type[:10]}.png'
+            plt.savefig(fig_name)
             plt.close()
+            logging.debug(f'=== save [{fig_name}] for evaluation ===')
 
         # ------------------------ Select Best Config (among other_group_col) ------------------------------
 
         result_all_comb_mean['net_ret'] = result_all_comb_mean['max_ret'] - result_all_comb_mean['min_ret']
         result_all_comb_mean_best = result_all_comb_mean.sort_values(['max_ret']).groupby(['group']).last()[other_group_col].reset_index()
-        print(result_all_comb_mean_best)
+        logging.info(f'best_iter:\n{result_all_comb_mean_best}')
 
         result_all = result_all.dropna(axis=0, subset=['factor_weight'])[['pred_z','factor_weight']].reset_index()
         result_all = result_all.merge(result_all_comb_mean_best, on=['group']+other_group_col, how='right')
@@ -163,10 +155,10 @@ def download_stock_pred(
         # factor_rank = result_all.set_index(['trading_day','factor_name','group'])['factor_weight'].unstack()
         rank_count = result_all.groupby(['group','trading_day'])['factor_weight'].apply(pd.value_counts)
         rank_count = rank_count.unstack().fillna(0)
-        print(rank_count)
+        logging.debug(f'n_factor used:\n{rank_count}')
 
         for period in result_all['trading_day'].unique():
-            print(period)
+            logging.debug(f'calculate (neg_factor, factor_weight): {period}')
             result_col = ['group','trading_day','factor_name','pred_z','factor_weight']
             df = result_all.loc[result_all['trading_day']==period, result_col].copy().reset_index(drop=True)
 
@@ -192,7 +184,8 @@ def download_stock_pred(
     df_history["weeks_to_expire"] = suffix
     df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
     df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-    upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
+    if not DEBUG:
+        upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='ignore')
 
     tbl_name_current = production_factor_rank_table
     delete_data_on_database(tbl_name_current, db_url_read, query=f"weeks_to_expire={suffix}")
@@ -200,20 +193,18 @@ def download_stock_pred(
     df_current["weeks_to_expire"] = suffix
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
     df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
-    upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
+    if not DEBUG:
+        upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
 
 if __name__ == "__main__":
 
+    # name_sql = 'week4_20220119_debug'
+    name_sql = 'week1_20220119'
     suffix = 1
-    datetime = '20220116'
 
     parser = argparse.ArgumentParser()
-
     parser.add_argument('-q', type=float, default=1/3)
     parser.add_argument('--model', type=str, default='')
-    parser.add_argument('--name_sql', type=str, default=f'week{suffix}_{datetime}')
-    parser.add_argument('--save_plot', action='store_true', help='save_plot = True')
-    parser.add_argument('--save_xls', action='store_true', help='save_xls = True')
     args = parser.parse_args()
 
     if args.q.is_integer():
@@ -227,9 +218,7 @@ if __name__ == "__main__":
     download_stock_pred(
         q,
         args.model,
-        args.name_sql,
-        save_plot=args.save_plot,
-        save_xls=args.save_xls,
+        name_sql=name_sql,
         suffix=suffix,
     )
 

@@ -61,7 +61,7 @@ class rf_HPOT:
             params[k] = int(params[k])
         self.sql_result.update(params)
         params['bootstrap'] = False
-        params['n_jobs'] = self.sql_result['n_jobs']
+        params['n_jobs'] = 1
 
         if 'extra' in self.sql_result['tree_type']:
             regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
@@ -151,7 +151,6 @@ class rf_HPOT:
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
-        self.hpot['all_results'][-1].pop('n_jobs')
 
         if (result['mae_valid'] < self.hpot['best_score']) or (rerun):  # update best_mae to the lowest value for Hyperopt
             self.hpot['best_score'] = result['mae_valid']

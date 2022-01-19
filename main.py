@@ -93,11 +93,10 @@ if __name__ == "__main__":
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=3))):
                 waiting = False
-                to_slack("clair").message_to_slack(f"*[Start] Factor Model*: week_to_expire=[{weeks_to_expire}]\n"
-                                                   f"---> Upon update of {table_names}")
             else:
                 logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
+        to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{weeks_to_expire}]\n-> updated {table_names}")
         return True
 
     if not args.debug:
@@ -130,7 +129,6 @@ if __name__ == "__main__":
     # --------------------------------- Prepare Training Set -------------------------------------
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
-    sql_result['n_jobs'] = args.processes
     if args.debug:
         sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
