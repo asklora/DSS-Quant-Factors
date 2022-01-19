@@ -25,7 +25,7 @@ def mp_rf(*mp_args):
     try:
         data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
-        logging.DEBUG(f"===== test on y_type", len(y_type), y_type, "=====")
+        logging.debug(f"===== test on y_type", len(y_type), y_type, "=====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
         sql_result['tree_type'] = tree_type + str(i)
         sql_result['testing_period'] = testing_period
@@ -58,7 +58,7 @@ def mp_rf(*mp_args):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             sql_result['neg_factor'] = ','.join(data.neg_factor)
-            rf_HPOT(max_evals=(2 if global_vars.DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
+            rf_HPOT(max_evals=(2 if global_vars.debug else 10), sql_result=sql_result, sample_set=sample_set,
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     except Exception as e:
@@ -99,7 +99,7 @@ if __name__ == "__main__":
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
             else:
-                logging.INFO(f'-------------------> Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+                logging.info(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
         return True
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vars.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
-    use_pca_list = [0.4, 0.6]
+    use_pca_list = [0.6]
     # use_pca_list = [0.4]
 
     # create date list of all testing period
