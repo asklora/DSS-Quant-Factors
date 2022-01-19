@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -6,8 +8,8 @@ import itertools
 from tqdm import tqdm
 from general.report_to_slack import to_slack
 
-import global_vars
-from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database,uid_maker
+from global_vars import *
+from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database, uid_maker
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -60,11 +62,11 @@ def insert_prem_for_group(*args):
             q[series_fillinf == -np.inf] = 0
             return q
         except ValueError as e:
-            print(e)
+            logging.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
     df, group, factor, trim_outlier_, y_col, weeks_to_expire = args
-    print(group, factor, trim_outlier_)
+    logging.info(f'=== Calculate premium for ({group}, {factor}) ===')
 
     try:
         df = df[['trading_day', y_col, factor]].dropna(how='any')
@@ -89,12 +91,12 @@ def insert_prem_for_group(*args):
         prem = uid_maker(prem, primary_key=['group','trading_day','field','weeks_to_expire'])
 
         upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
-                                table=global_vars.factor_premium_table,
+                                table=factor_premium_table,
                                 primary_key=["uid"],
-                                db_url=global_vars.db_url_write,
+                                db_url=db_url_write,
                                 how="update")
     except Exception as e:
-        to_slack("clair").message_to_slack(f"*ERROR in Calculate Premium*: {e}")
+        to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
         return False
 
     return True
@@ -102,17 +104,17 @@ def insert_prem_for_group(*args):
 def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_groups=['USD','EUR'], start_date=None):
     ''' calculate factor premium for different configurations '''
 
-    print(f'\n=== Get {global_vars.formula_factors_table_prod} ===')
-    formula_query = f"SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active "
-    formula = read_query(formula_query, global_vars.db_url_read)
+    logging.info(f'\n=== Get {formula_factors_table_prod} ===')
+    formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active "
+    formula = read_query(formula_query, db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
     # premium calculate currency only
-    ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE ticker in " \
+    ratio_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker in " \
                   f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
     if start_date:
         ratio_query += f" AND trading_day>'{start_date}' "
-    df = read_query(ratio_query, global_vars.db_url_write)
+    df = read_query(ratio_query, db_url_write)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
     df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
     y_col = f'stock_return_y_{weeks_to_expire}week'
@@ -123,13 +125,14 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_expire == 0)]
     df = df.loc[df["trading_day"].isin(date_list)]
 
-    print(f'      ------------------------> Groups: {" -> ".join(all_groups)}')
-    print(f'      ------------------------> Save to {global_vars.factor_premium_table}')
+    logging.info(f'Groups: {" -> ".join(all_groups)}')
+    logging.info(f'trim_outlier: {trim_outlier_}')
+    logging.info(f'Save to {factor_premium_table}')
 
     all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col], [weeks_to_expire])
     all_groups = [tuple(e) for e in all_groups]
 
-    # trucncate_table_in_database(f"{global_vars.factor_premium_table}", global_vars.db_url_write)
+    # trucncate_table_in_database(f"{factor_premium_table}", db_url_write)
     with mp.Pool(processes=processes) as pool:
         tqdm(pool.starmap(insert_prem_for_group, all_groups))
 
@@ -144,5 +147,5 @@ if __name__ == "__main__":
 
     end = datetime.now()
 
-    print(f'Time elapsed: {(end - start).total_seconds():.2f} s')
+    logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
     # write_local_csv_to_db()

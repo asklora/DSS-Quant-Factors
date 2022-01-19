@@ -1,10 +1,10 @@
 from slack_sdk import WebClient
 
 class to_slack:
-    def __init__(self, channel="#factor_message"):
+    def __init__(self, channel="#dss-quant-factors-message"):
         self.SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
         self.slack_name_to_id = {
-            "#factor_message": "#factor_message",
+            "#dss-quant-factors-message": "#dss-quant-factors-message",
             "clair": "U026B04RB3J",
             "stephen": "U8ZV41XS9",
             "nick": "U01JKNY3D0U"

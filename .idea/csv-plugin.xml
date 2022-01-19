@@ -1298,6 +1298,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/general/universe_rating_history.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/global_vals.py">
           <value>
             <Attribute>
@@ -1698,6 +1705,13 @@
           </value>
         </entry>
         <entry key="/results_analysis/universe_rating_audit.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/universe_rating_check.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

@@ -1,15 +1,14 @@
-import logging
-
+from multiprocessing import cpu_count
 from pangres import upsert
 from sqlalchemy.dialects.postgresql import TEXT
 from sqlalchemy import create_engine
 import pandas as pd
 import datetime as dt
 
-import global_vars
+from global_vars import *
 from general.report_to_slack import to_slack
 
-def trucncate_table_in_database(table, db_url=global_vars.db_url_alibaba):
+def trucncate_table_in_database(table, db_url=db_url_alibaba):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -20,7 +19,7 @@ def trucncate_table_in_database(table, db_url=global_vars.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
-def drop_table_in_database(table, db_url=global_vars.db_url_alibaba):
+def drop_table_in_database(table, db_url=db_url_alibaba):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -31,7 +30,7 @@ def drop_table_in_database(table, db_url=global_vars.db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
-def delete_data_on_database(table, db_url=global_vars.db_url_alibaba, query=None):
+def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
     ''' delete data from table in databased '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -45,15 +44,15 @@ def delete_data_on_database(table, db_url=global_vars.db_url_alibaba, query=None
         to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
 
 
-def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db_url_alibaba, how="update",
+def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1, try_drop_table=False):
     ''' upsert Table to DB '''
 
     try:
-        logging.info(f"=== [{how}] Data to Database on Table [{table}] ===")
+        logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
         logging.info(f"=== URL: {db_url} ===")
 
-        engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+        engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT", )
         if how in ["replace", "append"]:
             with engine.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
@@ -105,7 +104,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=global_vars.db
         else:
             to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
 
-def read_query(query, db_url=global_vars.db_url_alibaba):
+def read_query(query, db_url=db_url_alibaba):
     ''' Read specific query from SQL '''
 
     logging.debug(f'Download Table with query: [{query}]')
@@ -116,7 +115,7 @@ def read_query(query, db_url=global_vars.db_url_alibaba):
     engine.dispose()
     return df
 
-def read_table(table, db_url=global_vars.db_url_alibaba):
+def read_table(table, db_url=db_url_alibaba):
     ''' Read entire table from SQL '''
 
     logging.debug(f'Download Entire Table from [{table}]')
@@ -134,10 +133,10 @@ def record_table_update_time(table):
     df.index.name = "tbl_name"
     data_type = {"tbl_name": TEXT}
 
-    engine = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
     upsert(engine=engine,
            df=df,
-           table_name=global_vars.update_time_table,
+           table_name=update_time_table,
            if_row_exists="update",
            chunksize=20000,
            dtype=data_type)
@@ -155,8 +154,8 @@ def uid_maker(df, primary_key):
 
 if __name__=="__main__":
 
-    df = read_table("universe_rating_history", global_vars.db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
-    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", global_vars.db_url_aws_read)
+    df = read_table("universe_rating_history", db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
+    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", db_url_aws_read)
     df = df.merge(universe, on=["ticker"])
     df = df.sort_values(by=["ai_score"]).groupby(["currency_code", "trading_day"]).tail(10)
     df["trading_day"] = pd.to_datetime(df["trading_day"])
