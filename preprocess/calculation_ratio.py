@@ -141,17 +141,17 @@ def calc_stock_return(ticker):
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
     tri = tri.sort_values(['ticker','trading_day'])
 
-    logging.debug(f'Calculate skewness ')
+    logging.info(f'Calculate skewness ')
     tri = get_skew(tri)    # Calculate past 1 year skewness
 
     # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-    logging.debug(f'Calculate RS volatility ')
+    logging.info(f'Calculate RS volatility ')
     list_of_start_end = [[0, 30]] # , [30, 90], [90, 182]
     tri = get_rogers_satchell(tri, list_of_start_end)
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
     # resample tri using last week average as the proxy for monthly tri
-    logging.debug(f'Stock price using last 7 days average ')
+    logging.info(f'Stock price using last 7 days average ')
     tri[['tri','volume']] = tri.groupby("ticker")[['tri','volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
     tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
     tri['volume'] = tri['volume'] / tri['volume_3m']
@@ -160,7 +160,7 @@ def calc_stock_return(ticker):
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
-    logging.debug(f'Sample weekly interval ')
+    logging.info(f'Sample weekly interval ')
     tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
 
     # update market_cap/market_cap_usd refer to tri for each period
@@ -177,7 +177,7 @@ def calc_stock_return(ticker):
         tri['mkt_cap'] = np.nan
 
     # Calculate monthly return (Y) + R6,2 + R12,7
-    logging.debug(f'Calculate stock returns ')
+    logging.info(f'Calculate stock returns ')
     for rolling_period in [1, 4]:
         tri["tri_y"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
         tri[f"stock_return_y_{rolling_period}week"] = (tri["tri_y"] / tri["tri"]) - 1
@@ -223,7 +223,7 @@ def download_clean_worldscope_ibes(ticker):
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        logging.debug(f'Fill missing in {worldscope_quarter_summary_table} ')
+        logging.info(f'Fill missing in {worldscope_quarter_summary_table} ')
         with suppress(Exception):
             ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])
         with suppress(Exception):
@@ -251,7 +251,7 @@ def check_duplicates(df, name=''):
 def update_trading_day(ws=None):
     ''' map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m '''
 
-    logging.debug(f'Update trading_day in {worldscope_quarter_summary_table} ')
+    logging.info(f'Update trading_day in {worldscope_quarter_summary_table} ')
 
     query_universe = f"SELECT ticker, fiscal_year_end FROM {universe_table}"
     universe = read_query(query_universe, db_url_read)
@@ -287,7 +287,7 @@ def fill_all_given_date(result, ref):
     date_list = ref['trading_day'].unique()
     ticker_list = ref['ticker'].unique()
     indexes = pd.MultiIndex.from_product([ticker_list, date_list], names=['ticker', 'trading_day']).to_frame(index=False, name=['ticker', 'trading_day'])
-    logging.debug(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
+    logging.info(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
 
     # Insert weekend/before first trading date to df
     indexes['trading_day'] = pd.to_datetime(indexes['trading_day'])
@@ -303,7 +303,7 @@ def fill_all_given_date(result, ref):
 def drop_dup(df, col='trading_day'):
     ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-    logging.debug(f'Drop duplicates in {worldscope_quarter_summary_table} ')
+    logging.info(f'Drop duplicates in {worldscope_quarter_summary_table} ')
 
     df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
@@ -349,7 +349,7 @@ def combine_stock_factor_data(ticker):
     universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
 
     # Combine all data for table (1) - (6) above
-    logging.debug(f'Merge all dataframes ')
+    logging.info(f'Merge all dataframes ')
     df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('','_ws'))
     df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('','_ibes'))
     df = df.sort_values(by=['ticker', 'trading_day'])
@@ -358,7 +358,7 @@ def combine_stock_factor_data(ticker):
     def adjust_close(df):
         ''' using market cap to adjust close price for stock split, ...'''
 
-        logging.debug(f'Adjust closing price with market cap ')
+        logging.info(f'Adjust closing price with market cap ')
 
         df = df[['ticker','trading_day','market_cap','close']].dropna(how='any')
         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
@@ -420,7 +420,7 @@ def calc_fx_conversion(df):
 
     for name, g in ingestion_source.groupby(['source']):        # convert for ibes / ws
         cols = list(set(g['our_name'].to_list()) & set(df.columns.to_list()))
-        logging.debug(f'[{name}] source data with fx conversion: {cols}')
+        logging.info(f'[{name}] source data with fx conversion: {cols}')
         df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
 
     df[['close','market_cap']] = df[['close','market_cap']].div(df['fx_dss'], axis="index")  # convert close price
@@ -439,7 +439,7 @@ def calc_factor_variables(*args):
         formula = read_table(formula_factors_table_prod, db_url_read)
         formula = formula.loc[formula['is_active']]
 
-        logging.debug(f'Calculate all factors in {formula_factors_table_prod}')
+        logging.info(f'Calculate all factors in {formula_factors_table_prod}')
 
         # Foreign exchange conversion on absolute value items
         df = calc_fx_conversion(df)
@@ -475,19 +475,19 @@ def calc_factor_variables(*args):
         # a) Keep original values
         keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
         for new_name, old_name in formula.loc[keep_original_mask, ['name','field_num']].to_numpy():
-            logging.debug(f'Calculating: {new_name}')
+            logging.info(f'Calculating: {new_name}')
             try:
                 df[new_name] = df[old_name]
             except Exception as e:
                 logging.warning(f"[Warning] Factor ratio [{new_name}] not calculate: {e}")
 
         # b) Time series ratios (Calculate 1m change first)
-        logging.debug(f'Calculate time-series ratio ')
+        logging.info(f'Calculate time-series ratio ')
         period_yr = 52
         period_q = 12
         for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
                 orient='records'):  # minus calculation for ratios
-            logging.debug(f"Calculating: {r['name']}")
+            logging.info(f"Calculating: {r['name']}")
             try:
                 if r['name'][-2:] == 'yr':
                     df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
@@ -499,11 +499,11 @@ def calc_factor_variables(*args):
                 logging.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
 
         # c) Divide ratios
-        logging.debug(f'Calculate dividing ratios ')
+        logging.info(f'Calculate dividing ratios ')
         for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
                 orient='records'):  # minus calculation for ratios
             try:
-                logging.debug(f"Calculating: {r['name']}")
+                logging.info(f"Calculating: {r['name']}")
                 df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
             except Exception as e:
                 logging.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
