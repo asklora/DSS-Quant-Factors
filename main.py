@@ -17,7 +17,6 @@ from general.sql_process import read_query, read_table, trucncate_table_in_datab
 
 from itertools import product
 import multiprocessing as mp
-from tqdm import tqdm
 
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
@@ -128,7 +127,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Prepare Training Set -------------------------------------
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
@@ -160,7 +159,7 @@ if __name__ == "__main__":
 
     # Reset results table everytimes
     with mp.Pool(processes=args.processes) as pool:
-        tqdm(pool.starmap(mp_rf, all_groups), total=len(all_groups))
+        pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
     download_stock_pred(

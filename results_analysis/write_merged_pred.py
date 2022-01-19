@@ -25,21 +25,23 @@ stock_pred_dtypes = dict(
     last_update=TIMESTAMP
 )
 
-def download_stock_pred(q, model, name_sql, suffix=None):
+def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     ''' organize cron / last period prediction and write weight to DB '''
 
     # --------------------------------- Download Predictions ------------------------------------------
-    other_group_col = ['tree_type', 'use_pca']
+    other_group_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number', 'tree_type', 'use_pca']
 
-    # download training history
+    logging.info('=== Download prediction history ===')
+    conditions = [f"S.name_sql like '{name_sql}%'"]
+    if eval_start_date:
+        conditions.append(f"S.testing_period>='{eval_start_date}'")
     query = text(f'''
-            SELECT P.pred, P.actual, P.y_type as factor_name, P.group as \"group\", S.y_type, S.neg_factor, 
-            S.testing_period as trading_day, S.cv_number, {', '.join(['S.'+x for x in other_group_col])} 
+            SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col])} 
             FROM {result_pred_table} P 
             INNER JOIN {result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) 
-            WHERE S.name_sql like '{name_sql}%' 
+            WHERE {' AND '.join(conditions)}
             ORDER BY S.finish_timing''')
-    result_all_all = read_query(query, db_url_read)
+    result_all_all = read_query(query, db_url_read).rename(columns={"testing_period":"trading_day"})
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
 
     all_current = []
@@ -179,27 +181,27 @@ def download_stock_pred(q, model, name_sql, suffix=None):
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
     tbl_name_history = production_factor_rank_history_table
-    # trucncate_table_in_database(tbl_name_history, db_url_write)
     df_history = pd.concat(all_history, axis=0)
     df_history["weeks_to_expire"] = suffix
     df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
     df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
     if not DEBUG:
+        # trucncate_table_in_database(tbl_name_history, db_url_write)
         upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='ignore')
 
     tbl_name_current = production_factor_rank_table
-    delete_data_on_database(tbl_name_current, db_url_read, query=f"weeks_to_expire={suffix}")
     df_current = pd.concat(all_current, axis=0)
     df_current["weeks_to_expire"] = suffix
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
     df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
     if not DEBUG:
+        delete_data_on_database(tbl_name_current, db_url_read, query=f"weeks_to_expire={suffix}")
         upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
 
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220119'
+    name_sql = 'week1_20220119_debug'
     suffix = 1
 
     parser = argparse.ArgumentParser()
@@ -220,6 +222,7 @@ if __name__ == "__main__":
         args.model,
         name_sql=name_sql,
         suffix=suffix,
+        eval_start_date=None,
     )
 
     # from results_analysis.score_backtest import score_history
