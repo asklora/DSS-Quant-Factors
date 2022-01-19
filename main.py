@@ -129,6 +129,7 @@ if __name__ == "__main__":
     query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}"
     last_test_date = read_query(query, db_url=global_vars.db_url_write)
     testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
+    logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}]')
     # testing_period_list = [dt.date(2021,4,30)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
