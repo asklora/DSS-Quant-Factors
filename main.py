@@ -6,7 +6,7 @@ import argparse
 import time
 from dateutil.relativedelta import relativedelta
 
-import global_vars
+from global_vars import *
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
@@ -58,7 +58,7 @@ def mp_rf(*mp_args):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             sql_result['neg_factor'] = ','.join(data.neg_factor)
-            rf_HPOT(max_evals=(2 if global_vars.debug else 10), sql_result=sql_result, sample_set=sample_set,
+            rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     except Exception as e:
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'EUR'] # ,
+    group_code_list = ['USD', 'EUR']
 
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60):
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         table_names = ['data_ibes', 'data_macro', 'data_worldscope']
         waiting = True
         while waiting:
-            update_time = read_table("ingestion_update_time", global_vars.db_url_alibaba_prod)
+            update_time = read_table("ingestion_update_time", db_url_alibaba_prod)
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
@@ -120,17 +120,14 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
 
-    # group_code_list = pd.read_sql('SELECT DISTINCT currency_code from universe WHERE currency_code IS NOT NULL', global_vars.engine.connect())['currency_code'].to_list()
     tree_type_list = ['rf']
     use_pca_list = [0.6]
-    # use_pca_list = [0.4]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {global_vars.factor_premium_table}"
-    last_test_date = read_query(query, db_url=global_vars.db_url_write)
+    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table}"
+    last_test_date = read_query(query, db_url=db_url_write)
     testing_period_list = sorted(last_test_date['trading_day'])[-args.backtest_period:]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}]')
-    # testing_period_list = [dt.date(2021,4,30)]
 
     # --------------------------------- Prepare Training Set -------------------------------------
 
@@ -167,8 +164,6 @@ if __name__ == "__main__":
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
-    # trucncate_table_in_database(f"{global_vars.result_pred_table}", global_vars.db_url_write)
-    # trucncate_table_in_database( f"{global_vars.feature_importance_table}", global_vars.db_url_write)
     with mp.Pool(processes=args.processes) as pool:
         tqdm(pool.starmap(mp_rf, all_groups), total=len(all_groups))
 
