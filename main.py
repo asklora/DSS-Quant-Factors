@@ -69,17 +69,12 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--tree_type', default='rf', type=str)
-    # parser.add_argument('--use_pca', default=0.6, type=float)
-    # parser.add_argument('--group_code', default='USD', type=str)
-
-    parser.add_argument('--objective', default='mse')
+    parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--weeks_to_expire', default=1, type=int)
     parser.add_argument('--processes', default=8, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
-    parser.add_argument('--n_splits', default=3, type=int)
-    parser.add_argument('--n_jobs', default=1, type=int)
+    parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
@@ -89,27 +84,32 @@ if __name__ == "__main__":
     group_code_list = ['USD', 'EUR']
 
     # --------------------------------------- Schedule for Production --------------------------------
-    def start_on_update(check_interval=60):
+    def start_on_update(check_interval=60, table_names = ['data_ibes', 'data_macro', 'data_worldscope']):
         ''' check if data tables finished ingestion -> then start '''
-        table_names = ['data_ibes', 'data_macro', 'data_worldscope']
         waiting = True
         while waiting:
             update_time = read_table("ingestion_update_time", db_url_alibaba_prod)
             update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
             if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=1))):
                 waiting = False
+                to_slack("clair").message_to_slack(f"*[Start] Factor Model*: week_to_expire=[{args.weeks_to_expire}]\n"
+                                                   f"---> Upon update of {table_names}")
             else:
-                logging.info(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+                logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
         return True
 
     if not args.debug:
-        # Check 1. if monthly -> only first Sunday every month
+        # Check 1: if monthly -> only first Sunday every month
         if args.weeks_to_expire >= 4:
             if dt.datetime.today().day>7:
                 raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
-        # Check 2. if all input data df finished update
-        # start_on_update()
+            # Check 2(b): monthly update after weekly update
+            start_on_update(table_names=['factor_result_rank'])
+        else:
+            # Check 2(a): weekly update after input data update
+            start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'])
+
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     weeks_to_expire = args.weeks_to_expire
@@ -142,7 +142,6 @@ if __name__ == "__main__":
     sql_result.pop('debug')
     sql_result.pop('processes')
     sql_result.pop('weeks_to_expire')
-    # sql_result.pop('use_pca')
 
     # --------------------------------- Model Training ------------------------------------------
 
