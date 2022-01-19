@@ -21,14 +21,14 @@ def get_tri(ticker=None):
                  f"FROM {stock_data_table_tri} T "
                  f"INNER JOIN {stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
-                 f"WHERE T.ticker = '{ticker}'")
+                 f"WHERE T.ticker in {tuple(ticker)}".replace(",)",")"))
     tri = read_query(query, db_url_read)
 
     query1 = f"SELECT * FROM {eikon_price_table} "
-    query1 += f"WHERE ticker = '{ticker}' ORDER BY trading_day "
+    query1 += f"WHERE ticker in {tuple(ticker)} ORDER BY trading_day ".replace(",)",")")
     eikon_price = read_query(query1, db_url_read)
 
-    query2 = f"SELECT * FROM {anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker = '{ticker}'"
+    query2 = f"SELECT * FROM {anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker in {tuple(ticker)}".replace(",)",")")
     market_cap_anchor = read_query(query2, db_url_read)
     market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
@@ -209,15 +209,15 @@ def calc_stock_return(ticker):
 def download_clean_worldscope_ibes(ticker):
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
-    query_ws = f"select * from {worldscope_quarter_summary_table} WHERE ticker = '{ticker}'"
+    query_ws = f"select * from {worldscope_quarter_summary_table} WHERE ticker in {tuple(ticker)}".replace(",)",")")
     ws = read_query(query_ws, db_url_read)
     ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
-    query_ibes = f"SELECT * FROM {ibes_data_table} WHERE ticker = '{ticker}'"
+    query_ibes = f"SELECT * FROM {ibes_data_table} WHERE ticker in {tuple(ticker)}".replace(",)",")")
     ibes = read_query(query_ibes, db_url_read)
     ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
-    query_universe = f"SELECT ticker, currency_code, industry_code FROM {universe_table} WHERE ticker = '{ticker}'"
+    query_universe = f"SELECT ticker, currency_code, industry_code FROM {universe_table} WHERE ticker in {tuple(ticker)}".replace(",)",")")
     universe = read_query(query_universe, db_url_read)
 
     def fill_missing_ws(ws):
@@ -269,7 +269,7 @@ def update_trading_day(ws=None):
     ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
 
     # find actual period_end (in terms of quarter end)
-    ws["trading_day"] = ws['last_year_end'] + ws["frequency_number"]*relativedelta(months=3)
+    ws["trading_day"] = ws[['last_year_end', "frequency_number"]].apply(lambda x: x[0] + MonthEnd(x[1]*3), axis=1)
 
     # trading_day = report_date (if not exist -> use trading_day(i.e. period_end) + 1Q)
     ws['trading_day'] = ws['trading_day'].mask(ws['report_date'] < ws['trading_day'], ws['report_date'] + QuarterEnd(-1))
@@ -391,7 +391,8 @@ def calc_fx_conversion(df):
     fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day FROM {currency_history_table}"
     fx2 = read_query(fx2_query, db_url_read)
     fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
-    fx = fx.append(fx2).drop_duplicates(subset=['ticker','trading_day'], keep='last')
+    fx2['trading_day'] = pd.to_datetime(fx2['trading_day'])
+    fx = fx.append(fx2).drop_duplicates(subset=['ticker', 'trading_day'], keep='last')
 
     ingestion_source = read_table(ingestion_name_table, db_url_read)
 
@@ -430,7 +431,7 @@ def calc_factor_variables(*args):
     ''' Calculate all factor used referring to DB ratio table '''
 
     ticker, = args
-    logging.info(f'=== Calculate ratio for {ticker} ===')
+    logging.info(f'=== Calculate ratio for {ticker} (n={len(ticker)}) ===')
     error_universe = []
     try:
         df, stocks_col = combine_stock_factor_data(ticker)
@@ -572,14 +573,15 @@ def calc_factor_variables_multi(
         tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_read)
         tickers = list(set(tickers)-set(tickers_exist))
 
-    tickers = [tuple([e]) for e in tickers]
-    with mp.Pool(processes=processes) as pool:
-        pool.starmap(calc_factor_variables, tickers)
+    calc_factor_variables(tickers)
+    # tickers = [tuple([e]) for e in tickers]
+    # with mp.Pool(processes=processes) as pool:
+    #     pool.starmap(calc_factor_variables, tickers)
 
 if __name__ == "__main__":
 
     restart = True
-    calc_factor_variables_multi(ticker="AAPL.O", restart=restart, processes=1)
+    calc_factor_variables_multi(ticker=None, restart=restart, processes=1)
 
 
 
