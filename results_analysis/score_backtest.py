@@ -1,3 +1,5 @@
+import logging
+
 from scipy.stats import skew
 import pandas as pd
 import datetime as dt
@@ -139,6 +141,10 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
+def check_factor_rank(df):
+    ''' check if we always select same set of factor over history '''
+
+
 def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-11-01'):
     ''' calculate score with DROID v2 method & evaluate '''
 
@@ -165,6 +171,9 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     # factor_rank.to_csv('cached_factor_rank.csv', index=False)
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     factor_rank = pd.read_csv('cached_factor_rank.csv')
+
+    logging.info('=== Check factor rank history ===')
+    check_factor_rank(factor_rank)
 
     factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')

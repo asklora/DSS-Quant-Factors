@@ -29,25 +29,26 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     ''' organize cron / last period prediction and write weight to DB '''
 
     # --------------------------------- Download Predictions ------------------------------------------
-    other_group_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number', 'tree_type', 'use_pca']
+    model_record_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number']
+    other_group_col = ['tree_type', 'use_pca']
 
     logging.info('=== Download prediction history ===')
     conditions = [f"S.name_sql like '{name_sql}%'"]
     if eval_start_date:
         conditions.append(f"S.testing_period>='{eval_start_date}'")
     query = text(f'''
-            SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col])} 
+            SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col+model_record_col])} 
             FROM {result_pred_table} P 
             INNER JOIN {result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) 
             WHERE {' AND '.join(conditions)}
             ORDER BY S.finish_timing''')
-    result_all_all = read_query(query, db_url_read).rename(columns={"testing_period":"trading_day"})
+    result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"})
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
 
     all_current = []
     all_history = []
     for y_type, result_all in result_all_all.groupby('y_type'):
-        logging.info(f'Generate rank for [{y_type}] with results={result_all.shape})')
+        logging.info(f'=== Generate rank for [{y_type}] with results={result_all.shape}) ===')
 
         if len(result_all) < 100:   # test run iteration
             continue
@@ -108,14 +109,16 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
         # --------------------------------- Save Local Evaluation ------------------------------------------
 
         if DEBUG:    # save local for evaluation
+            logging.debug(f'=== Save CSV for backtest average ret ===')
             file_name = f'#{model}_pred_{name_sql}_{y_type[:10]}.xlsx'
             writer = pd.ExcelWriter(file_name)
             result_all_comb_mean.to_excel(writer, sheet_name='average', index=False)
             result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
             pd.pivot_table(result_all, index=['group', 'trading_day'], columns=['factor_name'], values=['pred','actual']).to_excel(writer, sheet_name='all')
             writer.save()
-            logging.debug(f'=== save [{file_name}] for evaluation ===')
+            logging.debug(f'=== Saved [{file_name}] for evaluation ===')
 
+            logging.debug(f'=== Save Plot for backtest average ret ===')
             result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
             num_group = len(result_all_comb['group'].unique())
             num_other_group = len(result_all_comb['other_group'].unique())
@@ -140,7 +143,7 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
             fig_name = f'#{model}_pred_{name_sql}_{y_type[:10]}.png'
             plt.savefig(fig_name)
             plt.close()
-            logging.debug(f'=== save [{fig_name}] for evaluation ===')
+            logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
 
         # ------------------------ Select Best Config (among other_group_col) ------------------------------
 
@@ -201,7 +204,7 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220119_debug'
+    name_sql = 'week1_20220116'
     suffix = 1
 
     parser = argparse.ArgumentParser()
