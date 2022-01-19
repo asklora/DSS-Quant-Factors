@@ -130,6 +130,7 @@ if __name__ == "__main__":
     # --------------------------------- Prepare Training Set -------------------------------------
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d')
+    sql_result['n_jobs'] = args.processes
     if args.debug:
         sql_result['name_sql'] += f'_debug'
     sql_result.pop('backtest_period')
