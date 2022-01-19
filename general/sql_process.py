@@ -52,7 +52,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
         logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
         logging.info(f"=== URL: {db_url} ===")
 
-        engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT", )
+        engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
             with engine.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
@@ -64,9 +64,8 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
                 primary_key = "uid"
                 if drop_primary_key:  # drop original columns (>1) for primary keys
                     data = data.drop(columns=primary_key)
-
-            # df = data.duplicated(subset=[primary_key], keep=False)
-            # df = data.loc[df]
+            else:
+                primary_key = primary_key[0]
 
             if data.duplicated(subset=[primary_key], keep=False).sum() > 0:
                 to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")

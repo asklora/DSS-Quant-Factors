@@ -104,8 +104,8 @@ def insert_prem_for_group(*args):
 def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_groups=['USD','EUR'], start_date=None):
     ''' calculate factor premium for different configurations '''
 
-    logging.info(f'\n=== Get {formula_factors_table_prod} ===')
-    formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active "
+    logging.info(f'=== Get {formula_factors_table_prod} ===')
+    formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
 
@@ -113,7 +113,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     ratio_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker in " \
                   f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
     if start_date:
-        ratio_query += f" AND trading_day>'{start_date}' "
+        ratio_query += f" AND trading_day>='{start_date}' "
     df = read_query(ratio_query, db_url_write)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
     df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
@@ -127,7 +127,7 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
 
     logging.info(f'Groups: {" -> ".join(all_groups)}')
     logging.info(f'trim_outlier: {trim_outlier_}')
-    logging.info(f'Save to {factor_premium_table}')
+    logging.info(f'Save to [{factor_premium_table}]')
 
     all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col], [weeks_to_expire])
     all_groups = [tuple(e) for e in all_groups]
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=1, start_date='2021-12-12')
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=12, start_date='2021-12-12')
 
     end = datetime.now()
 
