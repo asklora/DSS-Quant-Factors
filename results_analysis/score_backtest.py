@@ -141,10 +141,6 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
 
     return fundamentals, mean_ret, best_score_ticker, mean_ret_detail_all
 
-def check_factor_rank(df):
-    ''' check if we always select same set of factor over history '''
-
-
 def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-11-01'):
     ''' calculate score with DROID v2 method & evaluate '''
 

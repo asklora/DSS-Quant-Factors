@@ -183,16 +183,22 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
             if (period == result_all['trading_day'].max()):  # if keep_all_history also write to prod table
                 all_current.append(df.sort_values(['group', 'pred_z']))
 
-    tbl_name_history = production_factor_rank_history_table
+    tbl_name_backtest = production_factor_rank_backtest_table
     df_history = pd.concat(all_history, axis=0)
     df_history["weeks_to_expire"] = suffix
     df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
     df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-    if not DEBUG:
-        # trucncate_table_in_database(tbl_name_history, db_url_write)
-        upsert_data_to_database(df_history, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='ignore')
+    if DEBUG:
+        tbl_name_backtest += "_debug"
+        df_history['name_sql'] = name_sql
+        how="append"
+    else:
+        how="ignore"
+    # trucncate_table_in_database(tbl_name_history, db_url_write)
+    upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=how)
 
     tbl_name_current = production_factor_rank_table
+    tbl_name_history = production_factor_rank_history_table
     df_current = pd.concat(all_current, axis=0)
     df_current["weeks_to_expire"] = suffix
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
@@ -200,11 +206,14 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     if not DEBUG:
         delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
         upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
+        df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
+        df_current = df_current.drop(columns=["last_update", "trading_day"])
+        upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
 
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220119194057_debug'
+    name_sql = 'week1_20220120103239_debug'
     suffix = 1
 
     parser = argparse.ArgumentParser()
