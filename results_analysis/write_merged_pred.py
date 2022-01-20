@@ -128,7 +128,7 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
                 ax = fig.add_subplot(num_other_group, num_group, k)
                 g[['max_ret','actual','min_ret']] = (g[['max_ret','actual','min_ret']] + 1).cumprod(axis=0)
                 plot_df = g[['max_ret','actual','min_ret']]
-                ax.plot(plot_df)
+                ax.plot(plot_df.reset_index(drop=True))
                 for i in range(3):
                     ax.annotate(plot_df.iloc[-1, i].round(2), (plot_df.index[-1], plot_df.iloc[-1, i]), fontsize=10)
                 if k % num_group == 1:
@@ -198,13 +198,13 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
     df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
     if not DEBUG:
-        delete_data_on_database(tbl_name_current, db_url_read, query=f"weeks_to_expire={suffix}")
+        delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
         upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
 
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220116'
+    name_sql = 'week1_20220119194057_debug'
     suffix = 1
 
     parser = argparse.ArgumentParser()

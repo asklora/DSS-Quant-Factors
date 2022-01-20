@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf']
-    use_pca_list = [0.6]
+    use_pca_list = [0.6, 0.4, 0.2]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={weeks_to_expire}"
@@ -148,10 +148,12 @@ if __name__ == "__main__":
     # y_type_list += list(combinations(set(data.x_col_dict['quality'])&set(data.x_col_dict['y_col']), 5))
     # y_type_list += list(combinations(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col']), 5))
 
-    y_type_list = []
-    y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.factor_list)))
-    y_type_list.append(list(set(data.x_col_dict['value'])&set(data.factor_list)))
-    y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.factor_list)))
+    # y_type_list = []
+    # y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.factor_list)))
+    # y_type_list.append(list(set(data.x_col_dict['value'])&set(data.factor_list)))
+    # y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.factor_list)))
+
+    y_type_list = [list(set(data.x_col_dict['quality']+data.x_col_dict['value']+data.x_col_dict['momentum'])&set(data.factor_list))]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
@@ -162,14 +164,14 @@ if __name__ == "__main__":
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
-    download_stock_pred(
-            q=1/3,
-            model='',
-            name_sql=sql_result['name_sql'],
-            save_plot=False,
-            save_xls=False,
-            suffix=weeks_to_expire,
-        )
+    # download_stock_pred(
+    #         q=1/3,
+    #         model='',
+    #         name_sql=sql_result['name_sql'],
+    #         save_plot=False,
+    #         save_xls=False,
+    #         suffix=weeks_to_expire,
+    #     )
 
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
