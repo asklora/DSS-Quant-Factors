@@ -168,9 +168,6 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     factor_rank = pd.read_csv('cached_factor_rank.csv')
 
-    logging.info('=== Check factor rank history ===')
-    check_factor_rank(factor_rank)
-
     factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
     fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])

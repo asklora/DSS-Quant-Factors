@@ -203,12 +203,12 @@ class load_data:
 
         return best_best
 
-    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, test_change, y_col):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, y_type):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         null_col = self.train.isnull().sum()
         null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
-        y_col = ['y_' + x for x in y_col if x not in null_col]
+        y_col = ['y_' + x for x in y_type if x not in null_col]
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
@@ -240,10 +240,8 @@ class load_data:
             if use_median:      # for regression -> remove noise by regression on median of each bins
                 arr_cut, arr_test_cut = self.y_replace_median(qcut_q, arr, arr_cut, arr_test, arr_test_cut)
 
-            arr_add = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
-            self.train = add_arr_col(self.train, arr_add, cut_col)
-            arr_add = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
-            self.test = add_arr_col(self.test, arr_add, cut_col)
+            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
+            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
 
             # write cut_bins to DB
             self.cut_bins_df = self.train[cut_col].apply(pd.value_counts).transpose()
@@ -259,8 +257,7 @@ class load_data:
 
         return y_col
 
-    def split_train_test(self, testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change, use_pca,
-                         write_pca_component=False):
+    def split_train_test(self, testing_period, output_options, input_options):
         ''' split training / testing set based on testing period '''
 
         current_group = self.group.copy(1)
@@ -269,115 +266,88 @@ class load_data:
         # factor with ARMA history as X5
         arma_col = self.x_col_dict['factor'] + self.x_col_dict['index'] + self.x_col_dict['macro'] # if using pca, all history first
 
-        # 1. Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
+        # 1. [Prep X] Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
         self.x_col_dict['ar'] = []
-        for i in [1,2]:
+        for i in input_options["ar_period"]:
             ar_col = [f"ar_{x}_{i}m" for x in arma_col]
             current_group[ar_col] = current_group.groupby(['group'])[arma_col].shift(i)
             self.x_col_dict['ar'].extend(ar_col)      # add AR variables name to x_col
 
-        # 2. Calculate the moving average for predicted Y
+        # 2. [Prep X] Calculate the moving average for predicted Y
+        self.x_col_dict['ma'] = []
         ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
         ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
         ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
         current_group = pd.concat([current_group, ma_q, ma_y], axis=1)
-        self.x_col_dict['ma'] = []
-        for i in [3, 6, 9]:     # include moving average of 3-5, 6-8, 9-11
+        for i in input_options["ma3_period"]:     # include moving average of 3-5, 6-8, 9-11
             current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
-        for i in [12]:          # include moving average of 12 - 23
+        for i in input_options["ma12_period"]:          # include moving average of 12 - 23
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 
-        y_col = ['y_'+x for x in y_type]
-
-        # split training/testing sets based on testing_period
-        # self.train = current_group.loc[(current_group['trading_day'] < testing_period)].copy()
+        # 3. [Split training/testing] sets based on testing_period
         self.train = current_group.loc[(start <= current_group['trading_day']) &
                                        (current_group['trading_day'] < testing_period)].copy()
         self.test = current_group.loc[current_group['trading_day'] == testing_period].reset_index(drop=True).copy()
 
-        # qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_col = y_col = self.y_qcut_all(qcut_q, defined_cut_bins, use_median, test_change, y_type)
-        # self.train = self.train.dropna(subset=y_col, how='all').reset_index(drop=True)      # remove training sample with NaN Y
-        self.train = self.train.dropna(subset=y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
+        # 4. [Prep Y]: qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
+        self.y_col = self.y_qcut_all(**output_options)
+        self.train = self.train.dropna(subset=self.y_col, how='any').reset_index(drop=True)      # remove training sample with NaN Y
 
-        if use_pca>0.1:  # if using feature selection with PCA
+        # if using feature selection with PCA
+        arma_factor = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if f in x]
 
-            arma_factor = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if f in x]
-            arma_mi = [x for x in self.x_col_dict['ar']+self.x_col_dict['ma'] for f in self.x_col_dict['index'] + self.x_col_dict['macro'] if f in x]
+        # 5. [Prep X] use PCA on all Factor + ARMA inputs
+        factor_pca_col = self.x_col_dict['factor']+arma_factor
+        factor_pca_train, factor_pca_test, factor_feature_name = load_data.standardize_pca_x(
+            self.train[factor_pca_col], self.test[factor_pca_col], input_options["factor_pca"])
+        self.x_col_dict['arma_pca'] = ['arma_'+str(x) for x in factor_feature_name]
+        self.train[self.x_col_dict['arma_pca']] = factor_pca_train
+        self.test[self.x_col_dict['arma_pca']] = factor_pca_test
+        logging.info(f"After {input_options['factor_pca']} PCA [Factors]: {len(factor_feature_name)}")
 
-            # use PCA on all ARMA inputs
-            arma_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=use_pca))])
-            pca_arma_df = self.train[self.x_col_dict['factor']+arma_factor].fillna(0)
-            arma_pca = arma_pipe.fit(pca_arma_df)
-            arma_trans = arma_pca.transform(pca_arma_df)
-            self.x_col_dict['arma_pca'] = [f'arma_{i}' for i in range(1, arma_trans.shape[1]+1)]
-            logging.info(f"After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
-
-            # write PCA components to DB
-            # if write_pca_component:
-            #     df = pd.DataFrame(arma_pca.components_, index=self.x_col_dict['arma_pca'], columns=self.x_col_dict['factor'] + arma_factor).reset_index()
-            #     df['var_ratio'] = np.cumsum(arma_pca.explained_variance_ratio_)
-            #     df['group'] = self.group_name
-            #     df['testing_period'] = testing_period
-            #     with engine_ali.connect() as conn:
-            #         extra = {'con': conn, 'index': False, 'if_exists': 'append', 'method': 'multi', 'chunksize': 1000}
-            #         conn.execute(f"DELETE FROM {processed_pca_table} "
-            #                      f"WHERE testing_period='{dt.datetime.strftime(testing_period, '%Y-%m-%d')}'")   # remove same period prediction if exists
-            #         df.to_sql(processed_pca_table, **extra)
-            #         pd.DataFrame({processed_pca_table: {'update_time': dt.datetime.now()}}).reset_index().to_sql(update_time_table, **extra)
-            #     engine_ali.dispose()
-
-            self.train = add_arr_col(self.train, arma_trans, self.x_col_dict['arma_pca'])
-            arr = arma_pca.transform(self.test[self.x_col_dict['factor']+arma_factor].fillna(0))
-            self.test = add_arr_col(self.test, arr, self.x_col_dict['arma_pca'])
-
-            # use PCA on all index/macro inputs
-            arma_mi = []
-            mi_pipe = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=0.6))])
-            pca_mi_df = self.train[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1)
-            mi_pca = mi_pipe.fit(pca_mi_df)
-            mi_trans = mi_pca.transform(pca_mi_df)
-            self.x_col_dict['mi_pca'] = [f'mi_{i}' for i in range(1, mi_trans.shape[1]+1)]
-            logging.info(f"After 0.8 PCA [Macros]: {len(self.x_col_dict['mi_pca'])}")
-
-            self.train = add_arr_col(self.train, mi_trans, self.x_col_dict['mi_pca'])
-            arr = mi_pca.transform(self.test[self.x_col_dict['index']+self.x_col_dict['macro']+arma_mi].fillna(-1))
-            self.test = add_arr_col(self.test, arr, self.x_col_dict['mi_pca'])
-
-        elif use_pca>0:     # if using feature selection with LASSO (alpha=l1)
-            all_input = self.x_col_dict['factor']+self.x_col_dict['ar']+self.x_col_dict['ma'] + \
-                        self.x_col_dict['index']+self.x_col_dict['macro']
-            pca_arma_df = StandardScaler().fit_transform(self.train[all_input].fillna(0))
-            pca_arma_df_y = np.nan_to_num(self.train[y_col].values,0)
-            w = np.array(range(len(pca_arma_df))) / len(pca_arma_df)
-            w = np.tanh(w - 0.5) + 0.5
-            arma_pca = linear_model.Lasso(alpha=use_pca).fit(pca_arma_df, pca_arma_df_y, sample_weight=w)
-            self.x_col_dict['arma_pca'] = list(np.array(all_input)[np.sum(arma_pca.coef_, axis=0)!=0])
-            logging.info(f"After {use_pca} PCA [Factors]: {len(self.x_col_dict['arma_pca'])}")
-            self.x_col_dict['mi_pca'] = []
+        # 6. [Prep X] use PCA on all index/macro inputs
+        mi_pca_col = self.x_col_dict['index']+self.x_col_dict['macro']
+        mi_pca_train, mi_pca_test, mi_feature_name = load_data.standardize_pca_x(
+            self.train[mi_pca_col], self.test[mi_pca_col], input_options["mi_pca"])
+        self.x_col_dict['mi_pca'] = ['mi_'+str(x) for x in mi_feature_name]
+        self.train[self.x_col_dict['mi_pca']] = mi_pca_train
+        self.test[self.x_col_dict['mi_pca']] = mi_pca_test
+        logging.info(f"After {input_options['mi_pca']} PCA [Macro+Index]: {len(mi_feature_name)}")
 
         def divide_set(df):
             ''' split x, y from main '''
-            x_col = self.x_col_dict['factor'] + self.x_col_dict['ar'] + self.x_col_dict['ma'] + self.x_col_dict['macro'] + self.x_col_dict['index']
-            if use_pca>0:
-                x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']#+['fred_data','usgdp','usinter3']
-            y_col_cut = [x+'_cut' for x in y_col]
-
-            return df.filter(x_col).values, np.nan_to_num(df[y_col].values,0), np.nan_to_num(df[y_col_cut].values), \
+            x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
+            y_col_cut = [x+'_cut' for x in self.y_col]
+            return df.filter(x_col).values, np.nan_to_num(df[self.y_col].values, 0), np.nan_to_num(df[y_col_cut].values), \
                    df.filter(x_col).columns.to_list()     # Assuming using all factors
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'],_ = divide_set(self.train)
         self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
 
-    def standardize_x(self):
-        ''' standardize x with train_x fit '''
+    @staticmethod
+    def standardize_pca_x(X_train, X_test, n_components=None):
+        ''' standardize x + PCA applied to x with train_x fit '''
 
-        scaler = StandardScaler().fit(self.sample_set['train_x'])
-        self.sample_set['train_x'] = scaler.transform(self.sample_set['train_x'])
-        self.sample_set['test_x'] = scaler.transform(self.sample_set['test_x'])
+        org_feature = X_train.columns.to_list()
+        X_train, X_test = X_train.values, X_test.values
+        if n_components:
+            scaler = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=n_components))])
+            X_train = np.nan_to_num(X_train, nan=0)
+            X_test = np.nan_to_num(X_test, nan=0)
+        else:
+            scaler = StandardScaler()
+
+        scaler.fit(X_train)
+        x_train = scaler.transform(X_train)
+        x_test = scaler.transform(X_test)
+        if n_components:
+            feature_name = range(1, x_train.shape[1]+1)
+        else:
+            feature_name = org_feature
+        return x_train, x_test, feature_name
 
     def split_valid(self, testing_period, n_splits, valid_method):
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
@@ -398,12 +368,12 @@ class load_data:
 
         return gkf
 
-    def split_all(self, testing_period, y_type, qcut_q=3, n_splits=5, valid_method='cv',
-                  defined_cut_bins=[], use_median=False, test_change=False, use_pca=0):
+    def split_all(self, testing_period, n_splits=5, valid_method='cv',
+                  output_options={"y_type": None, "qcut_q": 10, "use_median": False, "defined_cut_bins": []},
+                  input_options={"ar_period": [1,2], "ma3_period": [3, 6, 9], "ma12_period": [12], "factor_pca": 0.6, "mi_pca": 0.9}):
         ''' work through cleansing process '''
 
-        self.split_train_test(testing_period, y_type, qcut_q, defined_cut_bins, use_median, test_change=test_change, use_pca=use_pca)   # split x, y for test / train samples
-        self.standardize_x()                                          # standardize x array
+        self.split_train_test(testing_period, output_options, input_options)   # split x, y for test / train samples
         gkf = self.split_valid(testing_period, n_splits, valid_method)           # split for cross validation in groups
         return self.sample_set, gkf
 
@@ -415,13 +385,17 @@ if __name__ == '__main__':
     testing_period = dt.datetime(2021,9,5)
     group_code = 'USD'
 
-    data = load_data(weeks_to_expire=4)
+    data = load_data(weeks_to_expire=1)
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)
 
     # for y in y_type:
-    sample_set, cv = data.split_all(testing_period, y_type=y_type, use_median=False, valid_method='chron', use_pca=0.6)
+    sample_set, cv = data.split_all(testing_period, valid_method='chron', n_splits=5,
+                                    output_options={"y_type": y_type, "qcut_q": 10, "use_median": False,
+                                                    "defined_cut_bins": []},
+                                    input_options={"ar_period": [1, 2], "ma3_period": [3, 6, 9], "ma12_period": [12],
+                                                   "factor_pca": 0.6, "mi_pca": 0.9})
     # print(data.cut_bins)
 
     print(data.x_col)

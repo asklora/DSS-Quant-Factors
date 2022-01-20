@@ -24,7 +24,7 @@ def mp_rf(*mp_args):
     try:
         data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
-        logging.debug(f"===== test on y_type", len(y_type), y_type, "=====")
+        logging.debug(f"===== test on y_type, {len(y_type)}, {y_type} =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
         sql_result['tree_type'] = tree_type + str(i)
         sql_result['testing_period'] = testing_period
@@ -34,8 +34,10 @@ def mp_rf(*mp_args):
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
-        load_data_params = {'qcut_q': args.qcut_q, 'y_type': sql_result['y_type'], 'valid_method': 'chron',
-                            'use_median': False, 'use_pca': sql_result['use_pca'], 'n_splits': args.n_splits}
+        load_data_params = {'valid_method': 'chron', 'n_splits': args.n_splits,
+                            "output_options": {"y_type": y_type, "qcut_q": 10, "use_median": False, "defined_cut_bins": []},
+                            "input_options": {"ar_period": [1, 2], "ma3_period": [3, 6, 9], "ma12_period": [12],
+                                              "factor_pca": 0.6, "mi_pca": 0.9}}
         testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
         cv_number = 1  # represent which cross-validation sets
