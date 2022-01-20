@@ -59,7 +59,7 @@ def download_index_return():
     major_index = ['trading_day','.SPX','.CSI300','.SXXGR']    # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
 
-    index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_ww2_1', 'stock_return_ww4_2', 'stock_return_r12_7','stock_return_r6_2'}
+    index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_r6_2'}
     index_ret = index_ret.set_index(['trading_day', 'ticker'])[list(index_col)].unstack()
     index_ret.columns = [f'{x[1]}_{x[0]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
@@ -382,7 +382,7 @@ if __name__ == '__main__':
     # exit(1)
     # download_org_ratios('mean')
     # download_index_return()
-    testing_period = dt.datetime(2021,9,5)
+    testing_period = dt.datetime(2021,12,12)
     group_code = 'USD'
 
     data = load_data(weeks_to_expire=1)
@@ -394,7 +394,7 @@ if __name__ == '__main__':
     sample_set, cv = data.split_all(testing_period, valid_method='chron', n_splits=5,
                                     output_options={"y_type": y_type, "qcut_q": 10, "use_median": False,
                                                     "defined_cut_bins": []},
-                                    input_options={"ar_period": [1, 2], "ma3_period": [3, 6, 9], "ma12_period": [12],
+                                    input_options={"ar_period": [], "ma3_period": [], "ma12_period": [],
                                                    "factor_pca": 0.6, "mi_pca": 0.9})
     # print(data.cut_bins)
 
