@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-
 import numpy as np
 import argparse
 import time
@@ -34,10 +33,11 @@ def mp_rf(*mp_args):
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
-        load_data_params = {'valid_method': 'chron', 'n_splits': args.n_splits,
-                            "output_options": {"y_type": y_type, "qcut_q": 10, "use_median": False, "defined_cut_bins": []},
-                            "input_options": {"ar_period": [1, 2], "ma3_period": [3, 6, 9], "ma12_period": [12],
-                                              "factor_pca": 0.6, "mi_pca": 0.9}}
+        load_data_params = {'valid_method': 'chron', 'n_splits': sql_result['n_splits'],
+                            "output_options": {"y_type": y_type, "qcut_q": sql_result['qcut_q'],
+                                               "use_median": sql_result['qcut_q']>0, "defined_cut_bins": []},
+                            "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
+                                              "factor_pca": use_pca, "mi_pca": 0.9}}
         testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
         cv_number = 1  # represent which cross-validation sets
@@ -132,13 +132,6 @@ if __name__ == "__main__":
     sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
-    sql_result.pop('backtest_period')
-    sql_result.pop('n_splits')
-    sql_result.pop('recalc_premium')
-    sql_result.pop('recalc_ratio')
-    sql_result.pop('debug')
-    sql_result.pop('processes')
-    sql_result.pop('weeks_to_expire')
 
     # --------------------------------- Model Training ------------------------------------------
 

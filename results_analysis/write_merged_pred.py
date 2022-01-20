@@ -39,9 +39,9 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     query = text(f'''
             SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col+model_record_col])} 
             FROM {result_pred_table} P 
-            INNER JOIN {result_score_table} S ON ((S.finish_timing=P.finish_timing) AND (S.group_code=P.group)) 
+            INNER JOIN {result_score_table} S ON ((S.uid=P.uid) AND (S.group_code=P.group)) 
             WHERE {' AND '.join(conditions)}
-            ORDER BY S.finish_timing''')
+            ORDER BY S.uid''')
     result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"})
     result_all_all['y_type'] = result_all_all['y_type'].str[1:-1].apply(lambda x: ','.join(sorted(x.split(','))))
 

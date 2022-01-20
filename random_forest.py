@@ -5,10 +5,12 @@ import pandas as pd
 import gc
 from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
-
 from general.sql_process import upsert_data_to_database
 from global_vars import *
 
+def get_timestamp_now_str():
+    ''' return timestamp in form of string of numbers '''
+    return str(dt.datetime.now()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '')
 
 class rf_HPOT:
     ''' use hyperopt on each set '''
@@ -24,6 +26,7 @@ class rf_HPOT:
         self.x_col = x_col
         self.y_col = y_col
         self.group_index = group_index
+        self.hpot_start = get_timestamp_now_str()
 
         rf_space = {
             'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
@@ -42,16 +45,13 @@ class rf_HPOT:
         trials = Trials()
         best = fmin(fn=self.eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
 
-    def write_db(self, tbl_suffix = ''):
+    def write_db(self):
         ''' write score/prediction/feature to DB '''
 
         # update results
-        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table,
-                                db_url=db_url_write, how="append", verbose=-1)
-        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table,
-                                db_url=db_url_write, how="append", verbose=-1)
-        # upsert_data_to_database(self.hpot['best_stock_feature'], f"{feature_importance_table}{tbl_suffix}",
-        #                         db_url=db_url_alibaba_prod, how="append", verbose=-1)
+        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, db_url=db_url_write, how="append", verbose=-1)
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, primary_key=["uid"],
+                                db_url=db_url_write, how="ignore", verbose=-1)
 
     def rf_train(self, space, rerun):
         ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
@@ -112,7 +112,7 @@ class rf_HPOT:
         This part haven't been modified for multi-label questions purpose
         '''
 
-        self.sql_result['finish_timing'] = dt.datetime.now()
+        self.sql_result['uid'] = self.hpot_start + get_timestamp_now_str()
 
         Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = self.rf_train(rf_space, rerun)
 
@@ -178,7 +178,7 @@ class rf_HPOT:
         df = df.unstack().reset_index(drop=False)
         df.columns = ['y_type', 'group', 'pred']
         df['actual'] = self.sample_set['test_y_final'].flatten(order='F')  # also write actual qcut to BD
-        df['finish_timing'] = [self.sql_result['finish_timing']] * len(df)  # use finish time to distinguish dup pred
+        df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
         return df
 
     def to_list_importance(self, rf):
@@ -187,6 +187,6 @@ class rf_HPOT:
         df = pd.DataFrame()
         df['name'] = self.x_col  # column names
         df['split'] = rf.feature_importances_
-        df['finish_timing'] = [self.sql_result['finish_timing']] * len(df)  # use finish time to distinguish dup pred
+        df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
         return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
 

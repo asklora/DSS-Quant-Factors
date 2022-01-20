@@ -80,7 +80,8 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
                    table_name=table,
                    if_row_exists=how,
                    chunksize=20000,
-                   dtype=data_type)
+                   dtype=data_type,
+                   add_new_columns=True)
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose>=0:
