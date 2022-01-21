@@ -42,7 +42,8 @@ Training data set are all the factor premiums before the validation set
 
 ## Prediction
 
-Factor selection and ranking process is as 
+#### Factor selection and ranking process is as 
+
 ![factormodel](images/factormodel.png)
 
 use `python3 main.py --option *sth*` to build, test, run model by a signle script.
@@ -59,6 +60,10 @@ Default 1 period = 1 week
 
 
 Model is not saved as time required for the whole process is short (depends on settings, at most few hours)
+
+Run main.py without --debug will cause the script to wait until the next database update (returns) to execute
+
+
 
 # Ingestion
 
