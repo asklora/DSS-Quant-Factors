@@ -47,9 +47,15 @@ Factor selection and ranking process is as
 
 use `python3 main.py` to build, test, run model by a signle script.
 Default 1 period = 1 week
-| Option | Explanation | Param type |
+| Option | Explanation | Input |
 |--------|-------------|------------|
 | recalc_premium | recalculate stock premiums | None |
+| weeks_to_expire | how many weeks for this prediction to expire | n (int) |
+| processes | create how many parallel process (multiprocessing) to run the script | n (int) |
+| backtest_period | use how many weeks as test dataset | n (int) |
+| n_splits | split validation set into how many sets | n (int) |
+| trim | trim outliers (top & bottom 5% of each dataset) | True/False |
+| debug | run script in dev mode (will not affect prod database) | True/False |
 
 
 Model is not saved as time required for the whole process is short (depends on settings, at most few hours)
