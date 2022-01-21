@@ -45,7 +45,7 @@ Training data set are all the factor premiums before the validation set
 Factor selection and ranking process is as 
 ![factormodel](images/factormodel.png)
 
-use `python3 main.py` to build, test, run model by a signle script.
+use `python3 main.py --option *sth*` to build, test, run model by a signle script.
 Default 1 period = 1 week
 | Option | Explanation | Input |
 |--------|-------------|------------|
