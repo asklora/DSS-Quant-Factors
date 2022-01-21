@@ -4,6 +4,7 @@
     1. [Data Preparation](#data-preparation)
     2. [Prediction](#prediction)
 3. [Ingestion](#ingestion)
+4. [Database](#database)
 
 # Principle
 
@@ -73,4 +74,16 @@ Ingestion is to update the ai_score of each ticker based on the current factor s
 
 use the script ingestion/universe_rating.py to execute the above operation
 like `python3 universe_rating.py`
+
+# Database
+
+universe_rating → current displayed ai_score
+
+universe_rating_history → ai_score history
+
+universe_rating_detail_history → field and values used for ai_score calculation
+
+factor_model → each prediction model run details
+
+factor_model_stock → predicted return for each factor compared with actual return
 
