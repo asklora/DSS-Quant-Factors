@@ -4,7 +4,7 @@
     1. [Data Preparation](#data-preparation)
     2. [Prediction](#prediction)
 3. [Ingestion](#ingestion)
-4. [Database Structure](#databse-structure)
+4. [Database](#database)
 
 # Principle
 
@@ -20,11 +20,15 @@ Quality Score = avg(Quality factor 1 score), Best quality factors = top 33% qual
 
 Momentum Score = avg(Momentum factor 1 score), Best momentum factors = top 33% momentum factors predicted by random forest (factor model)
 
-Extra Score = avg(Best factors), Best factors = all factors in factor_result_rank table where pred_z > 1
+Extra Score = avg(Best factors), Best factors = all factors in factor_result_rank table where pred_z > 1 (which means the factor is exceptionally profiting)
+
+*for each factor* pred_z value = (predicted premium - avg(all predicted premium))/std(all predicted premium)
 
 See further on [confluence](https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/880738405/AI+Score)
 
 # Factor Model
+
+### *factor repository*
 
 ## Data Preparation
 
@@ -42,18 +46,50 @@ Training data set are all the factor premiums before the validation set
 
 ## Prediction
 
-Factor selection and ranking process is as 
+#### Factor selection and ranking process is as 
+
 ![factormodel](images/factormodel.png)
 
-use `python3 main.py` to build, test, run model by a signle script.
+use `python3 main.py --option *sth*` to build, test, run model by a signle script.
 Default 1 period = 1 week
-| Option | Explanation | Param type |
+| Option | Explanation | Input |
 |--------|-------------|------------|
 | recalc_premium | recalculate stock premiums | None |
+| recalc_ratio | recalculate stock to vector ratios | None |
+| weeks_to_expire | how many weeks for this prediction to expire | n (int) |
+| processes | create how many parallel process (multiprocessing) to run the script | n (int) |
+| backtest_period | use how many weeks as test dataset | n (int) |
+| n_splits | split validation set into how many sets | n (int) |
+| trim | trim outliers (top & bottom 5% of each dataset) | True/False |
+| debug | run script in dev mode (will not affect prod database) | True/False |
 
 
 Model is not saved as time required for the whole process is short (depends on settings, at most few hours)
 
-# Ingestion
+Run main.py without --debug will cause the script to wait until the next database update (returns) to execute
 
-# Database Structure
+
+
+# Ingestion
+### *ingestion repository*
+
+Ingestion is to update the ai_score of each ticker based on the current factor settings (prediction results given by the factor model)
+
+use the script ingestion/universe_rating.py to execute the above operation
+like `python3 universe_rating.py`
+
+# Database
+
+universe_rating → current displayed ai_score
+
+universe_rating_history → ai_score history
+
+universe_rating_detail_history → field and values used for ai_score calculation
+
+factor_model → each prediction model run details
+
+factor_model_stock → predicted return for each factor compared with actual return
+
+factor_result_rank → predicted z score for each factors and its rank currently used
+
+factor_result_rank_history → predicted z score for each factors and its rank currently in the past
