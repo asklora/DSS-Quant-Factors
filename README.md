@@ -87,3 +87,6 @@ factor_model → each prediction model run details
 
 factor_model_stock → predicted return for each factor compared with actual return
 
+factor_result_rank → predicted z score for each factors and its rank currently used
+
+factor_result_rank_history → predicted z score for each factors and its rank currently in the past
