@@ -34,10 +34,25 @@ Recap: 4 pillars = Value, Quality, Momentum, Extra
 
 Output are the factor premiums of the next period.
 
+Test data set are the factor premiums in backtest period x week before today
+
+Validation data set are the factor premiums in 2 years before the test set
+
+Training data set are all the factor premiums before the validation set
+
 ## Prediction
 
 Factor selection and ranking process is as 
 ![factormodel](images/factormodel.png)
+
+use `python3 main.py` to build, test, run model by a signle script.
+Default 1 period = 1 week
+| Option | Explanation | Param type |
+|--------|-------------|------------|
+| recalc_premium | recalculate stock premiums | None |
+
+
+Model is not saved as time required for the whole process is short (depends on settings, at most few hours)
 
 # Ingestion
 
