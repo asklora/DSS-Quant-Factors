@@ -4,7 +4,6 @@
     1. [Data Preparation](#data-preparation)
     2. [Prediction](#prediction)
 3. [Ingestion](#ingestion)
-4. [Database Structure](#databse-structure)
 
 # Principle
 
@@ -25,6 +24,8 @@ Extra Score = avg(Best factors), Best factors = all factors in factor_result_ran
 See further on [confluence](https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/880738405/AI+Score)
 
 # Factor Model
+
+### *factor repository*
 
 ## Data Preparation
 
@@ -66,5 +67,10 @@ Run main.py without --debug will cause the script to wait until the next databas
 
 
 # Ingestion
+### *ingestion repository*
 
-# Database Structure
+Ingestion is to update the ai_score of each ticker based on the current factor settings (prediction results given by the factor model)
+
+use the script ingestion/universe_rating.py to execute the above operation
+like `python3 universe_rating.py`
+
