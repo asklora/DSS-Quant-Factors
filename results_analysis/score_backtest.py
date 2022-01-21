@@ -3,6 +3,7 @@ import logging
 from scipy.stats import skew
 import pandas as pd
 import datetime as dt
+from dateutil.relativedelta import relativedelta
 import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale
 
@@ -150,18 +151,23 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     #     conditions.append(f"\"group\"='{currency_code}'")
     # if start_date:
     #     conditions.append(f"trading_day>='{start_date}'")
-    # factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_table}_history "
-    #                          f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+    # factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
+    #                          f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba)
+    # factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
+    # print(factor_rank.dtypes)
     #
     # print("=== Get factor rank history ===")
-    # conditions = ["ticker not like '.%%'"]
+    # conditions = ["r.ticker not like '.%%'"]
     # if currency_code:
-    #     conditions.append(f"ticker in (SELECT ticker FROM universe WHERE is_active AND currency_code='{currency_code}')")
+    #     conditions.append(f"currency_code='{currency_code}'")
     # if start_date:
     #     conditions.append(f"trading_day>='{start_date}'")
-    # ratio_query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE {' AND '.join(conditions)}"
+    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+    #               f"WHERE {' AND '.join(conditions)}"
     # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
+    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+    #                                               values="value").reset_index()
     #
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
     # factor_rank.to_csv('cached_factor_rank.csv', index=False)
@@ -193,7 +199,7 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-    label_col = ['ticker', 'trading_day', f'stock_return_y_{weeks_to_expire}week']
+    label_col = ['ticker', 'trading_day', 'currency_code', f'stock_return_y_{weeks_to_expire}week']
     fundamentals = fundamentals_score[label_col+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)

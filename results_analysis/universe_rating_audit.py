@@ -2,6 +2,9 @@ from general.sql_process import read_query
 import pandas as pd
 import numpy as np
 from global_vars import *
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import scale
 
 def get_top_picks(start_date = '2021-11-01'):
     ''' match Monday Scores with next week/month return '''
@@ -87,11 +90,19 @@ def check_avg_return_by_score_qcut():
     qcut_ret_mean["diff"] = qcut_ret_mean[9] - qcut_ret_mean[0]
     qcut_ret_mean = qcut_ret_mean.sort_values(by=["diff"], ascending=False)
 
+    qcut_ret_momentum = qcut_ret.loc[(qcut_ret["score"]=="fundamentals_momentum_weekly1") &
+                                     (qcut_ret["index"] == "ret_week") &
+                                     (qcut_ret["currency_code"] == "USD")
+                                     ].sort_values(by=["trading_day"], ascending=False)
+    qcut_ret_momentum = qcut_ret_momentum.set_index(["trading_day"])[list(range(10))]
+    sns.heatmap(scale(qcut_ret_momentum.values.T).T)
+    plt.show()
+
     for name, g in qcut_ret_mean.groupby(["currency_code", "index"]):
         print(name)
         print(g)
 
 if __name__ == '__main__':
     # get_top_picks()
-    # check_avg_return_by_score_qcut()
-    check_average_score_return_by_industry()
+    check_avg_return_by_score_qcut()
+    # check_average_score_return_by_industry()
