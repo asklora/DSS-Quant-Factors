@@ -42,7 +42,7 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
             INNER JOIN {result_score_table} S ON ((S.uid=P.uid) AND (S.group_code=P.group)) 
             WHERE {' AND '.join(conditions)}
             ORDER BY S.uid''')
-    result_all_all = read_query(query, db_url_write).rename(columns={"testing_period": "trading_day"}).fillna(0)
+    result_all_all = read_query(query, db_url_alibaba).rename(columns={"testing_period": "trading_day"}).fillna(0)
     result_all_all['y_type'] = result_all_all['y_type'].apply(lambda x: ','.join(sorted(x)))
 
     all_current = []

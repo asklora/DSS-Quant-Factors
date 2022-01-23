@@ -11,6 +11,8 @@ import global_vars
 from general.sql_process import read_query, read_table
 from general.report_to_slack import to_slack
 
+universe_currency_code = ['USD', 'EUR', 'HKD']
+
 def score_update_scale(fundamentals, calculate_column, universe_currency_code, factor_rank):
 
     groupby_col = ['currency_code']  # or 'dummy'
@@ -79,6 +81,10 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
 
+
+def calculate_mean_ret(fundamentals, factor_rank):
+    ''' given fundamentals calculate qcut returns '''
+
     # dataframe for details checking
     fundamentals_details = {}
     fundamentals_details_column_names = {}
@@ -103,7 +109,8 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         score_col += [x for x in sub_g.loc[sub_g["scaler"].isnull(), "factor_name"]]
         fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = fundamentals[score_col].mean(axis=1)
 
-        mean_ret[(group, pillar_name)] = score_ret_mean(fundamentals.loc[fundamentals["currency_code"] == group], score_col+[f"fundamentals_{pillar_name}"])
+        mean_ret[(group, pillar_name)] = score_ret_mean(fundamentals.loc[fundamentals["currency_code"] == group],
+                                                        score_col+[f"fundamentals_{pillar_name}"])
 
         mean_ret_detail = pd.DataFrame(mean_ret[(group, pillar_name)][f"fundamentals_{pillar_name}"],
                                        index=list(range(len(mean_ret[(group, pillar_name)][f"fundamentals_{pillar_name}"])))).transpose()
@@ -111,7 +118,6 @@ def score_update_scale(fundamentals, calculate_column, universe_currency_code, f
         f = [f'{a}({b}, {round(c, 2)}, {d})' for a, b, c, d in f]
         mean_ret_detail['score_col'] = ', '.join(f)
         mean_ret_detail_all[pillar_name] = mean_ret_detail
-
 
     # calculate ai_score by each currency_code (i.e. group) for [Extra]
     for group, g in factor_rank.groupby("group"):
@@ -224,20 +230,22 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     fundamentals_all = []
 
     for name, g in fundamentals.groupby(['trading_day']):
-        print(name)
-        factor_rank_period = factor_rank.loc[factor_rank['trading_day'].astype(str)==name.strftime('%Y-%m-%d')]
-        if len(factor_rank_period)==0:
-            continue
+        for period in [1, 4]:
+            print(name)
+            factor_rank_period = factor_rank.loc[(factor_rank['trading_day'].astype(str)==name.strftime('%Y-%m-%d'))&
+                                                 (factor_rank['weeks_to_expire']==period)]
+            if len(factor_rank_period)==0:
+                continue
 
-        # Scale original fundamental score
-        fundamentals, mean_ret_all[name], best_10_tickers_all[name], mean_ret_detail = \
-            score_update_scale(g, calculate_column, universe_currency_code, factor_rank_period)
+            # Scale original fundamental score
+            fundamentals, mean_ret_all[name], best_10_tickers_all[name], mean_ret_detail = \
+                score_update_scale(g, calculate_column, universe_currency_code, factor_rank_period)
 
-        fundamentals_all.append(fundamentals)
+            fundamentals_all.append(fundamentals)
 
-        for p, df in mean_ret_detail.items():
-            df['trading_day'] = name
-            mean_ret_detail_all[p].append(df)
+            for p, df in mean_ret_detail.items():
+                df['trading_day'] = name
+                mean_ret_detail_all[p].append(df)
 
     fundamentals = pd.concat(fundamentals_all, axis=0)
     # m1 = MinMaxScaler(feature_range=(0, 10)).fit(fundamentals[["ai_score"]])

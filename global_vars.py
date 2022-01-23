@@ -3,7 +3,7 @@ db_url_alibaba = "postgresql://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.a
 db_url_alibaba_prod = "postgresql://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.rds.aliyuncs.com:1924/postgres"
 
 db_url_read = db_url_alibaba_prod
-db_url_write = db_url_alibaba
+db_url_write = db_url_alibaba_prod
 
 # TABLE names - factor model results
 result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
