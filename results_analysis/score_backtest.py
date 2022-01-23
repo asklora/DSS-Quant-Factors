@@ -219,27 +219,28 @@ class score_scale:
     def score_update_scale(self):
         ''' scale for each score '''
 
+        global score_col
         fundamentals, calculate_column = self.fundamentals, self.calculate_column
         print(fundamentals[score_col].describe())
-        score_col = score_col + ["currency_code"]
         fundamentals[score_col] = fundamentals[score_col].round(1)
-        return fundamentals.set_index('ticker')[score_col], \
-               fundamentals.set_index('ticker')[calculate_column]
+        return fundamentals
 
-
-def get_tri_ret(start_date):
-    ''' calculate weekly / monthly return based on TRI '''
-
-    # calculate weekly return from TRI
-    tri = read_query(f"SELECT ticker, trading_day, total_return_index FROM data_tri "
-                     f"WHERE trading_day >= '{start_date}' AND ticker='AAPL.O'", global_vars.db_url_alibaba_prod)
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    tri = tri.pivot(index=["trading_day"], columns=["ticker"], values="total_return_index")
-    tri = tri.resample('D').pad().ffill()
-    triw = (tri.shift(-7)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_week"})
-    trim = (tri.shift(-28)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_month"})
-
-    return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
+# def get_tri_ret(start_date):
+#     ''' calculate weekly / monthly return based on TRI '''
+#
+#     # calculate weekly return from TRI
+#     tri = read_query(f"SELECT ticker, trading_day, total_return_index FROM data_tri "
+#                      f"WHERE trading_day >= '{start_date}' "
+#                      f"AND ticker='AAPL.O'"
+#                      , global_vars.db_url_alibaba_prod)
+#     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+#     tri = tri.pivot(index=["trading_day"], columns=["ticker"], values="total_return_index")
+#     tri = tri.resample('D').sum().replace(0, np.nan)
+#     tri = tri.rolling(7, min_periods=1).mean().ffill()
+#     triw = (tri.shift(-7)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_week"})
+#     trim = (tri.shift(-28)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_month"})
+#
+#     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
 def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-11-01'):
     ''' calculate score with DROID v2 method & evaluate '''
@@ -273,16 +274,14 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     factor_rank = pd.read_csv('cached_factor_rank.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
+    factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
 
-    # Test return calculation:
-    fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
-    tri_ret = get_tri_ret(start_date)
-    fundamentals_score_ret = fundamentals_score_ret.merge(tri_ret, on=["ticker", "trading_day"], how="left")
-
-    fundamentals_score_ret["diff_1w"] = fundamentals_score_ret["stock_return_y_1week"] - fundamentals_score_ret["ret_week"]
-    fundamentals_score_ret["diff_1m"] = fundamentals_score_ret["stock_return_y_4week"] - fundamentals_score_ret["ret_month"]
-
-    fundamentals_score_ret.to_csv('cached_fundamental_score_ret.csv', index=False)
+    # Test return calculation
+    # fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
+    # tri_ret = get_tri_ret(start_date)
+    # fundamentals_score_ret = fundamentals_score_ret.merge(tri_ret, on=["ticker", "trading_day"], how="left")
+    # fundamentals_score_ret["diff_1w"] = fundamentals_score_ret["stock_return_y_1week"] - fundamentals_score_ret["ret_week"]*4
+    # fundamentals_score_ret["diff_1m"] = fundamentals_score_ret["stock_return_y_4week"] - fundamentals_score_ret["ret_month"]
 
     factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
@@ -318,26 +317,37 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     # add column for 3 pillar score
     fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
 
+    # add industry_name to ticker
+    industry_name = get_industry_name()
+    fundamentals["industry_name"] = fundamentals["ticker"].map(industry_name)
+
     # calculate score
     fundamentals_all = []
     eval_qcut_all = {}
+    eval_best_all = {}
     for name, g in fundamentals.groupby(['trading_day']):
         for weeks_to_expire in [1, 4]:
             print(name)
-            factor_rank_period = factor_rank.loc[(factor_rank['trading_day'].astype(str)==name.strftime('%Y-%m-%d'))&
+            factor_rank_period = factor_rank.loc[(factor_rank['trading_day']==(name-relativedelta(weeks=weeks_to_expire)))&
                                                  (factor_rank['weeks_to_expire']==weeks_to_expire)]
             if len(factor_rank_period)==0:
                 continue
 
             # Scale original fundamental score
-            fundamentals, _ = score_scale(g, calculate_column, universe_currency_code,
+            fundamentals = score_scale(g, calculate_column, universe_currency_code,
                                           factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
             fundamentals_all.append(fundamentals)
 
             # Evaluate 1: calculate return on 10-qcut portfolios
-            eval_qcut_all[(name, weeks_to_expire)] = eval_qcut(fundamentals, score_col)
+            eval_qcut_all[(name, weeks_to_expire)] = eval_qcut(fundamentals, score_col, weeks_to_expire)
 
+            # Evaluate 2: calculate return for top 10 score / mode industry
+            eval_best_all[(name, weeks_to_expire)] = eval_best(fundamentals, weeks_to_expire)
 
+            eval_qcut_df = pd.DataFrame(eval_qcut_all).stack(level=[-2, -1])
+            eval_qcut_df[list(range(10))] = pd.DataFrame(eval_qcut_df[0])
+            eval_best_df = pd.DataFrame(eval_best_all).stack(level=-2)
+            break
     fundamentals = pd.concat(fundamentals_all, axis=0)
 
     # Evaluate
@@ -345,57 +355,42 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     # save_description_history(score_history)                                     # score distribution
     return True
 
-def eval_qcut_col_specific(cur, best_10_tickers_all, mean_ret_detail_all):
-    for c in [x[1:-1] for x in cur]:
-        writer = pd.ExcelWriter(f"#{dt.datetime.today().strftime('%Y%m%d')}_backtest_{c}.xlsx")
-        tic = {x:z for x, yz in best_10_tickers_all.items() for y, z in yz.items() if y==c}
-        pd.DataFrame(tic).transpose().to_excel(writer, 'Top 10 Ticker')
-
-        for p, df_list in mean_ret_detail_all.items():
-            ddf = pd.concat(df_list, axis=0).reset_index(drop=True)
-            ddf.to_excel(writer, f'{p} details')
-        # for p in ['momentum','quality', 'value', 'extra']:
-        #     ret_p = {x:z for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
-        #     for col in ret_p[list(ret_p.keys())[0]].keys():
-        #         ret_p = {x:y[col] for x, y in ret_p.items()}
-        #         ret_p = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p.items()}
-        #         ret_p_df = pd.DataFrame(ret_p, index=list(range(10))).transpose()
-        #         ret_p_df = ret_p_df.mean(axis=0)
-        #     ret_p_df.to_excel(writer, f'Qcut {p}')
-        # for p in ['ai_score']:
-        #     ret_p1 = {x:z[p] for x, yz in mean_ret_all.items() for y, z in yz.items() if (y[0]==c) & (y[1]==p) if len(z)>0}
-        #     ret_p1 = {x:np.pad(y, (10-len(y),0)) for x, y in ret_p1.items()}
-        #     ret_p1_df = pd.DataFrame(ret_p1, index=list(range(10))).transpose()
-        #     ret_p1_df.to_excel(writer, 'Qcut ai_score')
-        writer.save()
-
-def best_10_tickers(g, score_col):
-    g = g.set_index('ticker').nlargest(10, columns=['ai_score'], keep='all')[['stock_return_y']+score_col]
-    comb = pd.DataFrame(g.mean()).round(4).transpose()
-    g = g.reset_index()[['ticker','stock_return_y']].values
-    g = [f'{a}({round(b,2)})' for a, b in g]
-    comb['ticker'] = ', '.join(g)
-    return comb.transpose().to_dict()[0]
-
 def save_description_history(df):
     ''' write statistics for description '''
     df = df.groupby('currency_code')['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
     to_slack("clair").df_to_slack("AI Score distribution (Backtest)", df)
 
-def eval_qcut(fundamentals, score_col):
+def eval_qcut(fundamentals, score_col, weeks_to_expire):
     ''' evaluate score history with score 10-qcut mean ret (over entire history) '''
-
-
 
     mean_ret = {}
     fundamentals = fundamentals.reset_index(drop=True)
     for name, df in fundamentals.groupby(["currency_code"]):
         for col in score_col:
             df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
-            mean_ret[col.replace('_minmax_currency_code','')] = df.dropna(subset=[col]).groupby(['qcut'])['stock_return_y'].mean().values
+            mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
+                f'stock_return_y_{weeks_to_expire}week'].mean().to_dict("index")
 
     return mean_ret
 
+def eval_best(fundamentals, weeks_to_expire):
+    ''' evaluate score history with top 10 score return & industry '''
+
+    top_ret = {}
+    for name, g in fundamentals.groupby(["currency_code"]):
+        g = g.set_index('ticker').nlargest(10, columns=['ai_score'], keep='all')
+        top_ret[(name, "return")] = g[f"stock_return_y_{weeks_to_expire}week"].mean()
+        top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
+        top_ret[(name, "mode count")] = np.sum(g[f"industry_name"]==top_ret[(name, "mode")])
+        top_ret[(name, "positive_pct")] = np.sum(g[f"stock_return_y_{weeks_to_expire}week"]>0)/len(g)
+
+    return top_ret
+
+def get_industry_name():
+    ''' get ticker -> industry name (4-digit) '''
+    query = "SELECT ticker, name_4 FROM universe u INNER JOIN icb_code_explanation i ON u.industry_code=i.code_8"
+    df= read_query(query, global_vars.db_url_alibaba_prod)
+    return df.set_index(["ticker"])["name_4"].to_dict()
 
 if __name__ == "__main__":
     test_score_history(weeks_to_expire=1)

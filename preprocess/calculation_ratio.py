@@ -124,10 +124,11 @@ def calc_stock_return(ticker):
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
     # resample tri using last week average as the proxy for monthly tri
-    logging.info(f'Stock volume using last 7 days average ')
+    logging.info(f'Stock volume/tri using last 7 days average ')
     tri[['volume', 'tri_7d_avg']] = tri.groupby("ticker")[['volume', 'tri']].rolling(7, min_periods=1).mean().reset_index(drop=1)
     tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
     tri['volume'] = tri['volume'] / tri['volume_3m']
+    tri.to_csv('test_tri_aapl_before_resample.csv')
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
@@ -159,6 +160,7 @@ def calc_stock_return(ticker):
         tri["tri_y"] = tri.groupby('ticker')[y_base_col].shift(-rolling_period)
         tri[f"stock_return_y_{rolling_period}week"] = (tri["tri_y"] / tri[y_base_col]) - 1
         tri[f"stock_return_y_{rolling_period}week"] = tri[f"stock_return_y_{rolling_period}week"]*4/rolling_period
+    # tri.to_csv('test_tri_aapl.csv')
     tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
     tri["tri_2wb"] = tri.groupby('ticker')['tri'].shift(2)
     tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(4)
@@ -502,6 +504,7 @@ def calc_factor_variables(*args):
 
         # save calculated ratios to DB
         db_table_name = processed_ratio_table
+        trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
         upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
     except Exception as e:
         error_msg = f"===  ERROR IN Getting Data: {ticker} === {e}"
@@ -544,11 +547,8 @@ def calc_factor_variables_multi(
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
-    if restart:
-        trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
-    else:
-        tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
-        tickers = list(set(tickers)-set(tickers_exist))
+    # tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
+    # tickers = list(set(tickers)-set(tickers_exist))
 
     calc_factor_variables(tickers)
     # tickers = [tuple([e]) for e in tickers]
