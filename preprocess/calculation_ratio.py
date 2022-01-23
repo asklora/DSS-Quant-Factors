@@ -21,18 +21,15 @@ def get_tri(ticker=None):
                  f"FROM {stock_data_table_tri} T "
                  f"INNER JOIN {stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
-                 f"WHERE T.ticker in {tuple(ticker)}".replace(",)",")"))
+                 f"WHERE T.ticker in {tuple(ticker)}".replace(",)",") ORDER BY T.ticker, T.trading_day"))
     tri = read_query(query, db_url_read)
 
-    query1 = f"SELECT * FROM {eikon_price_table} "
-    query1 += f"WHERE ticker in {tuple(ticker)} ORDER BY trading_day ".replace(",)",")")
-    eikon_price = read_query(query1, db_url_read)
-
-    query2 = f"SELECT * FROM {anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker in {tuple(ticker)}".replace(",)",")")
+    query2 = f"SELECT * FROM {anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker in {tuple(ticker)} " \
+             f"ORDER BY ticker, trading_day".replace(",)",")")
     market_cap_anchor = read_query(query2, db_url_read)
     market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
-    return tri, eikon_price, market_cap_anchor
+    return tri, market_cap_anchor
 
 def fill_all_day(result, date_col="trading_day"):
     ''' Fill all the weekends between first / last day and fill NaN'''
@@ -106,37 +103,13 @@ def resample_to_weekly(df, date_col):
 def calc_stock_return(ticker):
     ''' Calcualte monthly stock return '''
 
-    tri, eikon_price, market_cap_anchor = get_tri(ticker)
-    eikon_price = eikon_price.loc[eikon_price['ticker'].isin(tri['ticker'].unique())]
+    tri, market_cap_anchor = get_tri(ticker)
     market_cap_anchor = market_cap_anchor.loc[market_cap_anchor['ticker'].isin(tri['ticker'].unique())]
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    eikon_price['trading_day'] = pd.to_datetime(eikon_price['trading_day'])
-
-    # find first tri from DSS as anchor
-    tri_first = tri.dropna(subset=['tri']).sort_values(by=['trading_day']).groupby(['ticker']).first().reset_index()
-    tri_first['anchor_tri'] = tri_first['tri']
-    eikon_price['close'] = eikon_price['close'].fillna(eikon_price[['high','low']].mean(axis=1))
-    eikon_price = eikon_price.merge(tri_first[['ticker','trading_day','anchor_tri']], on=['ticker','trading_day'], how='left')
-
-    # find anchor close price (adj.)
-    eikon_price = eikon_price.sort_values(['ticker','trading_day'])
-    eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'anchor_close'] = eikon_price.loc[eikon_price['anchor_tri'].notnull(), 'close']
-    eikon_price[['anchor_close','anchor_tri']] = eikon_price.groupby('ticker')[['anchor_close','anchor_tri']].bfill()
-
-    # calculate tri based on EIKON close price data
-    eikon_price['tri'] = eikon_price['close']/eikon_price['anchor_close']*eikon_price['anchor_tri']
-
-    # merge DSS & EIKON data
-    tri = tri.merge(eikon_price, on=['ticker','trading_day'], how='outer', suffixes=['','_eikon']).sort_values(by=['ticker','trading_day'])
-    value_col = ['open','high','low','close','tri','volume']
-    for col in value_col:
-        tri[col] = tri[col].fillna(tri[col+'_eikon'])  # update missing tri (i.e. prior history) with EIKON tri calculated
-    tri = tri[['ticker','trading_day'] + value_col]
 
     # x = tri.loc[tri['ticker']=='AAPL.O'].sort_values(by=['trading_day'], ascending=False)
-
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
     tri = tri.sort_values(['ticker','trading_day'])
@@ -151,8 +124,8 @@ def calc_stock_return(ticker):
     tri = tri.drop(['open', 'high', 'low'], axis=1)
 
     # resample tri using last week average as the proxy for monthly tri
-    logging.info(f'Stock price using last 7 days average ')
-    tri[['tri','volume']] = tri.groupby("ticker")[['tri','volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
+    logging.info(f'Stock volume using last 7 days average ')
+    tri[['volume', 'tri_7d_avg']] = tri.groupby("ticker")[['volume', 'tri']].rolling(7, min_periods=1).mean().reset_index(drop=1)
     tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
     tri['volume'] = tri['volume'] / tri['volume_3m']
 
@@ -179,8 +152,12 @@ def calc_stock_return(ticker):
     # Calculate monthly return (Y) + R6,2 + R12,7
     logging.info(f'Calculate stock returns ')
     for rolling_period in [1, 4]:
-        tri["tri_y"] = tri.groupby('ticker')['tri'].shift(-rolling_period)
-        tri[f"stock_return_y_{rolling_period}week"] = (tri["tri_y"] / tri["tri"]) - 1
+        if rolling_period==1:
+            y_base_col = 'tri'
+        elif rolling_period==4:
+            y_base_col = 'tri_7d_avg'
+        tri["tri_y"] = tri.groupby('ticker')[y_base_col].shift(-rolling_period)
+        tri[f"stock_return_y_{rolling_period}week"] = (tri["tri_y"] / tri[y_base_col]) - 1
         tri[f"stock_return_y_{rolling_period}week"] = tri[f"stock_return_y_{rolling_period}week"]*4/rolling_period
     tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
     tri["tri_2wb"] = tri.groupby('ticker')['tri'].shift(2)
@@ -199,7 +176,7 @@ def calc_stock_return(ticker):
     tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
     tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
 
-    tri = tri.drop(['tri', 'tri_y'] + drop_col, axis=1)
+    tri = tri.drop(['tri', 'tri_y', 'tri_7d_avg'] + drop_col, axis=1)
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
 
     return tri, stock_col
@@ -581,7 +558,7 @@ def calc_factor_variables_multi(
 if __name__ == "__main__":
 
     restart = True
-    calc_factor_variables_multi(ticker=None, restart=restart, processes=1)
+    calc_factor_variables_multi(ticker="AAPL.O", restart=restart, processes=1)
 
 
 

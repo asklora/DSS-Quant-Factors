@@ -6,6 +6,19 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import scale
 
+def get_tri_ret(start_date):
+
+    # calculate weekly return from TRI
+    tri = read_query(f"SELECT ticker, trading_day, total_return_index FROM data_tri "
+                     f"WHERE trading_day >= '{start_date}'", db_url_alibaba_prod)
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    tri = tri.pivot(index=["trading_day"], columns=["ticker"], values="total_return_index")
+    tri = tri.resample('D').pad().ffill()
+    triw = (tri.shift(-7)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_week"})
+    trim = (tri.shift(-28)/tri - 1).stack().dropna(how="all").reset_index().rename(columns={0: "ret_month"})
+
+    return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
+
 def get_top_picks(start_date = '2021-11-01'):
     ''' match Monday Scores with next week/month return '''
 
