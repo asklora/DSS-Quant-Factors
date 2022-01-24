@@ -20,7 +20,8 @@ import multiprocessing as mp
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
 
-    try:
+    # try:
+    if True:
         data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
         logging.debug(f"===== test on y_type, {len(y_type)}, {y_type} =====")
@@ -65,8 +66,8 @@ def mp_rf(*mp_args):
             rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
-    except Exception as e:
-        to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
+    # except Exception as e:
+    #     to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
 
 if __name__ == "__main__":
 

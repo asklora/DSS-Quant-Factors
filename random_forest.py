@@ -125,7 +125,7 @@ class rf_HPOT:
                       'r2_valid': r2_score(self.sample_set['valid_y'], Y_valid_pred),
                       'mae_test': mean_absolute_error(self.sample_set['test_y'], Y_test_pred),
                       'mse_test': mean_squared_error(self.sample_set['test_y'], Y_test_pred),
-                      'net_ret': ret[2]
+                      'net_ret': ret
                       }
         else:
             result = {'mae_train': mean_absolute_error(self.sample_set['train_yy'], Y_train_pred),
@@ -136,7 +136,7 @@ class rf_HPOT:
                       'r2_valid': r2_score(self.sample_set['valid_y'], Y_valid_pred),
                       'mae_test': mean_absolute_error(self.sample_set['test_y'], Y_test_pred),
                       'mse_test': mean_squared_error(self.sample_set['test_y'], Y_test_pred),
-                      'net_ret': ret[2]
+                      'net_ret': ret
                       }
 
         self.sql_result.update(result)  # update result of model
