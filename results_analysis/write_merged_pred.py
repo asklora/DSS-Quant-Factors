@@ -37,14 +37,17 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     uid_col = "finish_timing"     # changing to uid
     if eval_start_date:
         conditions.append(f"S.testing_period>='{eval_start_date}'")
+
+    # TODO: debug using {result_pred_table}_old, {result_score_table}_old
     query = text(f'''
             SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col+model_record_col])} 
-            FROM {result_pred_table} P 
-            INNER JOIN {result_score_table} S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
+            FROM {result_pred_table}_old P 
+            INNER JOIN {result_score_table}_old S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
             WHERE {' AND '.join(conditions)}
             ORDER BY S.{uid_col}''')
     result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
-    result_all_all['y_type'] = result_all_all['y_type'].apply(lambda x: ','.join(sorted(x)))
+    # result_all_all['y_type'] = result_all_all['y_type'].apply(lambda x: ','.join(sorted(x)))
+    result_all_all['y_type'] = result_all_all['y_type'].str[1:-1]   # TODO: for old version only
 
     all_current = []
     all_history = []
@@ -99,13 +102,16 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
 
             return pd.Series(ret_dict)
 
+        logging.debug("=== Update testing set results ===")
         result_all_comb = result_all.groupby(level=['group', 'trading_day']+other_group_col).apply(get_summary_stats_in_group)
         result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day')<result_all_comb.index.get_level_values('trading_day').max()]
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
         result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day']).reset_index()
-        result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
-        logging.debug(result_all_comb_mean)
-        logging.debug(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
+        result_all_comb["name_sql"] = name_sql
+        result_all_comb = uid_maker(result_all_comb, primary_key=["name_sql", "group", "trading_day", ""]+other_group_col)
+        upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table,
+                                primary_key=["uid"], db_url=db_url_write, how="update")
+        # logging.debug(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
 
         # --------------------------------- Save Local Evaluation ------------------------------------------
 
@@ -148,6 +154,7 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
 
         # ------------------------ Select Best Config (among other_group_col) ------------------------------
 
+        result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
         result_all_comb_mean['net_ret'] = result_all_comb_mean['max_ret'] - result_all_comb_mean['min_ret']
         result_all_comb_mean_best = result_all_comb_mean.sort_values(['max_ret']).groupby(['group']).last()[other_group_col].reset_index()
         logging.info(f'best_iter:\n{result_all_comb_mean_best}')
@@ -205,17 +212,17 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
     df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
     df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
     if not DEBUG:
-        delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
-        upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
+        # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
+        # upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
         df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
         df_current = df_current.drop(columns=["last_update", "trading_day"])
-        upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
+        # upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
 
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week4_20220103_debug_sep'
-    suffix = 4
+    name_sql = 'week1_20220119194057_debug'
+    suffix = 1
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)

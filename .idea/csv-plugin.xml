@@ -1634,6 +1634,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/check_average_score_return_by_industry.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/eval_best_df.csv">
           <value>
             <Attribute>

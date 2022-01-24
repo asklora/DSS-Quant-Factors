@@ -12,6 +12,7 @@ feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
 # production_factor_rank_ratio_table = "factor_result_rank_ratio"
 production_factor_rank_backtest_table = "factor_result_rank_backtest"
+production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval"
 production_factor_rank_history_table = "factor_result_rank_history"
 
 # TABLE names - universe rating results

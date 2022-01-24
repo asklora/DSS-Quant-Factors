@@ -46,7 +46,20 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
 
 def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1, try_drop_table=False):
-    ''' upsert Table to DB '''
+    ''' upsert Table to DB
+
+    Parameters
+    ----------
+    data (DataFrame): data write to DB
+    table (Str): table name
+    primary_key (List[Str]): column name(s) used as primary key in DB
+    db_url :
+    how :
+    drop_primary_key :
+    verbose :
+    try_drop_table :
+
+    '''
 
     try:
         logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
