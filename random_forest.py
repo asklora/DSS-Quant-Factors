@@ -176,7 +176,7 @@ class rf_HPOT:
         self.sql_result['y_type'] = [x[2:] for x in self.y_col]
         df = pd.DataFrame(Y_test_pred, index=self.group_index, columns=self.sql_result['y_type'])
         df = df.unstack().reset_index(drop=False)
-        df.columns = ['y_type', 'group', 'pred']
+        df.columns = ['factor_name', 'group', 'pred']
         df['actual'] = self.sample_set['test_y_final'].flatten(order='F')  # also write actual qcut to BD
         df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
         return df

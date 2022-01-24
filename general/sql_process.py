@@ -45,20 +45,25 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
 
 
 def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
-                            drop_primary_key=False, verbose=1, try_drop_table=False):
+                            drop_primary_key=False, verbose=1):
     ''' upsert Table to DB
 
     Parameters
     ----------
-    data (DataFrame): data write to DB
-    table (Str): table name
-    primary_key (List[Str]): column name(s) used as primary key in DB
+    data (DataFrame):
+        data to write to DB Table
+    table (Str, Optional):
+        DB table name
     db_url :
-    how :
-    drop_primary_key :
-    verbose :
-    try_drop_table :
-
+        write to which DB (default=Alibaba Dev)
+    primary_key (List[Str], Optional):
+        Primary key of the data (compulsory when how=update/ignore)
+    how (Str, Optional):
+        how to write to DB (default=update)
+    drop_primary_key (Bool, Optional):
+        if True, drop columns composing "uid" primary key (default=False)
+    verbose (Float, Optional):
+        if True, report write to DB to slack (default=1, i.e. report to DB)
     '''
 
     try:
@@ -101,21 +106,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
     except Exception as e:
-        if try_drop_table:      # if error from columns doesn't exist -> could try to drop table and create again
-            try:
-                drop_table_in_database(table, db_url)
-                upsert(engine=engine,
-                       df=data,
-                       table_name=table,
-                       if_row_exists=how,
-                       chunksize=20000,
-                       dtype=data_type)
-                logging.debug(f"DATA [{how}] TO {table}")
-                engine.dispose()
-            except:
-                to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
-        else:
-            to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
 
 def read_query(query, db_url=db_url_alibaba):
     ''' Read specific query from SQL '''

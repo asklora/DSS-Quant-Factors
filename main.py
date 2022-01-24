@@ -1,5 +1,5 @@
 import datetime as dt
-import logging
+import pandas as pd
 import numpy as np
 import argparse
 import time
@@ -33,8 +33,11 @@ def mp_rf(*mp_args):
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
+        # map y_type name to list of factors
+        y_type_query = f"SELECT * FROM {factors_y_type_table}"
+        y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
         load_data_params = {'valid_method': 'chron', 'n_splits': sql_result['n_splits'],
-                            "output_options": {"y_type": y_type, "qcut_q": sql_result['qcut_q'],
+                            "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
                                                "use_median": sql_result['qcut_q']>0, "defined_cut_bins": []},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
                                               "factor_pca": use_pca, "mi_pca": 0.9}}
@@ -138,17 +141,8 @@ if __name__ == "__main__":
     mode = 'trim' if args.trim else ''
     data = load_data(weeks_to_expire, mode=mode)  # load_data (class) STEP 1
 
-    # y_type_list = [data.x_col_dict['y_col']]
-    # y_type_list = list(combinations(set(data.x_col_dict['momentum'])&set(data.x_col_dict['y_col']), 5))
-    # y_type_list += list(combinations(set(data.x_col_dict['quality'])&set(data.x_col_dict['y_col']), 5))
-    # y_type_list += list(combinations(set(data.x_col_dict['value'])&set(data.x_col_dict['y_col']), 5))
-
-    # y_type_list = []
-    # y_type_list.append(list(set(data.x_col_dict['momentum'])&set(data.factor_list)))
-    # y_type_list.append(list(set(data.x_col_dict['value'])&set(data.factor_list)))
-    # y_type_list.append(list(set(data.x_col_dict['quality'])&set(data.factor_list)))
-
-    y_type_list = [list(set(data.x_col_dict['quality']+data.x_col_dict['value']+data.x_col_dict['momentum'])&set(data.factor_list))]
+    # y_type_list = ["all"]
+    y_type_list = ["momentum", "value", "quality"]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
