@@ -87,24 +87,14 @@ class rf_HPOT:
 
         return Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df
 
-    def _eval_test_return(self, actual, pred, Y_train_pred=[]):
+    def _eval_test_return(self, actual, pred):
         ''' test return based on test / train set quantile bins '''
 
-        p = np.linspace(0, 1, 4)
-        if len(Y_train_pred) > 0:
-            bins = np.quantile(Y_train_pred, p)
-        else:
-            bins = np.quantile(pred, p)
-
-        ret = []
-        factor_name = []
-        for i in range(3):
-            ret.append(np.mean(actual[(pred >= bins[i]) & (pred <= bins[i + 1])]))
-            f = np.array([x[2:] for x in self.y_col])
-            f_mask = np.reshape((pred >= bins[i]) & (pred < bins[i + 1]), (len(f),))
-            factor_name.append(f[f_mask])
-
-        return ret, factor_name[2]
+        q_ = [0., 1/3, 2/3, 1.]
+        pred_qcut = pd.qcut(pred.flatten(), q=q_, labels=False, duplicates='drop').reshape((1,-1))
+        ret = actual[pred_qcut==2].mean()
+        best_factor = np.array([x[2:] for x in self.y_col])[pred_qcut[0,:]==2]
+        return ret, best_factor
 
     def eval_regressor(self, rf_space, rerun=False):
         ''' train & evaluate LightGBM on given rf_space by hyperopt trials with Regressiong model
@@ -125,7 +115,7 @@ class rf_HPOT:
         if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
             self.sample_set['test_y'] = np.zeros(Y_test_pred.shape)
 
-        ret, best_factor = self._eval_test_return(self.sample_set['test_y'], Y_test_pred, Y_test_pred)
+        ret, best_factor = self._eval_test_return(self.sample_set['test_y'], Y_test_pred)
         if rerun:
             result = {'mae_train': mean_absolute_error(self.sample_set['train_y'], Y_train_pred),
                       'mae_valid': mean_absolute_error(self.sample_set['valid_y'], Y_valid_pred),

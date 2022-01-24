@@ -76,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--weeks_to_expire', default=1, type=int)
-    parser.add_argument('--processes', default=8, type=int)
+    parser.add_argument('--processes', default=1, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')

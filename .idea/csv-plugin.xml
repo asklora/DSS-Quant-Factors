@@ -1648,6 +1648,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/eval_qcut_df.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/eval_qcut_df_avg.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/lgbm_feature_importance.py">
           <value>
             <Attribute>

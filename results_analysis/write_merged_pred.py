@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 import datetime as dt
 import argparse
 
+import global_vars
 from global_vars import *
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql.base import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP
@@ -35,180 +37,185 @@ class rank_pred:
         self.q = q
         self.name_sql = name_sql
         self.eval_start_date = eval_start_date
+        self.weeks_to_expire = int(self.name_sql[4])
 
-        self.model_record_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number']
-        self.iter_unique_col = ['group','trading_day','factor_name','cv_number']
+        self.label_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number']
+        self.iter_unique_col = ['group', 'trading_day', 'factor_name', 'cv_number']     # keep 'cv_number' in last one for averaging
         self.diff_config_col = ['tree_type', 'use_pca']
 
         # 1. Download & merge all prediction from iteration
-        result_all_all = self._download_prediction()
+        pred = self._download_prediction(name_sql, eval_start_date, self.diff_config_col, self.label_col)
 
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
         self.all_history = []
-        for y_type, result_all in result_all_all.groupby('y_type'):
-            self.rank_each_y_type(y_type, result_all)
+        for y_type, g in pred.groupby('y_type'):
+            self.rank_each_y_type(q, y_type, g)
 
-    def rank_each_y_type(self, y_type, result_all):
+    def rank_each_y_type(self, q, y_type, df):
         ''' rank for each y_type '''
 
-        logging.info(f'=== Generate rank for [{y_type}] with results={result_all.shape}) ===')
-        if len(result_all) < 100:
-            return False            # test run iteration
+        logging.info(f'=== Generate rank for [{y_type}] with results={df.shape}) ===')
 
         # 2.1. remove duplicate samples from running twice when testing
-        result_all = result_all.drop_duplicates(subset=self.iter_unique_col+self.diff_config_col, keep='last')
-        result_all['trading_day'] = pd.to_datetime(result_all['trading_day'])
+        df = df.drop_duplicates(subset=self.iter_unique_col+self.diff_config_col, keep='last')
+        df['trading_day'] = pd.to_datetime(df['trading_day'])
 
-        # 2.2. save backtest evaluation metrics
-        self.__backtest_save_eval_metrics(result_all, q)
+        # 2.2. use average predictions from different validation sets
+        df_cv_avg = df.groupby(self.iter_unique_col[:-1]+self.diff_config_col)[['pred', 'actual']].mean()
 
-        # 2.3. save local for evaluation (when DEBUG)
-        if DEBUG:
-            rank_pred.__save_csv_backtest_ret(name_sql, y_type)
-            rank_pred.__save_plot_backtest_ret(name_sql, y_type)
+        # 2.3. calculate 'pred_z'/'factor_weight' by ranking
+        q = q/len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
+        q_ = [0., q, 1.-q, 1.]
+        df_cv_avg = rank_pred.__calc_z_weight(q_, df_cv_avg, self.diff_config_col)
 
-        # 2.4. use best config prediction for this y_type
-        result_all_comb_mean_best = self.__backtest_find_best_config()
-        result_all = result_all.dropna(axis=0, subset=['factor_weight'])[['pred_z', 'factor_weight']].reset_index()
-        result_all = result_all.merge(result_all_comb_mean_best, on=['group'] + other_group_col, how='right')
+        # 2.4. save backtest evaluation metrics
+        self.__backtest_save_eval_metrics(df_cv_avg, y_type)
 
-        # count rank for debugging
-        # factor_rank = result_all.set_index(['trading_day','factor_name','group'])['factor_weight'].unstack()
-        rank_count = result_all.groupby(['group', 'trading_day'])['factor_weight'].apply(pd.value_counts)
+        # 2.5. use best config prediction for this y_type
+        best_config = self.__backtest_find_best_config()
+        df_cv_avg = df_cv_avg[['pred_z', 'factor_weight']].reset_index()
+        df_cv_avg_best = df_cv_avg.loc[(df_cv_avg[self.diff_config_col]==best_config).all(axis=1)]
+
+        # 2.6. rank for each trading_day
+        for period in df_cv_avg_best['trading_day'].unique():
+            self.rank_each_trading_day(period, df_cv_avg_best)
+
+    @staticmethod
+    def __calc_z_weight(q_, df, diff_config_col):
+        ''' calculate 'pred_z'/'factor_weight' by ranking within current testing_period '''
+
+        # 2.3.1. calculate factor_weight with qcut
+        groupby_keys = ['group', 'trading_day'] + diff_config_col
+        df['factor_weight'] = df.groupby(by=groupby_keys)['pred'].transform(
+            lambda x: pd.qcut(x, q=q_, labels=False, duplicates='drop'))
+        df = df.reset_index()
+
+        # 2.3.2. count rank for debugging
+        rank_count = df.groupby(groupby_keys)['factor_weight'].apply(pd.value_counts)
         rank_count = rank_count.unstack().fillna(0)
         logging.info(f'n_factor used:\n{rank_count}')
 
-        # 2.5. rank for each trading_day
-        for period in result_all['trading_day'].unique():
-            self.rank_each_trading_day(period, result_all)
+        # 2.3.3. calculate pred_z using mean & std of all predictions in entire testing history
+        df['pred_z'] = df.groupby(by=['group']+diff_config_col)['pred'].apply(lambda x: (x-np.mean(x))/np.std(x))
+        return df
 
     def rank_each_trading_day(self, period, result_all):
         ''' rank for each trading_day '''
 
         logging.debug(f'calculate (neg_factor, factor_weight): {period}')
+        df = result_all.loc[result_all['trading_day'] == period].reset_index(drop=True)
+        neg_factor = df.set_index(['group'])['neg_factor'].to_dict()
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
-        df = result_all.loc[result_all['trading_day'] == period, result_col].copy().reset_index(drop=True)
+        df = df[result_col]
 
-        # 2.5.1. record basic info
+        # 2.6.1. record basic info
         df['factor_weight'] = df['factor_weight'].astype(int)
         df['last_update'] = dt.datetime.now()
 
-        # 2.5.2. record neg_factor
-        # original premium is "small - big" = short_large -> those marked neg_factor = long_large
+        # 2.6.2. record neg_factor
+        # original premium is "small - big" = short_large -> those marked neg_factor = long_large        
         df['long_large'] = False
-        neg_factor = dict_neg_factor[pd.Timestamp(period)]
         for k, v in neg_factor.items():  # write neg_factor i.e. label factors
             df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
 
-        # append to history / currency df list
+        # 2.6.3. append to history / currency df list
         self.all_history.append(df.sort_values(['group', 'pred_z']))
         if (period == result_all['trading_day'].max()):  # if keep_all_history also write to prod table
             self.all_current.append(df.sort_values(['group', 'pred_z']))
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    @classmethod
-    def _download_prediction(self, name_sql, eval_start_date, other_group_col, model_record_col):
+    def _download_prediction(self, name_sql, eval_start_date, diff_config_col, label_col):
         ''' merge factor_stock & factor_model_stock '''
 
         logging.info('=== Download prediction history ===')
         conditions = [f"S.name_sql like '{name_sql}%'"]
-        uid_col = "finish_timing"     # TODO: changing to uid
+        uid_col = "uid"
         if eval_start_date:
             conditions.append(f"S.testing_period>='{eval_start_date}'")
 
-        # TODO: debug using {result_pred_table}_old, {result_score_table}_old
         query = text(f'''
-                SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in other_group_col+model_record_col])} 
-                FROM {result_pred_table}_old P 
-                INNER JOIN {result_score_table}_old S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
+                SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in diff_config_col+label_col])} 
+                FROM {result_pred_table} P 
+                INNER JOIN {result_score_table} S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
                 WHERE {' AND '.join(conditions)}
                 ORDER BY S.{uid_col}''')
         result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
-        # result_all_all['y_type'] = result_all_all['y_type'].apply(lambda x: ','.join(sorted(x)))
-        # result_all_all['y_type'] = result_all_all['y_type'].str[1:-1]   # TODO: for old version only
         return result_all_all
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
-    def __backtest_save_eval_metrics(self, result_all, q):
+    def __backtest_save_eval_metrics(self, result_all, y_type):
         ''' evaluate & rank different configuration;
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table '''
 
-        # backtest
-        dict_neg_factor = result_all[['trading_day', 'group', 'neg_factor']].drop_duplicates(
-            subset=['trading_day', 'group'], keep='last')
-        dict_neg_factor = dict_neg_factor.set_index(['group', 'trading_day'])[
-            'neg_factor'].unstack().to_dict()  # negative value columns
-
-        # use average predictions from different validation sets
-        result_all = result_all.groupby(['trading_day', 'factor_name', 'group'] + other_group_col)[
-            ['pred', 'actual']].mean()
-
-        if isinstance(q, int):    # if define top/bottom q factors as the best/worse
-            q = q/len(result_all['factor_name'].unique())
-        q_ = [0., q, 1.-q, 1.]
-
-        # rank within current testing_period
-        groupby_keys = ['group','trading_day'] + other_group_col
-        result_all['factor_weight'] = result_all.groupby(level=groupby_keys)['pred'].transform(lambda x: pd.qcut(x, q=q_, labels=range(len(q_) - 1), duplicates='drop'))
-
-        # calculate pred_z using mean & std of all predictions in entire testing history
-        groupby_keys = ['group'] + other_group_col
-        result_all = result_all.join(result_all.groupby(level=groupby_keys)['pred'].agg(['mean', 'std']), on=groupby_keys, how='left')
-        result_all['pred_z'] = (result_all['pred'] - result_all['mean']) / result_all['std']
-        result_all = result_all.drop(['mean', 'std'], axis=1)
-
-        def get_summary_stats_in_group(g):
-            ''' Calculate basic evaluation metrics for factors '''
-
-            ret_dict = {}
-
-            max_g = g[g['factor_weight'] == 2]
-            min_g = g[g['factor_weight'] == 0]
-
-            ret_dict['max_factor'] = ','.join(list(max_g.index.get_level_values('factor_name').tolist()))
-            ret_dict['min_factor'] = ','.join(list(min_g.index.get_level_values('factor_name').tolist()))
-            ret_dict['max_ret'] = max_g['actual'].mean()
-            ret_dict['min_ret'] = min_g['actual'].mean()
-            ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
-            ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
-            ret_dict['r2'] = r2_score(g['pred'], g['actual'])
-
-            return pd.Series(ret_dict)
-
+        # 2.4.1. calculate group statistic
         logging.debug("=== Update testing set results ===")
         result_all_avg = result_all.groupby(['group', 'trading_day'])['actual'].mean()  # actual factor premiums
-        result_all_comb = result_all.groupby(level=['group', 'trading_day']+other_group_col).apply(get_summary_stats_in_group)
-        result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day')<result_all_comb.index.get_level_values('trading_day').max()]
+        result_all_comb = result_all.groupby(['group', 'trading_day']+self.diff_config_col).apply(rank_pred.__get_summary_stats_in_group)
+        result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day') <
+                                              result_all_comb.index.get_level_values('trading_day').max()].reset_index()
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
-        result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day']).reset_index()
-        result_all_comb["name_sql"] = name_sql
-        result_all_comb = uid_maker(result_all_comb, primary_key=["name_sql", "group", "trading_day", "y_ytpe"]+other_group_col)
+        result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day'], how='left')
+
+        # 2.4.2. save eval results to DB
+        result_all_comb["name_sql"] = self.name_sql
+        result_all_comb["y_type"] = y_type
+        result_all_comb["weeks_to_expire"] = self.weeks_to_expire
+        primary_keys = ["name_sql","group","trading_day","y_type"]+self.diff_config_col
+        result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table,
                                 primary_key=["uid"], db_url=db_url_write, how="update")
-        # logging.debug(result_all_comb.groupby(['group'] + other_group_col)['max_ret'].apply(lambda x: x.mean()/x.std()))
 
-    def __backtest_find_best_config(self):    # TODO: update from backtest_eval table
+        # 2.4.3. save local plot for evaluation (when DEBUG)
+        if DEBUG:
+            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, name_sql, y_type)
+
+    @staticmethod
+    def __get_summary_stats_in_group(g):
+        ''' Calculate basic evaluation metrics for factors '''
+
+        ret_dict = {}
+
+        max_g = g[g['factor_weight'] == 2]
+        min_g = g[g['factor_weight'] == 0]
+
+        ret_dict['max_factor'] = ','.join(max_g['factor_name'].tolist())
+        ret_dict['min_factor'] = ','.join(min_g['factor_name'].tolist())
+        ret_dict['max_ret'] = max_g['actual'].mean()
+        ret_dict['min_ret'] = min_g['actual'].mean()
+        ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
+        ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
+        ret_dict['r2'] = r2_score(g['pred'], g['actual'])
+
+        return pd.Series(ret_dict)
+
+    def __backtest_find_best_config(self, eval_metric='max_ret'):
         ''' Select Best Config (among other_group_col) '''
-        result_all_comb_mean = result_all_comb.groupby(['group'] + other_group_col).mean().reset_index()
-        result_all_comb_mean['net_ret'] = result_all_comb_mean['max_ret'] - result_all_comb_mean['min_ret']
-        result_all_comb_mean_best = result_all_comb_mean.sort_values(['max_ret']).groupby(['group']).last()[other_group_col].reset_index()
+
+        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE weeks_to_expire={self.weeks_to_expire}"
+        df = read_query(query, global_vars.db_url_alibaba_prod)
+        df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()
+        df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
+        if eval_metric in ['max_ret', 'net_ret', 'r2']:
+            best = df_mean.sort_values(eval_metric, ascending=False).groupby('group').first()[self.diff_config_col]
+        elif eval_metric in ['mae', 'mse']:
+            best = df_mean.sort_values(eval_metric, ascending=True).groupby('group').first()[self.diff_config_col]
+        best = best.to_dict(orient="index")
         logging.info(f'best_iter:\n{result_all_comb_mean_best}')
-        return result_all_comb_mean_best
+        return best
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
-    @classmethod
-    def write_to_db(self, all_history, all_current):
+    def write_to_db(self):
         ''' concat rank current/history & write
             1. current rank -> production_factor_rank_table / production_factor_rank_history
             2. backtest rank -> production_factor_rank_backtest_table
         '''
         tbl_name_backtest = production_factor_rank_backtest_table
-        df_history = pd.concat(all_history, axis=0)
-        df_history["weeks_to_expire"] = suffix
+        df_history = pd.concat(self.all_history, axis=0)
+        df_history["weeks_to_expire"] = self.weeks_to_expire
         df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
         df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
         if DEBUG:
@@ -222,35 +229,21 @@ class rank_pred:
 
         tbl_name_current = production_factor_rank_table
         tbl_name_history = production_factor_rank_history_table
-        df_current = pd.concat(all_current, axis=0)
-        df_current["weeks_to_expire"] = suffix
+        df_current = pd.concat(self.all_current, axis=0)
+        df_current["weeks_to_expire"] = self.weeks_to_expire
         df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
         df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
         if not DEBUG:
-            # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={suffix}")
+            # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={self.weeks_to_expire}")
             # upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
             df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
             df_current = df_current.drop(columns=["last_update", "trading_day"])
             # upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
 
-    # ---------------------------------- Save local CSV/Plot for evaluation --------------------------------------------
+    # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
     @staticmethod
-    def __save_csv_backtest_ret(name_sql, y_type):
-        ''' Save CSV for backtest average ret '''
-
-        logging.debug(f'=== Save CSV for backtest average ret ===')
-        file_name = f'#pred_{name_sql}_{y_type}.xlsx'
-        writer = pd.ExcelWriter(file_name)
-        result_all_comb_mean.to_excel(writer, sheet_name='average', index=False)
-        result_all_comb.to_excel(writer, sheet_name='group_time', index=False)
-        pd.pivot_table(result_all, index=['group', 'trading_day'], columns=['factor_name'],
-                       values=['pred', 'actual']).to_excel(writer, sheet_name='all')
-        writer.save()
-        logging.debug(f'=== Saved [{file_name}] for evaluation ===')
-
-    @staticmethod
-    def __save_plot_backtest_ret(name_sql, y_type):
+    def __save_plot_backtest_ret(result_all_comb, other_group_col, name_sql, y_type):
         ''' Save Plot for backtest average ret '''
 
         logging.debug(f'=== Save Plot for backtest average ret ===')
@@ -284,7 +277,7 @@ class rank_pred:
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220119194057_debug'
+    name_sql = 'week1_20220124155618_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)
@@ -305,5 +298,5 @@ if __name__ == "__main__":
     ).write_to_db()
 
     # from results_analysis.score_backtest import score_history
-    # score_history(suffix)
+    # score_history(self.weeks_to_expire)
 

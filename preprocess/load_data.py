@@ -153,10 +153,7 @@ class load_data:
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.main, self.factor_list, self.x_col_dict = combine_data(
-            weeks_to_expire,
-            update_since=update_since,
-            mode=mode)    # combine all data
+        self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, update_since=update_since, mode=mode)    # combine all data
 
         # calculate y for all factors
         all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
