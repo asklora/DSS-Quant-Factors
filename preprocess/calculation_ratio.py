@@ -1,5 +1,5 @@
 import logging
-
+import datetime as dt
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
@@ -14,17 +14,24 @@ from general.report_to_slack import to_slack
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
-def get_tri(ticker=None):
+def get_tri(ticker=None, restart=True):
     ''' get stock price data from data_dss & data_dsws '''
+
+    if restart:
+        start_date = dt.datetime(1998,1,1)
+    else:   # if not restart only from 1yr ago
+        start_date = (dt.datetime.today() - relativedelta(months=6)).strftime("%Y-%m-%d")
 
     query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                  f"FROM {stock_data_table_tri} T "
                  f"INNER JOIN {stock_data_table_ohlc} C ON T.uid = C.uid "
                  f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
-                 f"WHERE T.ticker in {tuple(ticker)}".replace(",)",") ORDER BY T.ticker, T.trading_day"))
+                 f"WHERE T.ticker in {tuple(ticker)} AND T.trading_day>='{start_date}' "
+                 f"ORDER BY T.ticker, T.trading_day".replace(",)",")"))
     tri = read_query(query, db_url_read)
 
-    query2 = f"SELECT * FROM {anchor_table_mkt_cap} WHERE field='mkt_cap' AND ticker in {tuple(ticker)} " \
+    query2 = f"SELECT * FROM {anchor_table_mkt_cap} " \
+             f"WHERE field='mkt_cap' AND ticker in {tuple(ticker)} AND trading_day>='{start_date}' " \
              f"ORDER BY ticker, trading_day".replace(",)",")")
     market_cap_anchor = read_query(query2, db_url_read)
     market_cap_anchor = market_cap_anchor.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
@@ -100,10 +107,10 @@ def resample_to_weekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(ticker):
+def calc_stock_return(ticker, restart):
     ''' Calcualte monthly stock return '''
 
-    tri, market_cap_anchor = get_tri(ticker)
+    tri, market_cap_anchor = get_tri(ticker, restart)
     market_cap_anchor = market_cap_anchor.loc[market_cap_anchor['ticker'].isin(tri['ticker'].unique())]
 
     # merge stock return from DSS & from EIKON (i.e. longer history)
@@ -185,14 +192,21 @@ def calc_stock_return(ticker):
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
-def download_clean_worldscope_ibes(ticker):
+def download_clean_worldscope_ibes(ticker, restart):
     ''' download all data for factor calculate & LGBM input (except for stock return) '''
 
-    query_ws = f"select * from {worldscope_quarter_summary_table} WHERE ticker in {tuple(ticker)}".replace(",)",")")
+    if restart:
+        start_date = dt.datetime(1998,1,1)
+    else:   # if not restart only from 1yr ago
+        start_date = (dt.datetime.today() - relativedelta(years=2)).strftime("%Y-%m-%d")
+
+    query_ws = f"select * from {worldscope_quarter_summary_table} " \
+               f"WHERE ticker in {tuple(ticker)} AND trading_day>='{start_date}' ".replace(",)",")")
     ws = read_query(query_ws, db_url_read)
     ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
-    query_ibes = f"SELECT * FROM {ibes_data_table} WHERE ticker in {tuple(ticker)}".replace(",)",")")
+    query_ibes = f"SELECT * FROM {ibes_data_table} " \
+                 f"WHERE ticker in {tuple(ticker)} AND trading_day>='{start_date}' ".replace(",)",")")
     ibes = read_query(query_ibes, db_url_read)
     ibes = ibes.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
@@ -288,32 +302,32 @@ def drop_dup(df, col='trading_day'):
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
     return df.drop('count', axis=1)
 
-def combine_stock_factor_data(ticker):
+def combine_stock_factor_data(ticker, restart):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume
-    tri, stocks_col = calc_stock_return(ticker)
+    tri, stocks_col = calc_stock_return(ticker, restart)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
-    if ticker[0]=='.':  # if ticker=index, write stock return to DB first -> later report error and stop process due to lack of worldscope data
-        stock_return_col = tri.filter(regex='^stock_return_').columns.to_list()
-        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stock_return_col, var_name="field",
-                      value_name="value").dropna(subset=["value"])
-        tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
-
-        # save calculated ratios to DB
-        db_table_name = processed_ratio_table
-        upsert_data_to_database(tri, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
+    # if ticker[0]=='.':  # if ticker=index, write stock return to DB first -> later report error and stop process due to lack of worldscope data
+    #     stock_return_col = tri.filter(regex='^stock_return_').columns.to_list()
+    #     tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stock_return_col, var_name="field",
+    #                   value_name="value").dropna(subset=["value"])
+    #     tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
+    #
+    #     # save calculated ratios to DB
+    #     db_table_name = processed_ratio_table
+    #     upsert_data_to_database(tri, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
 
     # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['trading_day'], ascending=False).head(100)
 
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
-    ws, ibes, universe = download_clean_worldscope_ibes(ticker)
+    ws, ibes, universe = download_clean_worldscope_ibes(ticker, restart)
 
     # align worldscope / ibes data with stock return date (monthly/biweekly)
     ws = fill_all_given_date(ws, tri)
@@ -353,7 +367,7 @@ def combine_stock_factor_data(ticker):
     cols = [x for x in cols if not x.startswith("stock_return_y")]     # for stock_return_y -> no ffill
     df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
     df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
-    df = df.merge(universe, on=['ticker'], how='left')      # label industry_code, currency_code for each ticker
+    df = df.merge(universe, on=['ticker'], how='left', suffixes=('_old', ''))      # label industry_code, currency_code for each ticker
     check_duplicates(df, 'final')
     return df, stocks_col
 
@@ -406,14 +420,13 @@ def calc_fx_conversion(df):
     df['market_cap_usd'] = df['market_cap']
     return df[org_cols]
 
-def calc_factor_variables(*args):
+def calc_factor_variables(ticker, restart):
     ''' Calculate all factor used referring to DB ratio table '''
 
-    ticker, = args
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     error_universe = []
     try:
-        df, stocks_col = combine_stock_factor_data(ticker)
+        df, stocks_col = combine_stock_factor_data(ticker, restart)
 
         formula = read_table(formula_factors_table_prod, db_url_read)
         formula = formula.loc[formula['is_active']]
@@ -502,12 +515,18 @@ def calc_factor_variables(*args):
         df = pd.melt(df, id_vars=['ticker', "trading_day"], var_name="field", value_name="value").dropna(subset=["value"])
         df = uid_maker(df, primary_key=['ticker', "trading_day", "field"])
 
+        if not restart:
+            df = df.loc[df["trading_day"]>(dt.datetime.today()-relativedelta(months=3))]
+
         # save calculated ratios to DB
         db_table_name = processed_ratio_table
-        trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
-        upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
+        if restart:
+            trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
+            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
+        else:
+            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="update")
     except Exception as e:
-        error_msg = f"===  ERROR IN Getting Data: {ticker} === {e}"
+        error_msg = f"===  ERROR IN Getting Data == {e}"
         to_slack("clair").message_to_slack(error_msg)
         error_universe.append(ticker)
 
@@ -540,6 +559,7 @@ def calc_factor_variables_multi(
         processes=6,
         restart=True):
 
+
     if ticker:
         tickers = [ticker]
     elif currency:
@@ -550,15 +570,15 @@ def calc_factor_variables_multi(
     # tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
     # tickers = list(set(tickers)-set(tickers_exist))
 
-    calc_factor_variables(tickers)
+    calc_factor_variables(tickers, restart)
     # tickers = [tuple([e]) for e in tickers]
     # with mp.Pool(processes=processes) as pool:
     #     pool.starmap(calc_factor_variables, tickers)
 
 if __name__ == "__main__":
 
-    restart = True
-    calc_factor_variables_multi(ticker="AAPL.O", restart=restart, processes=1)
+    restart = False
+    calc_factor_variables_multi(ticker=None, restart=restart, processes=1)
 
 
 

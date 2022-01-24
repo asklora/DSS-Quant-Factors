@@ -69,6 +69,8 @@ def check_average_score_return_by_industry():
     avg = df.groupby(["currency_code", "industry_name"])[score_col+["ret_week", "ret_month"]].mean()
     avg = avg.reset_index().sort_values(by=["ai_score_unscaled"], ascending=False)
 
+    avg.to_csv('check_average_score_return_by_industry.csv')
+
     for name, g in avg.groupby(["currency_code"]):
         print(name)
         print(g)
@@ -117,5 +119,5 @@ def check_avg_return_by_score_qcut():
 
 if __name__ == '__main__':
     # get_top_picks()
-    check_avg_return_by_score_qcut()
-    # check_average_score_return_by_industry()
+    # check_avg_return_by_score_qcut()
+    check_average_score_return_by_industry()

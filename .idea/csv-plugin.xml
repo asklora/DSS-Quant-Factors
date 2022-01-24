@@ -1627,6 +1627,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/cached_fundamental_score.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/eval_best_df.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/lgbm_feature_importance.py">
           <value>
             <Attribute>

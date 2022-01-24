@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=4, trim_outlier_=False, processes=12, start_date='2021-10-31')
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=1, start_date='2022-01-09')
 
     end = datetime.now()
 

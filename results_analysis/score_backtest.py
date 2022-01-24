@@ -242,16 +242,16 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-11-01'):
+def test_score_history(weeks_to_expire=None, currency_code='USD', start_date='2021-11-01'):
     ''' calculate score with DROID v2 method & evaluate '''
 
     # print("=== Get factor rank history ===")
-    # conditions = [f"weeks_to_expire={weeks_to_expire}"]
+    # conditions = [f"True"]
     # if currency_code:
     #     conditions.append(f"\"group\"='{currency_code}'")
     # if start_date:
     #     conditions.append(f"trading_day>='{start_date}'")
-    # factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
+    # factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table}_debug "    # TODO: change table name
     #                          f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba)
     # factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
     # print(factor_rank.dtypes)
@@ -275,6 +275,8 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     factor_rank = pd.read_csv('cached_factor_rank.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
+
+    factor_rank['trading_day'] = factor_rank['trading_day'].apply(lambda x: x-relativedelta(hours=8))
 
     # Test return calculation
     # fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
@@ -307,7 +309,7 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-    label_col = ['ticker', 'trading_day', 'currency_code', f'stock_return_y_{weeks_to_expire}week']
+    label_col = ['ticker', 'trading_day', 'currency_code', 'stock_return_y_1week', 'stock_return_y_4week']
     fundamentals = fundamentals_score[label_col+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)
@@ -344,11 +346,22 @@ def test_score_history(weeks_to_expire=1, currency_code='USD', start_date='2021-
             # Evaluate 2: calculate return for top 10 score / mode industry
             eval_best_all[(name, weeks_to_expire)] = eval_best(fundamentals, weeks_to_expire)
 
-            eval_qcut_df = pd.DataFrame(eval_qcut_all).stack(level=[-2, -1])
-            eval_qcut_df[list(range(10))] = pd.DataFrame(eval_qcut_df[0])
-            eval_best_df = pd.DataFrame(eval_best_all).stack(level=-2)
-            break
-    fundamentals = pd.concat(fundamentals_all, axis=0)
+    print("=== Reorganize mean return dictionary to DataFrames ===")
+    eval_qcut_df = pd.DataFrame(eval_qcut_all).stack(level=[-2, -1])
+    eval_qcut_df = pd.DataFrame(eval_qcut_df.to_list(), index=eval_qcut_df.index)
+    eval_qcut_df = eval_qcut_df.reset_index().rename(columns={"level_0": "currency_code",
+                                                              "level_1": "score",
+                                                              "level_2": "trading_day",
+                                                              "level_3": "weeks_to_expire",})
+    eval_qcut_df_avg = eval_qcut_df.groupby(["currency_code", "score", "weeks_to_expire"]).mean()
+    eval_qcut_df.to_csv("eval_qcut_df.csv")
+    eval_qcut_df.to_csv("eval_qcut_df_avg.csv")
+    eval_best_df = pd.DataFrame(eval_best_all).stack(level=[-2, -1]).unstack(level=1)
+    eval_best_df = eval_best_df.reset_index().rename(columns={"level_0": "currency_code",
+                                                              "level_1": "trading_day",
+                                                              "level_2": "weeks_to_expire",})
+    eval_best_df.to_csv("eval_best_df.csv")
+    # fundamentals = pd.concat(fundamentals_all, axis=0)
 
     # Evaluate
     # eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
@@ -369,7 +382,7 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire):
         for col in score_col:
             df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
             mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
-                f'stock_return_y_{weeks_to_expire}week'].mean().to_dict("index")
+                f'stock_return_y_{weeks_to_expire}week'].mean().to_dict()
 
     return mean_ret
 

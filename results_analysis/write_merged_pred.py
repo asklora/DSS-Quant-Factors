@@ -34,15 +34,16 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
 
     logging.info('=== Download prediction history ===')
     conditions = [f"S.name_sql like '{name_sql}%'"]
+    uid_col = "finish_timing"     # changing to uid
     if eval_start_date:
         conditions.append(f"S.testing_period>='{eval_start_date}'")
     query = text(f'''
             SELECT P.pred, P.actual, P.y_type as factor_name, P.group, {', '.join(['S.'+x for x in other_group_col+model_record_col])} 
             FROM {result_pred_table} P 
-            INNER JOIN {result_score_table} S ON ((S.uid=P.uid) AND (S.group_code=P.group)) 
+            INNER JOIN {result_score_table} S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
             WHERE {' AND '.join(conditions)}
-            ORDER BY S.uid''')
-    result_all_all = read_query(query, db_url_alibaba).rename(columns={"testing_period": "trading_day"}).fillna(0)
+            ORDER BY S.{uid_col}''')
+    result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
     result_all_all['y_type'] = result_all_all['y_type'].apply(lambda x: ','.join(sorted(x)))
 
     all_current = []
@@ -213,8 +214,8 @@ def download_stock_pred(q, model, name_sql, suffix=None, eval_start_date=None):
 if __name__ == "__main__":
 
     # name_sql = 'week4_20220119_debug'
-    name_sql = 'week1_20220120182331_debug'
-    suffix = 1
+    name_sql = 'week4_20220103_debug_sep'
+    suffix = 4
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)
