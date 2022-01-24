@@ -108,7 +108,6 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
-    factor_list = ["earnings_yield"]  # TODO: only for debug
 
     # premium calculate currency only
     ratio_query = f"SELECT r.*, u.currency_code " \
