@@ -532,13 +532,14 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True):
 
     Parameters
     ----------
-    ticker (Str, default = None): tickers to calculate variables (all factors)
-    currency (Str, default = None): tickers to calculate variables (all factors)
-    restart (Bool):
-
-    Returns
-    -------
-
+    ticker (Str, default=None):
+        tickers to calculate variables (default calculate for all active tickers)
+    currency (Str, default=None):
+        tickers in which currency to calculate variables
+    restart (Bool, default=False):
+        if True, calculate variables for all trading_period, AND [rewrite] entire factor_processed_ratio table;
+        if False, calculate variables for the most recent 3 months, AND [update] factor_processed_ratio table.
+            Get From Table "data_tri" for recent 6 months data, and "data_worldscope"/"data_ibes" for recent 2 years.
     '''
 
     if ticker:
