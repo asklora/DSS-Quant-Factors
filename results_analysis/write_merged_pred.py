@@ -108,7 +108,7 @@ class rank_pred:
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    @class_method
+    @classmethod
     def _download_prediction(self, name_sql, eval_start_date, other_group_col, model_record_col):
         ''' merge factor_stock & factor_model_stock '''
 
@@ -200,7 +200,7 @@ class rank_pred:
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
-    @class_method
+    @classmethod
     def write_to_db(self, all_history, all_current):
         ''' concat rank current/history & write
             1. current rank -> production_factor_rank_table / production_factor_rank_history
@@ -235,7 +235,7 @@ class rank_pred:
 
     # ---------------------------------- Save local CSV/Plot for evaluation --------------------------------------------
 
-    @static_method
+    @staticmethod
     def __save_csv_backtest_ret(name_sql, y_type):
         ''' Save CSV for backtest average ret '''
 
@@ -249,7 +249,7 @@ class rank_pred:
         writer.save()
         logging.debug(f'=== Saved [{file_name}] for evaluation ===')
 
-    @static_method
+    @staticmethod
     def __save_plot_backtest_ret(name_sql, y_type):
         ''' Save Plot for backtest average ret '''
 
