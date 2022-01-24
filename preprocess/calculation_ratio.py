@@ -46,7 +46,7 @@ def fill_all_day(result, date_col="trading_day"):
     df.trading_day = pd.to_datetime(df[date_col])
     result.trading_day = pd.to_datetime(result[date_col])
     df = df.sort_values(by=[date_col], ascending=True)
-    daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1], freq='D')
+    daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1]+relativedelta(days=6), freq='D')
     indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', date_col])
 
     # Insert weekend/before first trading date to df
@@ -145,17 +145,14 @@ def calc_stock_return(ticker, restart):
     tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
 
     # update market_cap/market_cap_usd refer to tri for each period
-    try:
-        market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
-        tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-        anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
-        tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
-        tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
-        tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
-        tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
-        tri = tri.drop(['anchor_tri'], axis=1)
-    except:
-        tri['mkt_cap'] = np.nan
+    market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
+    tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
+    tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
+    tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
+    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
+    tri = tri.drop(['anchor_tri'], axis=1)
 
     # Calculate monthly return (Y) + R6,2 + R12,7
     logging.info(f'Calculate stock returns ')
@@ -169,12 +166,12 @@ def calc_stock_return(ticker, restart):
         tri[f"stock_return_y_{rolling_period}week"] = tri[f"stock_return_y_{rolling_period}week"]*4/rolling_period
     # tri.to_csv('test_tri_aapl.csv')
     tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
-    tri["tri_2wb"] = tri.groupby('ticker')['tri'].shift(2)
-    tri["tri_1mb"] = tri.groupby('ticker')['tri'].shift(4)
-    tri["tri_2mb"] = tri.groupby('ticker')['tri'].shift(8)
-    tri['tri_6mb'] = tri.groupby('ticker')['tri'].shift(26)
-    tri['tri_7mb'] = tri.groupby('ticker')['tri'].shift(30)
-    tri['tri_12mb'] = tri.groupby('ticker')['tri'].shift(52)
+    tri["tri_2wb"] = tri.groupby('ticker')['tri_7d_avg'].shift(2)
+    tri["tri_1mb"] = tri.groupby('ticker')['tri_7d_avg'].shift(4)
+    tri["tri_2mb"] = tri.groupby('ticker')['tri_7d_avg'].shift(8)
+    tri['tri_6mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(26)
+    tri['tri_7mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(30)
+    tri['tri_12mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(52)
     drop_col = ['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
 
     tri["stock_return_ww1_0"] = (tri["tri"] / tri["tri_1wb"]) - 1
@@ -530,6 +527,35 @@ def calc_factor_variables(ticker, restart):
         to_slack("clair").message_to_slack(error_msg)
         error_universe.append(ticker)
 
+def calc_factor_variables_multi(ticker=None, currency=None, restart=True):
+    ''' Calculate weekly ratios for all factors
+
+    Parameters
+    ----------
+    ticker (Str, default = None): tickers to calculate variables (all factors)
+    currency (Str, default = None): tickers to calculate variables (all factors)
+    restart (Bool):
+
+    Returns
+    -------
+
+    '''
+
+    if ticker:
+        tickers = [ticker]
+    elif currency:
+        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active AND currency_code='{currency}'")["ticker"].to_list()
+    else:
+        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
+
+    # tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
+    # tickers = list(set(tickers)-set(tickers_exist))
+
+    calc_factor_variables(tickers, restart)
+    # tickers = [tuple([e]) for e in tickers]
+    # with mp.Pool(processes=processes) as pool:
+    #     pool.starmap(calc_factor_variables, tickers)
+
 def test_missing(df_org, formula, ingestion_cols):
 
     for group in ['USD']:
@@ -553,32 +579,10 @@ def test_missing(df_org, formula, ingestion_cols):
 
         writer.save()
 
-def calc_factor_variables_multi(
-        ticker=None,
-        currency=None,
-        processes=6,
-        restart=True):
-
-
-    if ticker:
-        tickers = [ticker]
-    elif currency:
-        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active AND currency_code='{currency}'")["ticker"].to_list()
-    else:
-        tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
-
-    # tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
-    # tickers = list(set(tickers)-set(tickers_exist))
-
-    calc_factor_variables(tickers, restart)
-    # tickers = [tuple([e]) for e in tickers]
-    # with mp.Pool(processes=processes) as pool:
-    #     pool.starmap(calc_factor_variables, tickers)
-
 if __name__ == "__main__":
 
     restart = False
-    calc_factor_variables_multi(ticker=None, restart=restart, processes=1)
+    calc_factor_variables_multi(ticker=None, restart=restart)
 
 
 

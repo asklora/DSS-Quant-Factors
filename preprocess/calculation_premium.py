@@ -65,6 +65,7 @@ def insert_prem_for_group(*args):
             return series.map(lambda _: np.nan)
 
     df, group, factor, trim_outlier_, y_col, weeks_to_expire = args
+    df = df.loc[df['currency_code']==group]     # Select all ticker for certain currency
     logging.info(f'=== Calculate premium for ({group}, {factor}) ===')
 
     try:
@@ -107,15 +108,18 @@ def calc_premium_all(weeks_to_expire, trim_outlier_=False, processes=12, all_gro
     formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
     factor_list = formula['name'].to_list()  # factor = all variabales
+    factor_list = ["earnings_yield"]  # TODO: only for debug
 
     # premium calculate currency only
-    ratio_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker in " \
-                  f"(SELECT ticker FROM universe WHERE currency_code in {tuple(all_groups)})"
+    ratio_query = f"SELECT r.*, u.currency_code " \
+                  f"FROM {processed_ratio_table} r " \
+                  f"INNER JOIN universe u ON r.ticker=u.ticker " \
+                  f"WHERE currency_code in {tuple(all_groups)}"
     if start_date:
         ratio_query += f" AND trading_day>='{start_date}' "
-    df = read_query(ratio_query, db_url_read)
+    df = read_query(ratio_query.replace(",)",")"), db_url_read)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
-    df = df.pivot(index=["ticker","trading_day"], columns=["field"], values='value').reset_index()
+    df = df.pivot(index=["ticker","trading_day", "currency_code"], columns=["field"], values='value').reset_index()
     y_col = f'stock_return_y_{weeks_to_expire}week'
     df = df.dropna(subset=[y_col, 'ticker'])
 
@@ -144,7 +148,7 @@ if __name__ == "__main__":
 
     start = datetime.now()
 
-    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=1, start_date='2022-01-09')
+    calc_premium_all(weeks_to_expire=1, trim_outlier_=False, processes=1, start_date='2022-01-01')
 
     end = datetime.now()
 

@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_ratio:
-        calc_factor_variables_multi(ticker=None, restart=False, processes=args.processes)
+        calc_factor_variables_multi(ticker=None, restart=False)
     if args.recalc_premium:
         calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
 
