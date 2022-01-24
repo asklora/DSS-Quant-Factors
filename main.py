@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='squared_error')
+    parser.add_argument('--objective', default='absolute_error')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--weeks_to_expire', default=1, type=int)
     parser.add_argument('--processes', default=1, type=int)

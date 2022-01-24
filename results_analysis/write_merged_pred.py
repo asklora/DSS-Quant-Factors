@@ -77,7 +77,9 @@ class rank_pred:
         best_config = self.__backtest_find_best_config()
         df_cv_avg_best = []
         for name, g in df_cv_avg.groupby(['group']):
-            g_best = df_cv_avg.loc[(df_cv_avg[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
+            g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
+            if len(g_best)==0:
+                g_best = g
             df_cv_avg_best.append(g_best)
         df_cv_avg_best = pd.concat(df_cv_avg_best, axis=0)
 
@@ -231,8 +233,9 @@ class rank_pred:
         df_history["weeks_to_expire"] = self.weeks_to_expire
         df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
         df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-        trucncate_table_in_database(tbl_name_backtest, db_url_write)
-        upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=how)
+        if not DEBUG:
+            trucncate_table_in_database(tbl_name_backtest, db_url_write)
+            upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
 
         # 2. write current use factors
         tbl_name_current = production_factor_rank_table
@@ -264,8 +267,8 @@ class rank_pred:
         for name, g in result_all_comb.groupby(['other_group', 'group']):
             ax = fig.add_subplot(num_other_group, num_group, k)
             g[['max_ret', 'actual', 'min_ret']] = (g[['max_ret', 'actual', 'min_ret']] + 1).cumprod(axis=0)
-            plot_df = g[['max_ret', 'actual', 'min_ret']]
-            ax.plot(plot_df.reset_index(drop=True))
+            plot_df = g.set_index(['trading_day'])[['max_ret', 'actual', 'min_ret']]
+            ax.plot(plot_df)
             for i in range(3):
                 ax.annotate(plot_df.iloc[-1, i].round(2), (plot_df.index[-1], plot_df.iloc[-1, i]), fontsize=10)
             if k % num_group == 1:
@@ -275,8 +278,6 @@ class rank_pred:
             if k == 1:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
-        plt.ylabel('-'.join(other_group_col))
-        plt.xlabel('group')
         fig_name = f'#pred_{name_sql}_{y_type}.png'
         plt.savefig(fig_name)
         plt.close()
@@ -284,8 +285,11 @@ class rank_pred:
 
 if __name__ == "__main__":
 
-    # name_sql = 'week1_20220124155618_debug'
-    name_sql = 'week1_20220124192603_debug'
+    name_sql='week1_20220124155618_debug'
+    # name_sql='week1_20220124192603_debug'
+    # name_sql='week1_20220125033146_debug'
+    # name_sql='week1_20220125035220_debug'
+    name_sql='week4_20220125040959_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)

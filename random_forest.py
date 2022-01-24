@@ -29,8 +29,8 @@ class rf_HPOT:
         self.hpot_start = get_timestamp_now_str()
 
         rf_space = {
-            'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
-            # 'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
+            # 'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
+            'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
             'max_depth': hp.choice('max_depth', [8, 32, 64]),
             'min_samples_split': hp.choice('min_samples_split', [5, 10, 50, 100]),
             'min_samples_leaf': hp.choice('min_samples_leaf', [5, 10, 50]),
@@ -53,7 +53,7 @@ class rf_HPOT:
         upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, primary_key=["uid"],
                                 db_url=db_url_write, how="ignore", verbose=-1)
 
-    def rf_train(self, space, rerun):
+    def rf_train(self, space):
         ''' train lightgbm booster based on training / validaton set -> give predictions of Y '''
 
         params = space.copy()
@@ -68,20 +68,12 @@ class rf_HPOT:
         elif 'rf' in self.sql_result['tree_type']:
             regr = RandomForestRegressor(criterion=self.sql_result['objective'], **params)
 
-        if rerun:
-            regr.fit(self.sample_set['train_x'], self.sample_set['train_y_final'])
-        else:
-            regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'])
+        regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'])
 
         # prediction on all sets
-        if rerun:
-            Y_train_pred = regr.predict(self.sample_set['train_x'])
-            Y_valid_pred = regr.predict(self.sample_set['valid_x'])
-            Y_test_pred = regr.predict(self.sample_set['test_x'])
-        else:
-            Y_train_pred = regr.predict(self.sample_set['train_xx'])
-            Y_valid_pred = regr.predict(self.sample_set['valid_x'])
-            Y_test_pred = regr.predict(self.sample_set['test_x'])
+        Y_train_pred = regr.predict(self.sample_set['train_xx'])
+        Y_valid_pred = regr.predict(self.sample_set['valid_x'])
+        Y_test_pred = regr.predict(self.sample_set['test_x'])
 
         self.sql_result['feature_importance'], feature_importance_df = self.to_list_importance(regr)
 
@@ -96,7 +88,7 @@ class rf_HPOT:
         best_factor = np.array([x[2:] for x in self.y_col])[pred_qcut[0,:]==2]
         return ret, best_factor
 
-    def eval_regressor(self, rf_space, rerun=False):
+    def eval_regressor(self, rf_space):
         ''' train & evaluate LightGBM on given rf_space by hyperopt trials with Regressiong model
         -------------------------------------------------
         This part haven't been modified for multi-label questions purpose
@@ -104,61 +96,33 @@ class rf_HPOT:
 
         self.sql_result['uid'] = self.hpot_start + get_timestamp_now_str()
 
-        Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df = self.rf_train(rf_space, rerun)
-
-        if rerun:  # save prediction bins for training as well
-            p = np.linspace(0, 1, 10)
-            self.sql_result['train_bins'] = list(np.quantile(Y_train_pred, p))
-            self.sql_result['train_mean'] = np.nanmean(Y_train_pred.flatten())
-            self.sql_result['train_std'] = np.nanstd(Y_train_pred.flatten())
+        self.sample_set['train_yy_pred'], self.sample_set['valid_y_pred'], self.sample_set['test_y_pred'], \
+            feature_importance_df = self.rf_train(rf_space)
 
         if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
             self.sample_set['test_y'] = np.zeros(Y_test_pred.shape)
 
-        ret, best_factor = self._eval_test_return(self.sample_set['test_y'], Y_test_pred)
-        if rerun:
-            result = {'mae_train': mean_absolute_error(self.sample_set['train_y'], Y_train_pred),
-                      'mae_valid': mean_absolute_error(self.sample_set['valid_y'], Y_valid_pred),
-                      'mse_train': mean_squared_error(self.sample_set['train_y'], Y_train_pred),
-                      'mse_valid': mean_squared_error(self.sample_set['valid_y'], Y_valid_pred),
-                      'r2_train': r2_score(self.sample_set['train_y'], Y_train_pred),
-                      'r2_valid': r2_score(self.sample_set['valid_y'], Y_valid_pred),
-                      'mae_test': mean_absolute_error(self.sample_set['test_y'], Y_test_pred),
-                      'mse_test': mean_squared_error(self.sample_set['test_y'], Y_test_pred),
-                      'net_ret': ret
-                      }
-        else:
-            result = {'mae_train': mean_absolute_error(self.sample_set['train_yy'], Y_train_pred),
-                      'mae_valid': mean_absolute_error(self.sample_set['valid_y'], Y_valid_pred),
-                      'mse_train': mean_squared_error(self.sample_set['train_yy'], Y_train_pred),
-                      'mse_valid': mean_squared_error(self.sample_set['valid_y'], Y_valid_pred),
-                      'r2_train': r2_score(self.sample_set['train_yy'], Y_train_pred),
-                      'r2_valid': r2_score(self.sample_set['valid_y'], Y_valid_pred),
-                      'mae_test': mean_absolute_error(self.sample_set['test_y'], Y_test_pred),
-                      'mse_test': mean_squared_error(self.sample_set['test_y'], Y_test_pred),
-                      'net_ret': ret
-                      }
+        ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
+        result = {'net_ret': ret}
+        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_absolute_error}.items():
+            for i in ['train_yy', 'valid_y', 'test_y']:
+                result[f"{k}_{i.split('_')[0]}"] = np.median(func(self.sample_set[i].T,
+                                                                  self.sample_set[i+'_pred'].T,
+                                                                   multioutput='raw_values'))
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
 
-        if (result['mae_valid'] < self.hpot['best_score']) or (rerun):  # update best_mae to the lowest value for Hyperopt
+        if (result['mae_valid'] < self.hpot['best_score']):  # update best_mae to the lowest value for Hyperopt
             self.hpot['best_score'] = result['mae_valid']
-            self.hpot['best_stock_df'] = self.to_sql_prediction(Y_test_pred)
+            self.hpot['best_stock_df'] = self.to_sql_prediction(self.sample_set['test_y_pred'])
             self.hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
         gc.collect()
-
-        if rerun:
-            logging.info(
-                f"RERUN --> {str(result['mse_train'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
-                f"{str(result['net_ret'])[:6]}, {best_factor}")
-            return result['mse_train']
-        else:
-            logging.info(
-                f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
-                f"{str(result['net_ret'])[:6]}, {best_factor}")
-            return result['mse_valid']
+        logging.info(
+            f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
+            f"{str(result['net_ret'])[:6]}, {best_factor}")
+        return result['mse_valid']
 
     def to_sql_prediction(self, Y_test_pred):
         ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
