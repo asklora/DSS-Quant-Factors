@@ -107,17 +107,16 @@ class rank_pred:
     @staticmethod
     def __get_neg_factor_all(pred):
         ''' get all neg factors for all (testing_period, group) '''
-        pred_unique = pred.drop_duplicates(subset=['group', 'testing_period'])
-        neg_factor = pred_unique.set_index(['group', 'testing_period'])['neg_factor'].to_dict()
+        pred_unique = pred.drop_duplicates(subset=['group', 'trading_day'])
+        neg_factor = pred_unique.set_index(['group', 'trading_day'])['neg_factor'].unstack().to_dict()
         return neg_factor
 
     def rank_each_trading_day(self, period, result_all):
         ''' rank for each trading_day '''
 
         logging.debug(f'calculate (neg_factor, factor_weight): {period}')
-        df = result_all.loc[result_all['trading_day'] == period].reset_index(drop=True)
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
-        df = df[result_col]
+        df = result_all.loc[result_all['trading_day'] == period, result_col].reset_index(drop=True)
 
         # 2.6.1. record basic info
         df['factor_weight'] = df['factor_weight'].astype(int)
@@ -126,8 +125,9 @@ class rank_pred:
         # 2.6.2. record neg_factor
         # original premium is "small - big" = short_large -> those marked neg_factor = long_large        
         df['long_large'] = False
+        neg_factor = self.neg_factor[pd.Timestamp(period)]
         for k, v in neg_factor.items():  # write neg_factor i.e. label factors
-            df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v.split(',')])), 'long_large'] = True
+            df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v])), 'long_large'] = True
 
         # 2.6.3. append to history / currency df list
         self.all_history.append(df.sort_values(['group', 'pred_z']))
@@ -151,8 +151,9 @@ class rank_pred:
                 INNER JOIN {result_score_table} S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
                 WHERE {' AND '.join(conditions)}
                 ORDER BY S.{uid_col}''')
-        result_all_all = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
-        return result_all_all
+        pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
+        pred["trading_day"] = pd.to_datetime(pred["trading_day"])
+        return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
@@ -223,27 +224,24 @@ class rank_pred:
             1. current rank -> production_factor_rank_table / production_factor_rank_history
             2. backtest rank -> production_factor_rank_backtest_table
         '''
+
+        # 1. write backtest factors
         tbl_name_backtest = production_factor_rank_backtest_table
         df_history = pd.concat(self.all_history, axis=0)
         df_history["weeks_to_expire"] = self.weeks_to_expire
         df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
         df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-        if DEBUG:
-            tbl_name_backtest += "_debug"
-            df_history['name_sql'] = name_sql
-            how="append"
-        else:
-            how="ignore"
-        # trucncate_table_in_database(tbl_name_history, db_url_write)
+        trucncate_table_in_database(tbl_name_backtest, db_url_write)
         upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=how)
 
+        # 2. write current use factors
         tbl_name_current = production_factor_rank_table
         tbl_name_history = production_factor_rank_history_table
         df_current = pd.concat(self.all_current, axis=0)
         df_current["weeks_to_expire"] = self.weeks_to_expire
         df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
         df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
-        if not DEBUG:
+        if not DEBUG:   # TODO: reverse debug
             # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={self.weeks_to_expire}")
             # upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
             df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
@@ -286,8 +284,8 @@ class rank_pred:
 
 if __name__ == "__main__":
 
-    name_sql = 'week1_20220124155618_debug'
-    # name_sql = 'week1_20220124192603_debug'
+    # name_sql = 'week1_20220124155618_debug'
+    name_sql = 'week1_20220124192603_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)
