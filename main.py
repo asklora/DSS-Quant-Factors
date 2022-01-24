@@ -61,7 +61,7 @@ def mp_rf(*mp_args):
             for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-            sql_result['neg_factor'] = ','.join(data.neg_factor)
+            sql_result['neg_factor'] = data.neg_factor
             rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf']
-    use_pca_list = [0.6, 0.4, 0.2]
+    use_pca_list = [None, 0.6, 0.4, 0.2]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={weeks_to_expire}"

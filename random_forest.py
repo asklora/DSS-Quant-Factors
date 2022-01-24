@@ -187,5 +187,5 @@ class rf_HPOT:
         df['name'] = self.x_col  # column names
         df['split'] = rf.feature_importances_
         df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
-        return ','.join(df.sort_values(by=['split'], ascending=False)['name'].to_list()), df
+        return df.sort_values(by=['split'], ascending=False)['name'].to_list(), df
 
