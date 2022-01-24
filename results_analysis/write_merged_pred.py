@@ -45,6 +45,7 @@ class rank_pred:
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(name_sql, eval_start_date, self.diff_config_col, self.label_col)
+        self.neg_factor = rank_pred.__get_neg_factor_all(pred)
 
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
@@ -74,8 +75,11 @@ class rank_pred:
 
         # 2.5. use best config prediction for this y_type
         best_config = self.__backtest_find_best_config()
-        df_cv_avg = df_cv_avg[['pred_z', 'factor_weight']].reset_index()
-        df_cv_avg_best = df_cv_avg.loc[(df_cv_avg[self.diff_config_col]==best_config).all(axis=1)]
+        df_cv_avg_best = []
+        for name, g in df_cv_avg.groupby(['group']):
+            g_best = df_cv_avg.loc[(df_cv_avg[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
+            df_cv_avg_best.append(g_best)
+        df_cv_avg_best = pd.concat(df_cv_avg_best, axis=0)
 
         # 2.6. rank for each trading_day
         for period in df_cv_avg_best['trading_day'].unique():
@@ -100,12 +104,18 @@ class rank_pred:
         df['pred_z'] = df.groupby(by=['group']+diff_config_col)['pred'].apply(lambda x: (x-np.mean(x))/np.std(x))
         return df
 
+    @staticmethod
+    def __get_neg_factor_all(pred):
+        ''' get all neg factors for all (testing_period, group) '''
+        pred_unique = pred.drop_duplicates(subset=['group', 'testing_period'])
+        neg_factor = pred_unique.set_index(['group', 'testing_period'])['neg_factor'].to_dict()
+        return neg_factor
+
     def rank_each_trading_day(self, period, result_all):
         ''' rank for each trading_day '''
 
         logging.debug(f'calculate (neg_factor, factor_weight): {period}')
         df = result_all.loc[result_all['trading_day'] == period].reset_index(drop=True)
-        neg_factor = df.set_index(['group'])['neg_factor'].to_dict()
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
         df = df[result_col]
 
@@ -202,8 +212,8 @@ class rank_pred:
             best = df_mean.sort_values(eval_metric, ascending=False).groupby('group').first()[self.diff_config_col]
         elif eval_metric in ['mae', 'mse']:
             best = df_mean.sort_values(eval_metric, ascending=True).groupby('group').first()[self.diff_config_col]
+        logging.info(f'best_iter:\n{best}')
         best = best.to_dict(orient="index")
-        logging.info(f'best_iter:\n{result_all_comb_mean_best}')
         return best
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
@@ -276,8 +286,8 @@ class rank_pred:
 
 if __name__ == "__main__":
 
-    # name_sql = 'week4_20220119_debug'
     name_sql = 'week1_20220124155618_debug'
+    # name_sql = 'week1_20220124192603_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)
