@@ -173,8 +173,7 @@ class rf_HPOT:
     def to_sql_prediction(self, Y_test_pred):
         ''' prepare array Y_test_pred to DataFrame ready to write to SQL '''
 
-        self.sql_result['y_type'] = [x[2:] for x in self.y_col]
-        df = pd.DataFrame(Y_test_pred, index=self.group_index, columns=self.sql_result['y_type'])
+        df = pd.DataFrame(Y_test_pred, index=self.group_index, columns=[x[2:] for x in self.y_col])
         df = df.unstack().reset_index(drop=False)
         df.columns = ['factor_name', 'group', 'pred']
         df['actual'] = self.sample_set['test_y_final'].flatten(order='F')  # also write actual qcut to BD
