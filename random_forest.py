@@ -106,9 +106,8 @@ class rf_HPOT:
         result = {'net_ret': ret}
         for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_absolute_error}.items():
             for i in ['train_yy', 'valid_y', 'test_y']:
-                result[f"{k}_{i.split('_')[0]}"] = np.median(func(self.sample_set[i].T,
-                                                                  self.sample_set[i+'_pred'].T,
-                                                                   multioutput='raw_values'))
+                score = func(self.sample_set[i].T, self.sample_set[i+'_pred'].T, multioutput='raw_values')
+                result[f"{k}_{i.split('_')[0]}"] = np.median(score)
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())

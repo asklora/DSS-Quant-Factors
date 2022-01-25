@@ -41,7 +41,7 @@ factor_premium_table = "factor_processed_premium"
 
 # TABLE names - preprocess formula
 formula_factors_table_prod = "factor_formula_ratios_prod"
-factors_y_type_table = "factors_formula_y_type"
+factors_y_type_table = "factor_formula_y_type"
 update_time_table = "ingestion_update_time"     # all table update time record in this table
 
 # TABLE names - descriptive preprocess formula
