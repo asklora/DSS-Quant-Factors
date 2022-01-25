@@ -32,13 +32,13 @@ class rf_HPOT:
             # 'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
             'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
             'max_depth': hp.choice('max_depth', [8, 32, 64]),
-            'min_samples_split': hp.choice('min_samples_split', [5]),
-            'min_samples_leaf': hp.choice('min_samples_leaf', [1]),
+            'min_samples_split': hp.choice('min_samples_split', [5, 10, 50]),
+            'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 20]),
             'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
             'max_features': hp.choice('max_features', [0.5, 0.7, 0.9]),
             'min_impurity_decrease': 0,
             # 'max_samples': hp.choice('max_samples',[0.7, 0.9]),
-            # 'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
+            'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
             # 'random_state': 666
         }
 
@@ -74,6 +74,7 @@ class rf_HPOT:
         Y_train_pred = regr.predict(self.sample_set['train_xx'])
         Y_valid_pred = regr.predict(self.sample_set['valid_x'])
         Y_test_pred = regr.predict(self.sample_set['test_x'])
+        logging.debug(f'Y_train_pred: \n{Y_train_pred[:5]}')
 
         self.sql_result['feature_importance'], feature_importance_df = self.to_list_importance(regr)
 
@@ -108,6 +109,9 @@ class rf_HPOT:
             for i in ['train_yy', 'valid_y', 'test_y']:
                 score = func(self.sample_set[i].T, self.sample_set[i+'_pred'].T, multioutput='raw_values')
                 result[f"{k}_{i.split('_')[0]}"] = np.median(score)
+        logging.debug(f"R2 train: {result['r2_train']}")
+        logging.debug(f"R2 valid: {result['r2_valid']}")
+        logging.debug(f"R2 test: {result['r2_test']}")
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
