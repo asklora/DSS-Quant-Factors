@@ -406,4 +406,4 @@ def get_industry_name():
     return df.set_index(["ticker"])["name_4"].to_dict()
 
 if __name__ == "__main__":
-    test_score_history(weeks_to_expire=1)
+    test_score_history()

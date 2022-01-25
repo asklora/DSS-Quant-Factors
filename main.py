@@ -155,11 +155,8 @@ if __name__ == "__main__":
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
-    # rank_pred(
-    #         q=1/3,
-    #         name_sql=sql_result['name_sql'],
-    #     ).write_to_db()
 
+    # rank_pred(q=1/3, name_sql=sql_result['name_sql']).write_to_db()
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
 

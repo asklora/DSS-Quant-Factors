@@ -117,7 +117,26 @@ def check_avg_return_by_score_qcut():
         print(name)
         print(g)
 
+def check_rating_today(currency_code='EUR'):
+    ''' check today's universe_rating for certain currency:
+        1. top 10 pick
+        2. ai_score distribution
+        3. ai_score description (min/max/mean)
+    '''
+
+    query = f"SELECT * FROM universe_rating " \
+            f"WHERE ticker in (SELECT ticker FROM universe WHERE is_active AND currency_code='{currency_code}')"
+    df = read_query(query, db_url_read).sort_values(by=['ai_score'], ascending=False)
+    print(df.head(10))
+
+    plt.hist(df['ai_score'], bins=20)
+    plt.show()
+
+    des = df.describe()
+    print(des)
+
 if __name__ == '__main__':
     # get_top_picks()
     # check_avg_return_by_score_qcut()
-    check_average_score_return_by_industry()
+    # check_average_score_return_by_industry()
+    check_rating_today()
