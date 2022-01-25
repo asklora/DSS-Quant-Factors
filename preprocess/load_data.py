@@ -224,7 +224,6 @@ class load_data:
             if defined_cut_bins == []:
                 # cut original series into bins
                 arr_cut, cut_bins = pd.qcut(arr, q=qcut_q, retbins=True, labels=False)
-                # arr, cut_bins = pd.cut(arr, bins=3, retbins=True, labels=False)
                 cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
             else:
                 # use pre-defined cut_bins for cut (since all factor should use same cut_bins)

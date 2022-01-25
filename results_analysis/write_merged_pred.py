@@ -129,7 +129,8 @@ class rank_pred:
         df['long_large'] = False
         neg_factor = self.neg_factor[pd.Timestamp(period)]
         for k, v in neg_factor.items():  # write neg_factor i.e. label factors
-            df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v])), 'long_large'] = True
+            if type(v)==type([]):
+                df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v])), 'long_large'] = True
 
         # 2.6.3. append to history / currency df list
         self.all_history.append(df.sort_values(['group', 'pred_z']))
@@ -279,6 +280,7 @@ class rank_pred:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
         fig_name = f'#pred_{name_sql}_{y_type}.png'
+        plt.tight_layout()
         plt.savefig(fig_name)
         plt.close()
         logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
@@ -290,6 +292,7 @@ if __name__ == "__main__":
     # name_sql='week1_20220125033146_debug'
     # name_sql='week1_20220125035220_debug'
     name_sql='week4_20220125040959_debug'
+    name_sql='week1_20220125130042_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)
