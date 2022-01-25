@@ -143,7 +143,8 @@ if __name__ == "__main__":
     data = load_data(weeks_to_expire, mode=mode)  # load_data (class) STEP 1
 
     # y_type_list = ["all"]
-    y_type_list = ["momentum", "value", "quality"]
+    # y_type_list = ["momentum", "value", "quality"]
+    y_type_list = ["momentum_top4"]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, y_type_list)
