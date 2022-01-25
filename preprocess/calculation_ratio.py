@@ -20,7 +20,7 @@ def get_tri(ticker=None, restart=True):
     if restart:
         start_date = dt.datetime(1998,1,1)
     else:   # if not restart only from 1yr ago
-        start_date = (dt.datetime.today() - relativedelta(months=6)).strftime("%Y-%m-%d")
+        start_date = (dt.datetime.today() - relativedelta(years=2)).strftime("%Y-%m-%d")
 
     query = text(f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume "
                  f"FROM {stock_data_table_tri} T "
@@ -116,7 +116,6 @@ def calc_stock_return(ticker, restart):
     # merge stock return from DSS & from EIKON (i.e. longer history)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
 
-    # x = tri.loc[tri['ticker']=='AAPL.O'].sort_values(by=['trading_day'], ascending=False)
     tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
     tri = tri.sort_values(['ticker','trading_day'])
@@ -309,18 +308,6 @@ def combine_stock_factor_data(ticker, restart):
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
-    # if ticker[0]=='.':  # if ticker=index, write stock return to DB first -> later report error and stop process due to lack of worldscope data
-    #     stock_return_col = tri.filter(regex='^stock_return_').columns.to_list()
-    #     tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stock_return_col, var_name="field",
-    #                   value_name="value").dropna(subset=["value"])
-    #     tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
-    #
-    #     # save calculated ratios to DB
-    #     db_table_name = processed_ratio_table
-    #     upsert_data_to_database(tri, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
-
-    # x = tri.loc[tri['ticker']=='TSLA.O'].sort_values(by=['trading_day'], ascending=False).head(100)
-
     # 2. Fundamental financial data - from Worldscope
     # 3. Consensus forecasts - from I/B/E/S
     # 4. Universe
@@ -386,8 +373,9 @@ def calc_fx_conversion(df):
 
     ingestion_source = read_table(ingestion_name_table, db_url_read)
 
+    # find currency_code for each currency
     df = df.merge(curr_code, on='ticker', how='inner')
-    df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='any')   # remove ETF / index / some B-share -> tickers will not be recommended
+    df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='all')
 
     # map fx rate for conversion for each ticker
     fx = fx.drop_duplicates(subset=['ticker','trading_day'])
@@ -539,23 +527,18 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True):
     restart (Bool, default=False):
         if True, calculate variables for all trading_period, AND [rewrite] entire factor_processed_ratio table;
         if False, calculate variables for the most recent 3 months, AND [update] factor_processed_ratio table.
-            Get From Table "data_tri" for recent 6 months data, and "data_worldscope"/"data_ibes" for recent 2 years.
+            Get From Table "data_tri"/"data_worldscope"/"data_ibes" for recent 2 years
+            (we use longer history because ratios, e.g. stock_return_r12_7).
     '''
 
     if ticker:
-        tickers = [ticker]
+        tickers = ticker
     elif currency:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active AND currency_code='{currency}'")["ticker"].to_list()
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
-    # tickers_exist = read_query(f"SELECT distinct ticker FROM {processed_ratio_table}", db_url_write)
-    # tickers = list(set(tickers)-set(tickers_exist))
-
     calc_factor_variables(tickers, restart)
-    # tickers = [tuple([e]) for e in tickers]
-    # with mp.Pool(processes=processes) as pool:
-    #     pool.starmap(calc_factor_variables, tickers)
 
 def test_missing(df_org, formula, ingestion_cols):
 

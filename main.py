@@ -41,7 +41,7 @@ def mp_rf(*mp_args):
                             "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
                                                "use_median": sql_result['qcut_q']>0, "defined_cut_bins": []},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
-                                              "factor_pca": use_pca, "mi_pca": 0.9}}
+                                              "factor_pca": use_pca, "mi_pca": 0.5}}
         testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
         cv_number = 1  # represent which cross-validation sets
@@ -62,8 +62,8 @@ def mp_rf(*mp_args):
             for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-            sql_result['neg_factor'] = data.neg_factor
-            rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
+            sql_result['neg_factor'] = data.neg_factor      # TODO: reverse debug
+            rf_HPOT(max_evals=(100 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     # except Exception as e:
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--objective', default='absolute_error')
+    parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--weeks_to_expire', default=1, type=int)
     parser.add_argument('--processes', default=1, type=int)
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'EUR']
+    group_code_list = ['USD']
     weeks_to_expire = args.weeks_to_expire
 
     # --------------------------------------- Schedule for Production --------------------------------
@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf']
-    use_pca_list = [None, 0.6, 0.4, 0.2]
+    use_pca_list = [0.7]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={weeks_to_expire}"

@@ -32,13 +32,13 @@ class rf_HPOT:
             # 'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
             'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
             'max_depth': hp.choice('max_depth', [8, 32, 64]),
-            'min_samples_split': hp.choice('min_samples_split', [5, 10, 50, 100]),
-            'min_samples_leaf': hp.choice('min_samples_leaf', [5, 10, 50]),
+            'min_samples_split': hp.choice('min_samples_split', [5]),
+            'min_samples_leaf': hp.choice('min_samples_leaf', [1]),
             'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
             'max_features': hp.choice('max_features', [0.5, 0.7, 0.9]),
             'min_impurity_decrease': 0,
             # 'max_samples': hp.choice('max_samples',[0.7, 0.9]),
-            'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
+            # 'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
             # 'random_state': 666
         }
 
@@ -89,7 +89,7 @@ class rf_HPOT:
         return ret, best_factor
 
     def eval_regressor(self, rf_space):
-        ''' train & evaluate LightGBM on given rf_space by hyperopt trials with Regressiong model
+        ''' train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model
         -------------------------------------------------
         This part haven't been modified for multi-label questions purpose
         '''
@@ -118,9 +118,8 @@ class rf_HPOT:
             self.hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
         gc.collect()
-        logging.info(
-            f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
-            f"{str(result['net_ret'])[:6]}, {best_factor}")
+        logging.info(f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
+                     f"{str(result['net_ret'])[:6]}, {best_factor}")
         return result['mse_valid']
 
     def to_sql_prediction(self, Y_test_pred):
