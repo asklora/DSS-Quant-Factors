@@ -24,7 +24,7 @@ def mp_rf(*mp_args):
     if True:
         data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
 
-        logging.debug(f"===== test on y_type, {len(y_type)}, {y_type} =====")
+        logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
         sql_result['tree_type'] = tree_type + str(i)
         sql_result['testing_period'] = testing_period
@@ -76,7 +76,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
-    parser.add_argument('--weeks_to_expire', default=1, type=int)
+    parser.add_argument('--weeks_to_expire', default=26, type=int)
+    parser.add_argument('--average_days', default=28, type=int)
     parser.add_argument('--processes', default=1, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
     parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
@@ -87,7 +88,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     group_code_list = ['USD']
-    weeks_to_expire = args.weeks_to_expire
 
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60, table_names=None):
@@ -101,12 +101,12 @@ if __name__ == "__main__":
             else:
                 logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
-        to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{weeks_to_expire}]\n-> updated {table_names}")
+        to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{args.weeks_to_expire}]\n-> updated {table_names}")
         return True
 
     if not args.debug:
         # Check 1: if monthly -> only first Sunday every month
-        if weeks_to_expire >= 4:
+        if args.weeks_to_expire >= 4:
             if dt.datetime.today().day>7:
                 raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
             # Check 2(b): monthly update after weekly update
@@ -119,28 +119,29 @@ if __name__ == "__main__":
     if args.recalc_ratio:
         calc_factor_variables_multi(ticker=None, restart=False)
     if args.recalc_premium:
-        calc_premium_all(weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
+        calc_premium_all(args.weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf']
     use_pca_list = [0.6]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={weeks_to_expire}"
+    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
+            f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period:]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}]')
 
     # --------------------------------- Prepare Training Set -------------------------------------
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'week{weeks_to_expire}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
+    sql_result['name_sql'] = f'week{args.weeks_to_expire}_{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
     # --------------------------------- Model Training ------------------------------------------
 
     mode = 'trim' if args.trim else ''
-    data = load_data(weeks_to_expire, mode=mode)  # load_data (class) STEP 1
+    data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
     # y_type_list = ["all"]
     # y_type_list = ["momentum", "value", "quality"]

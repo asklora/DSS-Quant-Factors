@@ -68,7 +68,7 @@ def download_index_return():
 
     return index_ret
 
-def combine_data(weeks_to_expire, update_since=None, mode='v2'):
+def combine_data(weeks_to_expire, average_days, update_since=None, mode='v2'):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
@@ -77,7 +77,9 @@ def combine_data(weeks_to_expire, update_since=None, mode='v2'):
     factor_table_name = factor_premium_table
 
     logging.info(f'Use [{weeks_to_expire}] week premium')
-    conditions = ['"group" IS NOT NULL', f"weeks_to_expire={weeks_to_expire}"]
+    conditions = ['"group" IS NOT NULL',
+                  f"weeks_to_expire={weeks_to_expire}",
+                  f"average_days={average_days}"]
     
     if isinstance(update_since, datetime):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
@@ -140,7 +142,7 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    def __init__(self, weeks_to_expire, update_since=None, mode=''):
+    def __init__(self, weeks_to_expire, average_days, update_since=None, mode=''):
         ''' combine all possible data to be used 
         
         Parameters
@@ -154,7 +156,7 @@ class load_data:
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
-        self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, update_since=update_since, mode=mode)    # combine all data
+        self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, average_days, update_since=update_since, mode=mode)    # combine all data
 
         # calculate y for all factors
         all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
@@ -378,15 +380,10 @@ class load_data:
 
 if __name__ == '__main__':
 
-    x = 'gok'
-    r = bool(re.match(f'(^\.SPX)|(?!^\.)', x))
-    print(r)
-    exit(1)
-
-    testing_period = dt.datetime(2021,12,12)
+    testing_period = dt.datetime(2021,7,25)
     group_code = 'USD'
 
-    data = load_data(weeks_to_expire=1)
+    data = load_data(weeks_to_expire=26, average_days=28)
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)
