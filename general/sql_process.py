@@ -38,11 +38,12 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
             query = "True"
         with engine.connect() as conn:
             conn.execute(f"DELETE FROM {table} WHERE {query}")
-        logging.info(f"DELETE TABLE: [{table}]")
+        logging.info(f"DELETE TABLE: [{table}] WHERE [{query}]")
         engine.dispose()
+        return True
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
-
+        return False
 
 def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1):
@@ -105,8 +106,10 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
         if verbose>=0:
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
+        return True
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
+        return False
 
 def read_query(query, db_url=db_url_alibaba):
     ''' Read specific query from SQL '''

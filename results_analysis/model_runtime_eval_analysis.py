@@ -6,7 +6,7 @@ import numpy as np
 from global_vars import *
 from general.sql_process import read_query
 
-def download_model(name_sql='week1_20220125130042_debug', eval_metric='r2'):
+def download_model(name_sql='week1_20220125174558_debug'):
     ''' evaluation runtime calculated metrics '''
 
     query = f"SELECT * FROM {result_score_table} WHERE name_sql='{name_sql}'"
@@ -19,7 +19,7 @@ def download_model(name_sql='week1_20220125130042_debug', eval_metric='r2'):
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last')
 
     # 2.2. find best in cv groups
-    df_best = df.sort_values(by=[eval_metric+'_valid']).groupby(iter_unique_col[:-1] + diff_config_col).first()
+    df_best = df.sort_values(by=['r2_valid'], ascending=False).groupby(iter_unique_col[:-1] + diff_config_col).first()
 
     # 2.3. calculate average accuracy across testing_period
     df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^{eval_metric}_')

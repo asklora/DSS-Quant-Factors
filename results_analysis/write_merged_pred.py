@@ -293,6 +293,7 @@ if __name__ == "__main__":
     # name_sql='week1_20220125035220_debug'
     name_sql='week4_20220125040959_debug'
     name_sql='week1_20220125130042_debug'
+    name_sql='week1_20220125174558_debug'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-q', type=float, default=1/3)

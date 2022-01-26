@@ -9,7 +9,14 @@ from contextlib import suppress
 
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-from general.sql_process import upsert_data_to_database, read_table, read_query, uid_maker, trucncate_table_in_database
+from general.sql_process import (
+    upsert_data_to_database,
+    read_table,
+    read_query,
+    uid_maker,
+    trucncate_table_in_database,
+    delete_data_on_database
+)
 from general.report_to_slack import to_slack
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
@@ -107,9 +114,13 @@ def resample_to_weekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(ticker, restart):
-    ''' Calcualte monthly stock return '''
+def calc_stock_return(ticker, restart, tri_return_only):
+    '''  Calcualte monthly stock return '''
 
+    drop_col = []
+    ffill_col = []
+    if tri_return_only:
+        restart = True      # SELECT restart = True when
     tri, market_cap_anchor = get_tri(ticker, restart)
     market_cap_anchor = market_cap_anchor.loc[market_cap_anchor['ticker'].isin(tri['ticker'].unique())]
 
@@ -120,69 +131,92 @@ def calc_stock_return(ticker, restart):
     tri = fill_all_day(tri)  # Add NaN record of tri for weekends
     tri = tri.sort_values(['ticker','trading_day'])
 
-    logging.info(f'Calculate skewness ')
-    tri = get_skew(tri)    # Calculate past 1 year skewness
+    if not tri_return_only:
+        logging.info(f'Calculate skewness ')
+        tri = get_skew(tri)    # Calculate past 1 year skewness
 
-    # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-    logging.info(f'Calculate RS volatility ')
-    list_of_start_end = [[0, 30]] # , [30, 90], [90, 182]
-    tri = get_rogers_satchell(tri, list_of_start_end)
-    tri = tri.drop(['open', 'high', 'low'], axis=1)
+        # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
+        logging.info(f'Calculate RS volatility ')
+        list_of_start_end = [[0, 30]] # , [30, 90], [90, 182]
+        tri = get_rogers_satchell(tri, list_of_start_end)
+        tri = tri.drop(['open', 'high', 'low'], axis=1)
+        ffill_col += [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
 
-    # resample tri using last week average as the proxy for monthly tri
-    logging.info(f'Stock volume/tri using last 7 days average ')
-    tri[['volume', 'tri_7d_avg']] = tri.groupby("ticker")[['volume', 'tri']].rolling(7, min_periods=1).mean().reset_index(drop=1)
-    tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
-    tri['volume'] = tri['volume'] / tri['volume_3m']
-    tri.to_csv('test_tri_aapl_before_resample.csv')
+        # resample tri using last week average as the proxy for monthly tri
+        logging.info(f'Stock volume using last 7 days average / 91 days average ')
+        tri[['volume']] = tri.groupby("ticker")[['volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
+        tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
+        tri['volume'] = tri['volume'] / tri['volume_3m']
+        drop_col += ['volume_3m']
+
+    # calculuate rolling average tri (before forward fill tri)
+    logging.info(f'Stock tri rolling average ')
+    tri['tri_avg_7d'] = tri.groupby("ticker")['tri'].rolling(7, min_periods=1).mean().reset_index(drop=1)
+    tri['tri_avg_28d'] = tri.groupby("ticker")['tri'].rolling(28, min_periods=1).mean().reset_index(drop=1)
+    drop_col += ['tri', 'tri_avg_7d', 'tri_avg_28d']
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
-    cols = ['tri', 'close','volume'] + [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
+    cols = ['tri', 'close','volume'] + ffill_col
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
     logging.info(f'Sample weekly interval ')
     tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
 
-    # update market_cap/market_cap_usd refer to tri for each period
-    market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-    anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
-    tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
-    tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
-    tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
-    tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
-    tri = tri.drop(['anchor_tri'], axis=1)
+    if not tri_return_only:
+        # update market_cap/market_cap_usd refer to tri for each period
+        market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()      # use mkt_cap from fundamental score
+        tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+        anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
+        tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
+        tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
+        tri[['anchor_tri','market_cap']] = tri.groupby('ticker')[['anchor_tri','market_cap']].apply(lambda x: x.ffill().bfill())
+        tri['market_cap'] = tri['market_cap']/tri['anchor_tri']*tri['tri']
+        drop_col += ['anchor_tri']
 
-    # Calculate monthly return (Y) + R6,2 + R12,7
-    logging.info(f'Calculate stock returns ')
-    for rolling_period in [1, 4]:
-        if rolling_period==1:
-            y_base_col = 'tri'
-        elif rolling_period==4:
-            y_base_col = 'tri_7d_avg'
-        tri["tri_y"] = tri.groupby('ticker')[y_base_col].shift(-rolling_period)
-        tri[f"stock_return_y_{rolling_period}week"] = (tri["tri_y"] / tri[y_base_col]) - 1
-        tri[f"stock_return_y_{rolling_period}week"] = tri[f"stock_return_y_{rolling_period}week"]*4/rolling_period
-    # tri.to_csv('test_tri_aapl.csv')
-    tri["tri_1wb"] = tri.groupby('ticker')['tri'].shift(1)
-    tri["tri_2wb"] = tri.groupby('ticker')['tri_7d_avg'].shift(2)
-    tri["tri_1mb"] = tri.groupby('ticker')['tri_7d_avg'].shift(4)
-    tri["tri_2mb"] = tri.groupby('ticker')['tri_7d_avg'].shift(8)
-    tri['tri_6mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(26)
-    tri['tri_7mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(30)
-    tri['tri_12mb'] = tri.groupby('ticker')['tri_7d_avg'].shift(52)
-    drop_col = ['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
+    # Calculate future stock return (Y)
+    logging.info(f'Calculate future stock returns')
+    stock_return_map = {1: [1],                        # map of {forward weeks: [list of average days]}
+                        4: [7],
+                        26: [7, 28]}
+    tri['tri_avg_1d'] = tri['tri']
+    for fwd_week, avg_days in stock_return_map.items():
+        for d in avg_days:
+            tri["tri_y"] = tri.groupby('ticker')[f'tri_avg_{d}d'].shift(-fwd_week)
+            tri[f"stock_return_y_w{fwd_week}_d{d}"] = (tri["tri_y"]/tri[f'tri_avg_{d}d'])**(4/fwd_week)-1
+    drop_col += ['tri_y', 'tri_avg_1d']
 
-    tri["stock_return_ww1_0"] = (tri["tri"] / tri["tri_1wb"]) - 1
-    tri["stock_return_ww2_1"] = (tri["tri_1wb"] / tri["tri_2wb"]) - 1
-    tri["stock_return_ww4_2"] = (tri["tri_2wb"] / tri["tri_1mb"]) - 1
+    if not tri_return_only:
+        # Calculate past stock returns
+        logging.info(f'Calculate past stock returns')
+        tri["tri_1wb"] = tri.groupby('ticker')['tri_avg_1d'].shift(1)
+        tri["tri_2wb"] = tri.groupby('ticker')['tri_avg_7d'].shift(2)
+        tri["tri_1mb"] = tri.groupby('ticker')['tri_avg_7d'].shift(4)
+        tri["tri_2mb"] = tri.groupby('ticker')['tri_avg_7d'].shift(8)
+        tri['tri_6mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(26)
+        tri['tri_7mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(30)
+        tri['tri_12mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(52)
+        drop_col += ['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
 
-    tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
-    tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
-    tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
+        tri["stock_return_ww1_0"] = (tri["tri"] / tri["tri_1wb"]) - 1
+        tri["stock_return_ww2_1"] = (tri["tri_1wb"] / tri["tri_2wb"]) - 1
+        tri["stock_return_ww4_2"] = (tri["tri_2wb"] / tri["tri_1mb"]) - 1
 
-    tri = tri.drop(['tri', 'tri_y', 'tri_7d_avg'] + drop_col, axis=1)
+        tri["stock_return_r1_0"] = (tri["tri"] / tri["tri_1mb"]) - 1
+        tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
+        tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
+
+    tri = tri.drop(drop_col, axis=1)
     stock_col = tri.select_dtypes('float').columns  # all numeric columns
+
+    if tri_return_only:
+        ret_col = tri.filter(regex="^stock_return_y_").columns.to_list()
+        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=ret_col, var_name="field",
+                      value_name="value").dropna(subset=["value"])
+        tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
+        delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
+        upsert_data_to_database(tri, processed_ratio_table, primary_key=["uid"], db_url=db_url_write, how="append")
+        logging.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
+        exit(1)
 
     return tri, stock_col
 
@@ -298,13 +332,13 @@ def drop_dup(df, col='trading_day'):
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
     return df.drop('count', axis=1)
 
-def combine_stock_factor_data(ticker, restart):
+def combine_stock_factor_data(ticker, restart, tri_return_only):
     ''' This part do the following:
         1. import all data from DB refer to other functions
         2. combined stock_return, worldscope, ibes, macroeconomic tables '''
 
     # 1. Stock return/volatility/volume
-    tri, stocks_col = calc_stock_return(ticker, restart)
+    tri, stocks_col = calc_stock_return(ticker, restart, tri_return_only)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
@@ -405,13 +439,13 @@ def calc_fx_conversion(df):
     df['market_cap_usd'] = df['market_cap']
     return df[org_cols]
 
-def calc_factor_variables(ticker, restart):
+def calc_factor_variables(ticker, restart, tri_return_only):
     ''' Calculate all factor used referring to DB ratio table '''
 
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     error_universe = []
     try:
-        df, stocks_col = combine_stock_factor_data(ticker, restart)
+        df, stocks_col = combine_stock_factor_data(ticker, restart, tri_return_only)
 
         formula = read_table(formula_factors_table_prod, db_url_read)
         formula = formula.loc[formula['is_active']]
@@ -420,7 +454,6 @@ def calc_factor_variables(ticker, restart):
 
         # Foreign exchange conversion on absolute value items
         df = calc_fx_conversion(df)
-        ingestion_cols = df.columns.to_list()
 
         # Prepare for field requires add/minus
         add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -515,20 +548,22 @@ def calc_factor_variables(ticker, restart):
         to_slack("clair").message_to_slack(error_msg)
         error_universe.append(ticker)
 
-def calc_factor_variables_multi(ticker=None, currency=None, restart=True):
+def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_return_only=False):
     ''' Calculate weekly ratios for all factors
 
     Parameters
     ----------
-    ticker (Str, default=None):
-        tickers to calculate variables (default calculate for all active tickers)
-    currency (Str, default=None):
-        tickers in which currency to calculate variables
-    restart (Bool, default=False):
+    ticker (List[Str], Optional):
+        tickers to calculate variables (default=None, i.e., calculate for all active tickers)
+    currency (Str, Optional):
+        tickers in which currency to calculate variables (default=None)
+    restart (Bool, Optional, default=False):
         if True, calculate variables for all trading_period, AND [rewrite] entire factor_processed_ratio table;
         if False, calculate variables for the most recent 3 months, AND [update] factor_processed_ratio table.
             Get From Table "data_tri"/"data_worldscope"/"data_ibes" for recent 2 years
             (we use longer history because ratios, e.g. stock_return_r12_7).
+    tri_return_only (Bool, Optional, default=False):
+        if True, only write for 'stock_return_y_%' columns; this will also force restart=True
     '''
 
     if ticker:
@@ -538,7 +573,7 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True):
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
-    calc_factor_variables(tickers, restart)
+    calc_factor_variables(tickers, restart, tri_return_only)
 
 def test_missing(df_org, formula, ingestion_cols):
 
@@ -566,7 +601,7 @@ def test_missing(df_org, formula, ingestion_cols):
 if __name__ == "__main__":
 
     restart = False
-    calc_factor_variables_multi(ticker=None, restart=restart)
+    calc_factor_variables_multi(ticker=None, restart=restart, tri_return_only=True)
 
 
 
