@@ -28,23 +28,33 @@ stock_pred_dtypes = dict(
 )
 
 class rank_pred:
-    ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation
-        1.
-     '''
+    ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation '''
 
-    def __init__(self, q, name_sql, eval_start_date=None):
+    def __init__(self, q, weeks_to_expire=0, average_days=0, y_type=None, eval_start_date=None):
+        '''
+        Parameters
+        ----------
+        q (Float):
+            If q > 1 (e.g. 5), top q factors used as best factors;
+            If q < 1 (e.g. 1/3), top (q * total No. factors predicted) factors am used as best factors;
+        name_sql_like (Str):
+            define name_sql of Table [result_score_table] to evaluate with [name_sql like 'name_sql'];
+        y_type (List[Str], Optional):
+            y_type to evaluate;
+        eval_start_date (Str, Optional):
+            String in "%Y-%m-%d" format for the start date to download prediction;
+        '''
 
         self.q = q
-        self.name_sql = name_sql
         self.eval_start_date = eval_start_date
-        self.weeks_to_expire = int(self.name_sql[4])
+        self.weeks_to_expire = int(weeks_to_expire)
 
-        self.label_col = ['y_type', 'neg_factor', 'testing_period', 'cv_number']
-        self.iter_unique_col = ['group', 'trading_day', 'factor_name', 'cv_number']     # keep 'cv_number' in last one for averaging
-        self.diff_config_col = ['tree_type', 'use_pca']
+        # keep 'cv_number' in last one for averaging
+        self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
+        self.diff_config_col = ['tree_type', 'use_pca', 'average_days']
 
         # 1. Download & merge all prediction from iteration
-        pred = self._download_prediction(name_sql, eval_start_date, self.diff_config_col, self.label_col)
+        pred = self._download_prediction(weeks_to_expire, average_days, eval_start_date, y_type)
         self.neg_factor = rank_pred.__get_neg_factor_all(pred)
 
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
@@ -114,7 +124,7 @@ class rank_pred:
         return neg_factor
 
     def rank_each_trading_day(self, period, result_all):
-        ''' rank for each trading_day '''
+        ''' (2.6) rank for each trading_day '''
 
         logging.debug(f'calculate (neg_factor, factor_weight): {period}')
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
@@ -139,21 +149,24 @@ class rank_pred:
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    def _download_prediction(self, name_sql, eval_start_date, diff_config_col, label_col):
+    def _download_prediction(self, weeks_to_expire, average_days, eval_start_date, y_type):
         ''' merge factor_stock & factor_model_stock '''
 
         logging.info('=== Download prediction history ===')
-        conditions = [f"S.name_sql like '{name_sql}%'"]
+        conditions = [f"S.name_sql like 'w{weeks_to_expire}_d{average_days}_%'"]
         uid_col = "uid"
         if eval_start_date:
             conditions.append(f"S.testing_period>='{eval_start_date}'")
+        if y_type:
+            conditions.append(f"S.y_type in {tuple(y_type)}")
 
+        label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number'] + self.diff_config_col
         query = text(f'''
-                SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in diff_config_col+label_col])} 
+                SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in label_col])} 
                 FROM {result_pred_table} P 
                 INNER JOIN {result_score_table} S ON ((S.{uid_col}=P.{uid_col}) AND (S.group_code=P.group)) 
                 WHERE {' AND '.join(conditions)}
-                ORDER BY S.{uid_col}''')
+                ORDER BY S.{uid_col}'''.replace(",)", ")"))
         pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
         return pred
@@ -166,35 +179,34 @@ class rank_pred:
 
         # 2.4.1. calculate group statistic
         logging.debug("=== Update testing set results ===")
-        result_all_avg = result_all.groupby(['group', 'trading_day'])['actual'].mean()  # actual factor premiums
-        result_all_comb = result_all.groupby(['group', 'trading_day']+self.diff_config_col).apply(rank_pred.__get_summary_stats_in_group)
+        result_all_avg = result_all.groupby(['name_sql', 'group', 'trading_day'])['actual'].mean()  # actual factor premiums
+        result_all_comb = result_all.groupby(['name_sql', 'group', 'trading_day']+self.diff_config_col
+                                             ).apply(rank_pred.__get_summary_stats_in_group)
         result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day') <
                                               result_all_comb.index.get_level_values('trading_day').max()].reset_index()
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
-        result_all_comb = result_all_comb.join(result_all_avg, on=['group', 'trading_day'], how='left')
+        result_all_comb = result_all_comb.join(result_all_avg, on=['name_sql', 'group', 'trading_day'], how='left')
 
         # 2.4.2. save eval results to DB
-        result_all_comb["name_sql"] = self.name_sql
         result_all_comb["y_type"] = y_type
         result_all_comb["weeks_to_expire"] = self.weeks_to_expire
-        primary_keys = ["name_sql","group","trading_day","y_type"]+self.diff_config_col
+        primary_keys = ["name_sql", "group", "trading_day", "y_type"] + self.diff_config_col
         result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table,
                                 primary_key=["uid"], db_url=db_url_write, how="update")
 
         # 2.4.3. save local plot for evaluation (when DEBUG)
         if DEBUG:
-            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, name_sql, y_type)
+            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, self.weeks_to_expire)
+            exit(200)
 
     @staticmethod
     def __get_summary_stats_in_group(g):
         ''' Calculate basic evaluation metrics for factors '''
 
         ret_dict = {}
-
         max_g = g[g['factor_weight'] == 2]
         min_g = g[g['factor_weight'] == 0]
-
         ret_dict['max_factor'] = ','.join(max_g['factor_name'].tolist())
         ret_dict['min_factor'] = ','.join(min_g['factor_name'].tolist())
         ret_dict['max_ret'] = max_g['actual'].mean()
@@ -202,7 +214,6 @@ class rank_pred:
         ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
         ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
         ret_dict['r2'] = r2_score(g['pred'], g['actual'])
-
         return pd.Series(ret_dict)
 
     def __backtest_find_best_config(self, eval_metric='max_ret'):
@@ -232,7 +243,7 @@ class rank_pred:
         tbl_name_backtest = production_factor_rank_backtest_table
         df_history = pd.concat(self.all_history, axis=0)
         df_history["weeks_to_expire"] = self.weeks_to_expire
-        df_history = uid_maker(df_history, primary_key=["group","trading_day","factor_name","weeks_to_expire"])
+        df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
         df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
         if not DEBUG:
             trucncate_table_in_database(tbl_name_backtest, db_url_write)
@@ -255,15 +266,17 @@ class rank_pred:
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
     @staticmethod
-    def __save_plot_backtest_ret(result_all_comb, other_group_col, name_sql, y_type):
+    def __save_plot_backtest_ret(result_all_comb, other_group_col, y_type, weeks_to_expire):
         ''' Save Plot for backtest average ret '''
 
         logging.debug(f'=== Save Plot for backtest average ret ===')
+        result_all_comb['average_days'] = result_all_comb['average_days'].astype(int)
         result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
         num_group = len(result_all_comb['group'].unique())
         num_other_group = len(result_all_comb['other_group'].unique())
-        fig = plt.figure(figsize=(num_group * 8, num_other_group * 4), dpi=120,
-                         constrained_layout=True)  # create figure for test & train boxplot
+
+        # create figure for test & train boxplot
+        fig = plt.figure(figsize=(num_group * 8, num_other_group * 4), dpi=120, constrained_layout=True)
         k = 1
         for name, g in result_all_comb.groupby(['other_group', 'group']):
             ax = fig.add_subplot(num_other_group, num_group, k)
@@ -272,46 +285,30 @@ class rank_pred:
             ax.plot(plot_df)
             for i in range(3):
                 ax.annotate(plot_df.iloc[-1, i].round(2), (plot_df.index[-1], plot_df.iloc[-1, i]), fontsize=10)
-            if k % num_group == 1:
+            if (k % num_group == 1) or (num_group==1):
                 ax.set_ylabel(name[0], fontsize=20)
             if k > (num_other_group - 1) * num_group:
                 ax.set_xlabel(name[1], fontsize=20)
             if k == 1:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
-        fig_name = f'#pred_{name_sql}_{y_type}.png'
-        plt.tight_layout()
+        fig_name = f'#pred_{weeks_to_expire}_{y_type}.png'
         plt.savefig(fig_name)
         plt.close()
         logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
 
 if __name__ == "__main__":
 
-    name_sql='week1_20220124155618_debug'
-    # name_sql='week1_20220124192603_debug'
-    # name_sql='week1_20220125033146_debug'
-    # name_sql='week1_20220125035220_debug'
-    name_sql='week4_20220125040959_debug'
-    name_sql='week1_20220125130042_debug'
-    name_sql='week1_20220125174558_debug'
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-q', type=float, default=1/3)
+    parser.add_argument('--q', type=float, default=1/3)
+    parser.add_argument('--weeks_to_expire', type=str, default='%')
+    parser.add_argument('--average_days', type=str, default='%')
     args = parser.parse_args()
 
-    if args.q.is_integer():
-        q = int(args.q)
-    elif args.q < .5:
-        q = args.q
-    else:
-        raise Exception('q is either >= .5 or not a numeric')
-
     # Example
-    rank_pred(
-        q,
-        name_sql=name_sql,
-        eval_start_date=None,
-    ).write_to_db()
+    rank_pred(args.q, args.weeks_to_expire, args.average_days,
+              eval_start_date=None, y_type=['momentum_top4']).write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)

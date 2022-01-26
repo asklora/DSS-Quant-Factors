@@ -130,11 +130,11 @@ if __name__ == "__main__":
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period:]
-    logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}]')
+    logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
     # --------------------------------- Prepare Training Set -------------------------------------
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'week{args.weeks_to_expire}_{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
+    sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
