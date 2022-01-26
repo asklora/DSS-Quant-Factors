@@ -114,10 +114,24 @@ def resample_to_weekly(df, date_col):
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
-def calc_stock_return(ticker, restart, tri_return_only):
-    '''  Calcualte monthly stock return '''
+def calc_stock_return(ticker, restart, tri_return_only,
+                      stock_return_map={1: [1], 4: [7], 6: [7, 14], 26: [7, 28]}):
+    '''   Calcualte monthly stock return
 
-    drop_col = []
+    Parameters
+    ----------
+    ticker / restart / tri_return_only: refer to calc_factor_variables_multi()
+    stock_return_map (Dict):
+        dictionary of {"forward_weeks": [list of "average_days"]}
+        "forward_weeks": number of weeks look into future for premium calculation (i.e. return in the next N weeks)
+        "average_days": days in calculate rolling average tri for future returns calculation
+
+    Returns
+    -------
+    DataFrame for price related returns / variables
+    '''
+
+    drop_col = ['tri']
     ffill_col = []
     if tri_return_only:
         restart = True      # SELECT restart = True when
@@ -151,9 +165,10 @@ def calc_stock_return(ticker, restart, tri_return_only):
 
     # calculuate rolling average tri (before forward fill tri)
     logging.info(f'Stock tri rolling average ')
-    tri['tri_avg_7d'] = tri.groupby("ticker")['tri'].rolling(7, min_periods=1).mean().reset_index(drop=1)
-    tri['tri_avg_28d'] = tri.groupby("ticker")['tri'].rolling(28, min_periods=1).mean().reset_index(drop=1)
-    drop_col += ['tri', 'tri_avg_7d', 'tri_avg_28d']
+    avg_day_options = set([i for x in stock_return_map.values() for i in x if i!=1])
+    for i in avg_day_options:
+        tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)
+        drop_col += [f'tri_avg_{i}d']
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
     cols = ['tri', 'close','volume'] + ffill_col
@@ -175,9 +190,6 @@ def calc_stock_return(ticker, restart, tri_return_only):
 
     # Calculate future stock return (Y)
     logging.info(f'Calculate future stock returns')
-    stock_return_map = {1: [1],                        # map of {forward weeks: [list of average days]}
-                        4: [7],
-                        26: [7, 28]}
     tri['tri_avg_1d'] = tri['tri']
     for fwd_week, avg_days in stock_return_map.items():
         for d in avg_days:
@@ -214,9 +226,9 @@ def calc_stock_return(ticker, restart, tri_return_only):
                       value_name="value").dropna(subset=["value"])
         tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
         delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
-        upsert_data_to_database(tri, processed_ratio_table, primary_key=["uid"], db_url=db_url_write, how="append")
+        status = upsert_data_to_database(tri, processed_ratio_table, primary_key=["uid"], db_url=db_url_write, how="append")
         logging.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
-        exit(1)
+        exit(status)
 
     return tri, stock_col
 
@@ -599,9 +611,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-
-    restart = False
-    calc_factor_variables_multi(ticker=None, restart=restart, tri_return_only=True)
+    calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=True)
 
 
 
