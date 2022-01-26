@@ -51,7 +51,7 @@ class rank_pred:
 
         # keep 'cv_number' in last one for averaging
         self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
-        self.diff_config_col = ['tree_type', 'use_pca', 'average_days']
+        self.diff_config_col = ['tree_type', 'use_pca', 'average_days', 'qcut_q']
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, eval_start_date, y_type)
@@ -293,6 +293,7 @@ class rank_pred:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
         fig_name = f'#pred_{weeks_to_expire}_{y_type}.png'
+        plt.suptitle('-'.join(other_group_col))
         plt.savefig(fig_name)
         plt.close()
         logging.debug(f'=== Saved [{fig_name}] for evaluation ===')

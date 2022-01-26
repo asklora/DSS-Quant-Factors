@@ -122,8 +122,8 @@ if __name__ == "__main__":
         calc_premium_all(args.weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
 
     # --------------------------------- Different Configs -----------------------------------------
-    tree_type_list = ['rf']
-    use_pca_list = [0.6]
+    tree_type_list = ['rf', 'extra']
+    use_pca_list = [0.6, 0.4]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
