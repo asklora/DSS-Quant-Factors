@@ -51,19 +51,21 @@ class rank_pred:
 
         # keep 'cv_number' in last one for averaging
         self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
-        self.diff_config_col = ['tree_type', 'use_pca', 'average_days', 'qcut_q']
+        self.diff_config_col = ['tree_type', 'use_pca']
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, eval_start_date, y_type)
-        self.neg_factor = rank_pred.__get_neg_factor_all(pred)
+        for name_sql, pred_name_sql in pred.groupby(["name_sql"]):
+            self.neg_factor = rank_pred.__get_neg_factor_all(pred_name_sql)
 
-        # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
-        self.all_current = []
-        self.all_history = []
-        for y_type, g in pred.groupby('y_type'):
-            self.rank_each_y_type(q, y_type, g)
+            # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
+            self.all_current = []
+            self.all_history = []
+            for y_type, g in pred_name_sql.groupby('y_type'):
+                self.rank_each_y_type(q, y_type, g, name_sql)
 
-    def rank_each_y_type(self, q, y_type, df):
+
+    def rank_each_y_type(self, q, y_type, df, name_sql):
         ''' rank for each y_type '''
 
         logging.info(f'=== Generate rank for [{y_type}] with results={df.shape}) ===')
@@ -81,7 +83,9 @@ class rank_pred:
         df_cv_avg = rank_pred.__calc_z_weight(q_, df_cv_avg, self.diff_config_col)
 
         # 2.4. save backtest evaluation metrics
-        self.__backtest_save_eval_metrics(df_cv_avg, y_type)
+        self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
+        if DEBUG:
+            return
 
         # 2.5. use best config prediction for this y_type
         best_config = self.__backtest_find_best_config()
@@ -153,7 +157,7 @@ class rank_pred:
         ''' merge factor_stock & factor_model_stock '''
 
         logging.info('=== Download prediction history ===')
-        conditions = [f"S.name_sql like 'w{weeks_to_expire}_d{average_days}_%'"]
+        conditions = [f"S.name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"]
         uid_col = "uid"
         if eval_start_date:
             conditions.append(f"S.testing_period>='{eval_start_date}'")
@@ -173,7 +177,7 @@ class rank_pred:
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
-    def __backtest_save_eval_metrics(self, result_all, y_type):
+    def __backtest_save_eval_metrics(self, result_all, y_type, name_sql):
         ''' evaluate & rank different configuration;
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table '''
 
@@ -197,8 +201,7 @@ class rank_pred:
 
         # 2.4.3. save local plot for evaluation (when DEBUG)
         if DEBUG:
-            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, self.weeks_to_expire)
-            exit(200)
+            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
 
     @staticmethod
     def __get_summary_stats_in_group(g):
@@ -266,11 +269,10 @@ class rank_pred:
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
     @staticmethod
-    def __save_plot_backtest_ret(result_all_comb, other_group_col, y_type, weeks_to_expire):
+    def __save_plot_backtest_ret(result_all_comb, other_group_col, y_type, name_sql):
         ''' Save Plot for backtest average ret '''
 
         logging.debug(f'=== Save Plot for backtest average ret ===')
-        result_all_comb['average_days'] = result_all_comb['average_days'].astype(int)
         result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
         num_group = len(result_all_comb['group'].unique())
         num_other_group = len(result_all_comb['other_group'].unique())
@@ -292,8 +294,8 @@ class rank_pred:
             if k == 1:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
-        fig_name = f'#pred_{weeks_to_expire}_{y_type}.png'
-        plt.suptitle('-'.join(other_group_col))
+        fig_name = f'#pred_{name_sql}_{y_type}.png'
+        plt.suptitle(' - '.join(other_group_col),  fontsize=20)
         plt.savefig(fig_name)
         plt.close()
         logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
@@ -303,13 +305,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--q', type=float, default=1/3)
-    parser.add_argument('--weeks_to_expire', type=str, default='%')
-    parser.add_argument('--average_days', type=str, default='%')
+    parser.add_argument('--weeks_to_expire', type=str, default='%%')
+    parser.add_argument('--average_days', type=str, default='%%')
     args = parser.parse_args()
 
     # Example
-    rank_pred(args.q, args.weeks_to_expire, args.average_days,
-              eval_start_date=None, y_type=['momentum_top4']).write_to_db()
+    rank_pred(args.q, args.weeks_to_expire, args.average_days, eval_start_date=None, y_type=['momentum_top4'])
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)

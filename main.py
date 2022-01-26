@@ -10,7 +10,7 @@ from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
-from results_analysis.write_merged_pred import rank_pred
+from results_analysis.calculation_rank import rank_pred
 from general.report_to_slack import to_slack
 from general.sql_process import read_query, read_table, trucncate_table_in_database
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD']
+    group_code_list = ['USD', 'EUR']
 
     # --------------------------------------- Schedule for Production --------------------------------
     def start_on_update(check_interval=60, table_names=None):
@@ -117,9 +117,14 @@ if __name__ == "__main__":
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_ratio:
-        calc_factor_variables_multi(ticker=None, restart=False)
+        calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=False)
     if args.recalc_premium:
-        calc_premium_all(args.weeks_to_expire, processes=args.processes, trim_outlier_=args.trim, all_groups=group_code_list)
+        calc_premium_all(weeks_to_expire=args.weeks_to_expire,
+                         average_days=args.average_days,
+                         weeks_to_offset=min(4, args.weeks_to_expire),
+                         trim_outlier_=args.trim,
+                         all_groups=group_code_list,
+                         processes=args.processes)
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf', 'extra']
@@ -157,7 +162,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Results Analysis ------------------------------------------
 
-    # rank_pred(q=1/3, name_sql=sql_result['name_sql']).write_to_db()
+    # rank_pred(args.q, args.weeks_to_expire, args.average_days).write_to_db()
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
 
