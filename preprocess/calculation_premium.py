@@ -171,8 +171,7 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    # stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
-    stock_return_map = {8: [7, 14]}
+    stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
 
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():

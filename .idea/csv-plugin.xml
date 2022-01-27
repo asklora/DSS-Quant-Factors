@@ -10,6 +10,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/README.md">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/ai_score_testing/ai_score_test.py">
           <value>
             <Attribute>

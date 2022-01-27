@@ -65,6 +65,70 @@ DSS-Quant-Factors/
 ┗ requirements.txt
 ```
 ---
+## **cron/**
+
+### **LogFile/**
+This folder contains *.log files for weekly / monthly training of models.
+The training is currently scheduled on PC1 with the following cron jobs.
+```
+10 14 * * 0 /home/loratech/PycharmProjects/factors/cron/factor_monthly.sh 2>&1 > /home/loratech/PycharmProjects/factors/cron/factor_monthly.log 2>&1
+10 13 * * 0 /home/loratech/PycharmProjects/factors/cron/factor_weekly.sh 2>&1 > /home/loratech/PycharmProjects/factors/cron/factor_weekly.log 2>&1
+```
+In [main.py](main.py), we add extra constrains for the starting time of above jobs. 
+1. Monthly training will only start on the first Sunday of each month.
+2. Monthly training will only start after weekly training finished. 
+3. Weekly training will only start after weekly ingestion of Worldscope/IBES/Macros Data finished. 
+
+### **factor_monthly.sh**
+For monthly training schedule. 
+
+### **factor_weekly.sh**
+For weekly training schedule.
+
+---
+## **general/**
+
+### **send_email.py**
+Send emails from [asklora@loratechai.com](asklora@loratechai.com).
+
+### **send_slack.py**
+Send message / pd.Series / pd.DataFrames / Files to slack. 
+Factor model slack channel: [#dss-quant-factors-message](#dss-quant-factors-message).
+
+### **sql_process.py**
+For read / write to SQL DB. Refer to [global_vars.py](global_vars.py) for db_url_read / db_url_write. 
+Production should set both as ALIBABA Prod DB URL.
+
+### **utils.py**
+Other general utility functions (e.g. save to excel).
+
+---
+## **images/**
+
+### **factormodel.png**
+Flowchart for training process for [README.md](README.md).
+
+---
+## **preprocess/**
+Preprocessing raw data ingested to expected format for training / prediction.
+
+### **calculation_ratio.py**
+Using raw data ingestion to calculate weekly factor ratios of each ticker and write to Table `factor_processed_ratio`. 
+Full list of factors calculated can refer to Table `factor_formula_ratios_prod`.
+
+Ratio table will be updated weekly before training for recent 3-month ratios. 
+
+### **calculation_premium.py**
+Using factor ratios calculated with [calculation_ratio.py](calculation_ratio.py) to calculate premiums in each group (currency_code / indsutry_code) and write to `factor_processed_premium`.
+
+Premium table will be updated weekly before training for recent 3-month ratios. 
+
+
+### **load_data.py**
+
+### **model_log.py**
+
+### **analysis_premium.py**
 
 
 ## Data Preparation

@@ -9,7 +9,7 @@ from sklearn.preprocessing import robust_scale, minmax_scale
 
 import global_vars
 from general.sql_process import read_query, read_table
-from general.report_to_slack import to_slack
+from general.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
 
