@@ -33,6 +33,28 @@ def record_table_update_time(tb_name, conn):
     df = pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index()
     df.to_sql(global_vars.update_time_table, **extra)
 
+def to_excel(df_dict, file_name='test'):
+    '''  write DataFrames to excel
+
+    Parameters
+    ----------
+    df_dict (Dict/DataFrame):
+        if = Dict, need to be a dictionary of {sheet_name: DataFrame (content)};
+        if = DataFrame, will use default sheet_name "Sheet1".
+    file_name : file_name to save
+    '''
+
+    writer = pd.ExcelWriter(f'{file_name}.xlsx')
+    if type(df_dict)==type({}):
+        for sheet_name, df in df_dict.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+        n = len(df_dict)
+    else:
+        df_dict.to_excel(writer, sheet_name='Sheet1', index=False)
+        n = 1
+    writer.save()
+    print(f"=== Finish write [{n}] sheet(s) -> '{file_name}.xlsx")
+
 if __name__ == "__main__":
     pass
     # read_from_firebase()
