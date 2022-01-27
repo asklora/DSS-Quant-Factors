@@ -210,21 +210,27 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(currency_code='USD', start_date='2021-10-01'):
+def test_score_history(currency_code='USD', start_date='2021-10-01', name_sql=None):
     ''' calculate score with DROID v2 method & evaluate '''
 
-    print("=== Get factor rank history ===")
-    conditions = [f"True"]
-    if currency_code:
-        conditions.append(f"\"group\"='{currency_code}'")
-    if start_date:
-        conditions.append(f"trading_day>='{start_date}'")
-    factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    # TODO: change table name
-                             f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-    factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
-    print(factor_rank.dtypes)
+    if name_sql:
+        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
 
-    print("=== Get factor rank history ===")
+
+
+    else:
+        print("=== Get [Factor Rank] history from Backtest Table ===")
+        conditions = [f"True"]
+        if currency_code:
+            conditions.append(f"\"group\"='{currency_code}'")
+        if start_date:
+            conditions.append(f"trading_day>='{start_date}'")
+        factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    # TODO: change table name
+                                 f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+        factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
+        print(factor_rank.dtypes)
+
+    print("=== Get [Factor Processed Ratio] history ===")
     conditions = ["r.ticker not like '.%%'"]
     if currency_code:
         conditions.append(f"currency_code='{currency_code}'")
@@ -375,4 +381,5 @@ def get_industry_name():
     return df.set_index(["ticker"])["name_4"].to_dict()
 
 if __name__ == "__main__":
+    name_sql = 'w4_d7_20220127111044_debug'
     test_score_history()

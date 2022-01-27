@@ -22,16 +22,18 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
 
     # 2. find best in cv groups
     df_best = df.sort_values(by=['r2_valid'], ascending=False).groupby(iter_unique_col[:-1] + diff_config_col).first()
+    df_best_avg_cv = df_best.groupby(['testing_period', 'cv_number']).mean().reset_index()
+    df_best_avg_q = df_best.groupby(['qcut_q']).mean()
+    df_corr_cv = df['cv_number'].corr(df['net_ret'])
 
     # 3. calculate average accuracy across testing_period
     df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^r2_').reset_index()
-    df_best_avg_q = df_best_avg.groupby(['qcut_q']).mean()
 
     # 4. correlation between net_ret & metrics
-    metrics_col = df.filter(regex="^mae_|^mse_|^r2_").columns.to_list()
     def net_ret_corr(g):
-        corr = g[metrics_col+['net_ret']].corr(method='pearson').loc['net_ret']
-        return corr
+        corr1 = -g.filter(regex="^mae_|^mse_").apply(lambda x: x.corr(g['net_ret'], method='pearson'))
+        corr2 = g.filter(regex="^r2_").apply(lambda x: x.corr(g['net_ret'], method='pearson'))
+        return corr1.append(corr2)
     df_corr = df.groupby(iter_unique_col[:-2] + diff_config_col).apply(net_ret_corr)
     df_corr_avg = df_corr.mean()
     df_best_corr = df_best.groupby(iter_unique_col[:-2] + diff_config_col).apply(net_ret_corr)
@@ -40,4 +42,4 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=4, average_days='%%', start_uid='20220127100941389209')
+    download_model(weeks_to_expire=26, average_days='%%', start_uid='20220127115327292680')

@@ -352,7 +352,19 @@ class load_data:
         return x_train, x_test, feature_name
 
     def split_valid(self, testing_period, n_splits, valid_method):
-        ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
+        ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set
+
+        Parameters
+        ----------
+        testing_period :
+            testing set starting date.
+        n_splits (Float):
+            if > 1, n * (train + valid) sets split from the last 2 years of training;
+            if < 1, use last n_splits% of training as validation.
+        valid_method (Str):
+            if "cv", cross validation between groups (n_splits must > 1);
+            if "chron", use last 2 years / % of training as validation.
+        '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
             gkf = GroupShuffleSplit(n_splits=n_splits, random_state=666).split(self.sample_set['train_x'],
@@ -360,13 +372,22 @@ class load_data:
                                                                               groups=self.train['group'])
         elif valid_method == "chron":       # split validation set by chronological order
             gkf = []
-            for n in range(1, n_splits+1):
-                valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
+            if n_splits >= 1:
+                for n in range(1, n_splits+1):
+                    valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
+                    test_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
+                    train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
+                    gkf.append((train_index, test_index))
+            elif n_splits > 0:
+                valid_len = (self.train['trading_day'].max() - self.train['trading_day'].min())*n_splits
+                valid_period = self.train['trading_day'].max() - valid_len
                 test_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
                 train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
                 gkf.append((train_index, test_index))
+            else:
+                raise ValueError("Invalid 'n_splits'. Expecting 'n_splits' > 0 got ", n_splits)
         else:
-            raise ValueError("Invalid valid_method. Expecting 'cv' or 'chron' got ", valid_method)
+            raise ValueError("Invalid 'valid_method'. Expecting 'cv' or 'chron' got ", valid_method)
 
         return gkf
 
@@ -390,7 +411,7 @@ if __name__ == '__main__':
     data.split_group(group_code)
 
     # for y in y_type:
-    sample_set, cv = data.split_all(testing_period, valid_method='chron', n_splits=5,
+    sample_set, cv = data.split_all(testing_period, valid_method='chron', n_splits=0.2,
                                     output_options={"y_type": y_type, "qcut_q": 10, "use_median": False,
                                                     "defined_cut_bins": []},
                                     input_options={"ar_period": [], "ma3_period": [], "ma12_period": [],

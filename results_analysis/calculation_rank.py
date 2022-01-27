@@ -250,36 +250,40 @@ class rank_pred:
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
+    def __write_backtest_rank(self, upsert_how="append"):
+        ''' write backtest factors: backtest rank -> production_factor_rank_backtest_table '''
+        tbl_name_backtest = production_factor_rank_backtest_table
+        df_history = pd.concat(self.all_history, axis=0)
+        df_history["weeks_to_expire"] = self.weeks_to_expire
+        df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
+        df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
+        if upsert_how==False:
+            return
+        trucncate_table_in_database(tbl_name_backtest, db_url_write)
+        upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
+
+    def __write_current_rank(self, upsert_how="append"):
+        '''write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history'''
+
+        tbl_name_current = production_factor_rank_table
+        tbl_name_history = production_factor_rank_history_table
+        df_current = pd.concat(self.all_current, axis=0)
+        df_current["weeks_to_expire"] = self.weeks_to_expire
+        df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
+        df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
+
+        delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={self.weeks_to_expire}")
+        upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
+        df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
+        df_current = df_current.drop(columns=["last_update", "trading_day"])
+        upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
+
     def write_to_db(self):
-        ''' concat rank current/history & write
-            1. current rank -> production_factor_rank_table / production_factor_rank_history
-            2. backtest rank -> production_factor_rank_backtest_table
-        '''
+        ''' concat rank current/history & write '''
 
         if not DEBUG:
-            # 1. write backtest factors
-            tbl_name_backtest = production_factor_rank_backtest_table
-            df_history = pd.concat(self.all_history, axis=0)
-            df_history["weeks_to_expire"] = self.weeks_to_expire
-            df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
-            df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-            trucncate_table_in_database(tbl_name_backtest, db_url_write)
-            upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
-
-            # 2. write current use factors
-            tbl_name_current = production_factor_rank_table
-            tbl_name_history = production_factor_rank_history_table
-            df_current = pd.concat(self.all_current, axis=0)
-            df_current["weeks_to_expire"] = self.weeks_to_expire
-            df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
-            df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
-
-            # TODO: reverse debug
-            # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={self.weeks_to_expire}")
-            # upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
-            df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
-            df_current = df_current.drop(columns=["last_update", "trading_day"])
-            # upsert_data_to_database(df_current, tbl_name_history, primary_key=["uid"], db_url=db_url_write, how='append')
+            self.__write_backtest_rank()
+            # self.__write_current_rank()
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
@@ -328,7 +332,7 @@ if __name__ == "__main__":
     # rank_pred(1/3, name_sql='w4_d7_20220126180527_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, weeks_to_expire=4, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
+    rank_pred(1/3, weeks_to_expire=1, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)

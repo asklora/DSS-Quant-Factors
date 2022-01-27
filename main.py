@@ -22,7 +22,7 @@ def mp_rf(*mp_args):
 
     # try:
     if True:
-        data, sql_result, i, group_code, testing_period, tree_type, use_pca, y_type = mp_args
+        data, sql_result, i, group_code, testing_period, tree_type, use_pca, n_splits, y_type = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
@@ -30,6 +30,7 @@ def mp_rf(*mp_args):
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
         sql_result['use_pca'] = use_pca
+        sql_result['n_splits'] = n_splits
 
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
@@ -80,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument('--average_days', default=28, type=int)
     parser.add_argument('--processes', default=1, type=int)
     parser.add_argument('--backtest_period', default=210, type=int)
-    parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
+    # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
@@ -129,6 +130,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf', 'extra']
     use_pca_list = [0.6, 0.4]
+    n_splits_list = [.05, .1, .2, .4]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
@@ -149,11 +151,11 @@ if __name__ == "__main__":
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
     # y_type_list = ["all"]
-    # y_type_list = ["momentum", "value", "quality"]
-    y_type_list = ["momentum_top4"]
+    y_type_list = ["momentum", "value", "quality"]
+    # y_type_list = ["momentum_top4"]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
-                         tree_type_list, use_pca_list, y_type_list)
+                         tree_type_list, use_pca_list, n_splits_list, y_type_list)
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
