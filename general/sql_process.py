@@ -171,7 +171,7 @@ if __name__=="__main__":
     pass
 
     df = read_table("iso_currency_code")
-    uid_maker(df, ["nation_code","nation_name"])
+    uid_maker(df, ["nation_code", "nation_name"])
     # data = data.loc[data['nation_code']=='372']
     # data['currency_code'] = "test"
     # upsert_data_to_database(data, "iso_currency_code1", "nation_code", how="update")

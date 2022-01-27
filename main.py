@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Results Analysis ------------------------------------------
 
-    # rank_pred(args.q, args.weeks_to_expire, args.average_days).write_to_db()
+    # rank_pred(args.q, args.weeks_to_expire, args.average_days, name_sql=sql_result['name_sql']).write_to_db()
     # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
 

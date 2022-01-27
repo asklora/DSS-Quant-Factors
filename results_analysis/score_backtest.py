@@ -16,11 +16,7 @@ score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentu
 
 class score_scale:
 
-    def __init__(self, fundamentals, calculate_column, universe_currency_code,
-                 factor_formula, weeks_to_expire, factor_rank):
-
-        # Get factor_rank (input factor_rank)
-        # factor_rank = score_scale.__get_processed_factor_rank(factor_rank, weeks_to_expire, universe_currency_code)
+    def __init__(self, fundamentals, calculate_column, universe_currency_code, factor_formula, weeks_to_expire, factor_rank):
 
         # Scale factor scores
         fundamentals, calculate_column_score = score_scale.__scale1_trim_outlier(fundamentals, calculate_column)
@@ -37,34 +33,6 @@ class score_scale:
 
         self.fundamentals = fundamentals
         self.calculate_column = calculate_column
-
-    # @staticmethod
-    # def __get_processed_factor_rank(factor_rank, weeks_to_expire, universe_currency_code):
-    #     ''' get factor_rank table from DB & merge with factor formula '''
-    #
-    #     # for score not included in backtest (earnings_pred & wts_rating)
-    #     for i in set(factor_rank['group'].dropna().unique()):
-    #         keep_rank = factor_rank.loc[factor_rank["group"].isnull()].copy()
-    #         keep_rank["group"] = i
-    #         factor_rank = factor_rank.append(keep_rank, ignore_index=True)
-    #     factor_rank = factor_rank.dropna(subset=["group"])
-    #
-    #     factor_rank.loc[
-    #         factor_rank['factor_name'] == 'earnings_pred', ['group', 'long_large', 'pred_z', 'factor_weight']] = \
-    #         factor_rank.loc[
-    #             factor_rank['factor_name'] == 'fwd_ey', ['group', 'long_large', 'pred_z', 'factor_weight']].values
-    #     if weeks_to_expire == 1:
-    #         factor_rank.loc[factor_rank['factor_name'].isin(["wts_rating"]), 'long_large'] = True
-    #         factor_rank.loc[factor_rank['factor_name'].isin(["wts_rating"]), 'pred_z'] = 2
-    #         factor_rank.loc[factor_rank['factor_name'].isin(["wts_rating"]), 'factor_weight'] = 2
-    #     factor_rank = factor_rank.dropna(subset=['pillar', 'pred_z'], how='any')
-    #
-    #     # 2.1: use USD -> other currency
-    #     replace_rank = factor_rank.loc[factor_rank['group'] == 'USD'].copy()
-    #     for i in set(universe_currency_code) - set(factor_rank['group'].unique()):
-    #         replace_rank['group'] = i
-    #         factor_rank = factor_rank.append(replace_rank, ignore_index=True)
-    #     return factor_rank
 
     @staticmethod
     def __scale1_trim_outlier(fundamentals, calculate_column):
@@ -242,37 +210,38 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(weeks_to_expire=None, currency_code='USD', start_date='2021-11-01'):
+def test_score_history(currency_code='USD', start_date='2021-10-01'):
     ''' calculate score with DROID v2 method & evaluate '''
 
-    # print("=== Get factor rank history ===")
-    # conditions = [f"True"]
-    # if currency_code:
-    #     conditions.append(f"\"group\"='{currency_code}'")
-    # if start_date:
-    #     conditions.append(f"trading_day>='{start_date}'")
-    # factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table}_debug "    # TODO: change table name
-    #                          f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba)
-    # factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
-    # print(factor_rank.dtypes)
-    #
-    # print("=== Get factor rank history ===")
-    # conditions = ["r.ticker not like '.%%'"]
-    # if currency_code:
-    #     conditions.append(f"currency_code='{currency_code}'")
-    # if start_date:
-    #     conditions.append(f"trading_day>='{start_date}'")
-    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
-    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
-    #               f"WHERE {' AND '.join(conditions)}"
-    # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
-    #                                               values="value").reset_index()
-    #
-    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
-    fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
-    factor_rank = pd.read_csv('cached_factor_rank.csv')
+    print("=== Get factor rank history ===")
+    conditions = [f"True"]
+    if currency_code:
+        conditions.append(f"\"group\"='{currency_code}'")
+    if start_date:
+        conditions.append(f"trading_day>='{start_date}'")
+    factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    # TODO: change table name
+                             f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+    factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None).apply(lambda x: x+relativedelta(hours=8))
+    print(factor_rank.dtypes)
+
+    print("=== Get factor rank history ===")
+    conditions = ["r.ticker not like '.%%'"]
+    if currency_code:
+        conditions.append(f"currency_code='{currency_code}'")
+    if start_date:
+        conditions.append(f"trading_day>='{start_date}'")
+    ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+                  f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+                  f"WHERE {' AND '.join(conditions)}"
+    fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+    fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+                                                  values="value").reset_index()
+
+    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    # fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
+    # factor_rank = pd.read_csv('cached_factor_rank.csv')
+
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
 
@@ -309,7 +278,7 @@ def test_score_history(weeks_to_expire=None, currency_code='USD', start_date='20
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-    label_col = ['ticker', 'trading_day', 'currency_code', 'stock_return_y_1week', 'stock_return_y_4week']
+    label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(regex='^stock_return_y_').columns.to_list()
     fundamentals = fundamentals_score[label_col+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
     print(fundamentals)
@@ -328,7 +297,7 @@ def test_score_history(weeks_to_expire=None, currency_code='USD', start_date='20
     eval_qcut_all = {}
     eval_best_all = {}
     for name, g in fundamentals.groupby(['trading_day']):
-        for weeks_to_expire in [1, 4]:
+        for weeks_to_expire, average_days in [(1,1), (4,7), (26,7), (26,28)]:
             print(name)
             factor_rank_period = factor_rank.loc[(factor_rank['trading_day']==(name-relativedelta(weeks=weeks_to_expire)))&
                                                  (factor_rank['weeks_to_expire']==weeks_to_expire)]
@@ -341,10 +310,10 @@ def test_score_history(weeks_to_expire=None, currency_code='USD', start_date='20
             fundamentals_all.append(fundamentals)
 
             # Evaluate 1: calculate return on 10-qcut portfolios
-            eval_qcut_all[(name, weeks_to_expire)] = eval_qcut(fundamentals, score_col, weeks_to_expire)
+            eval_qcut_all[(name, f"{weeks_to_expire}_{average_days}")] = eval_qcut(fundamentals, score_col, weeks_to_expire, average_days)
 
             # Evaluate 2: calculate return for top 10 score / mode industry
-            eval_best_all[(name, weeks_to_expire)] = eval_best(fundamentals, weeks_to_expire)
+            eval_best_all[(name, f"{weeks_to_expire}_{average_days}")] = eval_best(fundamentals, weeks_to_expire, average_days)
 
     print("=== Reorganize mean return dictionary to DataFrames ===")
     eval_qcut_df = pd.DataFrame(eval_qcut_all).stack(level=[-2, -1])
@@ -373,7 +342,7 @@ def save_description_history(df):
     df = df.groupby('currency_code')['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
     to_slack("clair").df_to_slack("AI Score distribution (Backtest)", df)
 
-def eval_qcut(fundamentals, score_col, weeks_to_expire):
+def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
     ''' evaluate score history with score 10-qcut mean ret (over entire history) '''
 
     mean_ret = {}
@@ -382,20 +351,20 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire):
         for col in score_col:
             df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
             mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
-                f'stock_return_y_{weeks_to_expire}week'].mean().to_dict()
+                f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean().to_dict()
 
     return mean_ret
 
-def eval_best(fundamentals, weeks_to_expire):
+def eval_best(fundamentals, weeks_to_expire, average_days):
     ''' evaluate score history with top 10 score return & industry '''
 
     top_ret = {}
     for name, g in fundamentals.groupby(["currency_code"]):
         g = g.set_index('ticker').nlargest(10, columns=['ai_score'], keep='all')
-        top_ret[(name, "return")] = g[f"stock_return_y_{weeks_to_expire}week"].mean()
+        top_ret[(name, "return")] = g[f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean()
         top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
         top_ret[(name, "mode count")] = np.sum(g[f"industry_name"]==top_ret[(name, "mode")])
-        top_ret[(name, "positive_pct")] = np.sum(g[f"stock_return_y_{weeks_to_expire}week"]>0)/len(g)
+        top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{weeks_to_expire}_d{average_days}']>0)/len(g)
 
     return top_ret
 

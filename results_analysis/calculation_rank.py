@@ -30,15 +30,19 @@ stock_pred_dtypes = dict(
 class rank_pred:
     ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation '''
 
-    def __init__(self, q, weeks_to_expire=0, average_days=0, y_type=None, eval_start_date=None):
+    def __init__(self, q, weeks_to_expire='%%', average_days='%%', name_sql=None, y_type=None, eval_start_date=None):
         '''
         Parameters
         ----------
         q (Float):
             If q > 1 (e.g. 5), top q factors used as best factors;
             If q < 1 (e.g. 1/3), top (q * total No. factors predicted) factors am used as best factors;
-        name_sql_like (Str):
-            define name_sql of Table [result_score_table] to evaluate with [name_sql like 'name_sql'];
+        weeks_to_expire (Int, Optional):
+            number of weeks to predict (default evaluate all model)
+        average_days (Int, Optional):
+            number of average days when calculate premiums (default evaluate all model)
+        name_sql (Str, Optional):
+            if not None (by default), name_sql to evaluate (This overwrites "weeks_to_expire" & "average_days" set)
         y_type (List[Str], Optional):
             y_type to evaluate;
         eval_start_date (Str, Optional):
@@ -54,7 +58,7 @@ class rank_pred:
         self.diff_config_col = ['tree_type', 'use_pca']
 
         # 1. Download & merge all prediction from iteration
-        pred = self._download_prediction(weeks_to_expire, average_days, eval_start_date, y_type)
+        pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type)
         for name_sql, pred_name_sql in pred.groupby(["name_sql"]):
             self.neg_factor = rank_pred.__get_neg_factor_all(pred_name_sql)
 
@@ -153,11 +157,15 @@ class rank_pred:
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    def _download_prediction(self, weeks_to_expire, average_days, eval_start_date, y_type):
+    def _download_prediction(self, weeks_to_expire, average_days, name_sql, eval_start_date, y_type):
         ''' merge factor_stock & factor_model_stock '''
 
         logging.info('=== Download prediction history ===')
-        conditions = [f"S.name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"]
+        if name_sql:
+            conditions = [f"S.name_sql='{name_sql}'"]
+            logging.warning(f"=== Will update factor rank tables based on name_sql=[{name_sql}] ===")
+        else:
+            conditions = [f"S.name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"]
         uid_col = "uid"
         if eval_start_date:
             conditions.append(f"S.testing_period>='{eval_start_date}'")
@@ -242,24 +250,25 @@ class rank_pred:
             2. backtest rank -> production_factor_rank_backtest_table
         '''
 
-        # 1. write backtest factors
-        tbl_name_backtest = production_factor_rank_backtest_table
-        df_history = pd.concat(self.all_history, axis=0)
-        df_history["weeks_to_expire"] = self.weeks_to_expire
-        df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
-        df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
         if not DEBUG:
+            # 1. write backtest factors
+            tbl_name_backtest = production_factor_rank_backtest_table
+            df_history = pd.concat(self.all_history, axis=0)
+            df_history["weeks_to_expire"] = self.weeks_to_expire
+            df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
+            df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
             trucncate_table_in_database(tbl_name_backtest, db_url_write)
             upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
 
-        # 2. write current use factors
-        tbl_name_current = production_factor_rank_table
-        tbl_name_history = production_factor_rank_history_table
-        df_current = pd.concat(self.all_current, axis=0)
-        df_current["weeks_to_expire"] = self.weeks_to_expire
-        df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
-        df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
-        if not DEBUG:   # TODO: reverse debug
+            # 2. write current use factors
+            tbl_name_current = production_factor_rank_table
+            tbl_name_history = production_factor_rank_history_table
+            df_current = pd.concat(self.all_current, axis=0)
+            df_current["weeks_to_expire"] = self.weeks_to_expire
+            df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire"])
+            df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
+
+            # TODO: reverse debug
             # delete_data_on_database(tbl_name_current, db_url_write, query=f"weeks_to_expire={self.weeks_to_expire}")
             # upsert_data_to_database(df_current, tbl_name_current, primary_key=["uid"], db_url=db_url_write, how='append')
             df_current = uid_maker(df_current, primary_key=["group", "factor_name", "weeks_to_expire", "last_update"])
@@ -310,7 +319,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example
-    rank_pred(args.q, args.weeks_to_expire, args.average_days, eval_start_date=None, y_type=['momentum_top4'])
+    # rank_pred(1/3, name_sql='w4_d7_20220126180527_debug', eval_start_date=None, y_type=[]).write_to_db()
+
+    # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, weeks_to_expire=4, eval_start_date='2021-01-01', y_type=[]).write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)
