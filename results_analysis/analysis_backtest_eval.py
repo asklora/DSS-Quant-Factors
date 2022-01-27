@@ -13,6 +13,8 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
         query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql like '{name_sql}%%'"
     else:
         query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"
+
+
     df = read_query(query, db_url_read)
     df['net_ret'] = df['max_ret'] - df['min_ret']
 
@@ -23,4 +25,5 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=26, average_days=28)
+    # download_model(weeks_to_expire=26, average_days=28)
+    download_model(weeks_to_expire=26)

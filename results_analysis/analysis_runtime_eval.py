@@ -15,7 +15,7 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
     df = read_query(query, db_url_read)
 
     iter_unique_col = ['name_sql', 'group_code', 'y_type', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
-    diff_config_col = ['tree_type', 'use_pca', 'qcut_q']
+    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits']
 
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last')
@@ -24,7 +24,10 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
     df_best = df.sort_values(by=['r2_valid'], ascending=False).groupby(iter_unique_col[:-1] + diff_config_col).first()
     df_best_avg_cv = df_best.groupby(['testing_period', 'cv_number']).mean().reset_index()
     df_best_avg_q = df_best.groupby(['qcut_q']).mean()
+    df_best_avg_n_splits = df_best.groupby(['n_splits']).mean()
+
     df_corr_cv = df['cv_number'].corr(df['net_ret'])
+    df_corr_n_splits = df['n_splits'].corr(df['net_ret'])
 
     # 3. calculate average accuracy across testing_period
     df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^r2_').reset_index()
@@ -42,4 +45,4 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=1, average_days='%%', start_uid='20220127100941389209')
+    download_model(weeks_to_expire=26, average_days='%%', start_uid='20220127135806140236')

@@ -30,6 +30,32 @@ See further on [confluence](https://loratechai.atlassian.net/wiki/spaces/SEAR/pa
 
 ### *factor repository*
 
+## Contents
+```
+DSS-Quant-Factors/
+┣ cron/
+┣ images/
+┣ preprocess/
+┃ ┣ calculation_ratio.py
+┃ ┣ calculation_premium.py
+┃ ┣ model.py
+┃ ┗ analysis_premium.py
+┣ results_analysis/
+┃ ┣ calculation_rank.py
+┃ ┣ analysis_backtest_eval.py
+┃ ┣ analysis_runtime_eval.py
+┃ ┣ analysis_score_backtest.py
+┃ ┣ analysis_score_backtest.py
+┃ ┗ analysis_universe_rating_history.py
+┣ .gitignore
+┣ README.md
+┣ global_vars.py
+┣ main.py
+┣ Makefile
+┣ random_forest.py
+┗ requirements.txt
+```
+
 ## Data Preparation
 
 Model input are factor premiums of the factors in one pillar, defined in this [page](https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/858685974/Story+2021-08-20)
