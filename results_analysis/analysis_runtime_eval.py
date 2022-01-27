@@ -6,10 +6,12 @@ import numpy as np
 from global_vars import *
 from general.sql_process import read_query
 
-def download_model(weeks_to_expire, average_days):
+def download_model(weeks_to_expire, average_days, start_uid=None):
     ''' evaluation runtime calculated metrics '''
 
-    query = f"SELECT * FROM {result_score_table} WHERE name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"
+    query = f"SELECT * FROM {result_score_table} WHERE name_sql like 'w{weeks_to_expire}_d{average_days}_%%' "
+    if start_uid:
+        query += f"AND to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > to_timestamp('{start_uid}', 'YYYYMMDDHH24MISSUS')"
     df = read_query(query, db_url_read)
 
     iter_unique_col = ['name_sql', 'group_code', 'y_type', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
@@ -38,4 +40,4 @@ def download_model(weeks_to_expire, average_days):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=4, average_days='%%')
+    download_model(weeks_to_expire=4, average_days='%%', start_uid='20220127100941389209')

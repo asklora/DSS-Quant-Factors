@@ -30,7 +30,8 @@ stock_pred_dtypes = dict(
 class rank_pred:
     ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation '''
 
-    def __init__(self, q, weeks_to_expire='%%', average_days='%%', name_sql=None, y_type=None, eval_start_date=None):
+    def __init__(self, q, weeks_to_expire='%%', average_days='%%', name_sql=None, y_type=None, eval_start_date=None,
+                 start_uid=None):
         '''
         Parameters
         ----------
@@ -47,6 +48,8 @@ class rank_pred:
             y_type to evaluate;
         eval_start_date (Str, Optional):
             String in "%Y-%m-%d" format for the start date to download prediction;
+        start_uid (Str, Optional):
+            String in "%Y%m%d%H%M%S%f" format to filter factor_model records based on training start time
         '''
 
         self.q = q
@@ -58,7 +61,7 @@ class rank_pred:
         self.diff_config_col = ['tree_type', 'use_pca']
 
         # 1. Download & merge all prediction from iteration
-        pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type)
+        pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
         for name_sql, pred_name_sql in pred.groupby(["name_sql"]):
             self.neg_factor = rank_pred.__get_neg_factor_all(pred_name_sql)
 
@@ -157,7 +160,7 @@ class rank_pred:
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    def _download_prediction(self, weeks_to_expire, average_days, name_sql, eval_start_date, y_type):
+    def _download_prediction(self, weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid):
         ''' merge factor_stock & factor_model_stock '''
 
         logging.info('=== Download prediction history ===')
@@ -171,6 +174,9 @@ class rank_pred:
             conditions.append(f"S.testing_period>='{eval_start_date}'")
         if y_type:
             conditions.append(f"S.y_type in {tuple(y_type)}")
+        if start_uid:
+            conditions.append(f"to_timestamp(left(S.uid, 20), 'YYYYMMDDHH24MISSUS') > "
+                              f"to_timestamp('{start_uid}', 'YYYYMMDDHH24MISSUS')")
 
         label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number'] + self.diff_config_col
         query = text(f'''
@@ -322,7 +328,7 @@ if __name__ == "__main__":
     # rank_pred(1/3, name_sql='w4_d7_20220126180527_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, weeks_to_expire=4, eval_start_date='2021-01-01', y_type=[]).write_to_db()
+    rank_pred(1/3, weeks_to_expire=4, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)
