@@ -6,7 +6,7 @@ import pandas as pd
 import datetime as dt
 
 from global_vars import *
-from general.report_to_slack import to_slack
+from general.send_slack import to_slack
 
 def trucncate_table_in_database(table, db_url=db_url_alibaba):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''

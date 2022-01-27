@@ -17,7 +17,7 @@ from general.sql_process import (
     trucncate_table_in_database,
     delete_data_on_database
 )
-from general.report_to_slack import to_slack
+from general.send_slack import to_slack
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
@@ -115,7 +115,8 @@ def resample_to_weekly(df, date_col):
     return df
 
 def calc_stock_return(ticker, restart, tri_return_only,
-                      stock_return_map={1: [1], 4: [7], 6: [7, 14], 26: [7, 28]}):
+                      stock_return_map={1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}):
+
     '''   Calcualte monthly stock return
 
     Parameters

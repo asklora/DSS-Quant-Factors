@@ -28,13 +28,22 @@ See further on [confluence](https://loratechai.atlassian.net/wiki/spaces/SEAR/pa
 
 # Factor Model
 
-### *factor repository*
+This repository is the factor model reposition, which selects "good"/"bad" factors for each period on different horizons (1-week, 4-week, 8-week, 26-week).
 
 ## Contents
 ```
 DSS-Quant-Factors/
 ┣ cron/
+┃ ┣ LogFile/
+┃ ┣ factor_monthly.sh
+┃ ┗ factor_weekly.sh
+┣ general/
+┃ ┣ send_email.py
+┃ ┣ send_slack.py
+┃ ┣ sql_process.py
+┃ ┗ utils.py
 ┣ images/
+┃ ┗ factormodel.png
 ┣ preprocess/
 ┃ ┣ calculation_ratio.py
 ┃ ┣ calculation_premium.py
@@ -55,6 +64,8 @@ DSS-Quant-Factors/
 ┣ random_forest.py
 ┗ requirements.txt
 ```
+---
+
 
 ## Data Preparation
 

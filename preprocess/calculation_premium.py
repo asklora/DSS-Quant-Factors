@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
-from general.report_to_slack import to_slack
+from general.send_slack import to_slack
 
 from global_vars import *
 from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database, uid_maker
@@ -171,7 +171,8 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    stock_return_map = {1: [1], 4: [7], 6: [7, 14], 26: [7, 28]}
+    # stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
+    stock_return_map = {8: [7, 14]}
 
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():

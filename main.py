@@ -11,7 +11,7 @@ from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
 from results_analysis.calculation_rank import rank_pred
-from general.report_to_slack import to_slack
+from general.send_slack import to_slack
 from general.sql_process import read_query, read_table, trucncate_table_in_database
 
 from itertools import product
