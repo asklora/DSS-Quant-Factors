@@ -64,6 +64,32 @@ DSS-Quant-Factors/
 ┣ random_forest.py
 ┗ requirements.txt
 ```
+All **[analysis_*.py]** files are for backtest only, therefore will be ignored in this documentation for simplicity.
+- They are not directly related to the model struction / production.
+- Limited documentation exists in each file. 
+
+---
+
+## **./**
+
+### **global_vars.py**
+Global variables define URL / Table names / logging.
+
+### **main.py**
+Main file for training, defining configuration used in the model training.
+
+
+### **random_forest.py**
+Random/Extratree forest for train / runtime evaluation / prediction.
+
+This script updated the following DB Tables:
+1. `factor_model`: 
+   - Record the configuration & overall evaluation results of each model.
+2. `factor_model_stock`: 
+   - Record predictions of each stock for the best Hyperopt trials selected. 
+
+In analysis, the two tables can be merged with *uid*.
+
 ---
 ## **cron/**
 
@@ -121,29 +147,54 @@ Ratio table will be updated weekly before training for recent 3-month ratios.
 ### **calculation_premium.py**
 Using factor ratios calculated with [calculation_ratio.py](calculation_ratio.py) to calculate premiums in each group (currency_code / indsutry_code) and write to `factor_processed_premium`.
 
-Premium table will be updated weekly before training for recent 3-month ratios. 
-
+Premium table will be updated weekly before training for *entire* history (i.e. to adjust for different active universe).
 
 ### **load_data.py**
+Prepare training / testing sets with premium calculated with [calculation_premium.py](calculation_premium.py) and macro/index ratios, including:
+1. separate training / testing samples based on defined testing periods & weeks_to_expire (i.e. return periods used in premium calculation).
+2. (optional) add *T-n premiums* + *average of (T-a, T-b) premiums* as X
+3. (optional) apply PCA to X for dimension reduction
+4. (optional) use qcut mean instead of actual premium as model prediction y.
+5. split training / validation sets 
+
+#### Data Preparation
+
+- Model input are factor premiums of the factors in one pillar, defined in this [page](https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/858685974/Story+2021-08-20)
+- Recap: 4 pillars = Value, Quality, Momentum, Extra
+- Output are the factor premiums of the next period.
+- Test data set are the factor premiums in backtest period x week before today
+- Validation data set are the factor premiums in 2 years before the test set
+- Training data set are all the factor premiums before the validation set
 
 ### **model_log.py**
+Record logs to `factor_model_log` for different training configurations.
 
-### **analysis_premium.py**
+---
+## **results_analysis/**
 
+### **calculation_rank.py**
+Convert predictions recorded during training in `factor_model_stock` to ranking for AI Score calculation.
 
-## Data Preparation
+This script updated the following DB Tables:
+1. `factor_result_rank_backtest_eval`: 
+   - Record evaluation metrics / factor selection for each configuration
+   - This table is also used to select best config for rank calculation.
+2. `factor_result_rank_backtest`: 
+   - Best config rank entire history for current training 
+3. `factor_result_rank`: 
+   - Current rank for AI Score calculation (i.e. most recent period) 
+4. `factor_result_rank_history`: 
+   - Record history of `factor_result_rank`
 
-Model input are factor premiums of the factors in one pillar, defined in this [page](https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/858685974/Story+2021-08-20)
+#### Rank Calculation
+- We select factors with top 1/3 predictions as "good"/"max" factors; bottom 1/3 as "bad"/"min factors. 
+- Best config is determined based on testing period cumulative returns. 
+- Config to be selected are hyperparameters of entire model that was not selected Grid Search instead of Hyperopt, e.g.
+  - *PCA ratios*
+  - *Tree type*: Random Forest / ExtraTree Forest
+  - *Validation Method*
 
-Recap: 4 pillars = Value, Quality, Momentum, Extra
-
-Output are the factor premiums of the next period.
-
-Test data set are the factor premiums in backtest period x week before today
-
-Validation data set are the factor premiums in 2 years before the test set
-
-Training data set are all the factor premiums before the validation set
+---
 
 ## Prediction
 
