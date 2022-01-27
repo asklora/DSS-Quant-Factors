@@ -105,7 +105,7 @@ class rf_HPOT:
 
         ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
         result = {'net_ret': ret}
-        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_absolute_error}.items():
+        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():
             for i in ['train_yy', 'valid_y', 'test_y']:
                 score = func(self.sample_set[i].T, self.sample_set[i+'_pred'].T, multioutput='raw_values')
                 result[f"{k}_{i.split('_')[0]}"] = np.median(score)

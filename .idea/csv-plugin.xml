@@ -1543,6 +1543,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/preprocess/model_log.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/preprocess/premium_analysis.py">
           <value>
             <Attribute>
