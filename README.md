@@ -1,7 +1,7 @@
 # AI Score Model
 1. [Principle](#principle)
 2. [Factor Model](#factor-model)
-    1. [Data Preparation](#data-preparation)
+    1. [Contents](#contents)
     2. [Prediction](#prediction)
 3. [Ingestion](#ingestion)
 4. [Database](#database)
@@ -78,6 +78,7 @@ Global variables define URL / Table names / logging.
 ### **main.py**
 Main file for training, defining configuration used in the model training.
 
+For detailed explanation of the prediction rational, please refer to [Prediction](#prediction).
 
 ### **random_forest.py**
 Random/Extratree forest for train / runtime evaluation / prediction.
@@ -145,12 +146,12 @@ Full list of factors calculated can refer to Table `factor_formula_ratios_prod`.
 Ratio table will be updated weekly before training for recent 3-month ratios. 
 
 ### **calculation_premium.py**
-Using factor ratios calculated with [calculation_ratio.py](calculation_ratio.py) to calculate premiums in each group (currency_code / indsutry_code) and write to `factor_processed_premium`.
+Using factor ratios calculated with [preprocess/calculation_ratio.py](calculation_ratio.py) to calculate premiums in each group (currency_code / indsutry_code) and write to `factor_processed_premium`.
 
 Premium table will be updated weekly before training for *entire* history (i.e. to adjust for different active universe).
 
 ### **load_data.py**
-Prepare training / testing sets with premium calculated with [calculation_premium.py](calculation_premium.py) and macro/index ratios, including:
+Prepare training / testing sets with premium calculated with [preprocess/calculation_premium.py](calculation_premium.py) and macro/index ratios, including:
 1. separate training / testing samples based on defined testing periods & weeks_to_expire (i.e. return periods used in premium calculation).
 2. (optional) add *T-n premiums* + *average of (T-a, T-b) premiums* as X
 3. (optional) apply PCA to X for dimension reduction
@@ -184,7 +185,7 @@ This script updated the following DB Tables:
 3. `factor_result_rank`: 
    - Current rank for AI Score calculation (i.e. most recent period) 
 4. `factor_result_rank_history`: 
-   - Record history of `factor_result_rank`
+   - Record history of rank used for AI Score calculation.
 
 #### Rank Calculation
 - We select factors with top 1/3 predictions as "good"/"max" factors; bottom 1/3 as "bad"/"min factors. 
@@ -220,28 +221,50 @@ Model is not saved as time required for the whole process is short (depends on s
 
 Run main.py without --debug will cause the script to wait until the next database update (returns) to execute
 
-
-
+---
 # Ingestion
 ### *ingestion repository*
 
-Ingestion is to update the ai_score of each ticker based on the current factor settings (prediction results given by the factor model)
+[DSS-Quant-Ingestion](https://github.com/asklora/DSS-Quant-Ingestion) updates the ai_score of each ticker based on the current factor settings (prediction results given by the factor model)
 
-use the script ingestion/universe_rating.py to execute the above operation
-like `python3 universe_rating.py`
+Use the script `ingestion/universe_rating.py` to update AI Score in: 
 
+1. `universe_rating`: 
+   - current displayed ai_score / ai_score2 (i.e. +ESG Score; -Extra Score)
+2. `universe_rating_history`: 
+   - AI score history for each period (1w/4w...) and type (value/quality/momentum/extra/esg/dlpa) scores.
+3. `universe_rating_detail_history`: 
+   - factor scores used for ai_score calculation
+
+AI Score is updated twice a day in the end of daily ingestion of price for North Asia / Western Market.
+
+Additional update on Monday morning 6:30am HKT to reflect changed in Factor Ranking / DLPA Scores.
+
+---
 # Database
+In ALIBABA DB Prod, all **[factor_*]** Tables will be updated with scripts in this repository. 
 
-universe_rating → current displayed ai_score
-
-universe_rating_history → ai_score history
-
-universe_rating_detail_history → field and values used for ai_score calculation
-
-factor_model → each prediction model run details
-
-factor_model_stock → predicted return for each factor compared with actual return
-
-factor_result_rank → predicted z score for each factors and its rank currently used
-
-factor_result_rank_history → predicted z score for each factors and its rank currently in the past
+Including:
+1. `factor_model_log`:
+   - Logs for different model training config / updates.
+2. `factor_formula_ratios_prod`:
+   - Factors calculation formula for ratio calculation.
+3. `factor_formula_y_type`:
+   - Map y_type names to list of factor. 
+4. `factor_processed_ratio`:
+   - Weekly factor ratios calculated for each ticker.
+5. `factor_processed_premium`:
+   - Premiums calculated for each group based on ratios. 
+6. `factor_model`: 
+   - Record the configuration & overall evaluation results of each model.
+7. `factor_model_stock`: 
+   - Record predictions of each stock for the best Hyperopt trials selected.
+8. `factor_result_rank_backtest_eval`: 
+   - Record evaluation metrics / factor selection for each configuration
+   - This table is also used to select best config for rank calculation.
+9. `factor_result_rank_backtest`: 
+   - Best config rank entire history for current training 
+10. `factor_result_rank`: 
+    - Current rank for AI Score calculation (i.e. most recent period) 
+11. `factor_result_rank_history`: 
+    - Record history of rank used for AI Score calculation.
