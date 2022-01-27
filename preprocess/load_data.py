@@ -156,6 +156,7 @@ class load_data:
         # define self objects
         self.sample_set = {}
         self.group = pd.DataFrame()
+        self.weeks_to_expire = weeks_to_expire
         self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, average_days, update_since=update_since, mode=mode)    # combine all data
 
         # calculate y for all factors
@@ -288,7 +289,7 @@ class load_data:
 
         # 3. [Split training/testing] sets based on testing_period
         self.train = current_group.loc[(start <= current_group['trading_day']) &
-                                       (current_group['trading_day'] < testing_period)].copy()
+               (current_group['trading_day'] <= (testing_period-relativedelta(weeks=self.weeks_to_expire)))].copy()
         self.test = current_group.loc[current_group['trading_day'] == testing_period].reset_index(drop=True).copy()
 
         # 4. [Prep Y]: qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
@@ -354,7 +355,7 @@ class load_data:
         ''' split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set '''
 
         if valid_method == "cv":       # split validation set by cross-validation 5 split
-            gkf = GroupShuffleSplit(n_splits=n_splits, random_state=666).split( self.sample_set['train_x'],
+            gkf = GroupShuffleSplit(n_splits=n_splits, random_state=666).split(self.sample_set['train_x'],
                                                                               self.sample_set['train_y_final'],
                                                                               groups=self.train['group'])
         elif valid_method == "chron":       # split validation set by chronological order

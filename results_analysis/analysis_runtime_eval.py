@@ -13,7 +13,7 @@ def download_model(weeks_to_expire, average_days):
     df = read_query(query, db_url_read)
 
     iter_unique_col = ['name_sql', 'group_code', 'y_type', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
-    diff_config_col = ['tree_type', 'use_pca']
+    diff_config_col = ['tree_type', 'use_pca', 'qcut_q']
 
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last')
@@ -23,6 +23,7 @@ def download_model(weeks_to_expire, average_days):
 
     # 3. calculate average accuracy across testing_period
     df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^r2_').reset_index()
+    df_best_avg_q = df_best_avg.groupby(['qcut_q']).mean()
 
     # 4. correlation between net_ret & metrics
     metrics_col = df.filter(regex="^mae_|^mse_|^r2_").columns.to_list()
@@ -37,4 +38,4 @@ def download_model(weeks_to_expire, average_days):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=1, average_days='%%')
+    download_model(weeks_to_expire=4, average_days='%%')
