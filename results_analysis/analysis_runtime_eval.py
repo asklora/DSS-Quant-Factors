@@ -45,4 +45,4 @@ def download_model(weeks_to_expire, average_days, start_uid=None):
     return
 
 if __name__ == "__main__":
-    download_model(weeks_to_expire=26, average_days='%%', start_uid='20220127135806140236')
+    download_model(weeks_to_expire=8, average_days='%%', start_uid='20220127135806140236')

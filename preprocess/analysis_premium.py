@@ -3,21 +3,15 @@ import pandas as pd
 import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
 from sklearn import linear_model
-
 from global_vars import *
 from general.sql_process import read_table, read_query
-
-import numpy as np
-import pandas as pd
 from sqlalchemy import text
 import global_vars
-import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
@@ -25,29 +19,39 @@ from scipy.stats import skew
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib import ticker
-
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 import statsmodels.api as sm
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import minmax_scale
 
-def download_premium():
-    ''' download premium and calculate factor importance '''
+def download_premium(group='USD', weeks_to_expire=1):
+    '''  download premium and calculate (absolute) average factor premiums for each pillar '''
 
-    query = f"SELECT * FROM {factor_premium_table}"
+    query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
+            f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+            f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire}"
     df = read_query(query, db_url_read)
 
-    for i in [1, 3, 5, 10]:
-        start_date = (dt.datetime.today() - relativedelta(years=i)).date()
-        df_period = df.loc[df["trading_day"] >= start_date]
-        df_period_avg = df_period.groupby(["field", "group", "weeks_to_expire"])["value"].mean().unstack(level=[-2, -1])
-        df_period_avg = df_period_avg.sort_values(by=[("USD", 1)], ascending=False)
+    avg_premium = {}
+    for pillar, g in df.groupby('pillar'):
+        avg_premium[pillar] = []
+        for i in [1, 3, 5, 10]:
+            start_date = (dt.datetime.today() - relativedelta(years=i)).date()
+            g_period = g.loc[g["trading_day"] >= start_date]
+            g_period_avg = g_period.groupby(["field"])["value"].mean()
+            g_period_avg = g_period_avg.sort_values(ascending=False)
+            g_period_avg.name = str(i)
+            # avg_premium[pillar].append(g_period_avg)
 
-        df_period["value"] = df_period["value"].abs()
-        df_period_abs_avg = df_period.groupby(["field", "group", "weeks_to_expire"])["value"].mean().unstack(level=[-2, -1])
-        df_period_abs_avg = df_period_abs_avg.sort_values(by=[("USD", 1)], ascending=False)
-        print(df_period_avg)
+            g_period["value"] = g_period["value"].abs()
+            g_period_abs_avg = g_period.groupby(["field"])["value"].mean()
+            g_period_abs_avg = g_period_abs_avg.sort_values(ascending=False)
+            g_period_abs_avg.name = f'{i}_abs'
+            avg_premium[pillar].append(g_period_abs_avg)
+
+        avg_premium[pillar] = pd.concat(avg_premium[pillar], axis=1)
+    print(df_period_avg)
 
 def eda_missing(df, col_list):
     print('======= Missing ========')
@@ -234,5 +238,5 @@ def test_premiums(name):
     global_vars.engine_ali.dispose()
 
 if __name__ == "__main__":
-    test_premiums('weekly1')
+    # test_premiums('weekly1')
     download_premium()

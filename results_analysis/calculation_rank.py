@@ -61,7 +61,7 @@ class rank_pred:
 
         # keep 'cv_number' in last one for averaging
         self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
-        self.diff_config_col = ['tree_type', 'use_pca']
+        self.diff_config_col = ['tree_type', 'use_pca', 'n_splits']
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     # rank_pred(1/3, name_sql='w4_d7_20220126180527_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
+    rank_pred(1/3, weeks_to_expire=4, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)

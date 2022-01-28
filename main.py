@@ -129,8 +129,8 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
     tree_type_list = ['rf', 'extra']
-    use_pca_list = [0.6, 0.4]
-    n_splits_list = [.05, .1, .2, .4]
+    use_pca_list = [0.6, None]
+    n_splits_list = [.2, .1]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
@@ -151,8 +151,9 @@ if __name__ == "__main__":
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
     # y_type_list = ["all"]
-    y_type_list = ["momentum", "value", "quality"]
+    # y_type_list = ["momentum", "value", "quality"]
     # y_type_list = ["momentum_top4"]
+    y_type_list = ["quality_top4", "value_top4"]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, n_splits_list, y_type_list)
