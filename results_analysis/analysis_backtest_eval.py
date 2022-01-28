@@ -19,10 +19,16 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
 
     iter_unique_col = ['name_sql', 'group', 'y_type', 'trading_day']  # keep 'cv_number' in last one for averaging
     diff_config_col = ['tree_type', 'use_pca', 'n_splits']
-    df_avg = df.groupby(iter_unique_col[:-1] + diff_config_col).mean().reset_index()
+
+    df_avg_time = df.groupby(iter_unique_col[:-1] + diff_config_col).mean().reset_index()
+    df_best_avg_time = df_avg_time.sort_values(by=["net_ret"], ascending=False).groupby(iter_unique_col[:-1]).first().reset_index()
+    df_best_avg_time_y = df_best_avg_time.groupby(iter_unique_col[:-2])['net_ret'].agg(['mean', 'count']).reset_index()
+    df_best_avg_time_y['start_time'] = pd.to_datetime(df_best_avg_time_y['name_sql'].str.split('_', expand=True)[2],
+                                                      format='%Y%m%d%H%M%S', errors='coerce')
+    # df_best_avg_time_y: rank name_sql given best configuration -> to select name_sql for analysis_backtest
 
     return
 
 if __name__ == "__main__":
     # download_model(weeks_to_expire=26, average_days=28)
-    download_model(weeks_to_expire=26)
+    download_model(weeks_to_expire=8)

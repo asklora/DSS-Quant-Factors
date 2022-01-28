@@ -54,6 +54,7 @@ class rank_pred:
 
         self.q = q
         self.eval_start_date = eval_start_date
+        self.name_sql = name_sql
         if weeks_to_expire=="%%":
             self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         else:
@@ -238,6 +239,8 @@ class rank_pred:
         ''' Select Best Config (among other_group_col) '''
 
         query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE weeks_to_expire={self.weeks_to_expire}"
+        if self.name_sql:
+            query += f" AND name_sql='{self.name_sql}'"
         df = read_query(query, global_vars.db_url_alibaba_prod)
         df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()
         df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
@@ -336,10 +339,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example
-    # rank_pred(1/3, name_sql='w4_d7_20220126180527_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w8_d14_20220127195432_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, weeks_to_expire=4, eval_start_date=None, y_type=[], start_uid='20220127100941389209').write_to_db()
+    # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()
 
     # from results_analysis.score_backtest import score_history
     # score_history(self.weeks_to_expire)

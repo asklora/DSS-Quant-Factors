@@ -551,7 +551,7 @@ def calc_factor_variables(ticker, restart, tri_return_only):
 
         # save calculated ratios to DB
         db_table_name = processed_ratio_table
-        if restart:
+        if (restart) & (type(ticker)==type(None)):
             trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
             upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
         else:
@@ -612,7 +612,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=True)
+    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=False)
 
 
 

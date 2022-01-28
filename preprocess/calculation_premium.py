@@ -137,7 +137,6 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     y_col = f'stock_return_y_w{weeks_to_expire}_d{average_days}'
     logging.info(f"=== Calculate Premiums with [{y_col}] ===")
 
-
     logging.info(f"=== Get ratios from {processed_ratio_table} ===")
     ratio_query = f"SELECT r.*, u.currency_code " \
                   f"FROM {processed_ratio_table} r " \
@@ -171,8 +170,10 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
+    calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
+                     all_groups=['USD'], factor_list=['earnings_yield'], start_date=None)
 
+    stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():
         for d in avg_days:
