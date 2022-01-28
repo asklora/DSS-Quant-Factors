@@ -2,8 +2,8 @@
 1. [Principle](#principle)
 2. [Factor Model](#factor-model)
     1. [Contents](#contents)
-    2. [Prediction](#prediction)
-3. [Ingestion](#ingestion)
+    2. [How to Run](#how-to-run)
+3. [AI Score Calculation](#ai-score-calculation)
 4. [Database](#database)
 
 # Principle
@@ -78,7 +78,7 @@ Global variables define URL / Table names / logging.
 ### **main.py**
 Main file for training, defining configuration used in the model training.
 
-For detailed explanation of the prediction rational, please refer to [Prediction](#prediction).
+For detailed explanation of the prediction rational, please refer to [How to Run](#how-to-run).
 
 ### **random_forest.py**
 Random/Extratree forest for train / runtime evaluation / prediction.
@@ -197,14 +197,18 @@ This script updated the following DB Tables:
 
 ---
 
-## Prediction
+## How to Run
 
-#### Factor selection and ranking process is as 
+### Flowchart
+
+The flowchart of dactor selection and ranking process is as:
 
 ![factormodel](images/factormodel.png)
 
-use `python3 main.py --option *sth*` to build, test, run model by a signle script.
-Default 1 period = 1 week
+### Training
+use `python3 main.py --option *sth*` to train and test model by a signal script.
+
+#### Parser
 | Option | Explanation | Input |
 |--------|-------------|------------|
 | recalc_premium | recalculate stock premiums | None |
@@ -212,17 +216,50 @@ Default 1 period = 1 week
 | weeks_to_expire | how many weeks for this prediction to expire | n (int) |
 | processes | create how many parallel process (multiprocessing) to run the script | n (int) |
 | backtest_period | use how many weeks as test dataset | n (int) |
-| n_splits | split validation set into how many sets | n (int) |
 | trim | trim outliers (top & bottom 5% of each dataset) | True/False |
 | debug | run script in dev mode (will not affect prod database) | True/False |
 
+The scheduled training used options can refer to [Makefile](Makefile).
 
-Model is not saved as time required for the whole process is short (depends on settings, at most few hours)
+#### Schedule for Production
+In production (i.e. run main.py without --debug) will cause the script to wait until all following requirements are met:
 
-Run main.py without --debug will cause the script to wait until the next database update (returns) to execute
+For weekly training:
+- Weekly training will only start after weekly ingestion of Worldscope / IBES / Macroeconomics data finished. 
+
+For monthly training:
+- only start on the first Sunday of each month; 
+- only start after weekly training finished. 
+
+#### Rerun Write Premium
+Update ratio / premium tables if `--recalc_ratio` & `--recalc_premium`.
+
+#### Different Configs
+Defined configs to be selected as **hyperparameters** of entire model with Grid Search instead of Hyperopt (only select RF trees hyperparams), e.g.
+- *PCA ratios*
+- *Tree type*: Random Forest / ExtraTree Forest
+- *Validation Method* (i.e. n_splits)
+
+Define **y_type** of the training, i.e. what factors (n>1) to predict.
+- The detailed list of factors in each y type can refer to `factor_formula_y_type`.
+
+Define **testing_period** of the training based on 
+- Based on available trading days in `factor_processed_premium` given specific `--weeks_to_expire *n*` & `--average_days *n*`.
+- Testing on the most recent n periods (n=`--backtest_period *n*`)
+
+#### Model Training
+Train model of different configs with multiprocessing (n=`--processes *n*`).
+Start [random_forest.py](#random-forest.py) for each config.
+
+
+
+
+
+Tree models are not saved as time required for the whole process is short (depends on settings, at most few hours)
+
 
 ---
-# Ingestion
+# AI Score Calculation
 ### *ingestion repository*
 
 [DSS-Quant-Ingestion](https://github.com/asklora/DSS-Quant-Ingestion) updates the ai_score of each ticker based on the current factor settings (prediction results given by the factor model)

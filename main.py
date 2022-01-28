@@ -91,6 +91,7 @@ if __name__ == "__main__":
     group_code_list = ['USD', 'EUR']
 
     # --------------------------------------- Schedule for Production --------------------------------
+
     def start_on_update(check_interval=60, table_names=None):
         ''' check if data tables finished ingestion -> then start '''
         waiting = True
@@ -132,6 +133,11 @@ if __name__ == "__main__":
     use_pca_list = [0.6, None]
     n_splits_list = [.2, .1]
 
+    # y_type_list = ["all"]
+    # y_type_list = ["momentum", "value", "quality"]
+    # y_type_list = ["momentum_top4"]
+    y_type_list = ["quality_top4", "value_top4"]
+
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
@@ -139,21 +145,15 @@ if __name__ == "__main__":
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period:]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
-    # --------------------------------- Prepare Training Set -------------------------------------
+    # --------------------------------- Model Training ------------------------------------------
+
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
-    # --------------------------------- Model Training ------------------------------------------
-
     mode = 'trim' if args.trim else ''
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
-
-    # y_type_list = ["all"]
-    # y_type_list = ["momentum", "value", "quality"]
-    # y_type_list = ["momentum_top4"]
-    y_type_list = ["quality_top4", "value_top4"]
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
                          tree_type_list, use_pca_list, n_splits_list, y_type_list)
@@ -166,6 +166,5 @@ if __name__ == "__main__":
     # --------------------------------- Results Analysis ------------------------------------------
 
     # rank_pred(args.q, args.weeks_to_expire, args.average_days, name_sql=sql_result['name_sql']).write_to_db()
-    # score_history(weeks_to_expire)     # calculate score with DROID v2 method & evaluate
 
 
