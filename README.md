@@ -249,8 +249,9 @@ Define **testing_period** of the training based on
 
 #### Model Training
 Train model of different configs with multiprocessing (n=`--processes *n*`).
-Start [random_forest.py](#random-forestpy) for each config.
+Start [random_forest.py](#randomforestpy) for each config.
 
+#### Results Analysis
 
 
 
