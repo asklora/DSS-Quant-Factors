@@ -235,28 +235,26 @@ For monthly training:
 Update ratio / premium tables if `--recalc_ratio` & `--recalc_premium`.
 
 #### Different Configs
-Defined configs to be selected as **hyperparameters** of entire model with Grid Search instead of Hyperopt (only select RF trees hyperparams), e.g.
+Defined configs to be selected as **[hyperparameters]** of entire model with Grid Search instead of Hyperopt (only select RF trees hyperparams), e.g.
 - *PCA ratios*
 - *Tree type*: Random Forest / ExtraTree Forest
 - *Validation Method* (i.e. n_splits)
 
-Define **y_type** of the training, i.e. what factors (n>1) to predict.
+Define **[y_type]** of the training, i.e. what factors (n>1) to predict.
 - The detailed list of factors in each y type can refer to `factor_formula_y_type`.
 
-Define **testing_period** of the training based on 
+Define **[testing_period]** of the training based on 
 - Based on available trading days in `factor_processed_premium` given specific `--weeks_to_expire *n*` & `--average_days *n*`.
 - Testing on the most recent n periods (n=`--backtest_period *n*`)
 
 #### Model Training
 Train model of different configs with multiprocessing (n=`--processes *n*`).
-Start [random_forest.py](#-randomforestpy) for each config.
-
-#### Results Analysis
-
-
-
+Start [random_forest.py](random_forest.py) for each config.
 
 Tree models are not saved as time required for the whole process is short (depends on settings, at most few hours)
+
+#### Results Analysis
+Calculate ranks of premiums based on model predictions with [calculation_rank.py](results_analysis/calculation_rank.py).
 
 
 ---
