@@ -375,20 +375,30 @@ class load_data:
             if n_splits >= 1:
                 for n in range(1, n_splits+1):
                     valid_period = testing_period - relativedelta(days=round(365*2/n_splits*n))   # using last 2 year samples as valid set
-                    test_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
+                    valid_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
                     train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
-                    gkf.append((train_index, test_index))
+                    gkf.append((train_index, valid_index))
             elif n_splits > 0:
                 valid_len = (self.train['trading_day'].max() - self.train['trading_day'].min())*n_splits
                 valid_period = self.train['trading_day'].max() - valid_len
-                test_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
+                valid_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
                 train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
-                gkf.append((train_index, test_index))
+                gkf.append((train_index, valid_index))
             else:
                 raise ValueError("Invalid 'n_splits'. Expecting 'n_splits' > 0 got ", n_splits)
+        elif isinstance(valid_method, int):
+            # valid_method can be year name (e.g. 2010) -> use n_splits% amount of data since 2010-01-01 as valid sets
+            assert n_splits < 1
+            valid_len = (self.train['trading_day'].max() - self.train['trading_day'].min()) * n_splits
+            valid_start = dt.datetime(valid_method, 1, 1, 0, 0, 0)
+            valid_end = valid_start + valid_len
+            valid_index = self.train.loc[(self.train['trading_day'] >= valid_start) &
+                                         (self.train['trading_day'] < valid_end)].index.to_list()
+            train_index = self.train.loc[(self.train['trading_day'] < (valid_start - valid_len/2)) |     # half of valid sample have data leak from training sets
+                                         (self.train['trading_day'] >= valid_end)].index.to_list()
+            gkf = [(train_index, valid_index)]
         else:
-            raise ValueError("Invalid 'valid_method'. Expecting 'cv' or 'chron' got ", valid_method)
-
+            raise ValueError("Invalid 'valid_method'. Expecting 'cv' or 'chron' or Int of year (e.g. 2010) got ", valid_method)
         return gkf
 
     def split_all(self, testing_period, n_splits=5, valid_method='cv',

@@ -50,24 +50,38 @@ def stock_return_hist(currency='USD', weeks_to_expire='%%', average_days='%%', t
         r+=1
     plt.show()
 
-def stock_return_boxplot(currency='USD', weeks_to_expire='%%', average_days='%%', test_period=[5, 10, 20]):
+def stock_return_boxplot(currency='USD', weeks_to_expire='%%', average_days='%%', test_period=[30]):
     ''' analyze the distribution in [boxplot] of stock return over past test_period(e.g. [5, 10, 20]) years
 
     Parameters - Same above
     '''
 
-    query = f"SELECT * FROM {processed_ratio_table} WHERE field like 'stock_return_y_w{weeks_to_expire}_d{average_days}'" \
-            f" AND ticker in (SELECT ticker FROM universe WHERE currency_code='{currency}')"
-    df = read_query(query, db_url_read)
-    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    # query = f"SELECT * FROM {processed_ratio_table} WHERE field like 'stock_return_y_w{weeks_to_expire}_d{average_days}'" \
+    #         f" AND ticker in (SELECT ticker FROM universe WHERE currency_code='{currency}')"
+    # df = read_query(query, db_url_read)
+    # df.to_csv('stock_return_y_ratio.csv', index=False)
 
-    fig, ax = plt.subplots(nrows=len(test_period), ncols=1, figsize=(20, 5*len(test_period)))
+    df = pd.read_csv('stock_return_y_ratio.csv')
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df['field'] = df['field'].str[15:]
+    des = df.groupby('field').agg(['min', 'mean', 'median', 'max', 'std'])
+    print(des)
+
+    fig, ax = plt.subplots(nrows=len(test_period), ncols=1, figsize=(10, 8*len(test_period)))
     c = 0
     for t in test_period:
         df_period = df.loc[df['trading_day'] >= (dt.datetime.now() - relativedelta(years=t))]
-        d = {k:v.tolist() for k, v in tuple(df_period.groupby('field')['value']) if len(v)>0}
-        ax[c].boxplot(d)
-        ax[c].set_ylabel(t)
+        d = {k:v.tolist() for k, v in tuple(df_period.groupby('field')['value'])}
+        if len(test_period)==1:
+            current_ax = ax
+        else:
+            current_ax = ax[c]
+        current_ax.boxplot(d.values())
+        current_ax.set_xticklabels(d.keys())
+        current_ax.set_ylabel(t)
+        current_ax.axhline(y=0, color='r', linestyle='-')
+        # current_ax.set_ylim((-1, 1))
+        current_ax.set_ylim((-.5, .5))
         c+=1
     plt.show()
 

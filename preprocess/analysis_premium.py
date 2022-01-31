@@ -25,8 +25,15 @@ import statsmodels.api as sm
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import minmax_scale
 
-def download_premium(group='USD', weeks_to_expire=1):
-    '''  download premium and calculate (absolute) average factor premiums for each pillar '''
+def avg_premium_pillar_(group='USD', weeks_to_expire=4):
+    ''' calculate (absolute) average factor premiums for each pillar
+
+    Returns
+    -------
+    DataFrame:  Index = factors;
+                Columns = average periods
+                Value = average of all factors over that periods
+    '''
 
     query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
             f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
@@ -42,7 +49,7 @@ def download_premium(group='USD', weeks_to_expire=1):
             g_period_avg = g_period.groupby(["field"])["value"].mean()
             g_period_avg = g_period_avg.sort_values(ascending=False)
             g_period_avg.name = str(i)
-            # avg_premium[pillar].append(g_period_avg)
+            avg_premium[pillar].append(g_period_avg)
 
             g_period["value"] = g_period["value"].abs()
             g_period_abs_avg = g_period.groupby(["field"])["value"].mean()
@@ -50,6 +57,48 @@ def download_premium(group='USD', weeks_to_expire=1):
             g_period_abs_avg.name = f'{i}_abs'
             avg_premium[pillar].append(g_period_abs_avg)
 
+        avg_premium[pillar] = pd.concat(avg_premium[pillar], axis=1)
+    return avg_premium
+
+def best_premium_pillar_(group='USD', weeks_to_expire=4, average_days=7):
+    ''' calculate actual best factor premiums for each pillar
+
+    Returns
+    -------
+    DataFrame:  Index = factors;
+                Columns = average periods
+                Value = average of all factors over that periods
+    '''
+
+    query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
+            f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+            f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire} AND average_days={average_days}"
+    df = read_query(query, db_url_read)
+
+    avg_premium = {}
+    for pillar, g in df.groupby('pillar'):
+        avg_premium[pillar] = []
+        for i in [5]:
+            start_date = (dt.datetime.today() - relativedelta(years=i)).date()
+            g_period = g.loc[g["trading_day"] >= start_date]
+
+            def period_part(g, th=1/3):
+                conditions = [
+                    (g["value"]>g["value"].quantile(th)),
+                    (g["value"]<g["value"].quantile(1 - th)),
+                ]
+                choices = [2, 0]
+                g["select"] = np.select(conditions, choices, default=1)
+                g_ret = g.groupby(["select"])['value'].mean()
+                g_select = g.set_index('field')['select']
+                g_select = g_select.append(g_ret)
+                return g_select
+            g_period_ret = g_period.groupby("trading_day").apply(period_part)
+            sns.heatmap(g_period_ret.iloc[:,:-3])
+            plt.title(pillar)
+            plt.show()
+            plt.close()
+            avg_premium[pillar].append(g_period_ret)
         avg_premium[pillar] = pd.concat(avg_premium[pillar], axis=1)
     print(df_period_avg)
 
@@ -202,24 +251,22 @@ def average_absolute_mean(df, col_list):
 
     return df['abs']
 
-def test_premiums(name):
+def test_premiums(weeks_to_expire, average_days):
 
-    with global_vars.engine_ali.connect() as conn:
-        df = pd.read_sql(f'SELECT * FROM {global_vars.factor_premium_table}_{name} WHERE not trim_outlier', conn)
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table_prod}', conn)
-    global_vars.engine_ali.dispose()
+
+    df = read_query(f'SELECT * FROM {global_vars.factor_premium_table} WHERE weeks_to_expire={weeks_to_expire} '
+                     f'AND average_days={average_days}', db_url_read)
+    formula = read_query(f'SELECT * FROM {global_vars.formula_factors_table_prod}', db_url_read)
 
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
-    df = df.pivot_table(index=['trading_day', 'group'], columns=['factor_name'], values=['premium']).droplevel(0, axis=1)
-    df.columns.name = None
-    df = df.reset_index()
+    df = df.pivot_table(index=['trading_day', 'group'], columns=['field'], values='value').reset_index()
 
-    x_list = list(set(formula.loc[formula['x_col'], 'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
+    # x_list = list(set(formula.loc[formula['x_col'], 'name'].to_list()) - {'debt_issue_less_ps_to_rent'})
     col_list = list(set(formula['name'].to_list()) & (set(df.columns.to_list())))
-    factor_list = formula.loc[formula['factors'], 'name'].to_list()
+    # factor_list = formula.loc[formula['factors'], 'name'].to_list()
 
     df_miss = eda_missing(df, col_list)
-    df_corr = eda_correl(df, col_list, formula)
+    # df_corr = eda_correl(df, col_list, formula)
     eda_vif(df, col_list)
     plot_autocorrel(df, col_list)
     sharpe_ratio(df, col_list)
@@ -237,6 +284,20 @@ def test_premiums(name):
         formula.to_sql(global_vars.formula_factors_table_prod, **extra)
     global_vars.engine_ali.dispose()
 
+class find_reverse:
+
+    def __init__(self, group='USD', weeks_to_expire=4, average_days=7):
+        ''' find better way to reverse premium than past 10-year average '''
+
+        query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
+                f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+                f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire} AND average_days={average_days}"
+        df = read_query(query, db_url_read)
+
+    def __lasso_pred(self):
+        pass
+
 if __name__ == "__main__":
-    # test_premiums('weekly1')
-    download_premium()
+    # test_premiums(weeks_to_expire=4, average_days=7)
+    # avg_premium_pillar_()
+    best_premium_pillar_()

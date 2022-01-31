@@ -22,7 +22,7 @@ def mp_rf(*mp_args):
 
     # try:
     if True:
-        data, sql_result, i, group_code, testing_period, tree_type, use_pca, n_splits, y_type = mp_args
+        data, sql_result, i, group_code, testing_period, tree_type, use_pca, n_splits, y_type, valid_method = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
@@ -31,6 +31,7 @@ def mp_rf(*mp_args):
         sql_result['group_code'] = group_code
         sql_result['use_pca'] = use_pca
         sql_result['n_splits'] = n_splits
+        sql_result['valid_method'] = valid_method
 
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
@@ -38,7 +39,7 @@ def mp_rf(*mp_args):
         # map y_type name to list of factors
         y_type_query = f"SELECT * FROM {factors_y_type_table}"
         y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
-        load_data_params = {'valid_method': 'chron', 'n_splits': sql_result['n_splits'],
+        load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
                             "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
                                                "use_median": sql_result['qcut_q']>0, "defined_cut_bins": []},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
@@ -62,6 +63,9 @@ def mp_rf(*mp_args):
 
             for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+
+            # calculate weight for negative / positive index
+
 
             sql_result['neg_factor'] = data.neg_factor
             rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
@@ -88,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'EUR']
+    group_code_list = ['USD']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -129,14 +133,15 @@ if __name__ == "__main__":
                          processes=args.processes)
 
     # --------------------------------- Different Configs -----------------------------------------
-    tree_type_list = ['rf', 'extra']
-    use_pca_list = [0.6, None]
-    n_splits_list = [.2, .1]
+    # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
+    tree_type_list = ['rf', 'rf', 'rf', 'rf', 'rf', 'rf', 'rf', 'rf', 'rf', 'rf']
+    use_pca_list = [0.6, 0.4, 0.8, None]
+    n_splits_list = [.05, .2, .1]
+    valid_method_list = [2010, 2012, 2014, 2016]  # 'chron'
 
     # y_type_list = ["all"]
     # y_type_list = ["momentum", "value", "quality"]
-    # y_type_list = ["momentum_top4"]
-    y_type_list = ["quality_top4", "value_top4"]
+    y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
@@ -156,7 +161,7 @@ if __name__ == "__main__":
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
-                         tree_type_list, use_pca_list, n_splits_list, y_type_list)
+                         tree_type_list, use_pca_list, n_splits_list, y_type_list, valid_method_list)
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
