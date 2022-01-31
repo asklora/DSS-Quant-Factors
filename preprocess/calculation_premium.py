@@ -170,8 +170,8 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
-                     all_groups=['USD'], factor_list=['earnings_yield'], start_date=None)
+    # calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
+    #                  all_groups=['USD'], factor_list=['earnings_yield'], start_date=None)
 
     stock_return_map = {1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}
     start = datetime.now()

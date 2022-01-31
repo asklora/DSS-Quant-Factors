@@ -45,21 +45,14 @@ def get_tri(ticker=None, restart=True):
 
     return tri, market_cap_anchor
 
-def fill_all_day(result, date_col="trading_day"):
+def fill_all_day(df, date_col="trading_day"):
     ''' Fill all the weekends between first / last day and fill NaN'''
 
-    # Construct indexes for all day between first/last day * all ticker used
-    df = result[["ticker", date_col]].copy()
-    df.trading_day = pd.to_datetime(df[date_col])
-    result.trading_day = pd.to_datetime(result[date_col])
-    df = df.sort_values(by=[date_col], ascending=True)
-    daily = pd.date_range(df.iloc[0, 1], df.iloc[-1, 1]+relativedelta(days=6), freq='D')
+    daily = pd.date_range(df[date_col].min(), df[date_col].max(), freq='D')
     indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', date_col])
 
     # Insert weekend/before first trading date to df
-    df = df.set_index(['ticker', date_col]).reindex(indexes).reset_index()
-    df = df.sort_values(by=['ticker', date_col], ascending=True)
-    result = df.merge(result, how="left", on=["ticker", date_col])
+    result = df.set_index(['ticker', date_col]).reindex(indexes).reset_index()
 
     return result
 
@@ -612,7 +605,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=False)
+    calc_factor_variables_multi(ticker=["AAPL.O"], restart=True, tri_return_only=False)
 
 
 
