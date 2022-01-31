@@ -196,7 +196,6 @@ This script updated the following DB Tables:
   - *Validation Method*
 
 ---
-
 ## How to Run
 
 ### Flowchart

@@ -339,7 +339,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example
-    rank_pred(1/3, name_sql='w8_d14_20220127195432_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w4_d7_20220131100820_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

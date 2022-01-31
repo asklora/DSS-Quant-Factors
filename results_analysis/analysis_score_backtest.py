@@ -404,5 +404,5 @@ def get_industry_name():
 
 if __name__ == "__main__":
     # can select name_sql based on
-    name_sql = 'w8_d14_20220127195432_debug'
+    name_sql = 'w4_d7_20220131100820_debug'
     test_score_history(name_sql=name_sql)
