@@ -26,7 +26,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method']
 
     # 1. remove duplicate samples from running twice when testing
-    df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last')
+    df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
 
     # 2. find best in cv groups
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
@@ -38,12 +38,11 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
         for i in diff_config_col:
             df_best_avg_config[i] = df_best.groupby([i]).mean().reset_index()
             try:
-                df_corr_config[i] = df[i].corr(df['net_ret'])
+                df_corr_config[i] = df_best[i].corr(df_best['net_ret'])
             except Exception as e:
                 print(e)
 
         # 3. calculate average accuracy across testing_period
-        x = df_best.groupby(iter_unique_col[:-2] + diff_config_col)['net_ret'].count()
         df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^r2_|net_ret')
 
         # 4. correlation between net_ret & metrics

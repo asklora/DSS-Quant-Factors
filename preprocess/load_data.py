@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
-from sklearn import linear_model
+from sklearn.linear_model import Lasso
 
 from global_vars import *
 from general.sql_process import read_table, read_query
@@ -204,7 +204,7 @@ class load_data:
 
         return best_best
 
-    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, y_type):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, y_type, use_average=False):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         null_col = self.train.isnull().sum()
@@ -213,15 +213,10 @@ class load_data:
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
-        m = self.train[y_col].mean(axis=0)
-        self.neg_factor = list(m[m<0].index)
+        self.__y_convert_neg_factors(y_col, use_average=use_average)
 
-        # neg_factor = self.x_col_dict['neg_factor']
-        self.train[self.neg_factor] = -self.train[self.neg_factor]
-        self.test[self.neg_factor] = -self.test[self.neg_factor]
-
+        # use n-split qcut median as Y
         if qcut_q > 0:
-
             arr = self.train[y_col].values.flatten()  # Flatten all training factors to qcut all together
             # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
 
@@ -256,6 +251,44 @@ class load_data:
             self.test[cut_col] = self.test[y_col]
 
         return y_col
+
+    def __y_convert_neg_factors(self, y_col, use_average=False, n_years=10, lasso_alpha=0.0001):
+        '''  convert consistently negative premium factor to positive
+        refer to: https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/994803719/AI+Score+Brainstorms+2022-01-28
+
+        Parameters
+        ----------
+        y_col (List[Str]):
+            list of factors to predict
+        use_average (Bool, Optional):
+            if True, use training period average; else (default) use lasso
+        n_years (Int, Optional):
+            lasso training period length (default = 10) years
+        lasso_alpha (Float, Optional):
+            lasso training alpha lasso_alpha (default = 0.0001)
+        '''
+
+        if use_average:         # using average of training period -> next period +/-
+            m = self.train[y_col].mean(axis=0)
+            self.neg_factor = list(m[m<0].index)
+        else:
+            start_date = dt.datetime.today() - relativedelta(years=n_years)
+            n_x = len(self.train.loc[self.train['trading_day']>=start_date, 'trading_day'].unique())
+            train_X = self.train.set_index('trading_day')[y_col].stack().reset_index()
+            train_X.columns = ['trading_day', 'field', 'y']
+
+            for i in range(1, n_x + 1):
+                train_X[f'x_{i}'] = train_X.groupby(['field'])['y'].shift(i)
+            train_X = train_X.dropna(how='any')
+            clf = Lasso(alpha=lasso_alpha)
+            clf.fit(train_X.filter(regex='^x_').values, train_X['y'].values)
+
+            test_X = train_X.groupby('field').last().reset_index()
+            test_X['pred'] = clf.predict(test_X.filter(regex='^x_|^y$').values[:,:-1])
+            self.neg_factor = test_X.loc[test_X['pred']<0, 'field'].to_list()
+
+        self.train[self.neg_factor] = -self.train[self.neg_factor]
+        self.test[self.neg_factor] = -self.test[self.neg_factor]
 
     def split_train_test(self, testing_period, output_options, input_options):
         ''' split training / testing set based on testing period '''
@@ -412,10 +445,10 @@ class load_data:
 
 if __name__ == '__main__':
 
-    testing_period = dt.datetime(2021,7,25)
+    testing_period = dt.datetime(2021,12,26)
     group_code = 'USD'
 
-    data = load_data(weeks_to_expire=26, average_days=28)
+    data = load_data(weeks_to_expire=4, average_days=7)
     y_type = data.factor_list  # random forest model predict all factor at the same time
 
     data.split_group(group_code)

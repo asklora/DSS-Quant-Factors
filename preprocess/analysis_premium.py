@@ -84,6 +84,11 @@ def best_premium_pillar_(group='USD', weeks_to_expire=4, average_days=7):
     print(df_period_avg)
 
 class find_reverse:
+    ''' Compare predict next period +/- using
+        1. lasso
+        2. logistic lasso: convert training predictions to 0(-)/1(+)
+        3. moving average: if average of past n period > 0 -> +
+    '''
 
     def __init__(self, group='USD', weeks_to_expire=4, average_days=7):
         ''' find better way to reverse premium than past 10-year average '''
@@ -96,17 +101,26 @@ class find_reverse:
 
         steps = 10
         scores = {}
-        for func in [self.__log_lasso_pred, self.__lasso_pred, self.__ma_pred]:
+        methods = [self.__lasso_pred, self.__ma_pred]     # self.__log_lasso_pred, self.__ma_pred
+        for func in methods:
             scores[func.__name__] = {}
 
-        for n in range(steps, 241, steps):
-            for func in [self.__log_lasso_pred, self.__lasso_pred, self.__ma_pred]:
-                print(f'---> {n}')
-                samples = find_reverse.__split(df, n_x=n, n_test=13)
-                scores[func.__name__][n] = func(samples)
+        for n in range(80, 160, steps):
+            for func in methods:
+                for n_test in range(12, 13, 12):
+                    print(f'---> {n}')
+                    samples = find_reverse.__split(df, n_x=n, n_test=n_test)
+                    # scores[func.__name__][(n, n_test)] = func(samples)
+                    scores[func.__name__][n] = func(samples)
+
+        accuracy = []
         for k, v in scores.items():
             scores[k] = pd.DataFrame(v).transpose()
-        print(scores_df)
+            accuracy.append(scores[k]['accuracy_score'].copy())
+            scores[k].reset_index()
+
+        accuracy = pd.concat(accuracy, axis=1)
+        print(accuracy)
 
     @staticmethod
     def __split(df, n_x, n_test):
@@ -141,8 +155,8 @@ class find_reverse:
         for test_period, (train_X, train_y, test_X, test_y) in samples.items():
 
             # convert continuous y -> 0(if < 0) / 1(if > 0)
-            train_y = np.where(train_y>0, 1, 0)
-            test_y = np.where(test_y>0, 1, 0)
+            train_y = np.where(train_y > 0, 1, 0)
+            test_y = np.where(test_y > 0, 1, 0)
 
             # train / predict
             log = LogisticRegression(penalty='l1', solver='liblinear')
@@ -209,4 +223,4 @@ class find_reverse:
 if __name__ == "__main__":
     # avg_premium_pillar_()
     # best_premium_pillar_()
-    find_reverse()
+    find_reverse(weeks_to_expire=26, average_days=28)
