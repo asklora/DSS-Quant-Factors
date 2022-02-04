@@ -94,12 +94,18 @@ class find_reverse:
         df = read_query(query, db_url_read).sort_values(by=['field', 'trading_day'])
         print(df.describe())
 
+        steps = 10
         scores = {}
-        for n in range(80, 120):
-            print(f'---> {n}')
-            samples = find_reverse.__split(df, n_x=n, n_test=13)
-            scores[n] = self.__lasso_pred(samples)
-        scores_df = pd.DataFrame(scores).transpose()
+        for func in [self.__log_lasso_pred, self.__lasso_pred, self.__ma_pred]:
+            scores[func.__name__] = {}
+
+        for n in range(steps, 241, steps):
+            for func in [self.__log_lasso_pred, self.__lasso_pred, self.__ma_pred]:
+                print(f'---> {n}')
+                samples = find_reverse.__split(df, n_x=n, n_test=13)
+                scores[func.__name__][n] = func(samples)
+        for k, v in scores.items():
+            scores[k] = pd.DataFrame(v).transpose()
         print(scores_df)
 
     @staticmethod
@@ -189,7 +195,7 @@ class find_reverse:
 
             # convert continuous y -> 0(if < 0) / 1(if > 0)
             test_y = np.where(test_y > 0, 1, 0)
-            pred = np.where(test_X > 0, 1, 0)
+            pred = np.where(test_X.mean(1) > 0, 1, 0)
 
             # evaluate
             score[test_period] = {}

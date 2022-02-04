@@ -22,7 +22,7 @@ def mp_rf(*mp_args):
 
     # try:
     if True:
-        data, sql_result, i, group_code, testing_period, tree_type, use_pca, n_splits, y_type, valid_method = mp_args
+        data, sql_result, i, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
@@ -32,6 +32,7 @@ def mp_rf(*mp_args):
         sql_result['use_pca'] = use_pca
         sql_result['n_splits'] = n_splits
         sql_result['valid_method'] = valid_method
+        sql_result['qcut_q'] = qcut_q
 
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
@@ -80,7 +81,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='squared_error')
-    parser.add_argument('--qcut_q', default=0, type=int)  # Default: Low, Mid, High
     parser.add_argument('--weeks_to_expire', default=26, type=int)
     parser.add_argument('--average_days', default=28, type=int)
     parser.add_argument('--processes', default=1, type=int)
@@ -138,6 +138,7 @@ if __name__ == "__main__":
     use_pca_list = [0.6, 0.4, 0.8, None]
     n_splits_list = [.05, .2, .1]
     valid_method_list = [2010, 2012, 2014, 2016]  # 'chron'
+    qcut_q_list = [0]
 
     # y_type_list = ["all"]
     # y_type_list = ["momentum", "value", "quality"]
@@ -160,8 +161,8 @@ if __name__ == "__main__":
     mode = 'trim' if args.trim else ''
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
-    all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list,
-                         tree_type_list, use_pca_list, n_splits_list, y_type_list, valid_method_list)
+    all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list, y_type_list,
+                         tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list)
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
