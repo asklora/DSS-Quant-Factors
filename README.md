@@ -20,7 +20,7 @@ Quality Score = avg(Quality factor 1 score), Best quality factors = top 33% qual
 
 Momentum Score = avg(Momentum factor 1 score), Best momentum factors = top 33% momentum factors predicted by random forest (factor model)
 
-Extra Score = avg(Best factors), Best factors = all factors in factor_result_rank table where pred_z > 1 (which means the factor is exceptionally profiting)
+Extra Score = avg(Best factors), Best factors = all factors in factor_result_rank table where pred_z > 1 (which means the factor is exceptionally profitiable)
 
 *for each factor* pred_z value = (predicted premium - avg(all predicted premium))/std(all predicted premium)
 
