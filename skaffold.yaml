@@ -1,0 +1,26 @@
+# This file is generated when running "skaffold init" in the terminal.
+# A new init needs to be run when are new images and/or k8s resources are created, unless you manually modify this file instead.
+# There are two lines that need modifying per resource if a new init is run. These changes have already been made in this example.
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: model-factor
+profiles:
+- name: dev
+  activation:
+  -  kubeContext: model-factor
+  deploy:
+    kubectl:
+      manifests:
+      - deployment/kubernetes/postgresql/pv.yaml
+      - deployment/kubernetes/postgresql/pvc.yaml
+      - deployment/kubernetes/postgresql/configmaps.yaml
+      - deployment/kubernetes/postgresql/secrets.yaml
+      - deployment/kubernetes/postgresql/deployment.yaml
+      - deployment/kubernetes/postgresql/service.yaml
+  portForward:
+  - resourceType: service
+    resourceName: postgresql
+    address: localhost
+    port: 5432
+    localPort: 5433

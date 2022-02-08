@@ -1,0 +1,46 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+spec:
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: "postgres:13.5"
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+          - mountPath: /var/lib/postgresql/data/pgdata
+            name: postgresql-db-disk
+        envFrom:
+        - secretRef:
+            name: postgresql-secrets
+        - configMapRef:
+            name: postgresql-config
+        resources:
+          limits:
+            memory: "4096Mi"
+            cpu: "1000m"
+        ports:
+        - name: tcp-postgresql
+          containerPort: 5432
+      volumes:
+        - name: postgresql-db-disk
+          persistentVolumeClaim:
+            claimName: postgresql-pvc
+          # ephemeral:
+          #   volumeClaimTemplate:
+          #     spec:
+          #       accessModes:
+          #         - ReadWriteOnce
+          #       storageClassName: postgresql-standard-sc
+          #       resources:
+          #         requests:
+          #           storage: "1Gi"
