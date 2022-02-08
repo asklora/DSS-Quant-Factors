@@ -5,6 +5,9 @@ db_url_alibaba_prod = "postgresql+psycopg2://asklora:AskLORAv2@pgm-3nscoa6v8c876
 db_url_read = db_url_alibaba_prod
 db_url_write = db_url_alibaba_prod
 
+db_url_read = db_url_alibaba_prod
+db_url_write = "postgresql+psycopg2://postgres:postgres@localhost:5433/postgres"
+
 # TABLE names - factor model results
 result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_model"
