@@ -80,19 +80,19 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
         else:
             if len(primary_key) > 1:  # for tables using more than 1 columns as primary key (replace primary with a created "uid")
                 data = uid_maker(data, primary_key)
-                primary_key = "uid"
+                primary_key = ["uid", *primary_key]
                 if drop_primary_key:  # drop original columns (>1) for primary keys
                     data = data.drop(columns=primary_key)
             else:
-                primary_key = primary_key[0]
+                primary_key = [primary_key[0]]
 
-            if data.duplicated(subset=[primary_key], keep=False).sum() > 0:
+            if data.duplicated(subset=primary_key, keep=False).sum() > 0:
                 to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
 
-            data = data.drop_duplicates(subset=[primary_key], keep="first", inplace=False)
-            data = data.dropna(subset=[primary_key])
+            data = data.drop_duplicates(subset=primary_key, keep="first", inplace=False)
+            data = data.dropna(subset=primary_key)
             data = data.set_index(primary_key)
-            data_type = {primary_key: TEXT}
+            data_type = {"uid": TEXT}
 
             upsert(engine=engine,
                    df=data,

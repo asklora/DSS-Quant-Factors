@@ -546,9 +546,9 @@ def calc_factor_variables(ticker, restart, tri_return_only):
         db_table_name = processed_ratio_table
         if (restart) & (type(ticker)==type(None)):
             trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
-            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
+            upsert_data_to_database(df, db_table_name, primary_key=["ticker", "trading_day", "field"], db_url=db_url_write, how="append")
         else:
-            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="update")
+            upsert_data_to_database(df, db_table_name, primary_key=["ticker", "trading_day", "field"], db_url=db_url_write, how="update")
     except Exception as e:
         error_msg = f"===  ERROR IN Getting Data == {e}"
         to_slack("clair").message_to_slack(error_msg)
