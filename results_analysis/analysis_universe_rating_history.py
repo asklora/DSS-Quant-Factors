@@ -98,7 +98,7 @@ class score_eval:
                     try:
                         pillar_current[(p,i)] = pd.read_sql(f"SELECT * FROM test_fundamental_score_details_{p}{i}", conn_ali)
                     except Exception as e:
-                        to_slack("clair").message_to_slack(e)
+                        print() # haha to_slack("clair").message_to_slack(e)
         global_vars.engine_ali.dispose()
         global_vars.engine.dispose()
 
@@ -199,7 +199,7 @@ class score_eval:
                 continue
         plt.suptitle(filename, fontsize=30)
         plt.savefig(f'#{suffixes}_score_dist_{filename}.png')
-        to_slack("clair").file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
+        print() # haha to_slack("clair").file_to_slack(f'#{suffixes}_score_dist_{filename}.png', 'png', f'{filename} Score Distribution')
 
     def __plot_minmax_factor(self, df_dict):
         ''' plot min/max distribution '''
@@ -231,7 +231,7 @@ class score_eval:
             fig_name = cur+freq
             plt.suptitle(fig_name, fontsize=30)
             fig.savefig(f'#{suffixes}_score_minmax_{fig_name}.png')
-            to_slack("clair").file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution')
+            print() # haha to_slack("clair").file_to_slack(f'#{suffixes}_score_minmax_{fig_name}.png', 'png', f'{fig_name} Score Detailed Distribution')
             plt.close(fig)
 
 def read_query(query, engine_num=int):

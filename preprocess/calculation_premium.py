@@ -100,7 +100,7 @@ def insert_prem_for_group(*args):
                                 how="update",
                                 verbose=-1)
     except Exception as e:
-        to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
+        print() # haha to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
         return False
     return True
 
@@ -164,7 +164,7 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     with mp.Pool(processes=processes) as pool:
         pool.starmap(insert_prem_for_group, all_groups)
 
-    to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
+    print() # haha to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
 if __name__ == "__main__":
 

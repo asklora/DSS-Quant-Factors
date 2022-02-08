@@ -551,7 +551,7 @@ def calc_factor_variables(ticker, restart, tri_return_only):
             upsert_data_to_database(df, db_table_name, primary_key=["ticker", "trading_day", "field"], db_url=db_url_write, how="update")
     except Exception as e:
         error_msg = f"===  ERROR IN Getting Data == {e}"
-        to_slack("clair").message_to_slack(error_msg)
+        print() # haha to_slack("clair").message_to_slack(error_msg)
         error_universe.append(ticker)
 
 def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_return_only=False):

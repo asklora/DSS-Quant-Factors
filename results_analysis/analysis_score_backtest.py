@@ -368,7 +368,7 @@ def test_score_history(currency_code='USD', start_date='2020-10-01', name_sql=No
 def save_description_history(df):
     ''' write statistics for description '''
     df = df.groupby('currency_code')['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
-    to_slack("clair").df_to_slack("AI Score distribution (Backtest)", df)
+    print() # haha to_slack("clair").df_print() # haha to_slack("AI Score distribution (Backtest)", df)
 
 def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
     ''' evaluate score history with score 10-qcut mean ret (over entire history) '''

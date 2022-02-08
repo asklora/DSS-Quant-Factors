@@ -72,7 +72,7 @@ def mp_rf(*mp_args):
                     x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
             cv_number += 1
     # except Exception as e:
-    #     to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
+    #     print() # haha to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
 
 if __name__ == "__main__":
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
             else:
                 logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
                 time.sleep(check_interval)
-        to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{args.weeks_to_expire}]\n-> updated {table_names}")
+        print() # haha to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{args.weeks_to_expire}]\n-> updated {table_names}")
         return True
 
     if not args.debug:

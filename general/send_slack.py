@@ -81,4 +81,4 @@ class to_slack:
 
 if __name__ == "__main__":
     # file_to_slack_user('test')
-    to_slack("clair").message_to_slack('test')
+    print() # haha to_slack("clair").message_to_slack('test')

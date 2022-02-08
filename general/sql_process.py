@@ -17,7 +17,7 @@ def trucncate_table_in_database(table, db_url=db_url_alibaba):
         logging.info(f"TRUNCATE TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
+        print() # haha to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
 def drop_table_in_database(table, db_url=db_url_alibaba):
     ''' drop table in DB (for tables only kept the most recent model records) '''
@@ -28,7 +28,7 @@ def drop_table_in_database(table, db_url=db_url_alibaba):
         logging.info(f"DROP TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
+        print() # haha to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
 def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
     ''' delete data from table in databased '''
@@ -41,7 +41,7 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
         logging.info(f"DELETE TABLE: [{table}] WHERE [{query}]")
         engine.dispose()
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
+        print() # haha to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
         return False
     return True
 
@@ -87,7 +87,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
                 primary_key = [primary_key[0]]
 
             if data.duplicated(subset=primary_key, keep=False).sum() > 0:
-                to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
+                print() # haha to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
 
             data = data.drop_duplicates(subset=primary_key, keep="first", inplace=False)
             data = data.dropna(subset=primary_key)
@@ -104,10 +104,10 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose>=0:
-            to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
+            print() # haha to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
+        print() # haha to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
         return False
     return True
 
