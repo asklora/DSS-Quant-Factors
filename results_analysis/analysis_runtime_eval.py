@@ -23,7 +23,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     df['uid_hpot'] = df['uid'].str[:20]
 
     iter_unique_col = ['name_sql', 'group_code', 'y_type', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
-    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method']
+    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
@@ -31,6 +31,11 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     # 2. find best in cv groups
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
 
+    # 3. filter for not used config
+    df_best_all = df_best_all.loc[~df_best_all['use_average']]
+    df_best_all = df_best_all.loc[df_best_all['qcut_q']==10]
+
+    df_pillar_all = []
     # for each pillar
     for name, df_best in df_best_all.groupby(['y_type']):
         df_best_avg_config = {}
@@ -54,9 +59,18 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
         df_corr.columns = [x + '_corr' for x in df_corr.columns.to_list()]
 
         df_pillar = df_best_avg.merge(df_corr, left_index=True, right_index=True).reset_index()
+        df_pillar['y_type'] = name
         print(df_pillar)
+        df_pillar_all.append(df_pillar)
+
+    df_pillar_all = pd.concat(df_pillar_all, axis=0)
     return
 
 if __name__ == "__main__":
     # download_model(weeks_to_expire=4, average_days='%%', start_uid='20220130135806140236')
-    download_model(name_sql='w4_d7_20220131135805_debug')
+    # download_model(name_sql='w4_d7_20220204170205_debug')
+    # download_model(name_sql='w4_d7_20220204144656_debug')
+    # download_model(name_sql='w4_d7_20220204181443_debug')
+    download_model(name_sql='w8_d7_20220207143018_debug')
+    # download_model(name_sql='w26_d7_20220207144412_debug')
+    # download_model(name_sql='w26_d7_20220207153438_debug')

@@ -16,6 +16,7 @@ from general.sql_process import (
     trucncate_table_in_database,
     delete_data_on_database,
 )
+from collections import Counter
 
 stock_pred_dtypes = dict(
     trading_day=DATE,
@@ -62,10 +63,12 @@ class rank_pred:
 
         # keep 'cv_number' in last one for averaging
         self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
-        self.diff_config_col = ['tree_type', 'use_pca', 'n_splits']
+        self.diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
+        pred['uid_hpot'] = pred['uid'].str[:20]
+
         for name_sql, pred_name_sql in pred.groupby(["name_sql"]):
             self.neg_factor = rank_pred.__get_neg_factor_all(pred_name_sql)
 
@@ -82,11 +85,11 @@ class rank_pred:
         logging.info(f'=== Generate rank for [{y_type}] with results={df.shape}) ===')
 
         # 2.1. remove duplicate samples from running twice when testing
-        df = df.drop_duplicates(subset=self.iter_unique_col+self.diff_config_col, keep='last')
+        df = df.drop_duplicates(subset=['uid'] + self.iter_unique_col+self.diff_config_col, keep='last')
         df['trading_day'] = pd.to_datetime(df['trading_day'])
 
         # 2.2. use average predictions from different validation sets
-        df_cv_avg = df.groupby(self.iter_unique_col[:-1]+self.diff_config_col)[['pred', 'actual']].mean()
+        df_cv_avg = df.groupby(['uid_hpot']+self.iter_unique_col[:-1]+self.diff_config_col)[['pred', 'actual']].mean()
 
         # 2.3. calculate 'pred_z'/'factor_weight' by ranking
         q = q/len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
@@ -94,10 +97,10 @@ class rank_pred:
         df_cv_avg = rank_pred.__calc_z_weight(q_, df_cv_avg, self.diff_config_col)
 
         # 2.4. save backtest evaluation metrics
-        self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
+        eval_metrics = self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
 
         # 2.5. use best config prediction for this y_type
-        best_config = self.__backtest_find_best_config()
+        best_config = self.__backtest_find_best_config(df=eval_metrics)
         df_cv_avg_best = []
         for name, g in df_cv_avg.groupby(['group']):
             g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
@@ -115,7 +118,7 @@ class rank_pred:
         ''' calculate 'pred_z'/'factor_weight' by ranking within current testing_period '''
 
         # 2.3.1. calculate factor_weight with qcut
-        groupby_keys = ['group', 'trading_day'] + diff_config_col
+        groupby_keys = ['uid_hpot', 'group', 'trading_day'] + diff_config_col
         df['factor_weight'] = df.groupby(by=groupby_keys)['pred'].transform(
             lambda x: pd.qcut(x, q=q_, labels=False, duplicates='drop'))
         df = df.reset_index()
@@ -180,7 +183,7 @@ class rank_pred:
             conditions.append(f"to_timestamp(left(S.uid, 20), 'YYYYMMDDHH24MISSUS') > "
                               f"to_timestamp('{start_uid}', 'YYYYMMDDHH24MISSUS')")
 
-        label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number'] + self.diff_config_col
+        label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number', 'uid'] + self.diff_config_col
         query = text(f'''
                 SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in label_col])} 
                 FROM {result_pred_table} P 
@@ -218,6 +221,7 @@ class rank_pred:
         # 2.4.3. save local plot for evaluation (when DEBUG)
         if DEBUG:
             rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
+        return result_all_comb
 
     @staticmethod
     def __get_summary_stats_in_group(g):
@@ -226,8 +230,8 @@ class rank_pred:
         ret_dict = {}
         max_g = g[g['factor_weight'] == 2]
         min_g = g[g['factor_weight'] == 0]
-        ret_dict['max_factor'] = ','.join(max_g['factor_name'].tolist())
-        ret_dict['min_factor'] = ','.join(min_g['factor_name'].tolist())
+        ret_dict['max_factor'] = dict(Counter(max_g['factor_name'].tolist()))
+        ret_dict['min_factor'] = dict(Counter(min_g['factor_name'].tolist()))
         ret_dict['max_ret'] = max_g['actual'].mean()
         ret_dict['min_ret'] = min_g['actual'].mean()
         ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
@@ -235,13 +239,14 @@ class rank_pred:
         ret_dict['r2'] = r2_score(g['pred'], g['actual'])
         return pd.Series(ret_dict)
 
-    def __backtest_find_best_config(self, eval_metric='max_ret'):
+    def __backtest_find_best_config(self, eval_metric='max_ret', df=None):
         ''' Select Best Config (among other_group_col) '''
 
-        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE weeks_to_expire={self.weeks_to_expire}"
-        if self.name_sql:
-            query += f" AND name_sql='{self.name_sql}'"
-        df = read_query(query, global_vars.db_url_alibaba_prod)
+        if type(df)==type(None):
+            query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE weeks_to_expire={self.weeks_to_expire}"
+            if self.name_sql:
+                query += f" AND name_sql='{self.name_sql}'"
+            df = read_query(query, global_vars.db_url_alibaba_prod)
         df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()
         df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
         if eval_metric in ['max_ret', 'net_ret', 'r2']:
@@ -293,7 +298,7 @@ class rank_pred:
 
         if not DEBUG:
             self.write_backtest_rank_()
-            # self.write_current_rank_()
+            self.write_current_rank_()
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
@@ -331,7 +336,6 @@ class rank_pred:
 
 if __name__ == "__main__":
 
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--q', type=float, default=1/3)
     parser.add_argument('--weeks_to_expire', type=str, default='%%')
@@ -339,7 +343,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example
-    rank_pred(1/3, name_sql='w4_d7_20220131135805_debug', eval_start_date=None, y_type=[]).write_to_db()
+    # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w8_d7_20220207143018_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

@@ -101,17 +101,18 @@ class find_reverse:
 
         steps = 10
         scores = {}
-        methods = [self.__lasso_pred, self.__ma_pred]     # self.__log_lasso_pred, self.__ma_pred
+        methods = [self.__lasso_pred]     # self.__log_lasso_pred, self.__ma_pred
         for func in methods:
             scores[func.__name__] = {}
 
         for n in range(80, 160, steps):
             for func in methods:
                 for n_test in range(12, 13, 12):
-                    print(f'---> {n}')
-                    samples = find_reverse.__split(df, n_x=n, n_test=n_test)
-                    # scores[func.__name__][(n, n_test)] = func(samples)
-                    scores[func.__name__][n] = func(samples)
+                    for alpha in range(2, 9):
+                        print(f'---> {n}')
+                        samples = find_reverse.__split(df, n_x=n, n_test=n_test)
+                        # scores[func.__name__][(n, n_test)] = func(samples)
+                        scores[func.__name__][(n, alpha)] = func(samples, alpha=np.power(0.1, alpha))
 
         accuracy = []
         for k, v in scores.items():
@@ -119,7 +120,7 @@ class find_reverse:
             accuracy.append(scores[k]['accuracy_score'].copy())
             scores[k].reset_index()
 
-        accuracy = pd.concat(accuracy, axis=1)
+        accuracy = pd.concat(accuracy, axis=1).unstack()
         print(accuracy)
 
     @staticmethod
@@ -223,4 +224,4 @@ class find_reverse:
 if __name__ == "__main__":
     # avg_premium_pillar_()
     # best_premium_pillar_()
-    find_reverse(weeks_to_expire=26, average_days=28)
+    find_reverse(weeks_to_expire=26, average_days=7)

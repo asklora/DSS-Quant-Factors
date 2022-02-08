@@ -213,7 +213,7 @@ class load_data:
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
-        self.__y_convert_neg_factors(y_col, use_average=use_average)
+        self.__y_convert_neg_factors(use_average=use_average)
 
         # use n-split qcut median as Y
         if qcut_q > 0:
@@ -252,7 +252,7 @@ class load_data:
 
         return y_col
 
-    def __y_convert_neg_factors(self, y_col, use_average=False, n_years=10, lasso_alpha=0.0001):
+    def __y_convert_neg_factors(self, use_average=False, n_years=10, lasso_alpha=0.0001):
         '''  convert consistently negative premium factor to positive
         refer to: https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/994803719/AI+Score+Brainstorms+2022-01-28
 
@@ -268,13 +268,16 @@ class load_data:
             lasso training alpha lasso_alpha (default = 0.0001)
         '''
 
+        y_col = read_query(f'SELECT name FROM {formula_factors_table_prod} WHERE is_active')['name'].to_list()
+
         if use_average:         # using average of training period -> next period +/-
-            m = self.train[y_col].mean(axis=0)
+            m = self.train.filter(y_col).mean(axis=0)
             self.neg_factor = list(m[m<0].index)
         else:
             start_date = dt.datetime.today() - relativedelta(years=n_years)
             n_x = len(self.train.loc[self.train['trading_day']>=start_date, 'trading_day'].unique())
-            train_X = self.train.set_index('trading_day')[y_col].stack().reset_index()
+
+            train_X = self.train.set_index('trading_day').filter(y_col).stack().reset_index()
             train_X.columns = ['trading_day', 'field', 'y']
 
             for i in range(1, n_x + 1):
@@ -449,7 +452,7 @@ if __name__ == '__main__':
     group_code = 'USD'
 
     data = load_data(weeks_to_expire=4, average_days=7)
-    y_type = data.factor_list  # random forest model predict all factor at the same time
+    y_type = data.factor_list[:5]  # random forest model predict all factor at the same time
 
     data.split_group(group_code)
 

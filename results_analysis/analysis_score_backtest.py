@@ -124,20 +124,20 @@ class score_scale:
 
         # add column for 3 pillar score
         fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
-        # fundamentals[['dlp_1m','wts_rating']] = fundamentals[['dlp_1m','wts_rating']]/10    # adjust dlp score to 0 ~ 1 (originally 0 ~ 10)
 
         for (group, pillar_name), g in factor_rank.groupby(["group", "pillar"]):
             print(f"Calculate Fundamentals [{pillar_name}] in group [{group}]")
             sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
-            if len(sub_g.dropna(
-                    subset=["pred_z"])) == 0:  # if no factor rank=2, use the highest ranking one & DLPA/ai_value scores
-                sub_g = g.loc[g.nlargest(1, columns=["pred_z"]).index.union(g.loc[g["factor_weight"].isnull()].index)]
+            sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
 
-            score_col = [f"{x}_{y}_currency_code" for x, y in
-                         sub_g.loc[sub_g["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
+            score_col = [f"{x}_{y}_currency_code" for x, y in sub_g.loc[sub_g["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
             score_col += [x for x in sub_g.loc[sub_g["scaler"].isnull(), "factor_name"]]
-            fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = fundamentals[
-                score_col].mean(axis=1)
+            score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
+            score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
+
+            fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = \
+                fundamentals[score_col].mean(axis=1).values - fundamentals[score_col_neg].mean(axis=1).values
+
         return fundamentals
 
     @staticmethod
@@ -404,5 +404,5 @@ def get_industry_name():
 
 if __name__ == "__main__":
     # can select name_sql based on
-    name_sql = 'w4_d7_20220131100820_debug'
+    name_sql = 'w26_d7_20220207144412_debug'
     test_score_history(name_sql=name_sql)

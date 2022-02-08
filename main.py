@@ -23,7 +23,7 @@ def mp_rf(*mp_args):
     # try:
     if True:
         data, sql_result, i, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, \
-            use_average = mp_args
+            use_average, down_mkt_pct = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
@@ -35,6 +35,7 @@ def mp_rf(*mp_args):
         sql_result['valid_method'] = valid_method
         sql_result['qcut_q'] = qcut_q
         sql_result['use_average'] = use_average     # neg_factor use average
+        sql_result['down_mkt_pct'] = down_mkt_pct     # neg_factor use average
 
         data.split_group(group_code)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
@@ -69,7 +70,7 @@ def mp_rf(*mp_args):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             # calculate weight for negative / positive index
-
+            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0]<0, down_mkt_pct, 1-down_mkt_pct)
 
             sql_result['neg_factor'] = data.neg_factor
             rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
@@ -138,11 +139,12 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf', 'rf', 'rf']
-    use_pca_list = [0.4, None]
+    use_pca_list = [0.6, 0.4, None]
     n_splits_list = [.1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
-    use_average_list = [True, False]
+    use_average_list = [False]
+    down_mkt_pct_list = [0.5, 0.6, 0.7]
 
     # y_type_list = ["all"]
     # y_type_list = ["momentum", "value", "quality"]
@@ -166,7 +168,8 @@ if __name__ == "__main__":
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
     all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list, y_type_list,
-                         tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list)
+                         tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
+                         down_mkt_pct_list)
     all_groups = [tuple(e) for e in all_groups]
 
     # Reset results table everytimes
