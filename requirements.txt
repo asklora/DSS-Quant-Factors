@@ -8,7 +8,7 @@ pyclustertend==1.4.9
 python_dateutil==2.8.2
 s_dbw==0.4.0
 scikit_learn==1.0.1
-scipy==1.7.1
+scipy==1.8.0
 seaborn==0.11.2
 slack_sdk==3.11.2
 SQLAlchemy==1.3.18
