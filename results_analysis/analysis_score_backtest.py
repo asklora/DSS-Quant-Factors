@@ -56,7 +56,7 @@ class score_scale:
                 column].transform(
                 transform_trim_outlier)
             calculate_column_score.append(column_score)
-        print(calculate_column_score)
+        # print(calculate_column_score)
 
         return fundamentals, calculate_column_score
 
@@ -67,7 +67,9 @@ class score_scale:
             global count_neg
             count_neg += 1
             neg_factor = [x + '_score' for x in g.loc[(g['long_large'] == False), 'factor_name'].to_list()]
+            print(group, neg_factor)
             fundamentals.loc[(fundamentals['currency_code'] == group), neg_factor] *= -1
+
         return fundamentals
 
     @staticmethod
@@ -83,7 +85,7 @@ class score_scale:
                 calculate_column_robust_score.append(column_robust_score)
             except Exception as e:
                 print(e)
-        print(calculate_column_robust_score)
+        # print(calculate_column_robust_score)
         return fundamentals, calculate_column_robust_score
 
     @staticmethod
@@ -117,7 +119,7 @@ class score_scale:
                                                                 fundamentals[column_minmax_industry]) * 10
                 minmax_column.append(column_minmax_industry)
 
-        print(minmax_column)
+        # print(minmax_column)
         return fundamentals, minmax_column
 
     @staticmethod
@@ -229,20 +231,20 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
         Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
     '''
 
-    # if name_sql:
-    #     print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-    #     factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
-    # else:
-    #     print("=== Get [Factor Rank] history from Backtest Table ===")
-    #     conditions = [f"True"]
-    #     if currency_code:
-    #         conditions.append(f"\"group\ in {tuple(currency_code)}")
-    #     if start_date:
-    #         conditions.append(f"trading_day>='{start_date}'")
-    #     factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    # TODO: change table name
-    #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-    #     print(factor_rank.dtypes)
-    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    if name_sql:
+        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+        factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+    else:
+        print("=== Get [Factor Rank] history from Backtest Table ===")
+        conditions = [f"True"]
+        if currency_code:
+            conditions.append(f"\"group\ in {tuple(currency_code)}")
+        if start_date:
+            conditions.append(f"trading_day>='{start_date}'")
+        factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    
+                                 f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+        print(factor_rank.dtypes)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
 
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
@@ -262,6 +264,8 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
     factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
+    print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
+    print(sorted(list(factor_rank["trading_day"].unique())))
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
     factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
 
@@ -299,7 +303,7 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
     label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(regex='^stock_return_y_').columns.to_list()
     fundamentals = fundamentals_score[label_col+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
-    print(fundamentals)
+    # print(fundamentals)
 
     fundamentals = fundamentals.dropna(subset=['trading_day'], how='any')
 
@@ -311,35 +315,39 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
     fundamentals["industry_name"] = fundamentals["ticker"].map(industry_name)
 
     # calculate score
-    fundamentals_all = []
     eval_qcut_all = {}
     eval_best_all = {}
     if name_sql:
         options = [(int(name_sql.split('_')[0][1:]), int(name_sql.split('_')[1][1:]))]
+        average_days = int(name_sql.split('_')[1][1:])
     else:
         options = [(1,1), (4,7), (26,7), (26,28)]
-    for name, g in fundamentals.groupby(['trading_day']):
-        for weeks_to_expire, average_days in options:
-            factor_rank_period = factor_rank.loc[(factor_rank['trading_day']==(name-relativedelta(weeks=weeks_to_expire)))&
-                                                 (factor_rank['weeks_to_expire']==weeks_to_expire)]
-            if len(factor_rank_period)==0:
-                continue
+    for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(by=['trading_day', 'weeks_to_expire']):
+        weeks_to_expire = int(weeks_to_expire)
+        score_date = trading_day + relativedelta(weeks=weeks_to_expire)
+        g = fundamentals.loc[fundamentals['trading_day']==score_date].copy()
+        # for name, g in fundamentals.groupby(['trading_day']):
+        #     for weeks_to_expire, average_days in options:
+        #         factor_rank_period = factor_rank.loc[(factor_rank['trading_day']==(name-relativedelta(weeks=weeks_to_expire)))&
+        #                                              (factor_rank['weeks_to_expire']==weeks_to_expire)]
+        #         if len(factor_rank_period)==0:
+        #             continue
 
-            # Scale original fundamental score
-            print(name)
-            fundamentals = score_scale(g.copy(1), calculate_column, universe_currency_code,
-                                          factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
-            fundamentals_all.append(fundamentals.copy())
+        # Scale original fundamental score
+        print(trading_day, score_date)
+        g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
+                              factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
 
-            # Evaluate 1: calculate return on 10-qcut portfolios
-            eval_qcut_all[(name, f"{weeks_to_expire}_{average_days}")] = eval_qcut(fundamentals, score_col, weeks_to_expire, average_days).copy()
+        # Evaluate 1: calculate return on 10-qcut portfolios
+        eval_qcut_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_qcut(g_score, score_col, weeks_to_expire, average_days).copy()
 
-            # Evaluate 2: calculate return for top 10 score / mode industry
-            eval_best_all[(name, f"{weeks_to_expire}_{average_days}")] = eval_best(fundamentals, weeks_to_expire, average_days).copy()
+        # Evaluate 2: calculate return for top 10 score / mode industry
+        eval_best_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_best(g_score, weeks_to_expire, average_days).copy()
 
     print("=== Reorganize mean return dictionary to DataFrames ===")
     # 1. DataFrame for 10 group qcut - Mean Returns
-    eval_qcut_df = pd.DataFrame(eval_qcut_all).stack(level=[-2, -1])
+    eval_qcut_df = pd.DataFrame(eval_qcut_all)
+    eval_qcut_df = eval_qcut_df.stack(level=[-2, -1])
     eval_qcut_df = pd.DataFrame(eval_qcut_df.to_list(), index=eval_qcut_df.index)
     eval_qcut_df = eval_qcut_df.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "score",
@@ -361,7 +369,7 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
 
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
     df = pd.concat([factor_selection, pd.DataFrame(factor_selection['config'].to_list())], axis=1)
-    factor_selection_best  = df.groupby(['group', 'y_type']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
+    factor_selection_best = df.groupby(['group', 'y_type']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
     factor_selection_best = factor_selection_best.drop(columns=diff_config_col)
 
     to_excel({"10 Qcut (Avg Ret)": eval_qcut_df,
@@ -369,8 +377,6 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
               "Top 10 Picks": eval_best_df,
               "Factor Selection & Avg Premiums": factor_selection,
               "Best Factor Config": factor_selection_best}, file_name=(name_sql if name_sql else ""))
-
-    # fundamentals = pd.concat(fundamentals_all, axis=0)
 
     # Evaluate
     # eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
@@ -417,7 +423,7 @@ def get_industry_name():
 
 if __name__ == "__main__":
     # can select name_sql based on
-    name_sql = 'w8_d7_20220211004808_debug'
+    name_sql = 'w8_d7_20220211135050_debug'
     test_score_history(name_sql=name_sql)
 
     # name_sql = 'w8_d7_20220210143757_debug'

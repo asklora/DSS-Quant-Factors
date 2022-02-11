@@ -72,7 +72,7 @@ def insert_prem_for_group(*args):
     logging.info(f'=== Calculate premium for ({group}, {factor}) ===')
 
     try:
-        df = df[['trading_day', y_col, factor]].dropna(how='any')
+        df = df[['ticker', 'trading_day', y_col, factor]].dropna(how='any')
         if len(df) == 0:
             raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
 
@@ -141,7 +141,8 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     ratio_query = f"SELECT r.*, u.currency_code " \
                   f"FROM {processed_ratio_table} r " \
                   f"INNER JOIN universe u ON r.ticker=u.ticker " \
-                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+[y_col])}"
+                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+[y_col])}" \
+                  f"AND is_active"
     if start_date:
         ratio_query += f" AND trading_day>='{start_date}' "
     df = read_query(ratio_query.replace(",)",")"), db_url_read)
@@ -177,7 +178,7 @@ if __name__ == "__main__":
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():
         for d in avg_days:
-            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=min(4, fwd_weeks), all_groups=['EUR'])
+            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1, all_groups=['USD'])
     end = datetime.now()
 
     logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')

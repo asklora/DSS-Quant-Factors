@@ -67,6 +67,12 @@ class rank_pred:
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
+
+        # best = {'tree_type': 'rf1', 'use_pca': 0, 'qcut_q': 10, 'n_splits': 0.1,
+        #         'valid_method': 2012, 'use_average': False, 'down_mkt_pct': 0.6,
+        #         "trading_day": dt.datetime(2021, 6, 20, 0, 0, 0), "group": "USD"}
+        # pred_best = pred.loc[(pred[list(best.keys())]==pd.Series(best)).all(axis=1)].sort_values(by=["y_type", "pred"])
+
         pred['uid_hpot'] = pred['uid'].str[:20]
 
         for name_sql, pred_name_sql in pred.groupby(["name_sql"]):

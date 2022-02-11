@@ -94,7 +94,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
             data = data.set_index(primary_key)
             data_type = {primary_key: TEXT}
 
-            upsert(engine=engine,
+            upsert(engine,
                    df=data,
                    table_name=table,
                    if_row_exists=how,
