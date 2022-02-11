@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'EUR']   # TODO: add EUR
+    group_code_list = ['USD']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -138,8 +138,8 @@ if __name__ == "__main__":
 
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
-    tree_type_list = ['rf', 'rf', 'rf']
-    use_pca_list = [0.7, None]
+    tree_type_list = ['rf']
+    use_pca_list = [0.6, 0.4, None]
     n_splits_list = [.1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
@@ -147,6 +147,7 @@ if __name__ == "__main__":
     down_mkt_pct_list = [0.5, 0.6, 0.7]
 
     # y_type_list = ["all"]
+    # y_type_list = ["test"]
     y_type_list = ["value", "quality", "momentum"]
     # y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
 
@@ -154,7 +155,7 @@ if __name__ == "__main__":
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
-    testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period:]
+    testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period*args.weeks_to_expire-1::4]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
     # --------------------------------- Model Training ------------------------------------------

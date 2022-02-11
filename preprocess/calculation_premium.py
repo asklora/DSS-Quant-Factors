@@ -178,7 +178,7 @@ if __name__ == "__main__":
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():
         for d in avg_days:
-            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1, all_groups=['USD'])
+            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1, all_groups=['EUR', 'USD'])
     end = datetime.now()
 
     logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')

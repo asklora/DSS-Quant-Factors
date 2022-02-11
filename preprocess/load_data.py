@@ -14,10 +14,6 @@ from sklearn.linear_model import Lasso
 from global_vars import *
 from general.sql_process import read_table, read_query
 
-def add_arr_col(df, arr, col_name):
-    add_df = pd.DataFrame(arr, columns=col_name)
-    return pd.concat([df.reset_index(drop=True), add_df], axis=1)
-
 def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
@@ -160,8 +156,11 @@ class load_data:
         self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, average_days, update_since=update_since, mode=mode)    # combine all data
 
         # calculate y for all factors
-        all_y_col = ["y_"+x for x in self.x_col_dict['factor']]
-        self.main[all_y_col] = self.main.groupby(['group'])[self.x_col_dict['factor']].shift(-1)
+        df_y = self.main[['group', 'trading_day'] + self.x_col_dict['factor']].rename(
+            columns={x: 'y_'+x for x in self.x_col_dict['factor']})
+        df_y["trading_day"] = df_y['trading_day'].apply(lambda x: x - relativedelta(weeks=weeks_to_expire))
+        self.main = self.main.merge(df_y, on=["group", "trading_day"], how="outer")
+        print(self.main)
 
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
@@ -288,7 +287,7 @@ class load_data:
             test_X['pred'] = clf.predict(test_X.filter(regex='^x_|^y$').values[:,:-1])
             self.neg_factor = test_X.loc[test_X['pred'] < 0, 'field'].to_list()
 
-        self.neg_factor = []
+        # self.neg_factor = []
         self.train[self.neg_factor + ['y_'+x for x in self.neg_factor]] *= -1
         self.test[self.neg_factor + ['y_'+x for x in self.neg_factor]] *= -1
 
