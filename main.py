@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD']   # TODO: add EUR
+    group_code_list = ['USD', 'EUR']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf', 'rf', 'rf']
-    use_pca_list = [0.6, 0.4, None]
+    use_pca_list = [0.7, None]
     n_splits_list = [.1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
@@ -147,8 +147,8 @@ if __name__ == "__main__":
     down_mkt_pct_list = [0.5, 0.6, 0.7]
 
     # y_type_list = ["all"]
-    # y_type_list = ["momentum", "value", "quality"]
-    y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
+    y_type_list = ["value", "quality", "momentum"]
+    # y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
@@ -177,6 +177,9 @@ if __name__ == "__main__":
         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
+
+    from results_analysis.analysis_score_backtest import test_score_history
+    test_score_history(name_sql=sql_result['name_sql'])
 
     # rank_pred(args.q, args.weeks_to_expire, args.average_days, name_sql=sql_result['name_sql']).write_to_db()
 

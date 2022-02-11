@@ -76,8 +76,8 @@ class rank_pred:
             self.all_current = []
             self.all_history = []
             for y_type, g in pred_name_sql.groupby('y_type'):
+                self.y_type = y_type
                 self.rank_each_y_type(q, y_type, g, name_sql)
-
 
     def rank_each_y_type(self, q, y_type, df, name_sql):
         ''' rank for each y_type '''
@@ -93,14 +93,15 @@ class rank_pred:
 
         # 2.3. calculate 'pred_z'/'factor_weight' by ranking
         q = q/len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
-        q_ = [0., q, 1.-q, 1.]
-        df_cv_avg = rank_pred.__calc_z_weight(q_, df_cv_avg, self.diff_config_col)
+        self.q_ = [0., q, 1.-q, 1.]
+        df_cv_avg = rank_pred.__calc_z_weight(self.q_, df_cv_avg, self.diff_config_col)
 
         # 2.4. save backtest evaluation metrics
         eval_metrics = self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
 
         # 2.5. use best config prediction for this y_type
         best_config = self.__backtest_find_best_config(df=eval_metrics)
+        logging.info(f'best config for [{y_type}]: {best_config}')
         df_cv_avg_best = []
         for name, g in df_cv_avg.groupby(['group']):
             g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
@@ -146,6 +147,11 @@ class rank_pred:
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
         df = result_all.loc[result_all['trading_day'] == period, result_col].reset_index(drop=True)
 
+        # merge same config iterations -> recalc factor_weight
+        df = df.groupby(['group', 'trading_day', 'factor_name'])['pred_z'].mean().reset_index()
+        df['factor_weight'] = df.groupby(by=['group', 'trading_day'])['pred_z'].transform(
+            lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
+
         # 2.6.1. record basic info
         df['factor_weight'] = df['factor_weight'].astype(int)
         df['last_update'] = dt.datetime.now()
@@ -156,7 +162,7 @@ class rank_pred:
         neg_factor = self.neg_factor[pd.Timestamp(period)]
         for k, v in neg_factor.items():  # write neg_factor i.e. label factors
             if type(v)==type([]):
-                df.loc[(df['group'] == k) & (df['factor_name'].isin([x[2:] for x in v])), 'long_large'] = True
+                df.loc[(df['group'] == k) & (df['factor_name'].isin(v)), 'long_large'] = True
 
         # 2.6.3. append to history / currency df list
         self.all_history.append(df.sort_values(['group', 'pred_z']))
@@ -210,17 +216,24 @@ class rank_pred:
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
         result_all_comb = result_all_comb.join(result_all_avg, on=['name_sql', 'group', 'trading_day'], how='left')
 
-        # 2.4.2. save eval results to DB
+        # 2.4.2. create DataFrame for eval results to DB
         result_all_comb["y_type"] = y_type
         result_all_comb["weeks_to_expire"] = self.weeks_to_expire
         primary_keys = ["name_sql", "group", "trading_day", "y_type"] + self.diff_config_col
         result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
-        upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
-                                db_url=db_url_write, how="update")
 
         # 2.4.3. save local plot for evaluation (when DEBUG)
         if DEBUG:
             rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
+
+        # 2.4.2. add config JSON column for configs
+        result_all_comb['config'] = result_all_comb[self.diff_config_col].to_dict(orient='records')
+        result_all_comb['config_mean_mse'] = result_all_comb.groupby(['group'] + self.diff_config_col)['mse'].transform('mean')
+        result_all_comb['config_mean_max_ret'] = result_all_comb.groupby(['group'] + self.diff_config_col)['max_ret'].transform('mean')
+        result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
+        upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
+                                db_url=db_url_write, how="update")
+
         return result_all_comb
 
     @staticmethod
@@ -239,15 +252,17 @@ class rank_pred:
         ret_dict['r2'] = r2_score(g['pred'], g['actual'])
         return pd.Series(ret_dict)
 
-    def __backtest_find_best_config(self, eval_metric='max_ret', df=None):
+    def __backtest_find_best_config(self, eval_metric='mse', df=None):
         ''' Select Best Config (among other_group_col) '''
 
         if type(df)==type(None):
-            query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE weeks_to_expire={self.weeks_to_expire}"
+            query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} " \
+                    f"WHERE weeks_to_expire={self.weeks_to_expire} AND y_type='{self.y_type}'"
             if self.name_sql:
                 query += f" AND name_sql='{self.name_sql}'"
             df = read_query(query, global_vars.db_url_alibaba_prod)
-        df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()
+        df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
+        df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()     # average over trading_day
         df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
         if eval_metric in ['max_ret', 'net_ret', 'r2']:
             best = df_mean.sort_values(eval_metric, ascending=False).groupby('group').first()[self.diff_config_col]
@@ -298,7 +313,7 @@ class rank_pred:
 
         if not DEBUG:
             self.write_backtest_rank_()
-            self.write_current_rank_()
+            # self.write_current_rank_()
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
@@ -307,6 +322,7 @@ class rank_pred:
         ''' Save Plot for backtest average ret '''
 
         logging.debug(f'=== Save Plot for backtest average ret ===')
+        result_all_comb = result_all_comb.copy()
         result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
         num_group = len(result_all_comb['group'].unique())
         num_other_group = len(result_all_comb['other_group'].unique())
@@ -344,7 +360,7 @@ if __name__ == "__main__":
 
     # Example
     # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, name_sql='w8_d7_20220207143018_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w4_d7_20220204144656_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

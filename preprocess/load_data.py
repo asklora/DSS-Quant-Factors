@@ -252,20 +252,18 @@ class load_data:
 
         return y_col
 
-    def __y_convert_neg_factors(self, use_average=False, n_years=10, lasso_alpha=0.0001):
+    def __y_convert_neg_factors(self, use_average=False, n_years=7, lasso_alpha=1e-5):
         '''  convert consistently negative premium factor to positive
         refer to: https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/994803719/AI+Score+Brainstorms+2022-01-28
 
         Parameters
         ----------
-        y_col (List[Str]):
-            list of factors to predict
         use_average (Bool, Optional):
             if True, use training period average; else (default) use lasso
         n_years (Int, Optional):
-            lasso training period length (default = 10) years
+            lasso training period length (default = 7) years
         lasso_alpha (Float, Optional):
-            lasso training alpha lasso_alpha (default = 0.0001)
+            lasso training alpha lasso_alpha (default = 1e-5)
         '''
 
         y_col = read_query(f'SELECT name FROM {formula_factors_table_prod} WHERE is_active')['name'].to_list()
@@ -288,10 +286,11 @@ class load_data:
 
             test_X = train_X.groupby('field').last().reset_index()
             test_X['pred'] = clf.predict(test_X.filter(regex='^x_|^y$').values[:,:-1])
-            self.neg_factor = test_X.loc[test_X['pred']<0, 'field'].to_list()
+            self.neg_factor = test_X.loc[test_X['pred'] < 0, 'field'].to_list()
 
-        self.train[self.neg_factor] = -self.train[self.neg_factor]
-        self.test[self.neg_factor] = -self.test[self.neg_factor]
+        self.neg_factor = []
+        self.train[self.neg_factor + ['y_'+x for x in self.neg_factor]] *= -1
+        self.test[self.neg_factor + ['y_'+x for x in self.neg_factor]] *= -1
 
     def split_train_test(self, testing_period, output_options, input_options):
         ''' split training / testing set based on testing period '''
@@ -311,15 +310,16 @@ class load_data:
 
         # 2. [Prep X] Calculate the moving average for predicted Y
         self.x_col_dict['ma'] = []
-        ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
-        ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
-        ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
-        ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
-        current_group = pd.concat([current_group, ma_q, ma_y], axis=1)
         for i in input_options["ma3_period"]:     # include moving average of 3-5, 6-8, 9-11
+            ma_q = current_group.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
+            ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
+            current_group = pd.concat([current_group, ma_q], axis=1)
             current_group[[f'{x}{i}' for x in ma_q_col]] = current_group.groupby(['group'])[ma_q_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
         for i in input_options["ma12_period"]:          # include moving average of 12 - 23
+            ma_y = current_group.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0, drop=True)
+            ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
+            current_group = pd.concat([current_group, ma_y], axis=1)
             current_group[[f'{x}{i}' for x in ma_y_col]] = current_group.groupby(['group'])[ma_y_col].shift(i)
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])        # add MA variables name to x_col
 

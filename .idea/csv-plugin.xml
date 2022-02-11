@@ -1298,6 +1298,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_result_rank_backtest_eval.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/general/sql_output.py">
           <value>
             <Attribute>
@@ -1866,6 +1873,13 @@
           </value>
         </entry>
         <entry key="/results_analysis/w8_d7_20220207143018_debug.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/w8_d7_20220210143757_debug.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

@@ -105,10 +105,10 @@ class find_reverse:
         for func in methods:
             scores[func.__name__] = {}
 
-        for n in range(80, 160, steps):
+        for n in range(50, 160, steps):
             for func in methods:
                 for n_test in range(12, 13, 12):
-                    for alpha in range(2, 9):
+                    for alpha in range(3, 9, 1):
                         print(f'---> {n}')
                         samples = find_reverse.__split(df, n_x=n, n_test=n_test)
                         # scores[func.__name__][(n, n_test)] = func(samples)
@@ -117,7 +117,7 @@ class find_reverse:
         accuracy = []
         for k, v in scores.items():
             scores[k] = pd.DataFrame(v).transpose()
-            accuracy.append(scores[k]['accuracy_score'].copy())
+            accuracy.append(scores[k]['avg_diff'].copy())
             scores[k].reset_index()
 
         accuracy = pd.concat(accuracy, axis=1).unstack()
@@ -187,12 +187,13 @@ class find_reverse:
             clf.fit(train_X, train_y)
             pred = clf.predict(test_X)
 
+            score[test_period] = {"avg_diff": np.where(pred>0, test_y, -test_y).mean() - test_y.mean()}
+
             # convert continuous y -> 0(if < 0) / 1(if > 0)
             test_y = np.where(test_y > 0, 1, 0)
             pred = np.where(pred > 0, 1, 0)
 
             # evaluate
-            score[test_period] = {}
             for m in [accuracy_score, precision_score, recall_score]:
                 score[test_period][m.__name__] = m(pred, test_y)
             score[test_period]['actual+%'] = (test_y==1).sum() / len(test_y)
