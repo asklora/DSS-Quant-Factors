@@ -319,7 +319,7 @@ class rank_pred:
 
         if not DEBUG:
             self.write_backtest_rank_()
-            # self.write_current_rank_()
+            self.write_current_rank_()
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
 
     # Example
     # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, name_sql='w4_d7_20220204144656_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w4_d7_20220214090609_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

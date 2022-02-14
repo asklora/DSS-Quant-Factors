@@ -32,8 +32,8 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
 
     # 3. filter for not used config
-    df_best_all = df_best_all.loc[~df_best_all['use_average']]
-    df_best_all = df_best_all.loc[df_best_all['qcut_q']==10]
+    # df_best_all = df_best_all.loc[~df_best_all['use_average']]
+    # df_best_all = df_best_all.loc[df_best_all['qcut_q']==10]
 
     df_pillar_all = []
     # for each pillar
@@ -71,6 +71,6 @@ if __name__ == "__main__":
     # download_model(name_sql='w4_d7_20220204170205_debug')
     # download_model(name_sql='w4_d7_20220204144656_debug')
     # download_model(name_sql='w4_d7_20220204181443_debug')
-    download_model(name_sql='w8_d7_20220211004808_debug')
+    download_model(name_sql='w4_d7_20220214090609_debug')
     # download_model(name_sql='w26_d7_20220207144412_debug')
     # download_model(name_sql='w26_d7_20220207153438_debug')
