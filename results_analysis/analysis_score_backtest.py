@@ -13,7 +13,7 @@ from general.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
 
-universe_currency_code = ['USD', 'EUR']
+universe_currency_code = ['EUR', 'USD', 'HKD', 'CNY']
 score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
 count_neg = 0
 class score_scale:
@@ -141,7 +141,7 @@ class score_scale:
             # score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
             # score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
             # fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
-            #     fundamentals[score_col_neg].mean(axis=1).values
+            #     fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
 
         return fundamentals
 
@@ -217,7 +217,7 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', name_sql=None):
+def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=None):
     '''  calculate score with DROID v2 method & evaluate
 
     Parameters
@@ -231,21 +231,21 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
         Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
     '''
 
-    if name_sql:
-        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-        factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
-    else:
-        print("=== Get [Factor Rank] history from Backtest Table ===")
-        conditions = [f"True"]
-        if currency_code:
-            conditions.append(f"\"group\ in {tuple(currency_code)}")
-        if start_date:
-            conditions.append(f"trading_day>='{start_date}'")
-        factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "    
-                                 f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-        print(factor_rank.dtypes)
-    factor_rank.to_csv('cached_factor_rank.csv', index=False)
-
+    # if name_sql:
+    #     print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+    #     factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+    # else:
+    #     print("=== Get [Factor Rank] history from Backtest Table ===")
+    #     conditions = [f"True"]
+    #     if currency_code:
+    #         conditions.append(f"\"group\ in {tuple(currency_code)}")
+    #     if start_date:
+    #         conditions.append(f"trading_day>='{start_date}'")
+    #     factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
+    #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+    #     print(factor_rank.dtypes)
+    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    #
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
     # if currency_code:
@@ -262,6 +262,9 @@ def test_score_history(currency_code=['USD', 'EUR'], start_date='2020-10-01', na
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     factor_rank = pd.read_csv('cached_factor_rank.csv')
+
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
+    factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
 
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
@@ -423,7 +426,7 @@ def get_industry_name():
 
 if __name__ == "__main__":
     # can select name_sql based on
-    name_sql = 'w8_d7_20220211135050_debug'
+    name_sql = 'w4_d7_20220214090609_debug'
     test_score_history(name_sql=name_sql)
 
     # name_sql = 'w8_d7_20220210143757_debug'

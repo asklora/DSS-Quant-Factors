@@ -141,7 +141,7 @@ def record_table_update_time(table):
     data_type = {"tbl_name": TEXT}
 
     engine = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
-    upsert(engine=engine,
+    upsert(engine,
            df=df,
            table_name=update_time_table,
            if_row_exists="update",
