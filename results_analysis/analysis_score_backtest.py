@@ -6,6 +6,7 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 import numpy as np
 from sklearn.preprocessing import robust_scale, minmax_scale
+import matplotlib.pyplot as plt
 
 import global_vars
 from general.sql_process import read_query, read_table
@@ -13,7 +14,7 @@ from general.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
 
-universe_currency_code = ['EUR', 'USD', 'HKD', 'CNY']
+universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
 score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
 count_neg = 0
 class score_scale:
@@ -231,20 +232,20 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
         Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
     '''
 
-    # if name_sql:
-    #     print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-    #     factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
-    # else:
-    #     print("=== Get [Factor Rank] history from Backtest Table ===")
-    #     conditions = [f"True"]
-    #     if currency_code:
-    #         conditions.append(f"\"group\ in {tuple(currency_code)}")
-    #     if start_date:
-    #         conditions.append(f"trading_day>='{start_date}'")
-    #     factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
-    #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-    #     print(factor_rank.dtypes)
-    # factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    if name_sql:
+        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+        factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+    else:
+        print("=== Get [Factor Rank] history from Backtest Table ===")
+        conditions = [f"True"]
+        if currency_code:
+            conditions.append(f"\"group\ in {tuple(currency_code)}")
+        if start_date:
+            conditions.append(f"trading_day>='{start_date}'")
+        factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
+                                 f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+        print(factor_rank.dtypes)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
 
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
@@ -261,12 +262,16 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
+    fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     factor_rank = pd.read_csv('cached_factor_rank.csv')
+    print(factor_rank)
 
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>=dt.datetime(2021,1,31)]
+
+    # fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(['HKD'])]
     # factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
 
-    fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
     print(sorted(list(factor_rank["trading_day"].unique())))
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
@@ -363,23 +368,25 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     # 2. DataFrame for 10 group qcut - Mean Returns
     eval_qcut_df_avg = eval_qcut_df.groupby(["currency_code", "score", "weeks_to_expire"]).mean().reset_index()
 
-    # 3. DataFrame for Top 10 picks - Mean Returns / mode indsutry(count) / positive pct
+    # 3.1. DataFrame for Top 10 picks - Mean Returns / mode indsutry(count) / positive pct
     eval_best_df10 = pd.DataFrame(eval_best_all10).stack(level=[-2, -1]).unstack(level=1)
     eval_best_df10 = eval_best_df10.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "trading_day",
                                                               "level_2": "weeks_to_expire",})
     eval_best_df10['positive_pct'] = eval_best_df10['positive_pct'].replace(0, np.nan)
     eval_best_df10['return'] = pd.to_numeric(eval_best_df10['return'])
+    plot_topn_vs_mkt(eval_best_df10, weeks_to_expire, fig_name=f'{name_sql}_top10')
     eval_best_df10_agg = eval_best_df10.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
 
+    # 3.2. DataFrame for Top 20 picks - Mean Returns / mode indsutry(count) / positive pct
     eval_best_df20 = pd.DataFrame(eval_best_all20).stack(level=[-2, -1]).unstack(level=1)
     eval_best_df20 = eval_best_df20.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "trading_day",
                                                               "level_2": "weeks_to_expire",})
     eval_best_df20['positive_pct'] = eval_best_df20['positive_pct'].replace(0, np.nan)
     eval_best_df20['return'] = pd.to_numeric(eval_best_df20['return'])
+    plot_topn_vs_mkt(eval_best_df20, weeks_to_expire, fig_name=f'{name_sql}_top20')
     eval_best_df20_agg = eval_best_df20.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
-
 
     # 4. factor selection table
     factor_selection = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
@@ -422,6 +429,39 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
 
     return mean_ret
 
+def plot_topn_vs_mkt(top_n_df, weeks_to_expire, avg_days=7, fig_name='test'):
+    ''' compare top n average return with market return
+
+    Args:
+        top_n_arr (pd.DataFrame): at least has colume (trading_day & return)
+    '''
+    group_index = {"USD": ".SPX", "HKD": ".HSI", "EUR": ".SXXGR", "CNY": ".CSI300"}
+
+    date_list = list(top_n_df['trading_day'].dt.strftime('%Y-%m-%d').unique())
+
+    fig = plt.figure(figsize=(10, 10), dpi=120, constrained_layout=True)
+
+    k = 1
+    for group, g in top_n_df.groupby(['currency_code']):
+        ax = fig.add_subplot(2, 2, k)
+
+        mkt = read_query(f"SELECT trading_day, value as mkt_return FROM factor_processed_ratio "
+                         f"WHERE trading_day in {tuple(date_list)} "
+                         f"AND field='stock_return_y_w{weeks_to_expire}_d{avg_days}' "
+                         f"AND ticker='{group_index[group]}'".replace(",)", ")"))
+        mkt['trading_day'] = pd.to_datetime(mkt['trading_day'])
+        g = g.merge(mkt, on='trading_day').set_index('trading_day')[['return', 'mkt_return']]
+        g[['return', 'mkt_return']] = g[['return', 'mkt_return']].add(1).cumprod(axis=0)
+        ax.plot(g[['return', 'mkt_return']], label=['return', 'mkt_return'])
+        ax.legend()
+        ax.set_xlabel(group)
+        for i in range(2):
+            ax.annotate(g.iloc[-1, i].round(2), (g.index[-1], g.iloc[-1, i]), fontsize=10)
+        k += 1
+
+    plt.savefig(f'{fig_name}.png')
+    plt.close()
+
 def eval_best(fundamentals, weeks_to_expire, average_days, best_n=10):
     ''' evaluate score history with top 10 score return & industry '''
 
@@ -443,9 +483,13 @@ def get_industry_name():
     return df.set_index(["ticker"])["name_4"].to_dict()
 
 if __name__ == "__main__":
+    # import argparse
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--name_sql', type=str)
+    # args = parser.parse_args()
+
     # can select name_sql based on
-    name_sql = 'w8_d7_20220215094223_debug'
+    name_sql = 'w26_d7_20220215142515_debug'
     test_score_history(name_sql=name_sql)
 
-    # name_sql = 'w8_d7_20220210143757_debug'
-    # test_score_history(name_sql=name_sql)
+    # test_score_history(name_sql=args.name_sql)

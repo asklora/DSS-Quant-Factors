@@ -111,7 +111,7 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
         return False
     return True
 
-def read_query(query, db_url=db_url_alibaba):
+def read_query(query, db_url=db_url_read):
     ''' Read specific query from SQL '''
 
     logging.debug(f'Download Table with query: [{query}]')
@@ -122,7 +122,7 @@ def read_query(query, db_url=db_url_alibaba):
     engine.dispose()
     return df
 
-def read_table(table, db_url=db_url_alibaba):
+def read_table(table, db_url=db_url_read):
     ''' Read entire table from SQL '''
 
     logging.debug(f'Download Entire Table from [{table}]')
