@@ -143,7 +143,7 @@ if __name__ == "__main__":
     n_splits_list = [.1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
-    use_average_list = [False]
+    use_average_list = [True, False]
     down_mkt_pct_list = [0.5, 0.6, 0.7]
 
     # y_type_list = ["all"]
@@ -155,7 +155,10 @@ if __name__ == "__main__":
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
-    testing_period_list = sorted(testing_period_list_all['trading_day'])[-args.backtest_period*args.weeks_to_expire-1::4]
+
+    # sample_interval = args.weeks_to_expire # use if want non-overlap sample
+    sample_interval = 4
+    testing_period_list = sorted(testing_period_list_all['trading_day'])[-sample_interval*args.backtest_period-1::sample_interval]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
     # --------------------------------- Model Training ------------------------------------------
