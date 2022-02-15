@@ -53,7 +53,7 @@ def download_index_return():
     index_ret = index_ret.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
-    major_index = ['trading_day','.SPX','.CSI300','.SXXGR']    #  try include 3 major market index first
+    major_index = ['trading_day','.SPX','.CSI300','.SXXGR', '.HSI']    #  try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
 
     index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_r6_2'}
@@ -344,7 +344,7 @@ class load_data:
         logging.info(f"After {input_options['factor_pca']} PCA [Factors]: {len(factor_feature_name)}")
 
         # 6. [Prep X] use PCA on all index/macro inputs
-        group_index = {"USD":".SPX", "HKD":".HSI", "EUR":".SXXGR"}
+        group_index = {"USD":".SPX", "HKD":".HSI", "EUR":".SXXGR", "CNY": ".CSI300"}
         mi_pca_col = [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[self.group_name]}', x)]
         mi_pca_col += self.x_col_dict['macro']
         mi_pca_train, mi_pca_test, mi_feature_name = load_data.standardize_pca_x(

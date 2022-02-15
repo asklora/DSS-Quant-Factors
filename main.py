@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['USD']   # TODO: add EUR
+    group_code_list = ['CNY', 'HKD']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -116,14 +116,12 @@ if __name__ == "__main__":
 
     if not args.debug:
         # Check 1: if monthly -> only first Sunday every month
-        if args.weeks_to_expire >= 4:
-            if dt.datetime.today().day>7:
-                raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
-            # Check 2(b): monthly update after weekly update
-            start_on_update(table_names=['factor_result_rank'])
-        else:
-            # Check 2(a): weekly update after input data update
-            start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'])
+        if dt.datetime.today().day>7:
+            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+
+        # Check 2(b): monthly update after weekly update
+        start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'])
+
 
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_ratio:
@@ -139,12 +137,12 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
-    use_pca_list = [0.6, 0.4, None]
-    n_splits_list = [.1]
+    use_pca_list = [0.6, None]
+    n_splits_list = [.2]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
-    use_average_list = [True, False]
-    down_mkt_pct_list = [0.5, 0.6, 0.7]
+    use_average_list = [False]
+    down_mkt_pct_list = [0.5, 0.7]
 
     # y_type_list = ["all"]
     # y_type_list = ["test"]

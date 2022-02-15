@@ -245,7 +245,7 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
     #     print(factor_rank.dtypes)
     # factor_rank.to_csv('cached_factor_rank.csv', index=False)
-    #
+
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
     # if currency_code:
@@ -264,7 +264,7 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     factor_rank = pd.read_csv('cached_factor_rank.csv')
 
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
-    factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
+    # factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
 
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
@@ -319,7 +319,8 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
 
     # calculate score
     eval_qcut_all = {}
-    eval_best_all = {}
+    eval_best_all10 = {}
+    eval_best_all20 = {}
     if name_sql:
         options = [(int(name_sql.split('_')[0][1:]), int(name_sql.split('_')[1][1:]))]
         average_days = int(name_sql.split('_')[1][1:])
@@ -345,7 +346,9 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
         eval_qcut_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_qcut(g_score, score_col, weeks_to_expire, average_days).copy()
 
         # Evaluate 2: calculate return for top 10 score / mode industry
-        eval_best_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_best(g_score, weeks_to_expire, average_days).copy()
+        eval_best_all10[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_best(g_score, weeks_to_expire, average_days, best_n=10).copy()
+
+        eval_best_all20[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_best(g_score, weeks_to_expire, average_days, best_n=20).copy()
 
     print("=== Reorganize mean return dictionary to DataFrames ===")
     # 1. DataFrame for 10 group qcut - Mean Returns
@@ -361,10 +364,22 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     eval_qcut_df_avg = eval_qcut_df.groupby(["currency_code", "score", "weeks_to_expire"]).mean().reset_index()
 
     # 3. DataFrame for Top 10 picks - Mean Returns / mode indsutry(count) / positive pct
-    eval_best_df = pd.DataFrame(eval_best_all).stack(level=[-2, -1]).unstack(level=1)
-    eval_best_df = eval_best_df.reset_index().rename(columns={"level_0": "currency_code",
+    eval_best_df10 = pd.DataFrame(eval_best_all10).stack(level=[-2, -1]).unstack(level=1)
+    eval_best_df10 = eval_best_df10.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "trading_day",
                                                               "level_2": "weeks_to_expire",})
+    eval_best_df10['positive_pct'] = eval_best_df10['positive_pct'].replace(0, np.nan)
+    eval_best_df10['return'] = pd.to_numeric(eval_best_df10['return'])
+    eval_best_df10_agg = eval_best_df10.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
+
+    eval_best_df20 = pd.DataFrame(eval_best_all20).stack(level=[-2, -1]).unstack(level=1)
+    eval_best_df20 = eval_best_df20.reset_index().rename(columns={"level_0": "currency_code",
+                                                              "level_1": "trading_day",
+                                                              "level_2": "weeks_to_expire",})
+    eval_best_df20['positive_pct'] = eval_best_df20['positive_pct'].replace(0, np.nan)
+    eval_best_df20['return'] = pd.to_numeric(eval_best_df20['return'])
+    eval_best_df20_agg = eval_best_df20.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
+
 
     # 4. factor selection table
     factor_selection = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
@@ -377,7 +392,10 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
 
     to_excel({"10 Qcut (Avg Ret)": eval_qcut_df,
               "10 Qcut (Avg Ret-Agg)": eval_qcut_df_avg,
-              "Top 10 Picks": eval_best_df,
+              "Top 10 Picks": eval_best_df10,
+              "Top 10 Picks(agg)": eval_best_df10_agg,
+              "Top 20 Picks": eval_best_df20,
+              "Top 20 Picks(agg)": eval_best_df20_agg,
               "Factor Selection & Avg Premiums": factor_selection,
               "Best Factor Config": factor_selection_best}, file_name=(name_sql if name_sql else ""))
 
@@ -404,12 +422,12 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
 
     return mean_ret
 
-def eval_best(fundamentals, weeks_to_expire, average_days):
+def eval_best(fundamentals, weeks_to_expire, average_days, best_n=10):
     ''' evaluate score history with top 10 score return & industry '''
 
     top_ret = {}
     for name, g in fundamentals.groupby(["currency_code"]):
-        g = g.set_index('ticker').nlargest(10, columns=['ai_score'], keep='all')
+        g = g.set_index('ticker').nlargest(best_n, columns=['ai_score'], keep='all')
         top_ret[(name, "return")] = g[f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean()
         top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
         top_ret[(name, "mode count")] = np.sum(g[f"industry_name"]==top_ret[(name, "mode")])
@@ -426,7 +444,7 @@ def get_industry_name():
 
 if __name__ == "__main__":
     # can select name_sql based on
-    name_sql = 'w4_d7_20220214090609_debug'
+    name_sql = 'w8_d7_20220215094223_debug'
     test_score_history(name_sql=name_sql)
 
     # name_sql = 'w8_d7_20220210143757_debug'

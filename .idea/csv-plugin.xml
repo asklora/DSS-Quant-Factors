@@ -2005,6 +2005,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/venv/lib/python3.8/site-packages/sqlalchemy/dialects/postgresql/pg8000.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>

@@ -31,4 +31,4 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
 
 if __name__ == "__main__":
     # download_model(weeks_to_expire=26, average_days=28)
-    download_model(weeks_to_expire=8)
+    download_model()
