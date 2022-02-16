@@ -151,20 +151,23 @@ class score_scale:
         ''' calculate ai_score by each currency_code (i.e. group) for [Extra] '''
 
         for group, g in factor_rank.groupby("group"):
-            print(f"Calculate Fundamentals [extra] in group [{group}]")
-            sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
-            sub_g = sub_g.loc[(g["pred_z"] >= 1) | (
-                g["pred_z"].isnull())]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
+            try:
+                print(f"Calculate Fundamentals [extra] in group [{group}]")
+                sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
+                sub_g = sub_g.loc[(g["pred_z"] >= 1) | (
+                    g["pred_z"].isnull())]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
 
-            if len(sub_g.dropna(subset=["pred_z"])) > 0:  # if no factor rank=2, don"t add any factor into extra pillar
-                score_col = [f"{x}_{y}_currency_code" for x, y in
-                             sub_g.loc[sub_g["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
-                fundamentals.loc[fundamentals["currency_code"] == group, "fundamentals_extra"] = fundamentals[
-                    score_col].mean(axis=1)
-            else:
-                fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_extra"] = \
-                    fundamentals.loc[fundamentals["currency_code"] == group].filter(
-                        regex="^fundamentals_").mean().mean()
+                if len(sub_g.dropna(subset=["pred_z"])) > 0:  # if no factor rank=2, don"t add any factor into extra pillar
+                    score_col = [f"{x}_{y}_currency_code" for x, y in
+                                 sub_g.loc[sub_g["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
+                    fundamentals.loc[fundamentals["currency_code"] == group, "fundamentals_extra"] = fundamentals[
+                        score_col].mean(axis=1)
+                else:
+                    fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_extra"] = \
+                        fundamentals.loc[fundamentals["currency_code"] == group].filter(
+                            regex="^fundamentals_").mean().mean()
+            except Exception as e:
+                print(e)
         return fundamentals
 
     @staticmethod
@@ -411,6 +414,169 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     # save_description_history(score_history)                                     # score distribution
     return True
 
+def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=None):
+    '''  calculate score with DROID v2 method & evaluate (V2 only evaluate pillar score for all config)
+
+    Parameters
+    ----------
+    currency_code (Str):
+        score in which currency will be calculated
+    start_date :
+        start date to calculate AI Score
+    name_sql :
+        If None, AI Score calculated based on current [production_factor_rank_backtest_table] Table;
+        Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
+    '''
+
+    print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+    factor_rank_all = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+
+    # print("=== Get [Factor Processed Ratio] history ===")
+    # conditions = ["r.ticker not like '.%%'"]
+    # if currency_code:
+    #     conditions.append(f"currency_code in {tuple(currency_code)}")
+    # if start_date:
+    #     conditions.append(f"trading_day>='{start_date}'")
+    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+    #               f"WHERE {' AND '.join(conditions)}"
+    # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+    #                                               values="value").reset_index()
+    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+
+    fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
+    fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
+
+    # fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(['HKD'])]
+    # factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
+
+    qcut_eval = []
+    top10_eval = []
+    error_iter = []
+
+    for iter in factor_rank_all:
+
+        try:
+            factor_rank = iter["rank_df"]
+
+            print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
+            print(sorted(list(factor_rank["trading_day"].unique())))
+            factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
+            factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
+
+            # Test return calculation
+            # fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
+            # tri_ret = get_tri_ret(start_date)
+            # fundamentals_score_ret = fundamentals_score_ret.merge(tri_ret, on=["ticker", "trading_day"], how="left")
+            # fundamentals_score_ret["diff_1w"] = fundamentals_score_ret["stock_return_y_1week"] - fundamentals_score_ret["ret_week"]*4
+            # fundamentals_score_ret["diff_1m"] = fundamentals_score_ret["stock_return_y_4week"] - fundamentals_score_ret["ret_month"]
+
+            factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+            factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
+            fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])
+
+            # for currency not predicted by Factor Model -> Use factor of USD
+            for i in set(universe_currency_code) - set(factor_rank['group'].unique()):
+                replace_rank = factor_rank.loc[factor_rank['group'] == 'USD'].copy()
+                replace_rank['group'] = i
+                factor_rank = factor_rank.append(replace_rank, ignore_index=True)
+
+            factor_rank = factor_rank.merge(factor_formula.set_index('name'), left_on=['factor_name'], right_index=True, how='outer')
+            factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
+            factor_rank = factor_rank.dropna(subset=['pillar'])
+
+            # for non calculating currency_code -> we add same for each one
+            append_df = factor_rank.loc[factor_rank['keep']]
+            for i in set(universe_currency_code):
+                append_df['group'] = i
+                factor_rank = factor_rank.append(append_df, ignore_index=True)
+
+            factor_formula = factor_formula.set_index(['name'])
+            calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
+            calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
+
+            label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(regex='^stock_return_y_').columns.to_list()
+            fundamentals = fundamentals_score[label_col+calculate_column]
+            fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
+            # print(fundamentals)
+
+            fundamentals = fundamentals.dropna(subset=['trading_day'], how='any')
+
+            # add column for 3 pillar score
+            fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
+
+            # add industry_name to ticker
+            industry_name = get_industry_name()
+            fundamentals["industry_name"] = fundamentals["ticker"].map(industry_name)
+
+            # calculate score
+            eval_qcut_all = {}
+            eval_best_all10 = {}
+
+            average_days = int(name_sql.split('_')[1][1:])
+
+            for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(by=['trading_day', 'weeks_to_expire']):
+                weeks_to_expire = int(weeks_to_expire)
+                score_date = trading_day + relativedelta(weeks=weeks_to_expire)
+                g = fundamentals.loc[fundamentals['trading_day']==score_date].copy()
+
+                # Scale original fundamental score
+                print(trading_day, score_date)
+                g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
+                                      factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
+
+                current_score_col = 'fundamentals_'+iter["info"]["y_type"]
+
+                # Evaluate 1: calculate return on 10-qcut portfolios
+                eval_qcut_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_qcut(g_score, [current_score_col],
+                                                                                             weeks_to_expire, average_days).copy()
+
+                # Evaluate 2: calculate return for top 10 score / mode industry
+                eval_best_all10[(score_date, f"{weeks_to_expire}_{average_days}")] = \
+                    eval_best(g_score, weeks_to_expire, average_days, best_n=10, best_col=current_score_col).copy()
+
+            print("=== Reorganize mean return dictionary to DataFrames ===")
+            # 1. DataFrame for 10 group qcut - Mean Returns
+            eval_qcut_df = pd.DataFrame(eval_qcut_all)
+            eval_qcut_df = eval_qcut_df.stack(level=[-2, -1])
+            eval_qcut_df = pd.DataFrame(eval_qcut_df.to_list(), index=eval_qcut_df.index)
+            eval_qcut_df = eval_qcut_df.reset_index().rename(columns={"level_0": "currency_code",
+                                                                      "level_1": "score",
+                                                                      "level_2": "trading_day",
+                                                                      "level_3": "weeks_to_expire",})
+
+            def add_info_col(df):
+                info_df = pd.DataFrame(iter["info"], index=[0])
+                df = pd.concat([df.reset_index(drop=True), info_df], axis=1)
+                df[info_df.columns.to_list()] = df[info_df.columns.to_list()].ffill(0)
+                return df
+
+            # 2. DataFrame for 10 group qcut - Mean Returns
+            eval_qcut_df_avg = eval_qcut_df.groupby(["currency_code", "score", "weeks_to_expire"]).mean().reset_index()
+            qcut_eval.append(add_info_col(eval_qcut_df_avg).copy())
+
+            # 3.1. DataFrame for Top 10 picks - Mean Returns / mode indsutry(count) / positive pct
+            eval_best_df10 = pd.DataFrame(eval_best_all10).stack(level=[-2, -1]).unstack(level=1)
+            eval_best_df10 = eval_best_df10.reset_index().rename(columns={"level_0": "currency_code",
+                                                                      "level_1": "trading_day",
+                                                                      "level_2": "weeks_to_expire",})
+            eval_best_df10['positive_pct'] = eval_best_df10['positive_pct'].replace(0, np.nan)
+            eval_best_df10['return'] = pd.to_numeric(eval_best_df10['return'])
+            top10_eval.append(add_info_col(eval_best_df10).copy())
+        except Exception as e:
+            print(e)
+            error_iter.append(iter["info"])
+
+    qcut_eval = pd.concat(qcut_eval, axis=0)
+    top10_eval = pd.concat(top10_eval, axis=0)
+
+    to_excel({"qcut": qcut_eval,
+              "top10": top10_eval,
+              }, file_name=('v2_'+name_sql if name_sql else ""))
+    print(error_iter)
+    return True
+
 def save_description_history(df):
     ''' write statistics for description '''
     df = df.groupby('currency_code')['ai_score'].agg(['min','mean', 'median', 'max', 'std','count'])
@@ -423,10 +589,12 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
     fundamentals = fundamentals.reset_index(drop=True)
     for name, df in fundamentals.groupby(["currency_code"]):
         for col in score_col:
-            df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
-            mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
-                f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean().to_dict()
-
+            try:
+                df['qcut'] = pd.qcut(df[col].dropna(), q=10, labels=False, duplicates='drop')
+                mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
+                    f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean().to_dict()
+            except Exception as e:
+                print(e)
     return mean_ret
 
 def plot_topn_vs_mkt(top_n_df, weeks_to_expire, avg_days=7, fig_name='test'):
@@ -462,12 +630,12 @@ def plot_topn_vs_mkt(top_n_df, weeks_to_expire, avg_days=7, fig_name='test'):
     plt.savefig(f'{fig_name}.png')
     plt.close()
 
-def eval_best(fundamentals, weeks_to_expire, average_days, best_n=10):
+def eval_best(fundamentals, weeks_to_expire, average_days, best_n=10, best_col='ai_score'):
     ''' evaluate score history with top 10 score return & industry '''
 
     top_ret = {}
     for name, g in fundamentals.groupby(["currency_code"]):
-        g = g.set_index('ticker').nlargest(best_n, columns=['ai_score'], keep='all')
+        g = g.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
         top_ret[(name, "return")] = g[f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean()
         top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
         top_ret[(name, "mode count")] = np.sum(g[f"industry_name"]==top_ret[(name, "mode")])
@@ -489,7 +657,8 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     # can select name_sql based on
-    name_sql = 'w26_d7_20220215142515_debug'
-    test_score_history(name_sql=name_sql)
+    name_sql = 'w26_d7_20220215152028_debug'
+    # test_score_history(name_sql=name_sql)
+    test_score_history_v2(name_sql=name_sql)
 
     # test_score_history(name_sql=args.name_sql)

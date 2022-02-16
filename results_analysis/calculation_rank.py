@@ -63,7 +63,8 @@ class rank_pred:
 
         # keep 'cv_number' in last one for averaging
         self.iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name', 'cv_number']
-        self.diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
+        # self.diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
+        self.diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average']
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
@@ -105,20 +106,40 @@ class rank_pred:
         # 2.4. save backtest evaluation metrics
         eval_metrics = self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
 
-        # 2.5. use best config prediction for this y_type
-        best_config = self.__backtest_find_best_config(df=eval_metrics)
-        logging.info(f'best config for [{y_type}]: {best_config}')
-        df_cv_avg_best = []
-        for name, g in df_cv_avg.groupby(['group']):
-            g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)]
-            if len(g_best)==0:
-                g_best = g
-            df_cv_avg_best.append(g_best)
-        df_cv_avg_best = pd.concat(df_cv_avg_best, axis=0)
+        # 2.5.1. use best config prediction for this y_type
+        eval_metrics_avg = self.__backtest_find_calc_metric_avg(df=eval_metrics)
 
-        # 2.6. rank for each trading_day
-        for period in df_cv_avg_best['trading_day'].unique():
-            self.rank_each_trading_day(period, df_cv_avg_best)
+        # 2.5.2. use best config prediction for this y_type  (need to replace rank part)
+        # best_config = self.__backtest_find_best_config(df_mean=eval_metrics_avg, eval_metric='mse')
+        # logging.info(f'best config for [{y_type}]: {best_config}')
+
+        # 2.5.2a. calculate rank for all config
+        eval_col = ['max_ret', 'net_ret', 'r2', 'mae', 'mse']
+        for configs, config_g in eval_metrics_avg.groupby(self.diff_config_col):
+            best_config = dict(zip(self.diff_config_col, configs))
+            self.all_current_config = {"info": best_config, "rank_df": []}
+            self.all_history_config = {"info": best_config, "rank_df": []}
+
+            logging.info(f'best config for [{y_type}]: {best_config}')
+            df_cv_avg_best = []
+            for name, g in df_cv_avg.groupby(['group']):
+                eval = config_g.loc[config_g['group']==name, eval_col].iloc[0,:].to_dict()
+                self.all_history_config["info"]["y_type"] = self.y_type
+                self.all_history_config["info"]["group"] = name
+                self.all_history_config["info"].update(eval)
+                g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config)).all(axis=1)] # TODO: if use best config each group
+                # g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)] # TODO: if use best config each group
+                if len(g_best)==0:
+                    g_best = g
+                df_cv_avg_best.append(g_best)
+            df_cv_avg_best = pd.concat(df_cv_avg_best, axis=0)
+
+            # 2.6. rank for each trading_day
+            for period in df_cv_avg_best['trading_day'].unique():
+                self.rank_each_trading_day(period, df_cv_avg_best)
+
+            self.all_current.append(self.all_current_config)
+            self.all_history.append(self.all_history_config)
 
     @staticmethod
     def __calc_z_weight(q_, df, diff_config_col):
@@ -171,9 +192,9 @@ class rank_pred:
                 df.loc[(df['group'] == k) & (df['factor_name'].isin(v)), 'long_large'] = True
 
         # 2.6.3. append to history / currency df list
-        self.all_history.append(df.sort_values(['group', 'pred_z']))
+        self.all_history_config["rank_df"].append(df.sort_values(['group', 'pred_z']))
         if (period == result_all['trading_day'].max()):  # if keep_all_history also write to prod table
-            self.all_current.append(df.sort_values(['group', 'pred_z']))
+            self.all_current_config["rank_df"].append(df.sort_values(['group', 'pred_z']))
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
@@ -228,9 +249,9 @@ class rank_pred:
         primary_keys = ["name_sql", "group", "trading_day", "y_type"] + self.diff_config_col
         result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
 
-        # 2.4.3. save local plot for evaluation (when DEBUG)
-        if DEBUG:
-            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
+        # 2.4.3. save local plot for evaluation (when DEBUG)    # TODO: change to plot for debug
+        # if DEBUG:
+        #     rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
 
         # 2.4.2. add config JSON column for configs
         result_all_comb['config'] = result_all_comb[self.diff_config_col].to_dict(orient='records')
@@ -258,7 +279,7 @@ class rank_pred:
         ret_dict['r2'] = r2_score(g['pred'], g['actual'])
         return pd.Series(ret_dict)
 
-    def __backtest_find_best_config(self, eval_metric='mse', df=None):
+    def __backtest_find_calc_metric_avg(self, df=None):
         ''' Select Best Config (among other_group_col) '''
 
         if type(df)==type(None):
@@ -270,6 +291,11 @@ class rank_pred:
         df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
         df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()     # average over trading_day
         df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
+
+        return df_mean # Return: best = {Currency -> [Config -> {Config dict}, Metrics -> {Metrics dict}]}
+
+    def __backtest_find_best_config(self, df_mean, eval_metric='mse'):
+        ''' '''
         if eval_metric in ['max_ret', 'net_ret', 'r2']:
             best = df_mean.sort_values(eval_metric, ascending=False).groupby('group').first()[self.diff_config_col]
         elif eval_metric in ['mae', 'mse']:
@@ -283,17 +309,28 @@ class rank_pred:
     def write_backtest_rank_(self, upsert_how="append"):
         ''' write backtest factors: backtest rank -> production_factor_rank_backtest_table '''
         tbl_name_backtest = production_factor_rank_backtest_table
-        df_history = pd.concat(self.all_history, axis=0)
-        df_history["weeks_to_expire"] = self.weeks_to_expire
-        df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
-        df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
+
+        all_history = []
+        for i in self.all_history:
+            df_history = pd.concat(i["rank_df"], axis=0)
+            df_history["weeks_to_expire"] = self.weeks_to_expire
+            df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
+            df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
+            all_history.append({"rank_df": df_history, "info": i["info"]})
+
         if upsert_how==False:
-            return df_history
-        elif upsert_how=="append":
-            trucncate_table_in_database(tbl_name_backtest, db_url_write)
-            upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
-        else:
-            upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=upsert_how)
+            return all_history
+
+        # TODO: update for production when deciding format
+        # df_history = pd.concat(self.all_history, axis=0)
+        # df_history["weeks_to_expire"] = self.weeks_to_expire
+        # df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
+        # df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
+        # elif upsert_how=="append":
+        #     trucncate_table_in_database(tbl_name_backtest, db_url_write)
+        #     upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
+        # else:
+        #     upsert_data_to_database(df_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=upsert_how)
 
     def write_current_rank_(self):
         '''write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history'''
@@ -318,7 +355,7 @@ class rank_pred:
         ''' concat rank current/history & write '''
 
         if not DEBUG:
-            self.write_backtest_rank_()
+            # self.write_backtest_rank_()
             self.write_current_rank_()
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
@@ -366,7 +403,7 @@ if __name__ == "__main__":
 
     # Example
     # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, name_sql='w4_d7_20220214090609_debug', eval_start_date=None, y_type=[]).write_to_db()
+    rank_pred(1/3, name_sql='w26_d7_20220215152028_debug', eval_start_date=None, y_type=[]).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

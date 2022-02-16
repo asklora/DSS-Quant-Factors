@@ -16,14 +16,19 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
 
     df = read_query(query, db_url_read).fillna(0)
     df['net_ret'] = df['max_ret'] - df['min_ret']
+    all_df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
 
     iter_unique_col = ['name_sql', 'group', 'y_type', 'trading_day']  # keep 'cv_number' in last one for averaging
-    diff_config_col = ['tree_type', 'use_pca', 'n_splits']
+    diff_config_col = list(df['config'].to_list()[0].keys())
 
-    df_avg_time = df.groupby(iter_unique_col[:-1] + diff_config_col).mean().reset_index()
-    df_best_avg_time = df_avg_time.sort_values(by=["net_ret"], ascending=False).groupby(iter_unique_col[:-1]).first().reset_index()
-    df_best_avg_time_y = df_best_avg_time.groupby(iter_unique_col[:-2])['net_ret'].agg(['mean', 'count']).reset_index()
-    df_best_avg_time_y['start_time'] = pd.to_datetime(df_best_avg_time_y['name_sql'].str.split('_', expand=True)[2],
+    for name, df in all_df.groupby(['group', 'y_type']):
+
+        df_avg_time = df.groupby(iter_unique_col[:-1] + diff_config_col).mean().reset_index().sort_values(by='max_ret', ascending=False)
+        continue
+
+        df_best_avg_time = df_avg_time.sort_values(by=["net_ret"], ascending=False).groupby(iter_unique_col[:-1]).first().reset_index()
+        df_best_avg_time_y = df_best_avg_time.groupby(iter_unique_col[:-2])['net_ret'].agg(['mean', 'count']).reset_index()
+        df_best_avg_time_y['start_time'] = pd.to_datetime(df_best_avg_time_y['name_sql'].str.split('_', expand=True)[2],
                                                       format='%Y%m%d%H%M%S', errors='coerce')
     # df_best_avg_time_y: rank name_sql given best configuration -> to select name_sql for analysis_backtest
 
@@ -31,4 +36,4 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
 
 if __name__ == "__main__":
     # download_model(weeks_to_expire=26, average_days=28)
-    download_model(name_sql='w8_d7_20220214133209_debug')
+    download_model(name_sql='w26_d7_20220215152028_debug')
