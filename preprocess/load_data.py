@@ -345,7 +345,12 @@ class load_data:
 
         # 6. [Prep X] use PCA on all index/macro inputs
         group_index = {"USD":".SPX", "HKD":".HSI", "EUR":".SXXGR", "CNY": ".CSI300"}
-        mi_pca_col = [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[self.group_name]}', x)]
+        if self.group_name == 'currency':
+            mi_pca_col = []
+            for v in group_index.values():
+                mi_pca_col += [x for x in self.x_col_dict['index'] if re.match(f'^{v}', x)]
+        else:
+            mi_pca_col = [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[self.group_name]}', x)]
         mi_pca_col += self.x_col_dict['macro']
         mi_pca_train, mi_pca_test, mi_feature_name = load_data.standardize_pca_x(
             self.train[mi_pca_col], self.test[mi_pca_col], input_options["mi_pca"])

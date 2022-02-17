@@ -73,6 +73,8 @@ class rf_HPOT:
 
         # prediction on all sets
         Y_train_pred = regr.predict(self.sample_set['train_xx'])
+        self.sql_result['train_pred_std'] = np.std(Y_train_pred, axis=0).mean()
+
         Y_valid_pred = regr.predict(self.sample_set['valid_x'])
         Y_test_pred = regr.predict(self.sample_set['test_x'])
         logging.debug(f'Y_train_pred: \n{Y_train_pred[:5]}')
@@ -85,7 +87,7 @@ class rf_HPOT:
         ''' test return based on test / train set quantile bins '''
 
         q_ = [0., 1/3, 2/3, 1.]
-        pred_qcut = pd.qcut(pred.flatten(), q=q_, labels=False, duplicates='drop').reshape((1,-1))
+        pred_qcut = pd.qcut(pred.flatten(), q=q_, labels=False, duplicates='drop').reshape(pred.shape)
         ret = actual[pred_qcut==2].mean()
         best_factor = np.array([x[2:] for x in self.y_col])[pred_qcut[0,:]==2]
         return ret, best_factor

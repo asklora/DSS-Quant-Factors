@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    group_code_list = ['CNY', 'HKD']   # TODO: add EUR
+    group_code_list = ['currency']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
-    use_pca_list = [0.6, None]
+    use_pca_list = [None]
     n_splits_list = [.2]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [10]
