@@ -1221,6 +1221,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_formula_ratios_prod.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_model_descriptive/fcm_ratio_cluster_multiperiod.py">
           <value>
             <Attribute>
@@ -1487,6 +1494,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/preprocess/analysis_volatility.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/preprocess/cache_all_data.csv">
           <value>
             <Attribute>
@@ -1523,6 +1537,13 @@
           </value>
         </entry>
         <entry key="/preprocess/cache_ws.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/preprocess/cached_vol_ret.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -1872,6 +1893,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/w4_d7_20220210182958_debug.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/w8_d7_20220207143018_debug.csv">
           <value>
             <Attribute>
@@ -1880,6 +1908,20 @@
           </value>
         </entry>
         <entry key="/results_analysis/w8_d7_20220210143757_debug.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/w8_d7_20220210203547_debug.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/w8_d7_20220217120110_debug.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

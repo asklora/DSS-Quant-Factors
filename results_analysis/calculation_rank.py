@@ -237,7 +237,7 @@ class rank_pred:
         logging.debug("=== Update testing set results ===")
         result_all_avg = result_all.groupby(['name_sql', 'group', 'trading_day'])['actual'].mean()  # actual factor premiums
         result_all_comb = result_all.groupby(['name_sql', 'group', 'trading_day']+self.diff_config_col
-                                             ).apply(rank_pred.__get_summary_stats_in_group)
+                                             ).apply(self.__get_summary_stats_in_group)
         result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('trading_day') <
                                               result_all_comb.index.get_level_values('trading_day').max()].reset_index()
         result_all_comb[['max_ret','min_ret','mae','mse','r2']] = result_all_comb[['max_ret','min_ret','mae','mse','r2']].astype(float)
@@ -263,11 +263,14 @@ class rank_pred:
 
         return result_all_comb
 
-    @staticmethod
-    def __get_summary_stats_in_group(g):
+    def __get_summary_stats_in_group(self, g):
         ''' Calculate basic evaluation metrics for factors '''
 
         ret_dict = {}
+        g = g.copy()
+        c_date = g["trading_day"].to_list()[0]
+        c_group = g["group"].to_list()[0]
+        g['factor_name'] = [f'{x} (L)' if x in self.neg_factor[c_date][c_group] else f'{x} (S)' for x in g['factor_name']]
         max_g = g[g['factor_weight'] == 2]
         min_g = g[g['factor_weight'] == 0]
         ret_dict['max_factor'] = dict(Counter(max_g['factor_name'].tolist()))
