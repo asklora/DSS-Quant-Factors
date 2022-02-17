@@ -28,7 +28,9 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
 
-    df = df.loc
+    df1 = df.groupby(diff_config_col)['r2_valid'].count()
+    df2 = df.groupby(diff_config_col + ['group_code', 'y_type'])['r2_valid'].count()
+    df3 = df.groupby(diff_config_col + ['group_code', 'y_type', 'testing_period'])['r2_valid'].count()
 
     # 2. find best in cv groups
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()

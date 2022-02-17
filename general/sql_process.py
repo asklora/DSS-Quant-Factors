@@ -46,7 +46,7 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
         return False
     return True
 
-@retry(retries=3, delay=1)
+@retry(tries=3, delay=1)
 def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
                             drop_primary_key=False, verbose=1):
     ''' upsert Table to DB
