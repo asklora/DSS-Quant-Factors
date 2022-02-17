@@ -28,6 +28,8 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
 
+    df = df.loc
+
     # 2. find best in cv groups
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
 
@@ -71,6 +73,6 @@ if __name__ == "__main__":
     # download_model(name_sql='w4_d7_20220204170205_debug')
     # download_model(name_sql='w4_d7_20220204144656_debug')
     # download_model(name_sql='w4_d7_20220204181443_debug')
-    download_model(name_sql='w8_d7_20220214133209_debug')
+    download_model(name_sql='w4_d7_20220216100210_debug')
     # download_model(name_sql='w26_d7_20220207144412_debug')
     # download_model(name_sql='w26_d7_20220207153438_debug')

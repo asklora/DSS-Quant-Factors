@@ -165,8 +165,8 @@ class load_data:
     def split_group(self, group_name=None):
         ''' split main sample sets in to industry_parition or country_partition '''
 
-        curr_list = ['KRW','GBP','HKD','EUR','CNY','USD','TWD','JPY','SGD'] #
-        # curr_list = ['GBP','HKD','EUR','USD'] #
+        # curr_list = ['KRW','GBP','HKD','EUR','CNY','USD','TWD','JPY','SGD'] #
+        curr_list = ['CNY','HKD','EUR','USD'] #
 
         self.group_name = group_name
 
