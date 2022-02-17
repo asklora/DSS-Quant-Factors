@@ -38,7 +38,7 @@ class rf_HPOT:
             'max_features': hp.choice('max_features', [0.5, 0.7, 0.9]),
             'min_impurity_decrease': 0,
             'max_samples': hp.choice('max_samples',[0.7, 0.9]),
-            'ccp_alpha': hp.choice('ccp_alpha', [0, 1e-3]),
+            'ccp_alpha': hp.choice('ccp_alpha', [0]),
             # 'random_state': 666
         }
 

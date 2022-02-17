@@ -28,6 +28,14 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
 
+    # 1.1. check train_pred_std == 0
+    corr = {}
+    for i in df.columns.to_list():
+        unique_var = df[i].unique()
+        if len(unique_var) in [2, 3]:
+            corr[i] = df.groupby(i)['train_pred_std'].apply(lambda x: sum(x<1e-5)/len(x)).to_dict()
+    print(corr)
+
     df1 = df.groupby(diff_config_col)['r2_valid'].count().reset_index()
     df2 = df.groupby(diff_config_col + ['group_code', 'y_type'])['r2_valid'].count()
     df3 = df.groupby(diff_config_col + ['group_code', 'y_type', 'testing_period'])['r2_valid'].count()
@@ -75,6 +83,6 @@ if __name__ == "__main__":
     # download_model(name_sql='w4_d7_20220204170205_debug')
     # download_model(name_sql='w4_d7_20220204144656_debug')
     # download_model(name_sql='w4_d7_20220204181443_debug')
-    download_model(name_sql='w4_d7_20220216100210_debug')
+    download_model(name_sql='w8_d7_20220217120110_debug')
     # download_model(name_sql='w26_d7_20220207144412_debug')
     # download_model(name_sql='w26_d7_20220207153438_debug')
