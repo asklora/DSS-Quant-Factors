@@ -22,20 +22,22 @@ class vol_analysis:
 
         self.vol_col = vol_col  # vol_0_30 / skew for evaluation
 
-        # self.ratio = self.read_ratio(ticker, currency)
-        # self.ratio.to_csv('cached_vol_ret.csv', index=False)
-        self.ratio = pd.read_csv('cached_vol_ret.csv').dropna(how='any')
+        try:
+            self.ratio = pd.read_csv(f'cached_vol_ret_{vol_col}.csv').dropna(how='any')
+        except:
+            self.ratio = self.read_ratio(ticker, currency)
+            self.ratio.to_csv(f'cached_vol_ret_{vol_col}.csv', index=False)
 
         self.prem = self.read_premium(currency)
 
-        # self.corr_vol()
+        self.corr_vol()
         self.dist_vol()
 
     def read_ratio(self, ticker, currency):
         ''' read vol / return ratios from factor_processed_ratio Table '''
         logging.info(f"=== Get vol/ret ratios from {processed_ratio_table} ===")
 
-        conditions = ["is_active", f"(field='vol_0_30' or field like 'stock_return_%%')"]
+        conditions = ["is_active", f"(field='{self.vol_col}' or field like 'stock_return_%%')"]
         if ticker:
             conditions.append(f"u.ticker in {tuple(ticker)}")
         if currency:
@@ -93,7 +95,7 @@ class vol_analysis:
             plt.xticks(rotation=45)
             k+=1
         plt.tight_layout()
-        plt.suptitle(f'Vol/Ret Corr ({cur})')
+        plt.suptitle(f'{self.vol_col} Corr ({cur})')
         plt.show()
         pass
 
@@ -104,13 +106,14 @@ class vol_analysis:
         k = 1
         for cur, g in self.ratio.groupby(['currency_code']):
             ax = fig.add_subplot(2, 2, k)
-            d1 = g.groupby(['year'])['vol_0_30'].apply(list).to_dict()
+            d1 = g.groupby(['year'])[self.vol_col].apply(list).to_dict()
             plt.boxplot(d1.values(), whis=2)
             ax.set_xticklabels(d1.keys(), rotation=90)
-            # ax.set_ylim((-0.1, 0.1))
+            ax.set_ylim((0, 1))
             ax.set_xlabel(cur)
+            ax.axhline(y=0, color='r', linestyle='-')
             k+=1
-        plt.suptitle(f'Vol Dist')
+        plt.suptitle(f'{self.vol_col} Dist')
         plt.show()
 
         for w, g1 in self.prem.groupby(['weeks_to_expire']):
@@ -123,10 +126,11 @@ class vol_analysis:
                 ax.set_xticklabels(d1.keys(), rotation=90)
                 # ax.set_ylim((-0.3, 0.3))
                 ax.set_xlabel(cur)
+                ax.axhline(y=0, color='r', linestyle='-')
                 k+=1
-            plt.suptitle(f'Vol Premium Dist ({w})')
+            plt.suptitle(f'{self.vol_col} Premium Dist ({w})')
             plt.show()
         pass
 
 if __name__ == '__main__':
-    vol_analysis(currency=['HKD', 'CNY', 'USD', 'EUR'])
+    vol_analysis(currency=['HKD', 'CNY', 'USD', 'EUR'], vol_col='vol_0_30')

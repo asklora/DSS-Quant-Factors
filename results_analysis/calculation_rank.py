@@ -117,29 +117,33 @@ class rank_pred:
         eval_col = ['max_ret', 'net_ret', 'r2', 'mae', 'mse']
         for configs, config_g in eval_metrics_avg.groupby(self.diff_config_col):
             best_config = dict(zip(self.diff_config_col, configs))
-            self.all_current_config = {"info": best_config, "rank_df": []}
-            self.all_history_config = {"info": best_config, "rank_df": []}
+            eval = config_g.set_index(['group'])[eval_col].to_dict()
 
             logging.info(f'best config for [{y_type}]: {best_config}')
             df_cv_avg_best = []
             for name, g in df_cv_avg.groupby(['group']):
-                eval = config_g.loc[config_g['group']==name, eval_col].iloc[0,:].to_dict()
-                self.all_history_config["info"]["y_type"] = self.y_type
-                self.all_history_config["info"]["group"] = name
-                self.all_history_config["info"].update(eval)
                 g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config)).all(axis=1)] # TODO: if use best config each group
                 # g_best = g.loc[(g[self.diff_config_col]==pd.Series(best_config[name])).all(axis=1)] # TODO: if use best config each group
-                if len(g_best)==0:
-                    g_best = g
+                # if len(g_best)==0:
+                #     g_best = g
                 df_cv_avg_best.append(g_best)
             df_cv_avg_best = pd.concat(df_cv_avg_best, axis=0)
 
-            # 2.6. rank for each trading_day
-            for period in df_cv_avg_best['trading_day'].unique():
-                self.rank_each_trading_day(period, df_cv_avg_best)
+            best_config.update(eval)
+            best_config["y_type"] = self.y_type
 
-            self.all_current.append(self.all_current_config)
-            self.all_history.append(self.all_history_config)
+            # 2.6. rank for each trading_day
+            rank_df_history = []
+            for period in df_cv_avg_best['trading_day'].unique():
+                rank_df = self.rank_each_trading_day(period, df_cv_avg_best)
+
+                # 2.6.3. append to history / currency df list
+                rank_df_history.append(rank_df)
+                if (period == df['trading_day'].max()):  # if keep_all_history also write to prod table
+                    self.all_current.append({"info": best_config, "rank_df": rank_df.copy()})
+
+            rank_df_history = pd.concat(rank_df_history, axis=0).sort_values(by=['trading_day', 'group', 'factor_name'])
+            self.all_history.append({"info": best_config, "rank_df": rank_df_history.copy()})
 
     @staticmethod
     def __calc_z_weight(q_, df, diff_config_col):
@@ -191,10 +195,7 @@ class rank_pred:
             if type(v)==type([]):
                 df.loc[(df['group'] == k) & (df['factor_name'].isin(v)), 'long_large'] = True
 
-        # 2.6.3. append to history / currency df list
-        self.all_history_config["rank_df"].append(df.sort_values(['group', 'pred_z']))
-        if (period == result_all['trading_day'].max()):  # if keep_all_history also write to prod table
-            self.all_current_config["rank_df"].append(df.sort_values(['group', 'pred_z']))
+        return df.sort_values(['group', 'pred_z'])
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
@@ -315,11 +316,11 @@ class rank_pred:
 
         all_history = []
         for i in self.all_history:
-            df_history = pd.concat(i["rank_df"], axis=0)
+            df_history = i["rank_df"]
             df_history["weeks_to_expire"] = self.weeks_to_expire
             df_history = uid_maker(df_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
             df_history = df_history.drop_duplicates(subset=["uid"], keep="last")
-            all_history.append({"rank_df": df_history, "info": i["info"]})
+            all_history.append({"rank_df": df_history.copy(), "info": i["info"]})
 
         if upsert_how==False:
             return all_history

@@ -38,6 +38,7 @@ class score_scale:
         self.fundamentals = fundamentals
         self.calculate_column = calculate_column
 
+
     @staticmethod
     def __scale1_trim_outlier(fundamentals, calculate_column):
         ''' Scale 1: log transformation for high skewness & trim outlier to +/- 2 std -> [.*_score] columns '''
@@ -554,7 +555,8 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
 
             # 2. DataFrame for 10 group qcut - Mean Returns
             eval_qcut_df_avg = eval_qcut_df.groupby(["currency_code", "score", "weeks_to_expire"]).mean().reset_index()
-            qcut_eval.append(add_info_col(eval_qcut_df_avg).copy())
+            eval_qcut_df_avg_final = add_info_col(eval_qcut_df_avg).copy()
+            qcut_eval.append(eval_qcut_df_avg_final)
 
             # 3.1. DataFrame for Top 10 picks - Mean Returns / mode indsutry(count) / positive pct
             eval_best_df10 = pd.DataFrame(eval_best_all10).stack(level=[-2, -1]).unstack(level=1)
@@ -563,7 +565,8 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                                                                       "level_2": "weeks_to_expire",})
             eval_best_df10['positive_pct'] = eval_best_df10['positive_pct'].replace(0, np.nan)
             eval_best_df10['return'] = pd.to_numeric(eval_best_df10['return'])
-            top10_eval.append(add_info_col(eval_best_df10).copy())
+            eval_best_df10_final = add_info_col(eval_best_df10).copy()
+            top10_eval.append(eval_best_df10_final)
         except Exception as e:
             print(e)
             error_iter.append(iter["info"])
@@ -657,7 +660,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     # can select name_sql based on
-    name_sql = 'w26_d7_20220215152028_debug'
+    name_sql = 'w8_d7_20220215191634_debug'
     # test_score_history(name_sql=name_sql)
     test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
 
