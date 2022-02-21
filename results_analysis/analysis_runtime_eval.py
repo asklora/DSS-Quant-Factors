@@ -85,6 +85,6 @@ if __name__ == "__main__":
     # download_model(name_sql='w4_d7_20220204170205_debug')
     # download_model(name_sql='w4_d7_20220204144656_debug')
     # download_model(name_sql='w4_d7_20220204181443_debug')
-    download_model(name_sql='w8_d7_20220217120110_debug')
+    download_model(name_sql='w26_d7_20220218191239_debug')
     # download_model(name_sql='w26_d7_20220207144412_debug')
     # download_model(name_sql='w26_d7_20220207153438_debug')

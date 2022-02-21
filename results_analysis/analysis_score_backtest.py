@@ -222,7 +222,7 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=None):
+def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=None, top_config=3, use_usd=False, start_year=2016):
     '''  calculate score with DROID v2 method & evaluate
 
     Parameters
@@ -238,7 +238,7 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
 
     if name_sql:
         print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-        factor_rank = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+        factor_rank = rank_pred(1/3, name_sql=name_sql, top_config=top_config).write_backtest_rank_(upsert_how=False)
     else:
         print("=== Get [Factor Rank] history from Backtest Table ===")
         conditions = [f"True"]
@@ -249,32 +249,31 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
         factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
                                  f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
         print(factor_rank.dtypes)
-    factor_rank.to_csv('cached_factor_rank.csv', index=False)
 
-    print("=== Get [Factor Processed Ratio] history ===")
-    conditions = ["r.ticker not like '.%%'"]
-    if currency_code:
-        conditions.append(f"currency_code in {tuple(currency_code)}")
-    if start_date:
-        conditions.append(f"trading_day>='{start_date}'")
-    ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
-                  f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
-                  f"WHERE {' AND '.join(conditions)}"
-    fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
-                                                  values="value").reset_index()
-    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    factor_rank = pd.read_csv('cached_factor_rank.csv')
+
+    # print("=== Get [Factor Processed Ratio] history ===")
+    # conditions = ["r.ticker not like '.%%'"]
+    # if currency_code:
+    #     conditions.append(f"currency_code in {tuple(currency_code)}")
+    # if start_date:
+    #     conditions.append(f"trading_day>='{start_date}'")
+    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+    #               f"WHERE {' AND '.join(conditions)}"
+    # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+    #                                               values="value").reset_index()
+    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
-    factor_rank = pd.read_csv('cached_factor_rank.csv')
-    print(factor_rank)
-
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
-    fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>=dt.datetime(2021,1,31)]
+    fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>=dt.datetime(start_year,1,1)]
 
-    # fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(['HKD'])]
-    # factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
+    if use_usd:
+        factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
 
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
     print(sorted(list(factor_rank["trading_day"].unique())))
@@ -401,6 +400,12 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     factor_selection_best = df.groupby(['group', 'y_type']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
     factor_selection_best = factor_selection_best.drop(columns=diff_config_col)
 
+    csv_name = 'top{}_{}'.format(top_config, start_year)
+    if name_sql:
+        csv_name += f"_{name_sql}"
+    if use_usd:
+        csv_name += f"_usd"
+
     to_excel({"10 Qcut (Avg Ret)": eval_qcut_df,
               "10 Qcut (Avg Ret-Agg)": eval_qcut_df_avg,
               "Top 10 Picks": eval_best_df10,
@@ -408,7 +413,7 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
               "Top 20 Picks": eval_best_df20,
               "Top 20 Picks(agg)": eval_best_df20_agg,
               "Factor Selection & Avg Premiums": factor_selection,
-              "Best Factor Config": factor_selection_best}, file_name=(name_sql if name_sql else ""))
+              "Best Factor Config": factor_selection_best}, file_name=csv_name)
 
     # Evaluate
     # eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
@@ -430,21 +435,21 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
     '''
 
     print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-    factor_rank_all = rank_pred(1/3, name_sql=name_sql).write_backtest_rank_(upsert_how=False)
+    factor_rank_all = rank_pred(1/3, name_sql=name_sql, top_config=None).write_backtest_rank_(upsert_how=False)
 
-    print("=== Get [Factor Processed Ratio] history ===")
-    conditions = ["r.ticker not like '.%%'"]
-    if currency_code:
-        conditions.append(f"currency_code in {tuple(currency_code)}")
-    if start_date:
-        conditions.append(f"trading_day>='{start_date}'")
-    ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
-                  f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
-                  f"WHERE {' AND '.join(conditions)}"
-    fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
-                                                  values="value").reset_index()
-    fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    # print("=== Get [Factor Processed Ratio] history ===")
+    # conditions = ["r.ticker not like '.%%'"]
+    # if currency_code:
+    #     conditions.append(f"currency_code in {tuple(currency_code)}")
+    # if start_date:
+    #     conditions.append(f"trading_day>='{start_date}'")
+    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+    #               f"WHERE {' AND '.join(conditions)}"
+    # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+    #                                               values="value").reset_index()
+    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
@@ -548,9 +553,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                                                                       "level_3": "weeks_to_expire",})
 
             def add_info_col(df):
-                info_df = pd.DataFrame(iter["info"], index=[0])
-                df = pd.concat([df.reset_index(drop=True), info_df], axis=1)
-                df[info_df.columns.to_list()] = df[info_df.columns.to_list()].ffill(0)
+                df = df.merge(iter["info"], left_on=["currency_code"], right_index=True)
                 return df
 
             # 2. DataFrame for 10 group qcut - Mean Returns
@@ -660,8 +663,13 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     # can select name_sql based on
-    name_sql = 'w8_d7_20220215191634_debug'
-    # test_score_history(name_sql=name_sql)
-    test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
+    #x'w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug'
+    # for name_sql in ['w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug']:
+    for name_sql in ['w26_d7_20220220200030_debug']:
+        for top_config in [10]:
+            for use_usd in [False, True]:
+                for start_year in [2016, 2018, 2020]:
+                    test_score_history(name_sql=name_sql, use_usd=use_usd, start_year=start_year, top_config=top_config)
+    # test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
 
     # test_score_history(name_sql=args.name_sql)
