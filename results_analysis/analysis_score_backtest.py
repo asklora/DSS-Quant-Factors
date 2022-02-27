@@ -9,7 +9,7 @@ from sklearn.preprocessing import robust_scale, minmax_scale
 import matplotlib.pyplot as plt
 
 import global_vars
-from general.sql_process import read_query, read_table
+from general.sql_process import read_query, read_table, upsert_data_to_database
 from general.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
@@ -139,11 +139,11 @@ class score_scale:
             fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = \
                 fundamentals.loc[fundamentals["currency_code"] == group, score_col].mean(axis=1).values
 
-            # sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
-            # score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
-            # score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
-            # fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
-            #     fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
+            sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
+            score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
+            score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
+            fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
+                fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
 
         return fundamentals
 
@@ -222,7 +222,7 @@ class score_scale:
 #
 #     return triw.merge(trim, on=["ticker", "trading_day"], how="outer")
 
-def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=None, top_config=3, use_usd=False, start_year=2016):
+def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=None, top_config=3, use_usd=None, start_year=2016):
     '''  calculate score with DROID v2 method & evaluate
 
     Parameters
@@ -249,9 +249,19 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
         factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
                                  f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
         print(factor_rank.dtypes)
-
     factor_rank.to_csv('cached_factor_rank.csv', index=False)
+
     factor_rank = pd.read_csv('cached_factor_rank.csv')
+    factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
+    factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
+
+    # x = factor_rank.groupby(['trading_day','group'])['pred_z'].count().unstack()
+    # x = x.reset_index()
+    # x.sort_values(by=['trading_day']).to_csv('debug_factor_rank.csv')
+
+    # factor_rank = factor_rank.loc[factor_rank['trading_day']==dt.datetime(2020,1,5)]
+    # global universe_currency_code
+    # universe_currency_code = ['HKD']
 
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
@@ -266,19 +276,21 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
     #                                               values="value").reset_index()
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    # exit(200)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
+    print(fundamentals_score['trading_day'].min())
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
     fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>=dt.datetime(start_year,1,1)]
 
-    if use_usd:
-        factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
+    if type(use_usd)==type(None):       # by default -> only EUR use USD rate
+        factor_rank = factor_rank.loc[factor_rank['group']!='EUR']
+    elif use_usd:
+        factor_rank = factor_rank.loc[factor_rank['group']=='USD']
 
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
     print(sorted(list(factor_rank["trading_day"].unique())))
-    factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
-    factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
 
     # Test return calculation
     # fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
@@ -376,8 +388,8 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     eval_best_df10 = eval_best_df10.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "trading_day",
                                                               "level_2": "weeks_to_expire",})
-    eval_best_df10['positive_pct'] = eval_best_df10['positive_pct'].replace(0, np.nan)
     eval_best_df10['return'] = pd.to_numeric(eval_best_df10['return'])
+    eval_best_df10['positive_pct'] = np.where(eval_best_df10['return'].isnull(), np.nan, eval_best_df10['positive_pct'])
     plot_topn_vs_mkt(eval_best_df10, weeks_to_expire, fig_name=f'{name_sql}_top10')
     eval_best_df10_agg = eval_best_df10.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
 
@@ -386,8 +398,8 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
     eval_best_df20 = eval_best_df20.reset_index().rename(columns={"level_0": "currency_code",
                                                               "level_1": "trading_day",
                                                               "level_2": "weeks_to_expire",})
-    eval_best_df20['positive_pct'] = eval_best_df20['positive_pct'].replace(0, np.nan)
     eval_best_df20['return'] = pd.to_numeric(eval_best_df20['return'])
+    eval_best_df20['positive_pct'] = np.where(eval_best_df20['return'].isnull(), np.nan, eval_best_df20['positive_pct'])
     plot_topn_vs_mkt(eval_best_df20, weeks_to_expire, fig_name=f'{name_sql}_top20')
     eval_best_df20_agg = eval_best_df20.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
 
@@ -413,7 +425,29 @@ def test_score_history(currency_code=None, start_date='2020-10-01', name_sql=Non
               "Top 20 Picks": eval_best_df20,
               "Top 20 Picks(agg)": eval_best_df20_agg,
               "Factor Selection & Avg Premiums": factor_selection,
-              "Best Factor Config": factor_selection_best}, file_name=csv_name)
+              "Best Factor Config": factor_selection_best}, file_name=csv_name+"-")
+
+    # update top 10 to DB
+    def write_topn_to_db(df, n):
+        ''' for each backtest eval : write top 10 ticker to DB '''
+
+        tbl_name = global_vars.production_factor_rank_backtest_top_table
+        df = df.convert_dtypes()
+        df = df.rename(columns={"mode count": "mode_count"})
+        df["return"] = (df["return"] * 100).round(2).astype(float)
+        df["positive_pct"] = (df["positive_pct"] * 100).round(0)
+        df["weeks_to_expire"] = pd.to_numeric(df["weeks_to_expire"].str.split('_', expand=True).values[:, 0])
+        df['name_sql'] = name_sql
+        df['start_date'] = df['trading_day'].min()
+        df['n_period'] = len(df['trading_day'].unique())
+        df['n_top'] = n
+        df[["trading_day", "start_date"]] = df[["trading_day", "start_date"]].apply(lambda x: x.dt.date)
+        upsert_data_to_database(df, tbl_name,
+                                primary_key=["name_sql", "start_date", "n_period", "n_top", "currency_code", "trading_day"],
+                                how='update', db_url=global_vars.db_url_alibaba_prod)
+
+    write_topn_to_db(eval_best_df10, 10)
+    write_topn_to_db(eval_best_df20, 20)
 
     # Evaluate
     # eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
@@ -450,6 +484,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
     # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
     #                                               values="value").reset_index()
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
+    # exit(1)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
@@ -665,11 +700,11 @@ if __name__ == "__main__":
     # can select name_sql based on
     #x'w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug'
     # for name_sql in ['w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug']:
-    for name_sql in ['w26_d7_20220220200030_debug']:
+    # for name_sql in [ 'w4_d7_official', 'w8_d7_official', 'w13_d7_official', 'w26_d7_official']:
+    for name_sql in ['w4_d7_official']:
         for top_config in [10]:
-            for use_usd in [False, True]:
-                for start_year in [2016, 2018, 2020]:
-                    test_score_history(name_sql=name_sql, use_usd=use_usd, start_year=start_year, top_config=top_config)
+            for start_year in [2016]:
+                test_score_history(name_sql=name_sql, start_year=start_year, top_config=top_config)
     # test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
 
     # test_score_history(name_sql=args.name_sql)

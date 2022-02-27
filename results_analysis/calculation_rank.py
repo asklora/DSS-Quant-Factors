@@ -207,7 +207,8 @@ class rank_pred:
         ''' merge factor_stock & factor_model_stock '''
 
         try:
-            pred = pd.read_csv(f'pr1ed_{name_sql}.csv')
+            logging.info('=== Load local prediction history ===')
+            pred = pd.read_csv(f'pred_{name_sql}.csv')
         except:
             logging.info('=== Download prediction history ===')
             if name_sql:
@@ -228,12 +229,20 @@ class rank_pred:
             query = text(f'''
                     SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.'+x for x in label_col])} 
                     FROM {result_pred_table} P 
-                    INNER JOIN (SELECT * FROM {result_score_table} WHERE group_code='currency') S ON ((S.{uid_col}=P.{uid_col})) 
+                    INNER JOIN (SELECT * FROM {result_score_table} WHERE group_code<>'currency') S ON ((S.{uid_col}=P.{uid_col})) 
                     WHERE {' AND '.join(conditions)}
                     ORDER BY S.{uid_col}'''.replace(",)", ")"))
             pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
             pred.to_csv(f'pred_{name_sql}.csv', index=False)
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
+
+        # x = pred.groupby(['trading_day','group']+self.diff_config_col)['pred'].count().sort_values()
+        # x = pred.groupby(['trading_day','group'])['pred'].count()
+        # x = x.unstack()
+        # x = x.reset_index()
+        # x = x.sort_values(by=['trading_day'])
+        # x.to_csv('debug_pred.csv', index=False)
+
         return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------

@@ -5,6 +5,7 @@ import argparse
 import time
 from dateutil.relativedelta import relativedelta
 
+import global_vars
 from global_vars import *
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
@@ -22,12 +23,12 @@ def mp_rf(*mp_args):
 
     # try:
     if True:
-        data, sql_result, i, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, \
+        data, sql_result, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, \
             use_average, down_mkt_pct = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
         sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
-        sql_result['tree_type'] = tree_type + str(i)
+        sql_result['tree_type'] = tree_type
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
         sql_result['use_pca'] = use_pca
@@ -85,18 +86,19 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='squared_error')
-    parser.add_argument('--weeks_to_expire', default=26, type=int)
-    parser.add_argument('--average_days', default=28, type=int)
+    parser.add_argument('--weeks_to_expire', default=4, type=int)
+    parser.add_argument('--average_days', default=7, type=int)
     parser.add_argument('--processes', default=1, type=int)
-    parser.add_argument('--backtest_period', default=210, type=int)
+    parser.add_argument('--backtest_period', default=75, type=int)
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--restart', default=None, type=str)
     args = parser.parse_args()
 
-    group_code_list = ['currency']   # TODO: add EUR
+    group_code_list = ['USD', 'HKD', 'CNY']   # TODO: add EUR
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -137,11 +139,11 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
-    use_pca_list = [None]
-    n_splits_list = [.2]
+    use_pca_list = [0.4, None]
+    n_splits_list = [.2, 0.1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
-    qcut_q_list = [10]
-    use_average_list = [False]
+    qcut_q_list = [0, 10]
+    use_average_list = [True, False]
     down_mkt_pct_list = [0.5, 0.7]
 
     # y_type_list = ["all"]
@@ -154,8 +156,8 @@ if __name__ == "__main__":
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
 
-    # sample_interval = args.weeks_to_expire # use if want non-overlap sample
-    sample_interval = 4
+    sample_interval = args.weeks_to_expire # use if want non-overlap sample
+    # sample_interval = 4
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-sample_interval*args.backtest_period-1::sample_interval]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
@@ -169,10 +171,26 @@ if __name__ == "__main__":
     mode = 'trim' if args.trim else ''
     data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
-    all_groups = product([data], [sql_result], [1], group_code_list, testing_period_list, y_type_list,
+    all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
                          tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
                          down_mkt_pct_list)
+    diff_config_col = ['group_code', 'testing_period', 'y_type',
+                       'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
+    all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
     all_groups = [tuple(e) for e in all_groups]
+
+    # (restart) filter for failed iteration
+    if args.restart:
+        fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
+                            f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
+                            f"GROUP BY {', '.join(diff_config_col)}")
+        fin_df['tree_type'] = fin_df['tree_type'].str[:-1]
+
+        all_groups_df = fin_df.merge(all_groups_df, how='outer', on=diff_config_col).sort_values(by=diff_config_col)
+        all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col].values.tolist()
+        all_groups = [tuple([data, sql_result]+e) for e in all_groups_df]
+        print(f'Restart [{args.restart}]: rest iterations (n={len(all_groups)})')
+        sql_result["name_sql"] = args.restart
 
     # Reset results table everytimes
     with mp.Pool(processes=args.processes) as pool:
