@@ -98,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument('--restart', default=None, type=str)
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'HKD', 'CNY']   # TODO: add EUR
+    group_code_list = ['USD', 'HKD', 'CNY']
 
     # --------------------------------------- Schedule for Production --------------------------------
 
