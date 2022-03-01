@@ -9,7 +9,7 @@ from retry import retry
 from global_vars import *
 from general.send_slack import to_slack
 
-def trucncate_table_in_database(table, db_url=db_url_alibaba):
+def trucncate_table_in_database(table, db_url=db_url_write):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -20,7 +20,7 @@ def trucncate_table_in_database(table, db_url=db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
-def drop_table_in_database(table, db_url=db_url_alibaba):
+def drop_table_in_database(table, db_url=db_url_write):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -31,7 +31,7 @@ def drop_table_in_database(table, db_url=db_url_alibaba):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
-def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
+def delete_data_on_database(table, db_url=db_url_write, query=None):
     ''' delete data from table in databased '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
@@ -47,8 +47,8 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
     return True
 
 @retry(tries=3, delay=1)
-def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alibaba, how="update", verbose=1,
-                            dtype=None, chucksize=20000):
+def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_write, how="update", verbose=1,
+                            dtype=None, chunksize=20000):
     ''' upsert Table to DB
 
     Parameters
@@ -85,19 +85,24 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alib
             data = data.dropna(subset=primary_key)
             data = data.set_index(primary_key)
 
-            if type(dtype)!=None:
-                dtype_param = {"dtype": dtype}
+            if type(dtype)!=type(None):
+                upsert_params = dict(
+                    df=data,
+                    table_name=table,
+                    if_row_exists=how,
+                    chunksize=chunksize,
+                    add_new_columns=True,
+                    dtype=dtype,
+                )
             else:
-                dtype_param = {}
-
-            upsert(engine,
-                   df=data,
-                   table_name=table,
-                   if_row_exists=how,
-                   chunksize=chucksize,
-                   add_new_columns=True
-                   **dtype_param
-                   )
+                upsert_params = dict(
+                    df=data,
+                    table_name=table,
+                    if_row_exists=how,
+                    chunksize=chunksize,
+                    add_new_columns=True,
+                )
+            upsert(engine, **upsert_params)
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose>=0:
@@ -138,7 +143,7 @@ def record_table_update_time(table):
     df.index.name = "tbl_name"
     data_type = {"tbl_name": TEXT}
 
-    engine = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(db_url_write_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
     upsert(engine,
            df=df,
            table_name=update_time_table,

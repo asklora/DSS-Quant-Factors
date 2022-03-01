@@ -3,7 +3,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
-from sqlalchemy.types import TEXT, DATE, DOUBLE_PRECISION
+from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 from global_vars import *
 import multiprocessing as mp
 from contextlib import suppress
@@ -111,13 +111,13 @@ def get_skew(tri):
     return tri
 
 def resample_to_weekly(df, date_col):
-    ''' Resample to bi-weekly stock tri '''
-    monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='W')
+    ''' Resample to weekly stock tri '''
+    monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()),  freq='W-SUN')
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
 def calc_stock_return(ticker, restart, tri_return_only,
-                      stock_return_map={1: [1], 4: [7], 8: [7, 14], 26: [7, 28]}):
+                      stock_return_map={4: [7], 8: [7], 13: [7], 26: [7]}):
 
     '''   Calcualte monthly stock return
 
@@ -392,7 +392,7 @@ def combine_stock_factor_data(ticker, restart, tri_return_only):
         df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
         df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
 
-        return df[['ticker','trading_day','close']]
+        return df[['ticker', 'trading_day', 'close']]
 
     df.update(adjust_close(df))
 

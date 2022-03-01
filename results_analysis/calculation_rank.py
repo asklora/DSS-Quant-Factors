@@ -22,7 +22,7 @@ from collections import Counter
 
 # define dtypes for factor_rank (current/history/backtest) tables when writing to DB
 
-rank_history_dtypes = dict(
+rank_dtypes = dict(
     group=TEXT,
     factor_name=TEXT,
     weeks_to_expire=INTEGER,
@@ -31,8 +31,6 @@ rank_history_dtypes = dict(
     long_large=BOOLEAN,
     last_update=TIMESTAMP
 )
-
-rank_dtypes = rank_history_dtypes.update({"trading_day": DATE})
 
 class rank_pred:
     ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation '''
@@ -281,7 +279,7 @@ class rank_pred:
         result_all_comb['config_mean_max_ret'] = result_all_comb.groupby(['group'] + self.diff_config_col)['max_ret'].transform('mean')
         result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
-                                db_url=db_url_write, how="update", dtype=rank_history_dtypes)
+                                db_url=db_url_write, how="update", dtype=rank_dtypes)
 
         return result_all_comb
 
@@ -353,7 +351,7 @@ class rank_pred:
         if upsert_how==False:
             return all_history
         elif upsert_how=="append":
-            # trucncate_table_in_database(tbl_name_backtest, db_url_write)
+            trucncate_table_in_database(tbl_name_backtest, db_url_write)
             upsert_data_to_database(all_history, tbl_name_backtest,
                                     primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
                                     db_url=db_url_write, how="append", dtype=rank_dtypes)
@@ -385,7 +383,7 @@ class rank_pred:
         df_current = df_current.drop(columns=["trading_day"])
         upsert_data_to_database(df_current, tbl_name_history,
                                 primary_key=["group", "factor_name", "weeks_to_expire", "last_update"],
-                                db_url=db_url_write, how='update', dtype=rank_history_dtypes)
+                                db_url=db_url_write, how='update', dtype=rank_dtypes)
 
     def write_to_db(self):
         ''' concat rank current/history & write '''
@@ -439,10 +437,10 @@ if __name__ == "__main__":
 
     # Example
     # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
-    rank_pred(1/3, name_sql='w4_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    rank_pred(1/3, name_sql='w8_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    rank_pred(1/3, name_sql='w13_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    rank_pred(1/3, name_sql='w26_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    # rank_pred(1/3, name_sql='w4_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    # rank_pred(1/3, name_sql='w8_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    # rank_pred(1/3, name_sql='w13_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    calc_rank = rank_pred(1/3, name_sql='w26_d7_official', eval_start_date=None, top_config=10).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

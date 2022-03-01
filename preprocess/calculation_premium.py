@@ -8,7 +8,7 @@ import itertools
 from general.send_slack import to_slack
 
 from global_vars import *
-from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database, uid_maker
+from general.sql_process import read_query, upsert_data_to_database, delete_data_on_database
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -162,7 +162,6 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col])
     all_groups = [tuple(e) for e in all_groups]
 
-    # trucncate_table_in_database(f"{factor_premium_table}", db_url_write)
     with mp.Pool(processes=processes) as pool:
         pool.starmap(insert_prem_for_group, all_groups)
 

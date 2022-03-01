@@ -197,9 +197,12 @@ if __name__ == "__main__":
 
     # --------------------------------- Results Analysis ------------------------------------------
 
+    from results_analysis.calculation_rank import rank_pred
+    calc_rank = rank_pred(1/3, name_sql=sql_result['name_sql'], top_config=10,
+                          eval_start_date=None, start_uid=None).write_to_db()
+    # calc_rank = rank_pred(1/3, weeks_to_expire=args.weeks_to_expire, average_days=args.average_days, top_config=10,
+    #                       eval_start_date=None, start_uid=None).write_to_db()
+
     from results_analysis.analysis_score_backtest import test_score_history
-    test_score_history(name_sql=sql_result['name_sql'])
-
-    # rank_pred(args.q, args.weeks_to_expire, args.average_days, name_sql=sql_result['name_sql']).write_to_db()
-
+    test_score_history(name_sql=None)   # set name_sql=None i.e. using current backtest table writen by rank_pred
 
