@@ -49,7 +49,7 @@ class rf_HPOT:
         ''' write score/prediction/feature to DB '''
 
         # update results
-        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, db_url=db_url_write, how="append", verbose=-1)
+        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, primary_key=["uid"], db_url=db_url_write, how="append", verbose=-1)
         upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, primary_key=["uid"],
                                 db_url=db_url_write, how="ignore", verbose=-1)
 

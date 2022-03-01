@@ -47,7 +47,8 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
     return True
 
 @retry(tries=3, delay=1)
-def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alibaba, how="update", verbose=1):
+def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alibaba, how="update", verbose=1,
+                            dtype=None, chucksize=20000):
     ''' upsert Table to DB
 
     Parameters
@@ -84,12 +85,19 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alib
             data = data.dropna(subset=primary_key)
             data = data.set_index(primary_key)
 
+            if type(dtype)!=None:
+                dtype_param = {"dtype": dtype}
+            else:
+                dtype_param = {}
+
             upsert(engine,
                    df=data,
                    table_name=table,
                    if_row_exists=how,
-                   chunksize=20000,
-                   add_new_columns=True)
+                   chunksize=chucksize,
+                   add_new_columns=True
+                   **dtype_param
+                   )
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose>=0:

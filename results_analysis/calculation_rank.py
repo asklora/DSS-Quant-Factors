@@ -20,15 +20,19 @@ from general.sql_process import (
 )
 from collections import Counter
 
-stock_pred_dtypes = dict(
-    trading_day=DATE,
-    factor_name=TEXT,
+# define dtypes for factor_rank (current/history/backtest) tables when writing to DB
+
+rank_history_dtypes = dict(
     group=TEXT,
+    factor_name=TEXT,
+    weeks_to_expire=INTEGER,
     factor_weight=INTEGER,
     pred_z=DOUBLE_PRECISION,
     long_large=BOOLEAN,
     last_update=TIMESTAMP
 )
+
+rank_dtypes = rank_history_dtypes.update({"trading_day": DATE})
 
 class rank_pred:
     ''' process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation '''
@@ -277,7 +281,7 @@ class rank_pred:
         result_all_comb['config_mean_max_ret'] = result_all_comb.groupby(['group'] + self.diff_config_col)['max_ret'].transform('mean')
         result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
-                                db_url=db_url_write, how="update")
+                                db_url=db_url_write, how="update", dtype=rank_history_dtypes)
 
         return result_all_comb
 
@@ -344,16 +348,19 @@ class rank_pred:
                 lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
             all_history['last_update'] = dt.datetime.now()
             all_history["weeks_to_expire"] = self.weeks_to_expire
-            all_history = uid_maker(all_history, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
-            all_history = all_history.drop_duplicates(subset=["uid"], keep="last")
+            all_history = all_history.drop_duplicates(subset=["group", "trading_day", "factor_name", "weeks_to_expire"], keep="last")
 
         if upsert_how==False:
             return all_history
         elif upsert_how=="append":
-            trucncate_table_in_database(tbl_name_backtest, db_url_write)
-            upsert_data_to_database(all_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how="append")
+            # trucncate_table_in_database(tbl_name_backtest, db_url_write)
+            upsert_data_to_database(all_history, tbl_name_backtest,
+                                    primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
+                                    db_url=db_url_write, how="append", dtype=rank_dtypes)
         else:
-            upsert_data_to_database(all_history, tbl_name_backtest, primary_key=["uid"], db_url=db_url_write, how=upsert_how)
+            upsert_data_to_database(all_history, tbl_name_backtest,
+                                    primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
+                                    db_url=db_url_write, how=upsert_how, dtype=rank_dtypes)
 
     def write_current_rank_(self):
         '''write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history'''
@@ -367,19 +374,18 @@ class rank_pred:
             lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
         df_current['last_update'] = dt.datetime.now()
         df_current["weeks_to_expire"] = self.weeks_to_expire
-        df_current = uid_maker(df_current, primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"])
-        df_current = df_current.drop_duplicates(subset=["uid"], keep="last")
+        df_current = df_current.drop_duplicates(subset=["group", "trading_day", "factor_name", "weeks_to_expire"], keep="last")
 
         # update [production_factor_rank_table]
         upsert_data_to_database(df_current, tbl_name_current,
                                 primary_key=["group", "factor_name", "weeks_to_expire"],
-                                db_url=db_url_write, how='update')
+                                db_url=db_url_write, how='update', dtype=rank_dtypes)
 
         # update [production_factor_rank_history_table]
         df_current = df_current.drop(columns=["trading_day"])
         upsert_data_to_database(df_current, tbl_name_history,
                                 primary_key=["group", "factor_name", "weeks_to_expire", "last_update"],
-                                db_url=db_url_write, how='update')
+                                db_url=db_url_write, how='update', dtype=rank_history_dtypes)
 
     def write_to_db(self):
         ''' concat rank current/history & write '''

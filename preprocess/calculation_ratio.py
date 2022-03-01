@@ -3,6 +3,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.types import TEXT, DATE, DOUBLE_PRECISION
 from global_vars import *
 import multiprocessing as mp
 from contextlib import suppress
@@ -18,6 +19,14 @@ from general.sql_process import (
     delete_data_on_database
 )
 from general.send_slack import to_slack
+
+# define dtypes for ratio table when writing to DB
+ratio_dtypes = dict(
+    ticker=TEXT,
+    trading_day=DATE,
+    field=TEXT,
+    value=DOUBLE_PRECISION,
+)
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
 
@@ -218,9 +227,10 @@ def calc_stock_return(ticker, restart, tri_return_only,
         ret_col = tri.filter(regex="^stock_return_y_").columns.to_list()
         tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=ret_col, var_name="field",
                       value_name="value").dropna(subset=["value"])
-        tri = uid_maker(tri, primary_key=['ticker', "trading_day", "field"])
         delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
-        status = upsert_data_to_database(tri, processed_ratio_table, primary_key=["uid"], db_url=db_url_write, how="append")
+        status = upsert_data_to_database(tri, processed_ratio_table, primary_key=['ticker', "trading_day", "field"],
+                                         db_url=db_url_write, how="append",
+                                         dtype=ratio_dtypes)
         logging.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
         exit(status)
 
@@ -537,7 +547,6 @@ def calc_factor_variables(ticker, restart, tri_return_only):
         df = df.dropna(subset=[x+'_ffill' for x in y_col], how='any')
         df = df.filter(['ticker', 'trading_day'] + y_col + formula['name'].to_list())
         df = pd.melt(df, id_vars=['ticker', "trading_day"], var_name="field", value_name="value").dropna(subset=["value"])
-        df = uid_maker(df, primary_key=['ticker', "trading_day", "field"])
 
         if not restart:
             df = df.loc[df["trading_day"]>(dt.datetime.today()-relativedelta(months=3))]
@@ -546,9 +555,11 @@ def calc_factor_variables(ticker, restart, tri_return_only):
         db_table_name = processed_ratio_table
         if (restart) & (type(ticker)==type(None)):
             trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
-            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="append")
+            upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
+                                    db_url=db_url_write, how="append", dtype=ratio_dtypes)
         else:
-            upsert_data_to_database(df, db_table_name, primary_key=["uid"], db_url=db_url_write, how="update")
+            upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
+                                    db_url=db_url_write, how="update", dtype=ratio_dtypes)
     except Exception as e:
         error_msg = f"===  ERROR IN Getting Data == {e}"
         to_slack("clair").message_to_slack(error_msg)

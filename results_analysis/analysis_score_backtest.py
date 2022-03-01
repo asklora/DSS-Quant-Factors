@@ -255,30 +255,24 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
     factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
 
-    # x = factor_rank.groupby(['trading_day','group'])['pred_z'].count().unstack()
-    # x = x.reset_index()
-    # x.sort_values(by=['trading_day']).to_csv('debug_factor_rank.csv')
 
-    # factor_rank = factor_rank.loc[factor_rank['trading_day']==dt.datetime(2020,1,5)]
-    # global universe_currency_code
-    # universe_currency_code = ['HKD']
+    try:
+        fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
+    except:
+        print("=== Get [Factor Processed Ratio] history ===")
+        conditions = ["r.ticker not like '.%%'"]
+        if currency_code:
+            conditions.append(f"currency_code in {tuple(currency_code)}")
+        if start_date:
+            conditions.append(f"trading_day>='{start_date}'")
+        ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
+                      f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
+                      f"WHERE {' AND '.join(conditions)}"
+        fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
+        fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
+                                                      values="value").reset_index()
+        fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
 
-    # print("=== Get [Factor Processed Ratio] history ===")
-    # conditions = ["r.ticker not like '.%%'"]
-    # if currency_code:
-    #     conditions.append(f"currency_code in {tuple(currency_code)}")
-    # if start_date:
-    #     conditions.append(f"trading_day>='{start_date}'")
-    # ratio_query = f"SELECT r.*, currency_code FROM {global_vars.processed_ratio_table} r " \
-    #               f"INNER JOIN (SELECT ticker, currency_code FROM universe) u ON r.ticker=u.ticker " \
-    #               f"WHERE {' AND '.join(conditions)}"
-    # fundamentals_score = read_query(ratio_query, global_vars.db_url_alibaba_prod)
-    # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
-    #                                               values="value").reset_index()
-    # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    # exit(200)
-
-    fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
     print(fundamentals_score['trading_day'].min())
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
@@ -291,13 +285,6 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
 
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
     print(sorted(list(factor_rank["trading_day"].unique())))
-
-    # Test return calculation
-    # fundamentals_score_ret = fundamentals_score[["ticker","trading_day","stock_return_y_1week", "stock_return_y_4week"]]
-    # tri_ret = get_tri_ret(start_date)
-    # fundamentals_score_ret = fundamentals_score_ret.merge(tri_ret, on=["ticker", "trading_day"], how="left")
-    # fundamentals_score_ret["diff_1w"] = fundamentals_score_ret["stock_return_y_1week"] - fundamentals_score_ret["ret_week"]*4
-    # fundamentals_score_ret["diff_1m"] = fundamentals_score_ret["stock_return_y_4week"] - fundamentals_score_ret["ret_month"]
 
     factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
@@ -345,7 +332,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
         options = [(int(name_sql.split('_')[0][1:]), int(name_sql.split('_')[1][1:]))]
         average_days = int(name_sql.split('_')[1][1:])
     else:
-        options = [(1,1), (4,7), (26,7), (26,28)]
+        options = [(1, 1), (4, 7), (26, 7), (26, 28)]
     for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(by=['trading_day', 'weeks_to_expire']):
         weeks_to_expire = int(weeks_to_expire)
         score_date = trading_day + relativedelta(weeks=weeks_to_expire)
@@ -425,7 +412,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
               "Top 20 Picks": eval_best_df20,
               "Top 20 Picks(agg)": eval_best_df20_agg,
               "Factor Selection & Avg Premiums": factor_selection,
-              "Best Factor Config": factor_selection_best}, file_name=csv_name+"-")
+              "Best Factor Config": factor_selection_best}, file_name=csv_name)
 
     # update top 10 to DB
     def write_topn_to_db(df, n):
@@ -449,9 +436,6 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     write_topn_to_db(eval_best_df10, 10)
     write_topn_to_db(eval_best_df20, 20)
 
-    # Evaluate
-    # eval_qcut_col_specific(["USD"], best_10_tickers_all, mean_ret_detail_all)   # period gain/loss/factors
-    # save_description_history(score_history)                                     # score distribution
     return True
 
 def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=None):

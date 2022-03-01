@@ -10,18 +10,19 @@ from general.send_slack import to_slack
 from global_vars import *
 from general.sql_process import read_query, upsert_data_to_database, trucncate_table_in_database, uid_maker
 
-from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION
+from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 from sqlalchemy.sql.sqltypes import BOOLEAN
 
 icb_num = 6
 
-# define dtypes for final_member_df & final_results_df when writing to DB
-results_dtypes = dict(
+# define dtypes for premium table when writing to DB
+prem_dtypes = dict(
     group=TEXT,
     trading_day=DATE,
-    factor_name=TEXT,
-    stock_return_y=DOUBLE_PRECISION,
-    trim_outlier=BOOLEAN
+    field=TEXT,
+    weeks_to_expire=INTEGER,
+    average_days=INTEGER,
+    value=DOUBLE_PRECISION,
 )
 
 def trim_outlier(df, prc=0):
@@ -97,7 +98,8 @@ def insert_prem_for_group(*args):
                                 primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
                                 db_url=db_url_write,
                                 how="update",
-                                verbose=-1)
+                                verbose=-1,
+                                dtype=prem_dtypes)
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
         return False
