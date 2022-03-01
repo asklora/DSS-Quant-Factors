@@ -1970,6 +1970,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/test/migrate.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/tests/backtest_selection.py">
           <value>
             <Attribute>

@@ -22,7 +22,7 @@ production_score_current_history = "universe_rating_history"
 
 # TABLE names - raw data
 universe_table = "universe"
-worldscope_quarter_summary_table = "data_worldscope"
+worldscope_data_table = "data_worldscope"
 ibes_data_table = "data_ibes"
 macro_data_table = "data_macro"
 vix_data_table = "data_vix"
@@ -30,8 +30,6 @@ stock_data_table_ohlc = "data_ohlcv"
 stock_data_table_tri = "data_tri"
 anchor_table_mkt_cap = "data_dsws_addition"
 
-eikon_price_table = "data_factor_eikon_price"
-eikon_report_date_table = "data_factor_eikon_date"
 eikon_fx_table = "data_factor_eikon_fx"
 currency_history_table = "currency_price_history"
 ingestion_name_table = "ingestion_name"
@@ -44,9 +42,6 @@ factor_premium_table = "factor_processed_premium"
 formula_factors_table_prod = "factor_formula_ratios_prod"
 factors_y_type_table = "factor_formula_y_type"
 update_time_table = "ingestion_update_time"     # all table update time record in this table
-
-# TABLE names - descriptive preprocess formula
-descriptive_formula_factors_table = "factor_formula_ratios_descriptive"
 
 # Set DEBUG status
 import sys

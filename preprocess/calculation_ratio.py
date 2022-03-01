@@ -246,7 +246,7 @@ def download_clean_worldscope_ibes(ticker, restart):
     else:   # if not restart only from 1yr ago
         start_date = (dt.datetime.today() - relativedelta(years=2)).strftime("%Y-%m-%d")
 
-    query_ws = f"select * from {worldscope_quarter_summary_table} " \
+    query_ws = f"select * from {worldscope_data_table} " \
                f"WHERE ticker in {tuple(ticker)} AND trading_day>='{start_date}' ".replace(",)",")")
     ws = read_query(query_ws, db_url_read)
     ws = ws.pivot(index=["ticker","trading_day"], columns=["field"], values="value").reset_index()
@@ -262,7 +262,7 @@ def download_clean_worldscope_ibes(ticker, restart):
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        logging.info(f'Fill missing in {worldscope_quarter_summary_table} ')
+        logging.info(f'Fill missing in {worldscope_data_table} ')
         with suppress(Exception):
             ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])
         with suppress(Exception):
@@ -290,7 +290,7 @@ def check_duplicates(df, name=''):
 def update_trading_day(ws=None):
     ''' map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m '''
 
-    logging.info(f'Update trading_day in {worldscope_quarter_summary_table} ')
+    logging.info(f'Update trading_day in {worldscope_data_table} ')
 
     query_universe = f"SELECT ticker, fiscal_year_end FROM {universe_table}"
     universe = read_query(query_universe, db_url_read)
@@ -342,7 +342,7 @@ def fill_all_given_date(result, ref):
 def drop_dup(df, col='trading_day'):
     ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-    logging.info(f'Drop duplicates in {worldscope_quarter_summary_table} ')
+    logging.info(f'Drop duplicates in {worldscope_data_table} ')
 
     df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
@@ -616,7 +616,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=["AAPL.O"], restart=True, tri_return_only=False)
+    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=False)
 
 
 

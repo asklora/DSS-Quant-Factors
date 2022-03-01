@@ -143,7 +143,7 @@ def record_table_update_time(table):
     df.index.name = "tbl_name"
     data_type = {"tbl_name": TEXT}
 
-    engine = create_engine(db_url_write_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(db_url_write, max_overflow=-1, isolation_level="AUTOCOMMIT")
     upsert(engine,
            df=df,
            table_name=update_time_table,

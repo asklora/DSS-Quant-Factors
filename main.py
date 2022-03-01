@@ -125,7 +125,6 @@ if __name__ == "__main__":
         # Check 2(b): monthly update after weekly update
         start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'])
 
-
     # --------------------------------- Rerun Write Premium ------------------------------------------
     if args.recalc_ratio:
         calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=False)
