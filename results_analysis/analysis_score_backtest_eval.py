@@ -27,8 +27,6 @@ def read_top_excel():
     sort_col = ['currency_code', 'weeks_to_expire', 'n_pick', 'n_config', 'since_year', 'use_usd']
     df_all = pd.concat(df_all, axis=0).sort_values(by=sort_col, ascending=False)
 
-    df_all = df_all.loc[df_all["uid"]=="20220220200030"]
-
     xls_sheets = {}
     for name, g in df_all.groupby(['n_pick']):
         # for k in ["positive_pct", "return"]:
@@ -64,7 +62,7 @@ def read_top_excel():
         r.columns = ['-'.join([str(e) for e in x]) for x in r]
         xls_sheets[f'since_year'] = r.reset_index()
 
-        to_excel(xls_sheets, file_name=(f"backtest_analysis_{name}_currency"))
+        to_excel(xls_sheets, file_name=(f"backtest_analysis_{name}"))
     print(df_all)
 
 

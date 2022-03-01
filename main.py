@@ -174,23 +174,22 @@ if __name__ == "__main__":
     all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
                          tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
                          down_mkt_pct_list)
+    all_groups = [tuple(e) for e in all_groups]
     diff_config_col = ['group_code', 'testing_period', 'y_type',
                        'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
     all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
-    all_groups = [tuple(e) for e in all_groups]
 
     # (restart) filter for failed iteration
     if args.restart:
         fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
                             f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
                             f"GROUP BY {', '.join(diff_config_col)}")
-        fin_df['tree_type'] = fin_df['tree_type'].str[:-1]
-
-        all_groups_df = fin_df.merge(all_groups_df, how='outer', on=diff_config_col).sort_values(by=diff_config_col)
-        all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col].values.tolist()
-        all_groups = [tuple([data, sql_result]+e) for e in all_groups_df]
-        print(f'Restart [{args.restart}]: rest iterations (n={len(all_groups)})')
+        all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
+        all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
+        all_groups = all_groups_df.values.tolist()
         sql_result["name_sql"] = args.restart
+        all_groups = [tuple([data, sql_result]+e) for e in all_groups]
+        to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
 
     # Reset results table everytimes
     with mp.Pool(processes=args.processes) as pool:

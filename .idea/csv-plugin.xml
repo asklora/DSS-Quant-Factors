@@ -1711,6 +1711,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/analysis_score_backtest_eval.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/cache_result_all.csv">
           <value>
             <Attribute>

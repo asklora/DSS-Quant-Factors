@@ -10,6 +10,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Lasso
+import math
 
 from global_vars import *
 from general.sql_process import read_table, read_query
@@ -375,12 +376,12 @@ class load_data:
 
         org_feature = X_train.columns.to_list()
         X_train, X_test = X_train.values, X_test.values
-        if n_components:
+        if (type(n_components)==type(None)) or (math.isnan(n_components)):
+            scaler = StandardScaler()
+        else:
             scaler = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=n_components))])
             X_train = np.nan_to_num(X_train, nan=0)
             X_test = np.nan_to_num(X_test, nan=0)
-        else:
-            scaler = StandardScaler()
 
         scaler.fit(X_train)
         x_train = scaler.transform(X_train)

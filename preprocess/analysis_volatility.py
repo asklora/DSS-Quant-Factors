@@ -96,7 +96,7 @@ class vol_analysis:
             k+=1
         plt.tight_layout()
         plt.suptitle(f'{self.vol_col} Corr ({cur})')
-        plt.show()
+        plt.savefig(f'{self.vol_col} Corr ({cur}).png')
         pass
 
     def dist_vol(self):
@@ -114,7 +114,7 @@ class vol_analysis:
             ax.axhline(y=0, color='r', linestyle='-')
             k+=1
         plt.suptitle(f'{self.vol_col} Dist')
-        plt.show()
+        plt.savefig(f'{self.vol_col} Dist.png')
 
         for w, g1 in self.prem.groupby(['weeks_to_expire']):
             fig = plt.figure(figsize=(10, 10), dpi=120, constrained_layout=True)
@@ -129,8 +129,10 @@ class vol_analysis:
                 ax.axhline(y=0, color='r', linestyle='-')
                 k+=1
             plt.suptitle(f'{self.vol_col} Premium Dist ({w})')
-            plt.show()
+            plt.savefig(f'{self.vol_col} Premium Dist ({w}).png')
         pass
 
 if __name__ == '__main__':
     vol_analysis(currency=['HKD', 'CNY', 'USD', 'EUR'], vol_col='vol_0_30')
+    vol_analysis(currency=['HKD', 'CNY', 'USD', 'EUR'], vol_col='skew')
+

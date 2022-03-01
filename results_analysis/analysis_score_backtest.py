@@ -700,10 +700,10 @@ if __name__ == "__main__":
     # can select name_sql based on
     #x'w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug'
     # for name_sql in ['w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug']:
-    # for name_sql in [ 'w4_d7_official', 'w8_d7_official', 'w13_d7_official', 'w26_d7_official']:
-    for name_sql in ['w4_d7_official']:
-        for top_config in [10]:
-            for start_year in [2016]:
+    for name_sql in [ 'w4_d7_official', 'w8_d7_official', 'w13_d7_official', 'w26_d7_official']:
+    # for name_sql in ['w4_d7_official']:
+        for top_config in [10, 20]:
+            for start_year in [2016, 2018, 2020, 2021]:
                 test_score_history(name_sql=name_sql, start_year=start_year, top_config=top_config)
     # test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
 

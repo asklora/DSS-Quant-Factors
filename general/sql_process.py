@@ -47,8 +47,7 @@ def delete_data_on_database(table, db_url=db_url_alibaba, query=None):
     return True
 
 @retry(tries=3, delay=1)
-def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba, how="update",
-                            drop_primary_key=False, verbose=1):
+def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_alibaba, how="update", verbose=1):
     ''' upsert Table to DB
 
     Parameters
@@ -63,8 +62,6 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
         Primary key of the data (compulsory when how=update/ignore)
     how (Str, Optional):
         how to write to DB (default=update)
-    drop_primary_key (Bool, Optional):
-        if True, drop columns composing "uid" primary key (default=False)
     verbose (Float, Optional):
         if True, report write to DB to slack (default=1, i.e. report to DB)
     '''
@@ -80,28 +77,18 @@ def upsert_data_to_database(data, table, primary_key=None, db_url=db_url_alibaba
                 data.to_sql(table, **extra)
             engine.dispose()
         else:
-            if len(primary_key) > 1:  # for tables using more than 1 columns as primary key (replace primary with a created "uid")
-                data = uid_maker(data, primary_key)
-                primary_key = "uid"
-                if drop_primary_key:  # drop original columns (>1) for primary keys
-                    data = data.drop(columns=primary_key)
-            else:
-                primary_key = primary_key[0]
-
-            if data.duplicated(subset=[primary_key], keep=False).sum() > 0:
+            if data.duplicated(subset=primary_key, keep=False).sum() > 0:
                 to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
 
-            data = data.drop_duplicates(subset=[primary_key], keep="first", inplace=False)
-            data = data.dropna(subset=[primary_key])
+            data = data.drop_duplicates(subset=primary_key, keep="first", inplace=False)
+            data = data.dropna(subset=primary_key)
             data = data.set_index(primary_key)
-            data_type = {primary_key: TEXT}
 
             upsert(engine,
                    df=data,
                    table_name=table,
                    if_row_exists=how,
                    chunksize=20000,
-                   dtype=data_type,
                    add_new_columns=True)
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
@@ -118,8 +105,9 @@ def read_query(query, db_url=db_url_read):
 
     logging.debug(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    print(f'----> Query: {query}')
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn, chunksize=10000)
+        df = pd.read_sql(query, conn, chunksize=20000)
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()
     return df

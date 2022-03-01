@@ -92,10 +92,9 @@ def insert_prem_for_group(*args):
         prem['average_days'] = average_days
         if trim_outlier_:
             prem['field'] = 'trim_'+prem['field']
-        prem = uid_maker(prem, primary_key=['group','trading_day','field', 'weeks_to_expire', 'average_days'])
         upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
                                 table=factor_premium_table,
-                                primary_key=["uid"],
+                                primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
                                 db_url=db_url_write,
                                 how="update",
                                 verbose=-1)
@@ -171,14 +170,15 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
-                     all_groups=['CNY'], factor_list=['earnings_yield'], start_date=None)
+    # calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
+    #                  all_groups=['CNY'], factor_list=['earnings_yield'], start_date=None)
 
-    stock_return_map = {26: [7]}
+    stock_return_map = {4: [7], 8: [7], 13: [7], 26: [7]}
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():
         for d in avg_days:
-            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1, all_groups=['CNY'], processes=1)
+            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
+                             all_groups=['HKD', 'EUR', 'USD', 'CNY'], processes=11)
     end = datetime.now()
 
     logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
