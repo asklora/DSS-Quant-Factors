@@ -236,15 +236,8 @@ class rank_pred:
                     ORDER BY S.{uid_col}'''.replace(",)", ")"))
             pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
             pred.to_csv(f'pred_{name_sql}.csv', index=False)
+
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
-
-        # x = pred.groupby(['trading_day','group']+self.diff_config_col)['pred'].count().sort_values()
-        # x = pred.groupby(['trading_day','group'])['pred'].count()
-        # x = x.unstack()
-        # x = x.reset_index()
-        # x = x.sort_values(by=['trading_day'])
-        # x.to_csv('debug_pred.csv', index=False)
-
         return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
@@ -351,7 +344,7 @@ class rank_pred:
         if upsert_how==False:
             return all_history
         elif upsert_how=="append":
-            trucncate_table_in_database(tbl_name_backtest, db_url_write)
+            delete_data_on_database(tbl_name_backtest, db_url_writ, query=f"weeks_to_expire='{self.weeks_to_expire}'")
             upsert_data_to_database(all_history, tbl_name_backtest,
                                     primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
                                     db_url=db_url_write, how="append", dtype=rank_dtypes)
@@ -359,6 +352,7 @@ class rank_pred:
             upsert_data_to_database(all_history, tbl_name_backtest,
                                     primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
                                     db_url=db_url_write, how=upsert_how, dtype=rank_dtypes)
+        return all_history
 
     def write_current_rank_(self):
         '''write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history'''
@@ -389,8 +383,12 @@ class rank_pred:
         ''' concat rank current/history & write '''
 
         if not DEBUG:
-            self.write_backtest_rank_()
+            all_history = self.write_backtest_rank_()
             self.write_current_rank_()
+            return all_history
+        else:
+            logging.INFO("calculation_rank will not return [all_history] in DEBUG mode")
+            return False
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 

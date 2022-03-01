@@ -330,21 +330,12 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     eval_qcut_all = {}
     eval_best_all10 = {}
     eval_best_all20 = {}
-    if name_sql:
-        options = [(int(name_sql.split('_')[0][1:]), int(name_sql.split('_')[1][1:]))]
-        average_days = int(name_sql.split('_')[1][1:])
-    else:
-        options = [(1, 1), (4, 7), (26, 7), (26, 28)]
+    average_days = int(name_sql.split('_')[1][1:])
+
     for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(by=['trading_day', 'weeks_to_expire']):
         weeks_to_expire = int(weeks_to_expire)
         score_date = trading_day + relativedelta(weeks=weeks_to_expire)
         g = fundamentals.loc[fundamentals['trading_day']==score_date].copy()
-        # for name, g in fundamentals.groupby(['trading_day']):
-        #     for weeks_to_expire, average_days in options:
-        #         factor_rank_period = factor_rank.loc[(factor_rank['trading_day']==(name-relativedelta(weeks=weeks_to_expire)))&
-        #                                              (factor_rank['weeks_to_expire']==weeks_to_expire)]
-        #         if len(factor_rank_period)==0:
-        #             continue
 
         # Scale original fundamental score
         print(trading_day, score_date)

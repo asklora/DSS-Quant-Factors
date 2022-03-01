@@ -87,6 +87,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--weeks_to_expire', default=4, type=int)
+    parser.add_argument('--sample_interval', default=4, type=int)
     parser.add_argument('--average_days', default=7, type=int)
     parser.add_argument('--processes', default=1, type=int)
     parser.add_argument('--backtest_period', default=75, type=int)
@@ -156,8 +157,7 @@ if __name__ == "__main__":
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
 
-    sample_interval = args.weeks_to_expire # use if want non-overlap sample
-    # sample_interval = 4
+    sample_interval = args.sample_interval # use if want non-overlap sample
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-sample_interval*args.backtest_period-1::sample_interval]
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
@@ -198,11 +198,10 @@ if __name__ == "__main__":
     # --------------------------------- Results Analysis ------------------------------------------
 
     from results_analysis.calculation_rank import rank_pred
-    calc_rank = rank_pred(1/3, name_sql=sql_result['name_sql'], top_config=10,
-                          eval_start_date=None, start_uid=None).write_to_db()
+    factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'], top_config=10, eval_start_date=None, start_uid=None).write_to_db()
     # calc_rank = rank_pred(1/3, weeks_to_expire=args.weeks_to_expire, average_days=args.average_days, top_config=10,
-    #                       eval_start_date=None, start_uid=None).write_to_db()
+    #                       eval_start_date='2016-01-01', start_uid=None).write_to_db()
 
-    from results_analysis.analysis_score_backtest import test_score_history
-    test_score_history(name_sql=None)   # set name_sql=None i.e. using current backtest table writen by rank_pred
+    from results_analysis.calculation_backtest import backtest_score_history
+    backtest_score_history(factor_rank, sql_result['name_sql'])   # set name_sql=None i.e. using current backtest table writen by rank_pred
 
