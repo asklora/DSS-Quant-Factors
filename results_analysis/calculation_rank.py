@@ -235,7 +235,8 @@ class rank_pred:
                     WHERE {' AND '.join(conditions)}
                     ORDER BY S.{uid_col}'''.replace(",)", ")"))
             pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
-            pred.to_csv(f'pred_{name_sql}.csv', index=False)
+            if len(pred) > 0:
+                pred.to_csv(f'pred_{name_sql}.csv', index=False)
 
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
         return pred
