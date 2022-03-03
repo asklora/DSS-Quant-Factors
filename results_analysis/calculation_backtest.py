@@ -331,13 +331,14 @@ def backtest_score_history(factor_rank, name_sql):
 def write_topn_to_db(eval_dict=None, n=None, name_sql=None):
     ''' for each backtest eval : write top 10 ticker to DB '''
 
-    concat different trading_day top n selection ticker results
+    # concat different trading_day top n selection ticker results
     df = pd.DataFrame(eval_dict).stack(level=[-2, -1]).unstack(level=1)
     df = df.reset_index().rename(columns={"level_0": "currency_code",
                                           "level_1": "trading_day",
                                           "level_2": "weeks_to_expire",})
-    df.to_csv('test.csv', index=False)
 
+    # keep this because ERROR: (psycopg2.ProgrammingError) can't adapt type 'numpy.int64'
+    df.to_csv('test.csv', index=False)
     df = pd.read_csv('test.csv')
     df['trading_day'] = pd.to_datetime(df['trading_day'])
 
