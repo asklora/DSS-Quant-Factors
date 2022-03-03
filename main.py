@@ -140,7 +140,7 @@ if __name__ == "__main__":
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
     use_pca_list = [0.4, None]
-    n_splits_list = [.2, 0.1]
+    n_splits_list = [.2, .1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [0, 10]
     use_average_list = [True, False]
@@ -158,6 +158,8 @@ if __name__ == "__main__":
 
     sample_interval = args.sample_interval # use if want non-overlap sample
     testing_period_list = sorted(testing_period_list_all['trading_day'])[-sample_interval*args.backtest_period-1::sample_interval]
+    # testing_period_list = testing_period_list[:-11]
+
     logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
     # --------------------------------- Model Training ------------------------------------------

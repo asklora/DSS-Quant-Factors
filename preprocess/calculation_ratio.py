@@ -616,7 +616,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=False)
+    calc_factor_variables_multi(ticker=["AAPL.O"], restart=True, tri_return_only=False)
 
 
 
