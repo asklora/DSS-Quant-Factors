@@ -1718,6 +1718,27 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/analysis_score_backtest_eval2.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/best_config_info.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/best_config_info_peeking.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/cache_result_all.csv">
           <value>
             <Attribute>
@@ -1726,6 +1747,13 @@
           </value>
         </entry>
         <entry key="/results_analysis/cached_factor_rank.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/cached_factor_result_rank_backtest_eval_w13_d7_20220301195636_debug.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

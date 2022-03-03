@@ -407,6 +407,9 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
               "Factor Selection & Avg Premiums": factor_selection,
               "Best Factor Config": factor_selection_best}, file_name=csv_name)
 
+    eval_best_df10 = pd.read_excel(csv_name+'.xlsx', "Top 10 Picks")
+    eval_best_df20 = pd.read_excel(csv_name+'.xlsx', "Top 20 Picks")
+
     # update top 10 to DB
     def write_topn_to_db(df, n):
         ''' for each backtest eval : write top 10 ticker to DB '''
@@ -426,8 +429,8 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
                                 primary_key=["name_sql", "start_date", "n_period", "n_top", "currency_code", "trading_day"],
                                 how='update', db_url=global_vars.db_url_alibaba_prod)
 
-    write_topn_to_db(eval_best_df10, 10)
-    write_topn_to_db(eval_best_df20, 20)
+    # write_topn_to_db(eval_best_df10, 10)
+    # write_topn_to_db(eval_best_df20, 20)
 
     return True
 
@@ -445,9 +448,6 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
         Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
     '''
 
-    print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-    factor_rank_all = rank_pred(1/3, name_sql=name_sql, top_config=None).write_backtest_rank_(upsert_how=False)
-
     # print("=== Get [Factor Processed Ratio] history ===")
     # conditions = ["r.ticker not like '.%%'"]
     # if currency_code:
@@ -461,13 +461,14 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
     # fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"],
     #                                               values="value").reset_index()
     # fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
-    # exit(1)
+    # exit(200)
 
     fundamentals_score = pd.read_csv('cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
 
-    # fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(['HKD'])]
-    # factor_rank = factor_rank.loc[factor_rank['group'].isin(['USD'])]
+    print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+    # eval_table = read_query(f"SELECT * FROM factor_result_rank_backtest_eval WHERE name_sql='{name_sql}'")
+    factor_rank_all = rank_pred(1/3, name_sql=name_sql, top_config=None).write_backtest_rank_(upsert_how=False)
 
     qcut_eval = []
     top10_eval = []
@@ -544,7 +545,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                 g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
                                       factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
 
-                current_score_col = 'fundamentals_'+iter["info"]["y_type"]
+                current_score_col = 'fundamentals_'+iter["info"]["y_type"].to_list()[0]
 
                 # Evaluate 1: calculate return on 10-qcut portfolios
                 eval_qcut_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_qcut(g_score, [current_score_col],
@@ -678,10 +679,10 @@ if __name__ == "__main__":
     #x'w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug'
     # for name_sql in ['w4_d7_20220216100210_debug', 'w8_d7_20220215191634_debug', 'w26_d7_20220215152028_debug']:
     # for name_sql in [ 'w4_d7_official', 'w8_d7_official', 'w13_d7_official', 'w26_d7_official']:
-    for name_sql in ['w13_d7_20220301195636_debug']:
-        for top_config in [10]:
-            for start_year in [2016, 2018, 2020, 2021]:
-                test_score_history(name_sql=name_sql, start_year=start_year, top_config=top_config)
-    # test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
+    for name_sql in ['w4_d7_official', 'w13_d7_20220301195636_debug']:
+        # for top_config in [10]:
+        #     for start_year in [2016, 2018, 2020, 2021]:
+        #         test_score_history(name_sql=name_sql, start_year=start_year, top_config=top_config)
+        test_score_history_v2(name_sql=name_sql, start_date='2016-01-01', currency_code=universe_currency_code)
 
     # test_score_history(name_sql=args.name_sql)

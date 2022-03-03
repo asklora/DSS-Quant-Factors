@@ -73,6 +73,7 @@ class rank_pred:
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(weeks_to_expire, average_days, name_sql, eval_start_date, y_type, start_uid)
+        pred = pred.loc[pred['trading_day']>dt.datetime(2021, 1, 1)]
 
         # best = {'tree_type': 'rf1', 'use_pca': 0, 'qcut_q': 10, 'n_splits': 0.1,
         #         'valid_method': 2012, 'use_average': False, 'down_mkt_pct': 0.6,
@@ -154,6 +155,7 @@ class rank_pred:
         ''' calculate 'pred_z'/'factor_weight' by ranking within current testing_period '''
 
         # 2.3.1. calculate factor_weight with qcut
+        logging.info("Calculate factor_weight")
         groupby_keys = ['uid_hpot', 'group', 'trading_day'] + diff_config_col
         df['factor_weight'] = df.groupby(by=groupby_keys)['pred'].transform(
             lambda x: pd.qcut(x, q=q_, labels=False, duplicates='drop'))
@@ -165,16 +167,17 @@ class rank_pred:
         logging.info(f'n_factor used:\n{rank_count}')
 
         # 2.3.3. calculate pred_z using mean & std of all predictions in entire testing history
+        logging.info("Calculate pred_z")
         df['pred_z'] = df.groupby(by=['group']+diff_config_col)['pred'].apply(lambda x: (x-np.mean(x))/np.std(x))
         return df
 
     @staticmethod
     def __get_neg_factor_all(pred):
         ''' get all neg factors for all (testing_period, group) '''
-        if type(pred["neg_factor"].to_list()[0])!=type([]):
-            pred["neg_factor"] = pred["neg_factor"].apply(ast.literal_eval)
-        pred_unique = pred.drop_duplicates(subset=['group', 'trading_day'])
-        neg_factor = pred_unique.set_index(['group', 'trading_day'])['neg_factor'].unstack().to_dict()
+        pred_unique = pred.groupby(['group', 'trading_day'])[['neg_factor']].first()
+        if type(pred_unique["neg_factor"].to_list()[0])!=type([]):
+            pred_unique["neg_factor"] = pred_unique["neg_factor"].apply(ast.literal_eval)
+        neg_factor = pred_unique['neg_factor'].unstack().to_dict()
         return neg_factor
 
     def rank_each_trading_day(self, period, result_all):
@@ -436,10 +439,10 @@ if __name__ == "__main__":
 
     # Example
     # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', eval_start_date=None, y_type=[]).write_to_db()
-    # rank_pred(1/3, name_sql='w4_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    # rank_pred(1/3, name_sql='w8_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    # rank_pred(1/3, name_sql='w13_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
-    calc_rank = rank_pred(1/3, name_sql='w26_d7_official', eval_start_date=None, top_config=10).write_to_db()
+    rank_pred(1/3, name_sql='w4_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    rank_pred(1/3, name_sql='w8_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    rank_pred(1/3, name_sql='w13_d7_official', eval_start_date=None, y_type=[], top_config=10).write_to_db()
+    # calc_rank = rank_pred(1/3, name_sql='w26_d7_official', eval_start_date=None, top_config=10).write_to_db()
 
     # rank_pred(1/3, weeks_to_expire=1, average_days=1, eval_start_date=None, y_type=[]).write_to_db()
     # rank_pred(1/3, weeks_to_expire=26, eval_start_date=None, y_type=[], start_uid='20220128000000389209').write_to_db()

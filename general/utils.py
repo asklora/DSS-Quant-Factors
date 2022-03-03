@@ -22,6 +22,7 @@ def remove_tables_with_suffix(engine, suffix):
     else:
         print("Do not remove any tables because the suffix is an empty string.")
 
+
 def record_table_update_time(tb_name, conn):
     ''' record last update time in table '''
     update_time = dt.datetime.now()
@@ -34,8 +35,8 @@ def record_table_update_time(tb_name, conn):
     df = pd.DataFrame({'update_time': {tb_name: update_time}}).reset_index()
     df.to_sql(global_vars.update_time_table, **extra)
 
-def excel_cformat(writer, sheet_name):
 
+def excel_cformat(writer, sheet_name):
     # Get the xlsxwriter workbook and worksheet objects.
     workbook = writer.book
     cell_format1 = workbook.add_format()
@@ -53,6 +54,7 @@ def excel_cformat(writer, sheet_name):
 
     return writer
 
+
 def to_excel(df_dict, file_name='test', cformat=None):
     '''  write DataFrames to excel
 
@@ -65,17 +67,18 @@ def to_excel(df_dict, file_name='test', cformat=None):
     '''
 
     writer = pd.ExcelWriter(f'{file_name}.xlsx', engine='xlsxwriter')
-    if type(df_dict)==type({}):
+    if type(df_dict) == type({}):
         for sheet_name, df in df_dict.items():
             df.to_excel(writer, sheet_name=sheet_name, index=False)
-            writer = excel_cformat(writer, sheet_name)
+            # writer = excel_cformat(writer, sheet_name)
         n = len(df_dict)
     else:
         df_dict.to_excel(writer, sheet_name='Sheet1', index=False)
-        writer = cformat(writer)
+        # writer = cformat(writer)
         n = 1
     writer.save()
     print(f"=== Finish write [{n}] sheet(s) -> '{file_name}.xlsx")
+
 
 if __name__ == "__main__":
     pass
