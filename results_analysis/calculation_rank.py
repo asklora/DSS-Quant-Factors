@@ -322,7 +322,7 @@ class rank_pred:
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
-    def write_backtest_rank_(self, upsert_how="append"):
+    def write_backtest_rank_(self, upsert_how=False):
         ''' write backtest factors: backtest rank -> production_factor_rank_backtest_table '''
         tbl_name_backtest = production_factor_rank_backtest_table
 
@@ -344,15 +344,15 @@ class rank_pred:
 
         if upsert_how==False:
             return all_history
-        elif upsert_how=="append":
-            delete_data_on_database(tbl_name_backtest, db_url_write, query=f"weeks_to_expire='{self.weeks_to_expire}'")
-            upsert_data_to_database(all_history, tbl_name_backtest,
-                                    primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
-                                    db_url=db_url_write, how="append", dtype=rank_dtypes)
-        else:
-            upsert_data_to_database(all_history, tbl_name_backtest,
-                                    primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
-                                    db_url=db_url_write, how=upsert_how, dtype=rank_dtypes)
+        # elif upsert_how=="append":
+        #     delete_data_on_database(tbl_name_backtest, db_url_write, query=f"weeks_to_expire='{self.weeks_to_expire}'")
+        #     upsert_data_to_database(all_history, tbl_name_backtest,
+        #                             primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
+        #                             db_url=db_url_write, how="append", dtype=rank_dtypes)
+        # else:
+        #     upsert_data_to_database(all_history, tbl_name_backtest,
+        #                             primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
+        #                             db_url=db_url_write, how=upsert_how, dtype=rank_dtypes)
         return all_history
 
     def write_current_rank_(self):
