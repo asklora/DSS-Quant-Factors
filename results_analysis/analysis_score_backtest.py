@@ -236,24 +236,24 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
         Else, calculate rank using best model in name_sql = 'name_sql' in factor_model.
     '''
 
-    if name_sql:
-        try:
-            print(f"=== Get [Factor Rank] from local ===")
-            factor_rank = pd.read_csv('cached_factor_rank.csv')
-        except:
-            print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
-            factor_rank = rank_pred(1/3, name_sql=name_sql, top_config=top_config).write_backtest_rank_(upsert_how=False)
-    else:
-        print("=== Get [Factor Rank] history from Backtest Table ===")
-        conditions = [f"True"]
-        if currency_code:
-            conditions.append(f"\"group\ in {tuple(currency_code)}")
-        if start_date:
-            conditions.append(f"trading_day>='{start_date}'")
-        factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
-                                 f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-        print(factor_rank.dtypes)
-        factor_rank.to_csv('cached_factor_rank.csv', index=False)
+    # if name_sql:
+    try:
+        print(f"=== Get [Factor Rank] from local ===")
+        factor_rank = pd.read_csv('cached_factor_rank.csv')
+    except:
+        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+        factor_rank = rank_pred(1/3, name_sql=name_sql, top_config=top_config).write_backtest_rank_(upsert_how=False)
+    # else:
+    #     print("=== Get [Factor Rank] history from Backtest Table ===")
+    #     conditions = [f"True"]
+    #     if currency_code:
+    #         conditions.append(f"\"group\ in {tuple(currency_code)}")
+    #     if start_date:
+    #         conditions.append(f"trading_day>='{start_date}'")
+    #     factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
+    #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
+    #     print(factor_rank.dtypes)
+    #     factor_rank.to_csv('cached_factor_rank.csv', index=False)
 
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
     factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
