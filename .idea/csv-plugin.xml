@@ -1767,6 +1767,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/calculation_backtest.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/calculation_rank.py">
           <value>
             <Attribute>
@@ -1985,6 +1992,13 @@
           </value>
         </entry>
         <entry key="/stocks_col.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/test.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

@@ -5,6 +5,7 @@ import datetime as dt
 import argparse
 import json
 import ast
+from dateutil.relativedelta import relativedelta
 
 import global_vars
 from global_vars import *
@@ -44,13 +45,13 @@ class rank_pred:
     """ process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation """
 
     q_ = None
-    eval_col = ['max_ret', 'net_ret', 'r2', 'mae', 'mse']
+    eval_col = ['max_ret', 'r2', 'mae', 'mse']
     iter_unique_col = ['name_sql', 'group', 'trading_day', 'factor_name']
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
     def __init__(self, q, name_sql,
                  pred_y_type=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000',
-                 eval_current=True, eval_top_config=None, eval_metrics='net_ret', eval_config_select_period=12):
+                 eval_current=True, eval_top_config=10, eval_metric='net_ret', eval_config_select_period=12):
         """
         Parameters
         ----------
@@ -72,7 +73,7 @@ class rank_pred:
         self.name_sql = name_sql
         self.eval_current = eval_current
         self.eval_top_config = eval_top_config
-        self.eval_metrics = eval_metrics
+        self.eval_metric = eval_metric
         self.eval_config_select_period = eval_config_select_period
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
 
@@ -109,33 +110,35 @@ class rank_pred:
         self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
 
         # 2.6. rank for each trading_day
-        for (trading_day, group), g in df.groupby(['trading_day', 'group']):
+        for (trading_day, group), g in df_cv_avg.groupby(['trading_day', 'group']):
             best_config = dict(y_type=self.y_type, trading_day=trading_day, group=group)
 
             # 2.5.1. use the best config prediction for this y_type
             # 2.5.2. use best [eval_top_config] config prediction for each (y_type, trading_day)
-            logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metrics}]')
+            logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metric}]')
             best_config_df = self.__backtest_find_calc_metric_avg(trading_day, group)
-            eval = best_config_df[self.eval_col].mean().to_dict()
+            eval = best_config_df[self.eval_col + ['net_ret']].mean().to_dict()
             best_config.update(eval)
 
             # 2.5.2a. calculate rank for all config
             for i, row in best_config_df.iterrows():
-                best_config.update(row['config'])
-                g_best = g.loc[(g[self.diff_config_col] == pd.Series(best_config)).all(axis=1)]
+                best_config.update(row[self.diff_config_col])
+                g_best = g.loc[(g[self.diff_config_col] == row[self.diff_config_col]).all(axis=1)]
                 rank_df = self.rank_each_trading_day(trading_day, g_best)
 
                 # 2.6.3. append to history / currency df list
-                if trading_day == df['trading_day'].max():  # if keep_all_history also write to prod table
+                if trading_day == df_cv_avg['trading_day'].max():  # if keep_all_history also write to prod table
                     self.all_current.append({"info": best_config, "rank_df": rank_df.copy()})
                 self.all_history.append({"info": best_config, "rank_df": rank_df.copy()})
+
+            # break
 
     @staticmethod
     def __calc_z_weight(q_, df, diff_config_col):
         """ calculate 'pred_z'/'factor_weight' by ranking within current testing_period """
 
         # 2.3.1. calculate factor_weight with qcut
-        logging.info("Calculate factor_weight")
+        logging.info("---> Calculate factor_weight")
         groupby_keys = ['uid_hpot', 'group', 'trading_day'] + diff_config_col
         df['factor_weight'] = df.groupby(by=groupby_keys)['pred'].transform(
             lambda x: pd.qcut(x, q=q_, labels=False, duplicates='drop'))
@@ -144,10 +147,10 @@ class rank_pred:
         # 2.3.2. count rank for debugging
         rank_count = df.groupby(groupby_keys)['factor_weight'].apply(pd.value_counts)
         rank_count = rank_count.unstack().fillna(0)
-        logging.info(f'n_factor used:\n{rank_count}')
+        # logging.info(f'n_factor used:\n{rank_count}')
 
         # 2.3.3. calculate pred_z using mean & std of all predictions in entire testing history
-        logging.info("Calculate pred_z")
+        logging.info("---> Calculate pred_z")
         df['pred_z'] = df.groupby(by=['group'] + diff_config_col)['pred'].apply(lambda x: (x - np.mean(x)) / np.std(x))
         return df
 
@@ -163,17 +166,11 @@ class rank_pred:
     def rank_each_trading_day(self, trading_day, g_best):
         """ (2.6) rank for each trading_day """
 
-        logging.debug(f'calculate (neg_factor, factor_weight): {trading_day}')
+        logging.debug(f'calculate (neg_factor, factor_weight) for each config: {trading_day}')
         result_col = ['group', 'trading_day', 'factor_name', 'pred_z', 'factor_weight']
         df = g_best.loc[g_best['trading_day'] == trading_day, result_col].reset_index(drop=True)
 
-        # merge same config iterations -> recalc factor_weight
-        df = df.groupby(['group', 'trading_day', 'factor_name'])['pred_z'].mean().reset_index()
-        df['factor_weight'] = df.groupby(by=['group', 'trading_day'])['pred_z'].transform(
-            lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
-
         # 2.6.1. record basic info
-        df['factor_weight'] = df['factor_weight'].astype(int)
         df['last_update'] = dt.datetime.now()
 
         # 2.6.2. record neg_factor
@@ -192,35 +189,35 @@ class rank_pred:
         """ merge factor_stock & factor_model_stock """
 
         try:
-            logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
             pred = pd.read_csv(f'pred_{name_sql}.csv')
+            logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
         except Exception as e:
             logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
 
-            conditions = [f"S.name_sql='{name_sql}'",
-                          f"S.testing_period>='{pred_start_testing_period}'",
-                          f"to_timestamp(left(S.uid, 20), 'YYYYMMDDHH24MISSUS') > "
-                          f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')"
+            conditions = [f"name_sql='{name_sql}'",
+                          f"testing_period>='{pred_start_testing_period}'",
+                          f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
+                          f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')",
+                          "group_code<>'currency'",
                           ]
             if pred_y_type:
-                conditions.append(f"S.y_type in {tuple(pred_y_type)}")
+                conditions.append(f"y_type in {tuple(pred_y_type)}")
 
-            label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number',
-                         'uid'] + self.diff_config_col
-            query = text(f"""
-                    SELECT P.pred, P.actual, P.factor_name, P.group, {', '.join(['S.' + x for x in label_col])} 
-                    FROM {result_pred_table} P 
-                    INNER JOIN (SELECT * FROM {result_score_table} WHERE group_code<>'currency') S ON (S.uid=P.uid) 
-                    WHERE {' AND '.join(conditions)}
-                    ORDER BY S.{uid_col}""".replace(",)", ")"))
-            pred = read_query(query, db_url_read).rename(columns={"testing_period": "trading_day"}).fillna(0)
+            pred_col = ["uid", "pred", "actual", "factor_name", "\"group\""]
+            label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number', 'uid'] + self.diff_config_col
+            query = f'''
+                SELECT * FROM (SELECT {', '.join(pred_col)} FROM {result_pred_table}) P 
+                INNER JOIN (SELECT {', '.join(label_col)} FROM {result_score_table} WHERE {' AND '.join(conditions)}) S 
+                    ON S.uid=P.uid 
+                ORDER BY S.uid'''
+            pred = read_query(query.replace(",)", ")")).rename(columns={"testing_period": "trading_day"}).fillna(0)
             if len(pred) > 0:
                 pred.to_csv(f'pred_{name_sql}.csv', index=False)
             else:
                 raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
 
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
-        pred = pred.loc[pred['trading_day'] >= dt.strptime(pred_start_testing_period, "%Y-%m-%d")]
+        pred = pred.loc[pred['trading_day'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
         return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
@@ -230,7 +227,7 @@ class rank_pred:
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table """
 
         # 2.4.1. calculate group statistic
-        logging.debug("=== Update testing set results ===")
+        logging.debug(f"=== Update [{production_factor_rank_backtest_eval_table}] ===")
         
         # actual factor premiums
         result_all_avg = result_all.groupby(['name_sql', 'group', 'trading_day'])['actual'].mean()  
@@ -287,7 +284,7 @@ class rank_pred:
                       f"y_type='{self.y_type}'",
                       f"\"group\"='{group}'",
                       f"trading_day < '{trading_day}'",
-                      f"trading_day >= '{trading_day - relativedelta(weeks=self.eval_config_select_period)}'"]
+                      f"trading_day >= '{trading_day - relativedelta(weeks=self.weeks_to_expire*self.eval_config_select_period)}'"]
         if self.eval_current:
             conditions.append(f"name_sql='{self.name_sql}'")
 
@@ -309,9 +306,8 @@ class rank_pred:
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
-    def write_backtest_rank_(self, upsert_how=False):
+    def write_backtest_rank_(self):
         """ write backtest factors: backtest rank -> production_factor_rank_backtest_table """
-        tbl_name_backtest = production_factor_rank_backtest_table
 
         if type(self.eval_top_config) == type(None):
             all_history = []
@@ -324,61 +320,40 @@ class rank_pred:
             all_history = pd.concat([x["rank_df"] for x in self.all_history], axis=0)
             all_history = all_history.groupby(['group', 'trading_day', 'factor_name']).mean().reset_index()
             all_history['factor_weight'] = all_history.groupby(by=['group', 'trading_day'])['pred_z'].transform(
-                lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
+                lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop')).astype(int)
             all_history['last_update'] = dt.datetime.now()
             all_history["weeks_to_expire"] = self.weeks_to_expire
-            all_history = all_history.drop_duplicates(subset=["group", "trading_day", "factor_name", "weeks_to_expire"],
-                                                      keep="last")
 
-        if upsert_how == False:
-            return all_history
-        # elif upsert_how=="append":
-        #     delete_data_on_database(tbl_name_backtest, db_url_write, query=f"weeks_to_expire='{self.weeks_to_expire}'")
-        #     upsert_data_to_database(all_history, tbl_name_backtest,
-        #                             primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
-        #                             db_url=db_url_write, how="append", dtype=rank_dtypes)
-        # else:
-        #     upsert_data_to_database(all_history, tbl_name_backtest,
-        #                             primary_key=["group", "trading_day", "factor_name", "weeks_to_expire"],
-        #                             db_url=db_url_write, how=upsert_how, dtype=rank_dtypes)
         return all_history
 
     def write_current_rank_(self):
         """write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history"""
 
-        tbl_name_current = production_factor_rank_table
-        tbl_name_history = production_factor_rank_history_table
-
         df_current = pd.concat([x["rank_df"] for x in self.all_current], axis=0)
         df_current = df_current.groupby(['group', 'trading_day', 'factor_name']).mean().reset_index()
         df_current['factor_weight'] = df_current.groupby(by=['group', 'trading_day'])['pred_z'].transform(
-            lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop'))
+            lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop')).astype(int)
         df_current['last_update'] = dt.datetime.now()
         df_current["weeks_to_expire"] = self.weeks_to_expire
-        df_current = df_current.drop_duplicates(subset=["group", "trading_day", "factor_name", "weeks_to_expire"],
-                                                keep="last")
 
         # update [production_factor_rank_table]
-        upsert_data_to_database(df_current, tbl_name_current,
+        upsert_data_to_database(df_current, production_factor_rank_table,
                                 primary_key=["group", "factor_name", "weeks_to_expire"],
                                 db_url=db_url_write, how='update', dtype=rank_dtypes)
 
         # update [production_factor_rank_history_table]
-        df_current = df_current.drop(columns=["trading_day"])
-        upsert_data_to_database(df_current, tbl_name_history,
+        upsert_data_to_database(df_current, production_factor_rank_history_table,
                                 primary_key=["group", "factor_name", "weeks_to_expire", "last_update"],
                                 db_url=db_url_write, how='update', dtype=rank_dtypes)
 
     def write_to_db(self):
         """ concat rank current/history & write """
 
+        all_history = self.write_backtest_rank_()
         if not DEBUG:
-            all_history = self.write_backtest_rank_()
             self.write_current_rank_()
-            return all_history
-        else:
-            logging.INFO("calculation_rank will not return [all_history] in DEBUG mode")
-            return False
+            logging.INFO("calculation_rank will not write to [current] in DEBUG mode")
+        return all_history
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
