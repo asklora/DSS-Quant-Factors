@@ -43,6 +43,22 @@ def migrate_tables():
     engine_prod.dispose()
 
 
+def get_table_dtypes(table_name):
+    """ create table used in this repo in Dev DB"""
+
+    engine_prod = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
+
+    dtypes = {}
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload=True, autoload_with=engine_prod)
+    for c in table.c:
+        dtypes[c.name] = c.type
+    print(dtypes)
+
+    engine_prod.dispose()
+
+
 if __name__ == '__main__':
-    migrate_schema()
-    migrate_tables()
+    # migrate_schema()
+    # migrate_tables()
+    get_table_dtypes('factor_result_rank_backtest_eval')

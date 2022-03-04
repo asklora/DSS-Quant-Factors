@@ -324,7 +324,7 @@ def backtest_score_history(factor_rank, name_sql):
 
     print("=== Update top 10/20 to DB ===")
     write_topn_to_db(eval_best_all10, 10, name_sql)
-    write_topn_to_db(eval_best_all20, 20, name_sql)
+    # write_topn_to_db(eval_best_all20, 20, name_sql)
 
     return True
 
@@ -351,6 +351,7 @@ def write_topn_to_db(eval_dict=None, n=None, name_sql=None):
     df['n_period'] = len(df['trading_day'].unique())
     df['n_top'] = n
     df["trading_day"] = df["trading_day"].dt.date
+    df["updated"] = dt.datetime.now()
 
     # write to DB
     upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
