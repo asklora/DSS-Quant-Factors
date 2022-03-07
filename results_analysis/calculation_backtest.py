@@ -304,8 +304,6 @@ class backtest_score_history:
         calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
         calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
 
-        factor_rank = update_factor_rank(factor_rank, factor_formula)
-
         label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(
             regex='^stock_return_y_').columns.to_list()
         fundamentals = fundamentals_score[label_col + calculate_column]
@@ -315,7 +313,8 @@ class backtest_score_history:
         fundamentals = fundamentals.dropna(subset=['trading_day'], how='any')
 
         # add column for 3 pillar score
-        fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
+        fundamentals[[f"fundamentals_{name}" for name in factor_formula['pillar'].unique()]
+                     +['wts_rating', 'dlp_1m', 'earnings_pred_minmax_currency_code']] = np.nan
 
         # add industry_name to ticker
         industry_name = backtest_score_history.get_industry_name()
@@ -328,8 +327,10 @@ class backtest_score_history:
         for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(
                 by=['trading_day', 'weeks_to_expire']):
             self.weeks_to_expire = int(weeks_to_expire)
-            score_date = trading_day + relativedelta(weeks=weeks_to_expire)
+            score_date = trading_day + relativedelta(weeks=self.weeks_to_expire)
             g = fundamentals.loc[fundamentals['trading_day'] == score_date].copy()
+
+            factor_rank_period = update_factor_rank(factor_rank_period, factor_formula)
 
             # Scale original fundamental score
             print(trading_day, score_date)

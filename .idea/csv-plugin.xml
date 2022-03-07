@@ -2096,6 +2096,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/venv/lib/python3.8/site-packages/pandas/core/groupby/grouper.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/venv/lib/python3.8/site-packages/pandas/core/indexes/base.py">
           <value>
             <Attribute>

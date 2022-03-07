@@ -205,7 +205,7 @@ if __name__ == "__main__":
 
     from results_analysis.calculation_rank import rank_pred
     factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
-                            pred_start_testing_period='2021-06-01', # this period is before (+ weeks_to_expire)
+                            pred_start_testing_period='2016-01-01',  # this period is before (+ weeks_to_expire)
                             eval_current=False,
                             eval_metric=args.eval_metric,
                             eval_top_config=args.eval_n_configs,

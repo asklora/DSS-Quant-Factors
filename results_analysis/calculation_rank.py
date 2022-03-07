@@ -117,6 +117,8 @@ class rank_pred:
             # 2.5.2. use best [eval_top_config] config prediction for each (y_type, trading_day)
             logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metric}]')
             best_config_df = self.__backtest_find_calc_metric_avg(trading_day, group)
+            if type(best_config_df)==type(None):
+                continue
             eval = best_config_df[self.eval_col + ['net_ret']].mean().to_dict()
             best_config.update(eval)
 
@@ -215,6 +217,7 @@ class rank_pred:
                 pred.to_csv(f'pred_{name_sql}.csv', index=False)
             else:
                 raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
+            pred = pd.read_csv(f'pred_{name_sql}.csv')      # keep this to avoid ERROR
 
         pred["trading_day"] = pd.to_datetime(pred["trading_day"])
         pred = pred.loc[pred['trading_day'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
@@ -280,29 +283,33 @@ class rank_pred:
     def __backtest_find_calc_metric_avg(self, trading_day, group):
         """ Select Best Config (among other_group_col) """
 
-        conditions = [f"weeks_to_expire={self.weeks_to_expire}",
-                      f"y_type='{self.y_type}'",
-                      f"\"group\"='{group}'",
-                      f"trading_day < '{trading_day}'",
-                      f"trading_day >= '{trading_day - relativedelta(weeks=self.weeks_to_expire*self.eval_config_select_period)}'"]
+        conditions = [
+            f"weeks_to_expire={self.weeks_to_expire}",
+            f"y_type='{self.y_type}'",
+            f"\"group\"='{group}'",
+            f"trading_day < '{trading_day}'",
+            f"trading_day >= '{trading_day - relativedelta(weeks=self.weeks_to_expire*self.eval_config_select_period)}'"
+        ]
         if self.eval_current:
             conditions.append(f"name_sql='{self.name_sql}'")
 
         query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE {' AND '.join(conditions)} "
         df = read_query(query, global_vars.db_url_alibaba_prod)
 
-        df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
-        df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()  # average over trading_day
-        df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
+        if len(df) > 0:
+            df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
+            df_mean = df.groupby(['group'] + self.diff_config_col).mean().reset_index()  # average over trading_day
+            df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
 
-        if self.eval_metric in ['max_ret', 'net_ret', 'r2']:
-            best = df_mean.groupby('group').apply(lambda x: x.nlargest(self.eval_top_config, self.eval_metric, keep="all"))
-        elif self.eval_metric in ['mae', 'mse']:
-            best = df_mean.groupby('group').apply(lambda x: x.nsmallest(self.eval_top_config, self.eval_metric, keep="all"))
+            if self.eval_metric in ['max_ret', 'net_ret', 'r2']:
+                best = df_mean.groupby('group').apply(lambda x: x.nlargest(self.eval_top_config, self.eval_metric, keep="all"))
+            elif self.eval_metric in ['mae', 'mse']:
+                best = df_mean.groupby('group').apply(lambda x: x.nsmallest(self.eval_top_config, self.eval_metric, keep="all"))
+            else:
+                raise Exception("ERROR: Wrong eval_metric")
+            return best
         else:
-            best = None
-        # logging.info(f'best_iter:\n{best}')
-        return best
+            return None
 
     # --------------------------------------- Save Prod Table to DB -------------------------------------------------
 
