@@ -310,7 +310,7 @@ class backtest_score_history:
             ]
             factor_rank['factor_weight'] = np.select(conditions, [2, 0], 1)
 
-        factor_rank.to_csv('factor_rank_adj.csv', index=False)
+        # factor_rank.to_csv('factor_rank_adj.csv', index=False)
 
         # DataFrame for [fundamentals_score]
         fundamentals_score = get_fundamentals_score(start_date=start_date)
@@ -393,14 +393,15 @@ class backtest_score_history:
         df['eval_metric'] = self.eval_metric
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
-        df.to_csv('backtest_score_22.csv', index=False)
+        df["add_factor_penalty"] = self.add_factor_penalty
 
-        # # write to DB
-        # upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
-        #                         primary_key=["name_sql", "currency_code", "trading_day",
-        #                                      "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
-        #                         how='update', db_url=global_vars.db_url_alibaba_prod,
-        #                         dtype=top_dtypes)
+        # write to DB
+        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
+                                primary_key=["name_sql", "currency_code", "trading_day",
+                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric",
+                                             "add_factor_penalty"],
+                                how='update', db_url=global_vars.db_url_alibaba_prod,
+                                dtype=top_dtypes)
 
     def eval_best(self, fundamentals, best_n=10, best_col='ai_score'):
         """ evaluate score history with top 10 score return & industry """
