@@ -102,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument('--restart', default=None, type=str)
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'HKD', 'CNY']
+    group_code_list = ['USD', 'HKD', 'CNY', 'EUR']
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -172,46 +172,52 @@ if __name__ == "__main__":
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
-    # mode = 'trim' if args.trim else ''
-    # data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
-    #
-    # all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
-    #                      tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
-    #                      down_mkt_pct_list)
-    # all_groups = [tuple(e) for e in all_groups]
-    # diff_config_col = ['group_code', 'testing_period', 'y_type',
-    #                    'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
-    # all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
-    #
-    # # (restart) filter for failed iteration
-    # if args.restart:
-    #     fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
-    #                         f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
-    #                         f"GROUP BY {', '.join(diff_config_col)}")
-    #     all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
-    #     all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
-    #     all_groups = all_groups_df.values.tolist()
-    #     sql_result["name_sql"] = args.restart
-    #     all_groups = [tuple([data, sql_result]+e) for e in all_groups]
-    #     to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
-    #
-    # # Reset results table everytimes
-    # with mp.Pool(processes=args.processes) as pool:
-    #     pool.starmap(mp_rf, all_groups)
+    mode = 'trim' if args.trim else ''
+    data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
+
+    all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
+                         tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
+                         down_mkt_pct_list)
+    all_groups = [tuple(e) for e in all_groups]
+    diff_config_col = ['group_code', 'testing_period', 'y_type',
+                       'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
+    all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
+
+    # (restart) filter for failed iteration
+    if args.restart:
+        fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
+                            f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
+                            f"GROUP BY {', '.join(diff_config_col)}")
+        all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
+        all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
+        all_groups = all_groups_df.values.tolist()
+        sql_result["name_sql"] = args.restart
+        all_groups = [tuple([data, sql_result]+e) for e in all_groups]
+        to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
+
+    # Reset results table everytimes
+    with mp.Pool(processes=args.processes) as pool:
+        pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
 
-    sql_result["name_sql"] = args.restart
-
-    from results_analysis.calculation_rank import rank_pred
-    factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
-                            pred_start_testing_period='2016-01-01',  # this period is before (+ weeks_to_expire)
-                            eval_current=False,
-                            eval_metric=args.eval_metric,
-                            eval_top_config=args.eval_n_configs,
-                            eval_config_select_period=args.eval_backtest_period).write_to_db()
-
-    # set name_sql=None i.e. using current backtest table writen by rank_pred
-    from results_analysis.calculation_backtest import backtest_score_history
-    backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
-                           n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)
+    # sql_result["name_sql"] = args.restart
+    #
+    # for n in [20, 10]:
+    #     for t in [12, 36]:
+    #         args.eval_n_configs = n
+    #         args.eval_backtest_period = t
+    #
+    #         from results_analysis.calculation_rank import rank_pred
+    #         factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
+    #                                 pred_start_testing_period='2015-01-01',  # this period is before (+ weeks_to_expire)
+    #                                 eval_current=False,
+    #                                 eval_metric=args.eval_metric,
+    #                                 eval_top_config=args.eval_n_configs,
+    #                                 eval_config_select_period=args.eval_backtest_period,
+    #                                 ).write_to_db()
+    #
+    #         # set name_sql=None i.e. using current backtest table writen by rank_pred
+    #         from results_analysis.calculation_backtest import backtest_score_history
+    #         backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
+    #                                n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)

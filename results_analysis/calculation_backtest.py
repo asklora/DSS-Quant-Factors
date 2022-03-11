@@ -321,8 +321,9 @@ class backtest_score_history:
         fundamentals["industry_name"] = fundamentals["ticker"].map(industry_name)
 
         # calculate score
-        eval_best_all10 = {}
-        # eval_best_all20 = {}
+        eval_best_all = {}
+        for i in [20, 30, 50, -10]:
+            eval_best_all[i] = {}
 
         for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(
                 by=['trading_day', 'weeks_to_expire']):
@@ -338,12 +339,14 @@ class backtest_score_history:
                                   factor_rank_period, self.weeks_to_expire, factor_rank_period).score_update_scale()
 
             # Evaluate 2: calculate return for top 10 score / mode industry
-            eval_best_all10[(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=10).copy()
+            for i in [20, 30, 50, -10]:
+                eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
             # eval_best_all20[(score_date, weeks_to_expire)] = self.eval_best(g_score, weeks_to_expire, best_n=20).copy()
 
         print("=== Update top 10/20 to DB ===")
-        self.write_topn_to_db(eval_best_all10, 10, name_sql)
-        # self.write_topn_to_db(eval_best_all20, 20, name_sql)
+        # self.write_topn_to_db(eval_best_all10, 10, name_sql)
+        for i in [20, 30, 50, -10]:
+            self.write_topn_to_db(eval_best_all[i], i, name_sql)
 
     def write_topn_to_db(self, eval_dict=None, n=None, name_sql=None):
         """ for each backtest eval : write top 10 ticker to DB """
@@ -384,7 +387,10 @@ class backtest_score_history:
 
         top_ret = {}
         for name, g in fundamentals.groupby(["currency_code"]):
-            g = g.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
+            if best_n > 0:
+                g = g.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
+            else:
+                g = g.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
             top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d7'].mean()
             top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
             top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])

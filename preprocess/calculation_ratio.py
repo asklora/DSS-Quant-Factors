@@ -117,7 +117,7 @@ def resample_to_weekly(df, date_col):
     return df
 
 def calc_stock_return(ticker, restart, tri_return_only,
-                      stock_return_map={4: [7], 8: [7], 13: [7], 26: [7]}):
+                      stock_return_map={4: [-7, -28], 8: [-7, -28], 13: [-7, -28], 26: [-7, -28]}):
 
     '''   Calcualte monthly stock return
 
@@ -170,7 +170,11 @@ def calc_stock_return(ticker, restart, tri_return_only,
     logging.info(f'Stock tri rolling average ')
     avg_day_options = set([i for x in stock_return_map.values() for i in x if i!=1])
     for i in avg_day_options:
-        tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)
+        if i > 0:
+            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)
+        else:
+            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(-i, min_periods=1).mean().reset_index(drop=1)
+            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")[f'tri_avg_{i}d'].shift(i)
         drop_col += [f'tri_avg_{i}d']
 
     # Fill forward (-> holidays/weekends) + backward (<- first trading price)
@@ -616,7 +620,7 @@ def test_missing(df_org, formula, ingestion_cols):
         writer.save()
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=["AAPL.O"], restart=True, tri_return_only=False)
+    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=True)
 
 
 

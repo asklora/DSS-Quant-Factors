@@ -174,12 +174,12 @@ if __name__ == "__main__":
     # calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
     #                  all_groups=['CNY'], factor_list=['earnings_yield'], start_date=None)
 
-    stock_return_map = {4: [7], 8: [7], 13: [7], 26: [7]}
+    stock_return_map = {4: [-7, -28], 8: [-7, -28], 13: [-7, -28], 26: [-7, -28]}
     start = datetime.now()
     for fwd_weeks, avg_days in stock_return_map.items():
         for d in avg_days:
             calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
-                             all_groups=['HKD', 'EUR', 'USD', 'CNY'], processes=11)
+                             all_groups=['HKD', 'EUR', 'USD', 'CNY'], processes=10)
     end = datetime.now()
 
     logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
