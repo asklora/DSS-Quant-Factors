@@ -38,7 +38,7 @@ def mp_rf(*mp_args):
         sql_result['use_average'] = use_average     # neg_factor use average
         sql_result['down_mkt_pct'] = down_mkt_pct     # neg_factor use average
 
-        data.split_group(group_code)
+        data.split_group(group_code, usd_for_all=True)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
         # map y_type name to list of factors
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
-    use_pca_list = [0.4, None]
+    use_pca_list = [0.6, None]
     n_splits_list = [.2, .1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [0, 10]
