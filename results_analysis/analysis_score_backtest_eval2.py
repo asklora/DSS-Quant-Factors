@@ -105,7 +105,7 @@ class read_v2_actual_eval:
         for (y_type, group), g in df.groupby(['y_type', 'group']):
             for n_period in self.n_period_list:
                 for i in range(len(date_list)):
-                    ret_series = ret_data.period_average(date_list[i])      # pd.Series: ticker -> ret
+                    ret_series = ret_data.period_average(date_list[i])  # pd.Series: ticker -> ret
 
                     if i + n_period + 1 > len(date_list):
                         continue
@@ -157,38 +157,65 @@ class read_v2_actual_eval:
     def save_test_return_excel(best_config_info):
         return
 
+
 class daily_trans_return:
     """ calculate stock holding return is hold all stocks for given periods """
 
     df_sum = None
     df = None
     weeks_to_expire = None
+    up_to_end_date = False  # if up_to_end_date -> use end_in_1w = False
+    end_in_1w = True  # end date = start_date + weeks_to_expire + 7d (else + weeks_to_expire)
 
     def __init__(self):
         try:
             df = pd.read_csv('cache_tri.csv')
         except:
             df = read_query(f"SELECT ticker, trading_day, total_return_index as tri "
-                            f"FROM data_tri WHERE trading_day > '2021-01-01' ORDER BY ticker, trading_day")
+                            f"FROM data_tri WHERE trading_day > '2018-01-01' ORDER BY ticker, trading_day")
             df.to_csv('cache_tri.csv', index=False)
 
-        df = daily_trans_return.__fill_business_day(df)
+        df = daily_trans_return.__fill_business_day(df).ffill()
+
+        # df.loc[df['ticker']=='0883.HK'].to_csv('sample.csv')
+
         df['tri'] = df.groupby(['ticker'])['tri'].pct_change().fillna(0)
         df['tri'] = np.log(df['tri'] + 1)
+
         self.df = df
 
     def holding(self, weeks_to_expire):
-        self.df_sum = self.df.copy()
-        self.df_sum['tri'] = self.df_sum.groupby('ticker')['tri'].rolling(weeks_to_expire*5,
-                                                                          min_periods=weeks_to_expire*5).sum().values
-        self.df_sum['tri'] = np.exp(self.df_sum['tri']) - 1
         self.weeks_to_expire = weeks_to_expire
+        self.df_sum = self.df.copy()
+        if self.up_to_end_date:
+            pass
+        else:
+            self.df_sum['tri'] = self.df_sum.groupby('ticker')['tri'].rolling(weeks_to_expire * 5).sum().values
+            self.df_sum['tri'] = self.df_sum['tri'].shift(-weeks_to_expire * 5) / (weeks_to_expire / 4)
+            self.df_sum['tri'] = np.exp(self.df_sum['tri']) - 1
 
     def period_average(self, trading_day):
         df_ret = self.df_sum.copy()
-        df_ret = df_ret.loc[(df_ret['trading_day'] > trading_day) &
-                            (df_ret['trading_day'] <= trading_day + relativedelta(weeks=self.weeks_to_expire))]
+
+        if self.end_in_1w:
+            # end_date = trading_day + relativedelta(days=7)
+            end_date = trading_day - relativedelta(days=7)
+            df_ret = df_ret.loc[(df_ret['trading_day'] <= trading_day) & (df_ret['trading_day'] > end_date)]
+        else:
+            end_date = trading_day + relativedelta(weeks=self.weeks_to_expire)
+            df_ret = df_ret.loc[(df_ret['trading_day'] >= trading_day) & (df_ret['trading_day'] < end_date)]
+
+        if self.up_to_end_date:
+            df_ret['tri'] = df_ret.groupby('ticker')['tri'].apply(lambda x: np.cumsum(x[::-1])[::-1])
+        else:
+            pass
+
         df_ret = df_ret.groupby('ticker')['tri'].mean()
+
+        # x = df_ret.to_dict()
+        # x1 = x['0883.HK']
+        # x2 = x['UDR']
+
         return df_ret
 
     @staticmethod
@@ -214,9 +241,170 @@ class daily_trans_return:
         return result
 
 
+class top2_table_tickers_return:
+    n_top_config = 1
+    weeks_to_expire = 4
+
+    def __init__(self):
+
+        data = daily_trans_return()
+
+        df_new = []
+        for n_top_config in [10, 20]:
+            for weeks_to_expire in [4, 13]:
+                data.holding(weeks_to_expire=weeks_to_expire)
+                for n_top_ticker in [10, 20, 30, 50, -10]:
+                    df = read_query(f"SELECT * FROM factor_result_rank_backtest_top2 "
+                                    f"WHERE n_top_config={n_top_config} and trading_day > '2021-08-01' "
+                                    f"and weeks_to_expire={weeks_to_expire} "
+                                    f"and n_top_ticker={n_top_ticker}")
+                    df['trading_day'] = pd.to_datetime(df['trading_day'])
+
+                    for trading_day, g in df.groupby('trading_day'):
+                        ret_map = data.period_average(trading_day).to_dict()
+                        g['new_return'] = g['tickers'].apply(lambda x: np.mean([ret_map[e] for e in x.split(', ')]))
+                        df_new.append(g)
+                        print(df_new)
+
+        df_new = pd.concat(df_new, axis=0)
+        df_new_agg = df_new.groupby(['currency_code', 'weeks_to_expire', 'n_top_config',
+                                     'n_backtest_period', 'n_top_ticker'])['new_return'].agg(
+            ['min', 'max', 'mean', 'std', 'count']).reset_index()
+        df_new_agg['sharpe'] = df_new_agg['mean'] / df_new_agg['std']
+
+        num_col = ['min', 'max', 'mean', 'std', 'count', 'sharpe']
+        to_excel({
+            "all": df_new,
+            "agg": df_new_agg,
+            "n_backtest_period": df_new_agg.groupby(['weeks_to_expire', 'n_backtest_period'])[
+                num_col].mean().reset_index(),
+            "n_backtest_period_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period'
+                                    ])['mean'].mean().unstack().reset_index(),
+            "n_top_config": df_new_agg.groupby(['weeks_to_expire', 'n_top_config'])[num_col].mean().reset_index(),
+            "n_top_config_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
+                                    ])['mean'].mean().unstack().reset_index(),
+        },
+            'top2_new_return_df_new_agg_n_ticker_d-7')
+
+        # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
+        # print(df_new_agg.groupby(['weeks_to_expire']).mean())
+
+
+def top2_table_agg():
+    df = read_query("SELECT * FROM factor_result_rank_backtest_top2")
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df['year'] = df['trading_day'].dt.year
+
+    df_4 = df.loc[df['weeks_to_expire'] == 4]
+    print(df_4.describe())
+
+    # df_year = df_4.groupby(['currency_code', 'year'])['return'].mean().unstack().reset_index()
+    # df_year.to_csv('top2_df_year.csv')
+    # print(df_year)
+
+    df_since8 = df.loc[df['trading_day'] > dt.datetime(2021, 8, 1, 0, 0, 0)]
+
+    exit(200)
+
+
+def get_index_return_annual():
+    df = read_query("SELECT * FROM data_tri WHERE ticker like '.%%' AND EXTRACT(MONTH FROM trading_day)<2"
+                    "AND EXTRACT(year FROM trading_day)>=2016")
+
+    df['trading_day'] = pd.to_datetime(df['trading_day'])
+    df['year'] = df['trading_day'].dt.year
+    df = df.sort_values(by='trading_day').groupby(['ticker', 'year'])[['total_return_index']].mean()
+    df_return = df.groupby(['ticker'])['total_return_index'].pct_change().unstack()
+    df_return.to_csv('index_return_annual.csv')
+    print(df_return)
+
+    exit(200)
+
+
+class top2_table_bot_return:
+    n_top_config = 1
+    weeks_to_expire = 4
+
+    def get_bot_table(self):
+        df = pd.read_excel("best_bot_best_stock.xlsx", "Best Bot Best Stock 1m")
+        return df
+
+    # def get_bot_table_db(self):
+
+
+    def __init__(self):
+
+        data = self.get_bot_table()[['ticker', 'spot_date', 'bot_type', 'bot_return', 'expiry_return']]
+        # data[['bot_return', 'expiry_return']] = pd.to_numeric(data[['bot_return', 'expiry_return']], errors='coerce')
+
+        df_new = []
+        for n_top_config in [1, 3, 5, 10, 20, 40, 80]:
+            for weeks_to_expire in [4, 13]:
+                df = read_query(f"SELECT * FROM factor_result_rank_backtest_top2 "
+                                f"WHERE n_top_config={n_top_config} and trading_day > '2021-09-01' "
+                                f"and weeks_to_expire={weeks_to_expire}"
+                                f"and currency_code <> 'EUR'")
+                df['trading_day'] = pd.to_datetime(df['trading_day'])
+                for trading_day, g in df.groupby('trading_day'):
+                    # for bot_type in ['CLASSIC', 'UNO', 'UCDC']:
+                    data_return = data.loc[(data['spot_date'] > trading_day)
+                                           # & (data['spot_date'] <= (trading_day + relativedelta(weeks=weeks_to_expire)))
+                                           & (data['spot_date'] <= (trading_day + relativedelta(weeks=1)))
+                        # & (data['bot_type'] == bot_type)
+                    ]
+                    if len(data_return) == 0:
+                        continue
+                    ret_mapb = data_return.groupby('ticker')['bot_return'].mean().to_dict()
+                    ret_mape = data_return.groupby('ticker')['expiry_return'].mean().to_dict()
+                    g['bot_return'] = g['tickers'].apply(lambda x: np.mean([ret_mapb[e] if e in ret_mapb.keys()
+                                                                            else np.nan for e in x.split(', ')]))
+                    g['expiry_return'] = g['tickers'].apply(lambda x: np.mean([ret_mape[e] if e in ret_mape.keys()
+                                                                               else np.nan for e in x.split(', ')]))
+                    # g['bot_type'] = bot_type
+                    df_new.append(g)
+                    print(df_new)
+
+        df_new = pd.concat(df_new, axis=0)
+        df_new_agg = df_new.groupby(['currency_code', 'weeks_to_expire', 'n_top_config', 'n_backtest_period'])[
+            'bot_return'].agg(['min', 'max', 'mean', 'std', 'count']).reset_index()
+        df_new_agg['sharpe'] = df_new_agg['mean'] / df_new_agg['std']
+
+        num_col = ['min', 'max', 'mean', 'std', 'count', 'sharpe']
+        to_excel({
+            "all": df_new,
+            "agg": df_new_agg,
+            "n_backtest_period": df_new_agg.groupby(['weeks_to_expire', 'n_backtest_period'])[
+                num_col].mean().reset_index(),
+            "n_backtest_period_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period'
+                                    ])['mean'].mean().unstack().reset_index(),
+            "n_top_config": df_new_agg.groupby(['weeks_to_expire', 'n_top_config'])[num_col].mean().reset_index(),
+            "n_top_config_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
+                                    ])['mean'].mean().unstack().reset_index(),
+        },
+            'top2_new_return_df_bot_agg_-7d')
+
+        # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
+        # print(df_new_agg.groupby(['weeks_to_expire']).mean())
+
+
 if __name__ == '__main__':
+    # get_index_return_annual()
+
+    # 1. using original y return (e.g. stock_return_y_w4_d7)
+    # top2_table_agg()
+
+    # 2. using newly calculated return
+    top2_table_tickers_return()
+
+    # 3. using bot table returns
+    # top2_table_bot_return()
+
     # read_v2_top_excel()
     # read_v2_actual_eval()
-    data = daily_trans_return()
-    data.holding(weeks_to_expire=4)
-    data.period_average(dt.datetime(2021, 10, 31, 0, 0, 0))
+    # data = daily_trans_return()
+    # data.holding(weeks_to_expire=4)
+    # data.period_average(dt.datetime(2021, 8, 25, 0, 0, 0))

@@ -60,7 +60,7 @@ class rf_HPOT:
         for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
             params[k] = int(params[k])
         self.sql_result.update(params)
-        params['bootstrap'] = False
+        params['bootstrap'] = True
         params['n_jobs'] = 1
 
         if 'extra' in self.sql_result['tree_type']:
@@ -104,7 +104,7 @@ class rf_HPOT:
             feature_importance_df = self.rf_train(rf_space)
 
         if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
-            self.sample_set['test_y'] = np.zeros(Y_test_pred.shape)
+            self.sample_set['test_y'] = np.zeros(self.sample_set['test_y_pred'].shape)
 
         ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
         result = {'net_ret': ret}

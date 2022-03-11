@@ -280,23 +280,42 @@ class backtest_score_history:
     """
 
     weeks_to_expire = None
+    add_factor_penalty = True
 
-    def __init__(self, factor_rank, name_sql, eval_metric='net_ret', n_config=10, n_backtest_period=12):
+    def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12):
 
         self.n_config = n_config
         self.n_backtest_period = n_backtest_period
         self.eval_metric = eval_metric
 
         # DataFrame for [factor_rank]
-        factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
-        factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
-        start_date = factor_rank['trading_day'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
+        factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
+        start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
         print(start_date)
+
+        factor_rank.to_csv('factor_rank.csv', index=False)
+
+        # [factor_rank] past period factor prediction
+        if self.add_factor_penalty:
+            factor_rank['z'] = factor_rank['actual_z'] / factor_rank['pred_z']
+            factor_rank['z_1'] = factor_rank.sort_values(['testing_period']).groupby(['group', 'factor_name'])['z'].shift(1).fillna(1)
+            factor_rank['pred_z'] = factor_rank['pred_z']*factor_rank['z_1']
+            factor_rank['factor_weight_adj'] = factor_rank.groupby(by=['group', 'testing_period'])['pred_z'].transform(
+                lambda x: pd.qcut(x, q=3, labels=False, duplicates='drop')).astype(int)
+            factor_rank['factor_weight_org'] = factor_rank['factor_weight'].copy()
+            conditions = [
+                (factor_rank['factor_weight'] == 2) & (factor_rank['factor_weight_adj'] == 2),
+                (factor_rank['factor_weight'] == 0) & (factor_rank['factor_weight_adj'] == 0)
+            ]
+            factor_rank['factor_weight'] = np.select(conditions, [2, 0], 1)
+
+        factor_rank.to_csv('factor_rank_adj.csv', index=False)
 
         # DataFrame for [fundamentals_score]
         fundamentals_score = get_fundamentals_score(start_date=start_date)
         print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
-        print(sorted(list(factor_rank["trading_day"].unique())))
+        # print(sorted(list(factor_rank["trading_day"].unique())))
 
         # DataFrame for [factor_formula]
         factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
@@ -326,7 +345,7 @@ class backtest_score_history:
             eval_best_all[i] = {}
 
         for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(
-                by=['trading_day', 'weeks_to_expire']):
+                by=['testing_period', 'weeks_to_expire']):
             self.weeks_to_expire = int(weeks_to_expire)
             score_date = trading_day + relativedelta(weeks=self.weeks_to_expire)
             g = fundamentals.loc[fundamentals['trading_day'] == score_date].copy()
@@ -374,13 +393,14 @@ class backtest_score_history:
         df['eval_metric'] = self.eval_metric
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
+        df.to_csv('backtest_score_22.csv', index=False)
 
-        # write to DB
-        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
-                                primary_key=["name_sql", "currency_code", "trading_day",
-                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
-                                how='update', db_url=global_vars.db_url_alibaba_prod,
-                                dtype=top_dtypes)
+        # # write to DB
+        # upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
+        #                         primary_key=["name_sql", "currency_code", "trading_day",
+        #                                      "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
+        #                         how='update', db_url=global_vars.db_url_alibaba_prod,
+        #                         dtype=top_dtypes)
 
     def eval_best(self, fundamentals, best_n=10, best_col='ai_score'):
         """ evaluate score history with top 10 score return & industry """
