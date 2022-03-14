@@ -204,8 +204,8 @@ if __name__ == "__main__":
 
     sql_result["name_sql"] = args.restart
 
-    for n in [20, 10]:
-        for t in [12, 36]:
+    for n in [10]:
+        for t in [36]:
             args.eval_n_configs = n
             args.eval_backtest_period = t
 
@@ -217,6 +217,8 @@ if __name__ == "__main__":
                                     eval_top_config=args.eval_n_configs,
                                     eval_config_select_period=args.eval_backtest_period,
                                     ).write_to_db()
+
+            # factor_rank = None
 
             # set name_sql=None i.e. using current backtest table writen by rank_pred
             from results_analysis.calculation_backtest import backtest_score_history

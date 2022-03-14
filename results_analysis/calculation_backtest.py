@@ -229,6 +229,8 @@ class score_scale:
 def get_fundamentals_score(start_date):
     """ get fundamental scores from ratio table """
 
+    start_date = '2016-01-01'
+
     try:
         fundamentals_score = pd.read_csv(f'cached_fundamental_score_{start_date}.csv')
         fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
@@ -280,7 +282,7 @@ class backtest_score_history:
     """
 
     weeks_to_expire = None
-    add_factor_penalty = False
+    add_factor_penalty = True
 
     def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12):
 
@@ -289,17 +291,17 @@ class backtest_score_history:
         self.eval_metric = eval_metric
 
         # DataFrame for [factor_rank]
-        factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
-        factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
-        start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
-        print(start_date)
-
-        factor_rank.to_csv('factor_rank.csv', index=False)
+        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        # factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
+        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
+        # print(start_date)
+        #
+        # factor_rank.to_csv('factor_rank.csv', index=False)
 
         # restart using local cache
-        # factor_rank = pd.read_csv('factor_rank.csv')
-        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
-        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
+        factor_rank = pd.read_csv('factor_rank.csv')
+        factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
 
         # [factor_rank] past period factor prediction
         if self.add_factor_penalty:
@@ -364,10 +366,10 @@ class backtest_score_history:
 
             # Evaluate 2: calculate return for top 10 score / mode industry
             for i in [10, 20, 30, 50, -10]:
-                try:
-                    eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
-                except Exception as e:
-                    to_slack("clair").message_to_slack(f'*ERROR on calculation_backtest*: {e}')
+                # try:
+                eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
+                # except Exception as e:
+                #     to_slack("clair").message_to_slack(f'*ERROR on calculation_backtest*: {e}')
 
         print("=== Update top 10/20 to DB ===")
         # self.write_topn_to_db(eval_best_all10, 10, name_sql)
@@ -413,11 +415,11 @@ class backtest_score_history:
         """ evaluate score history with top 10 score return & industry """
 
         top_ret = {}
-        for name, g in fundamentals.groupby(["currency_code"]):
+        for name, g_all in fundamentals.groupby(["currency_code"]):
             if best_n > 0:
-                g = g.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
+                g = g_all.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
             else:
-                g = g.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
+                g = g_all.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
             top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
             top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
             top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
