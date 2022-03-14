@@ -282,7 +282,7 @@ class backtest_score_history:
     """
 
     weeks_to_expire = None
-    add_factor_penalty = True
+    add_factor_penalty = False
 
     def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12):
 
@@ -291,17 +291,17 @@ class backtest_score_history:
         self.eval_metric = eval_metric
 
         # DataFrame for [factor_rank]
-        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
-        # factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
-        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
-        # print(start_date)
-        #
-        # factor_rank.to_csv('factor_rank.csv', index=False)
-
-        # restart using local cache
-        factor_rank = pd.read_csv('factor_rank.csv')
         factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
         start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
+        print(start_date)
+
+        factor_rank.to_csv('factor_rank.csv', index=False)
+
+        # # restart using local cache
+        # factor_rank = pd.read_csv('factor_rank.csv')
+        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
 
         # [factor_rank] past period factor prediction
         if self.add_factor_penalty:

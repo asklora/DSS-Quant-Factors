@@ -264,6 +264,7 @@ class rank_pred:
         # result_all_comb['config_mean_mse'] = result_all_comb.groupby(['group'] + self.diff_config_col)['mse'].transform('mean')
         # result_all_comb['config_mean_max_ret'] = result_all_comb.groupby(['group'] + self.diff_config_col)['max_ret'].transform('mean')
         result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
+        result_all_comb['is_valid'] = True
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
                                 db_url=db_url_write, how="update", dtype=backtest_eval_dtypes)
 
@@ -298,7 +299,8 @@ class rank_pred:
             f"y_type='{self.y_type}'",
             f"\"group\"='{group}'",
             f"testing_period < '{testing_period}'",
-            f"testing_period >= '{testing_period - relativedelta(weeks=self.weeks_to_expire * self.eval_config_select_period)}'"
+            f"testing_period >= '{testing_period - relativedelta(weeks=self.weeks_to_expire * self.eval_config_select_period)}'",
+            f"is_valid"
         ]
         if self.eval_current:
             conditions.append(f"name_sql='{self.name_sql}'")
@@ -340,6 +342,8 @@ class rank_pred:
             all_history = all_history.groupby(['group', 'testing_period', 'factor_name']).mean().reset_index()
             all_history['factor_weight'] = all_history.groupby(by=['group', 'testing_period'])['pred_z'].transform(
                 lambda x: pd.qcut(x, q=self.q_, labels=False, duplicates='drop')).astype(int)
+            # all_history['factor_weight'] = all_history.groupby(by=['group', 'testing_period'])['pred_z'].transform(
+            #     lambda x: pd.cut(x, bins=[], labels=False, duplicates='drop')).astype(int)
             all_history['last_update'] = dt.datetime.now()
             all_history["weeks_to_expire"] = self.weeks_to_expire
 
@@ -370,9 +374,9 @@ class rank_pred:
         """ concat rank current/history & write """
 
         all_history = self.write_backtest_rank_()
-        if not DEBUG:
-            self.write_current_rank_()
-            logging.INFO("calculation_rank will not write to [current] in DEBUG mode")
+        # if not DEBUG:
+        #     self.write_current_rank_()
+        #     logging.INFO("calculation_rank will not write to [current] in DEBUG mode")
         return all_history
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------

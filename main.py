@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--eval_metric', default='net_ret', type=str)
     parser.add_argument('--eval_n_configs', default=10, type=int)
-    parser.add_argument('--eval_backtest_period', default=12, type=int)
+    parser.add_argument('--eval_backtest_period', default=36, type=int)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
@@ -204,23 +204,23 @@ if __name__ == "__main__":
 
     sql_result["name_sql"] = args.restart
 
-    for n in [10]:
-        for t in [36]:
-            args.eval_n_configs = n
-            args.eval_backtest_period = t
+    # for n in [10]:
+    #     for t in [36]:
+    # args.eval_n_configs = n
+    # args.eval_backtest_period = t
 
-            from results_analysis.calculation_rank import rank_pred
-            factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
-                                    pred_start_testing_period='2019-09-01',  # this period is before (+ weeks_to_expire)
-                                    eval_current=False,
-                                    eval_metric=args.eval_metric,
-                                    eval_top_config=args.eval_n_configs,
-                                    eval_config_select_period=args.eval_backtest_period,
-                                    ).write_to_db()
+    from results_analysis.calculation_rank import rank_pred
+    factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
+                            pred_start_testing_period='2019-09-01',  # this period is before (+ weeks_to_expire)
+                            eval_current=False,
+                            eval_metric=args.eval_metric,
+                            eval_top_config=args.eval_n_configs,
+                            eval_config_select_period=args.eval_backtest_period,
+                            ).write_to_db()
 
-            # factor_rank = None
+    # factor_rank = None
 
-            # set name_sql=None i.e. using current backtest table writen by rank_pred
-            from results_analysis.calculation_backtest import backtest_score_history
-            backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
-                                   n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)
+    # set name_sql=None i.e. using current backtest table writen by rank_pred
+    from results_analysis.calculation_backtest import backtest_score_history
+    backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
+                           n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)
