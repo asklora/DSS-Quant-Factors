@@ -19,7 +19,9 @@ class to_slack:
                                  f"currently user_id includes: {list(self.slack_name_to_id.keys())})")
             raise Exception(e)
 
-    def message_to_slack(self, message):
+    def message_to_slack(self, message, trim_msg=True):
+        if trim_msg:
+            message = str(message)[:100]
         logging.info(message)
         try:
             client = WebClient(token=self.SLACK_API, timeout=30)

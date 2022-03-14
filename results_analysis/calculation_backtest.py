@@ -280,7 +280,7 @@ class backtest_score_history:
     """
 
     weeks_to_expire = None
-    add_factor_penalty = True
+    add_factor_penalty = False
 
     def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12):
 
@@ -296,11 +296,16 @@ class backtest_score_history:
 
         factor_rank.to_csv('factor_rank.csv', index=False)
 
+        # restart using local cache
+        # factor_rank = pd.read_csv('factor_rank.csv')
+        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
+        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
+
         # [factor_rank] past period factor prediction
         if self.add_factor_penalty:
             factor_rank['z'] = factor_rank['actual_z'] / factor_rank['pred_z']
             factor_rank['z_1'] = factor_rank.sort_values(['testing_period']).groupby(['group', 'factor_name'])['z'].shift(1).fillna(1)
-            factor_rank['pred_z'] = factor_rank['pred_z']*factor_rank['z_1']
+            factor_rank['pred_z'] = factor_rank['pred_z']*np.clip(factor_rank['z_1'], 0, 2)
             factor_rank['factor_weight_adj'] = factor_rank.groupby(by=['group', 'testing_period'])['pred_z'].transform(
                 lambda x: pd.qcut(x, q=3, labels=False, duplicates='drop')).astype(int)
             factor_rank['factor_weight_org'] = factor_rank['factor_weight'].copy()
@@ -310,7 +315,7 @@ class backtest_score_history:
             ]
             factor_rank['factor_weight'] = np.select(conditions, [2, 0], 1)
 
-        # factor_rank.to_csv('factor_rank_adj.csv', index=False)
+            factor_rank.to_csv('factor_rank_adj.csv', index=False)
 
         # DataFrame for [fundamentals_score]
         fundamentals_score = get_fundamentals_score(start_date=start_date)
@@ -341,7 +346,7 @@ class backtest_score_history:
 
         # calculate score
         eval_best_all = {}
-        for i in [20, 30, 50, -10]:
+        for i in [10, 20, 30, 50, -10]:
             eval_best_all[i] = {}
 
         for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(
@@ -358,13 +363,15 @@ class backtest_score_history:
                                   factor_rank_period, self.weeks_to_expire, factor_rank_period).score_update_scale()
 
             # Evaluate 2: calculate return for top 10 score / mode industry
-            for i in [20, 30, 50, -10]:
-                eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
-            # eval_best_all20[(score_date, weeks_to_expire)] = self.eval_best(g_score, weeks_to_expire, best_n=20).copy()
+            for i in [10, 20, 30, 50, -10]:
+                try:
+                    eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
+                except Exception as e:
+                    to_slack("clair").message_to_slack(f'*ERROR on calculation_backtest*: {e}')
 
         print("=== Update top 10/20 to DB ===")
         # self.write_topn_to_db(eval_best_all10, 10, name_sql)
-        for i in [20, 30, 50, -10]:
+        for i in [10, 20, 30, 50, -10]:
             self.write_topn_to_db(eval_best_all[i], i, name_sql)
 
     def write_topn_to_db(self, eval_dict=None, n=None, name_sql=None):
@@ -393,13 +400,12 @@ class backtest_score_history:
         df['eval_metric'] = self.eval_metric
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
-        df["add_factor_penalty"] = self.add_factor_penalty
+        # df["add_factor_penalty"] = self.add_factor_penalty
 
         # write to DB
         upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
                                 primary_key=["name_sql", "currency_code", "trading_day",
-                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric",
-                                             "add_factor_penalty"],
+                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
                                 how='update', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
 
@@ -412,10 +418,10 @@ class backtest_score_history:
                 g = g.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
             else:
                 g = g.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
-            top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d7'].mean()
+            top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
             top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
             top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
-            top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d7'] > 0) / len(g)
+            top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g)
             top_ret[(name, "tickers")] = ', '.join(list(g.index))
 
         return top_ret

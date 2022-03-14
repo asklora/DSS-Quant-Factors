@@ -251,11 +251,12 @@ class top2_table_tickers_return:
 
         df_new = []
         for n_top_config in [10, 20]:
-            for weeks_to_expire in [4, 13]:
+            for weeks_to_expire in [4]:
                 data.holding(weeks_to_expire=weeks_to_expire)
                 for n_top_ticker in [10, 20, 30, 50, -10]:
                     df = read_query(f"SELECT * FROM factor_result_rank_backtest_top2 "
-                                    f"WHERE n_top_config={n_top_config} and trading_day > '2021-08-01' "
+                                    f"WHERE n_top_config={n_top_config} and trading_day > '2020-00-01' "
+                                    f"and name_sql='w4_d-7_20220310130330_debug' "
                                     f"and weeks_to_expire={weeks_to_expire} "
                                     f"and n_top_ticker={n_top_ticker}")
                     df['trading_day'] = pd.to_datetime(df['trading_day'])
@@ -285,8 +286,12 @@ class top2_table_tickers_return:
             "n_top_config_mean":
                 df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
                                     ])['mean'].mean().unstack().reset_index(),
+            "n_top_ticker": df_new_agg.groupby(['weeks_to_expire', 'n_top_ticker'])[num_col].mean().reset_index(),
+            "n_top_ticker_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_ticker'
+                                    ])['mean'].mean().unstack().reset_index(),
         },
-            'top2_new_return_df_new_agg_n_ticker_d-7')
+            'top2_new_return_df_agg_d-7')
 
         # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
         # print(df_new_agg.groupby(['weeks_to_expire']).mean())
@@ -385,7 +390,7 @@ class top2_table_bot_return:
                 df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
                                     ])['mean'].mean().unstack().reset_index(),
         },
-            'top2_new_return_df_bot_agg_-7d')
+            'top2_new_return_df_agg_-7d')
 
         # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
         # print(df_new_agg.groupby(['weeks_to_expire']).mean())

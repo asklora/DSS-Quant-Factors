@@ -205,18 +205,18 @@ class rank_pred:
                           f"testing_period>='{pred_start_testing_period}'",
                           f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
                           f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')",
-                          "group_code<>'currency'",
+                          "group_code<>'currency'"
                           ]
             if pred_y_type:
                 conditions.append(f"y_type in {tuple(pred_y_type)}")
 
             pred_col = ["uid", "pred", "actual", "factor_name", "\"group\""]
             label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number',
-                         'uid'] + self.diff_config_col
+                         'uid', 'group_code'] + self.diff_config_col
             query = f'''
                 SELECT * FROM (SELECT {', '.join(pred_col)} FROM {result_pred_table}) P 
                 INNER JOIN (SELECT {', '.join(label_col)} FROM {result_score_table} WHERE {' AND '.join(conditions)}) S 
-                    ON S.uid=P.uid 
+                    ON S.uid=P.uid AND S.group_code=P.group
                 ORDER BY S.uid'''
             pred = read_query(query.replace(",)", ")")).fillna(0)
             # pred = pred.rename(columns={"testing_period": "testing_period"})
