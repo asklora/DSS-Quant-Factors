@@ -204,11 +204,6 @@ if __name__ == "__main__":
 
     sql_result["name_sql"] = args.restart
 
-    # for n in [10]:
-    #     for t in [36]:
-    # args.eval_n_configs = n
-    # args.eval_backtest_period = t
-
     from results_analysis.calculation_rank import rank_pred
     factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
                             pred_start_testing_period='2019-09-01',  # this period is before (+ weeks_to_expire)
@@ -218,9 +213,16 @@ if __name__ == "__main__":
                             eval_config_select_period=args.eval_backtest_period,
                             ).write_to_db()
 
-    # factor_rank = None
+    factor_rank.to_csv(f'factor_rank_{args.eval_metric}_{args.eval_n_configs}_{args.eval_backtest_period}.csv', index=False)
+
+    factor_rank = pd.read_csv(f'factor_rank_{args.eval_metric}_{args.eval_n_configs}_{args.eval_backtest_period}.csv')
+
+    # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
 
     # set name_sql=None i.e. using current backtest table writen by rank_pred
     from results_analysis.calculation_backtest import backtest_score_history
     backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
                            n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)
+
+    from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
+    top2_table_tickers_return(name_sql=sql_result['name_sql'])

@@ -17,7 +17,12 @@ from results_analysis.calculation_rank import rank_pred
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 
 universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
+# universe_currency_code = ['CNY']
+
 score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
+
+n_top_ticker_list = [10, 20, 30, 50, -10]
+# n_top_ticker_list = [10]
 
 # table dtypes for top backtest
 top_dtypes = {
@@ -222,7 +227,7 @@ class score_scale:
         global score_col
         fundamentals, calculate_column = self.fundamentals, self.calculate_column
         print(fundamentals[score_col].describe())
-        fundamentals[score_col] = fundamentals[score_col].round(1)
+        # fundamentals[score_col] = fundamentals[score_col].round(1)
         return fundamentals
 
 
@@ -293,15 +298,9 @@ class backtest_score_history:
         # DataFrame for [factor_rank]
         factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
         factor_rank['testing_period'] = factor_rank['testing_period'].dt.tz_localize(None)
+        factor_rank = factor_rank.loc[factor_rank['group'].isin(universe_currency_code)]
         start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
         print(start_date)
-
-        factor_rank.to_csv('factor_rank.csv', index=False)
-
-        # # restart using local cache
-        # factor_rank = pd.read_csv('factor_rank.csv')
-        # factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
-        # start_date = factor_rank['testing_period'].min() - relativedelta(weeks=27)  # back by 27 weeks since our max pred = 26w
 
         # [factor_rank] past period factor prediction
         if self.add_factor_penalty:
@@ -348,7 +347,7 @@ class backtest_score_history:
 
         # calculate score
         eval_best_all = {}
-        for i in [10, 20, 30, 50, -10]:
+        for i in n_top_ticker_list:
             eval_best_all[i] = {}
 
         for (trading_day, weeks_to_expire), factor_rank_period in factor_rank.groupby(
@@ -365,7 +364,7 @@ class backtest_score_history:
                                   factor_rank_period, self.weeks_to_expire, factor_rank_period).score_update_scale()
 
             # Evaluate 2: calculate return for top 10 score / mode industry
-            for i in [10, 20, 30, 50, -10]:
+            for i in n_top_ticker_list:
                 # try:
                 eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
                 # except Exception as e:
@@ -373,7 +372,7 @@ class backtest_score_history:
 
         print("=== Update top 10/20 to DB ===")
         # self.write_topn_to_db(eval_best_all10, 10, name_sql)
-        for i in [10, 20, 30, 50, -10]:
+        for i in n_top_ticker_list:
             self.write_topn_to_db(eval_best_all[i], i, name_sql)
 
     def write_topn_to_db(self, eval_dict=None, n=None, name_sql=None):
@@ -394,6 +393,9 @@ class backtest_score_history:
         df['return'] = (pd.to_numeric(df['return']) * 100).round(2).astype(float)
         df['positive_pct'] = np.where(df['return'].isnull(), None,
                                       (df['positive_pct'] * 100).astype(float).round(0).astype(int))
+        df['bm_return'] = (pd.to_numeric(df['bm_return']) * 100).round(2).astype(float)
+        df['bm_positive_pct'] = np.where(df['bm_return'].isnull(), None,
+                                      (df['bm_positive_pct'] * 100).astype(float).round(0).astype(int))
         df["weeks_to_expire"] = df["weeks_to_expire"].astype(int)
         df['name_sql'] = name_sql
         df['n_backtest_period'] = self.n_backtest_period
@@ -420,10 +422,13 @@ class backtest_score_history:
                 g = g_all.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
             else:
                 g = g_all.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
+            top_ret[(name, "ticker_count")] = g.shape[0]
             top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
             top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
             top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
             top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g)
+            top_ret[(name, "bm_return")] = g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
+            top_ret[(name, "bm_positive_pct")] = np.sum(g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g_all)
             top_ret[(name, "tickers")] = ', '.join(list(g.index))
 
         return top_ret
