@@ -371,9 +371,16 @@ class backtest_score_history:
                 #     to_slack("clair").message_to_slack(f'*ERROR on calculation_backtest*: {e}')
 
         print("=== Update top 10/20 to DB ===")
+        list_df = []
         # self.write_topn_to_db(eval_best_all10, 10, name_sql)
         for i in n_top_ticker_list:
-            self.write_topn_to_db(eval_best_all[i], i, name_sql)
+            df = self.write_topn_to_db(eval_best_all[i], i, name_sql)
+            list_df.append(df)
+        self.final_df = pd.concat(list_df, axis=0)
+
+    @property
+    def return_df(self):
+        return self.final_df
 
     def write_topn_to_db(self, eval_dict=None, n=None, name_sql=None):
         """ for each backtest eval : write top 10 ticker to DB """
@@ -412,6 +419,7 @@ class backtest_score_history:
                                              "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
                                 how='update', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
+        return df
 
     def eval_best(self, fundamentals, best_n=10, best_col='ai_score'):
         """ evaluate score history with top 10 score return & industry """

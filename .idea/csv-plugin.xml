@@ -1305,6 +1305,34 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_rank.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_adj.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_net_ret_10_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_net_ret_10_48.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_result_rank_backtest_eval.csv">
           <value>
             <Attribute>

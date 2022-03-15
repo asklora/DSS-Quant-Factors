@@ -66,6 +66,9 @@ class rank_pred:
             String in "%Y-%m-%d" format for the start date to download prediction;
         pred_start_uid (Str, Optional):
             String in "%Y%m%d%H%M%S%f" format to filter factor_model records based on training start time
+        eval_current (Boolean, Optional):
+            if True, use only current name_sql
+        # TODO: complete
         """
 
         self.q = q

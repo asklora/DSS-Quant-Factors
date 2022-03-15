@@ -8,3 +8,6 @@ factor_monthly:
 
 factor_weekly:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py --backtest_period 210 --recalc_ratio --recalc_premium --weeks_to_expire 1 --processes 32
+
+restart_eval:
+	@python3 --debug --restart w4_d-7_20220310130330_debug --eval_metric net_ret

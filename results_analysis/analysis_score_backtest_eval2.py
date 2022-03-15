@@ -248,7 +248,7 @@ class top2_table_tickers_return:
     n_top_config = 1
     weeks_to_expire = 4
 
-    def __init__(self, df=None, name_sql="w4_d-7_20220310130330_debug"):
+    def __init__(self, df=None, name_sql="w4_d-7_20220310130330_debug", xlsx_name=None):
 
         data = daily_trans_return()
 
@@ -277,21 +277,21 @@ class top2_table_tickers_return:
         to_excel({
             "all": df_new,
             "agg": df_new_agg,
-            # "n_backtest_period": df_new_agg.groupby(['weeks_to_expire', 'n_backtest_period'])[
-            #     num_col].mean().reset_index(),
-            # "n_backtest_period_mean":
-            #     df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period'
-            #                         ])['mean'].mean().unstack().reset_index(),
-            # "n_top_config": df_new_agg.groupby(['weeks_to_expire', 'n_top_config'])[num_col].mean().reset_index(),
-            # "n_top_config_mean":
-            #     df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
-            #                         ])['mean'].mean().unstack().reset_index(),
-            # "n_top_ticker": df_new_agg.groupby(['weeks_to_expire', 'n_top_ticker'])[num_col].mean().reset_index(),
-            # "n_top_ticker_mean":
-            #     df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_ticker'
-            #                         ])['mean'].mean().unstack().reset_index(),
+            "n_backtest_period": df_new_agg.groupby(['weeks_to_expire', 'n_backtest_period'])[
+                num_col].mean().reset_index(),
+            "n_backtest_period_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period'
+                                    ])['mean'].mean().unstack().reset_index(),
+            "n_top_config": df_new_agg.groupby(['weeks_to_expire', 'n_top_config'])[num_col].mean().reset_index(),
+            "n_top_config_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_config'
+                                    ])['mean'].mean().unstack().reset_index(),
+            "n_top_ticker": df_new_agg.groupby(['weeks_to_expire', 'n_top_ticker'])[num_col].mean().reset_index(),
+            "n_top_ticker_mean":
+                df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_top_ticker'
+                                    ])['mean'].mean().unstack().reset_index(),
         },
-            f'bk_score_eval_{input("input xlsx name:")}')
+            f'bk_score_eval_{xlsx_name if xlsx_name else input("input xlsx name:")}')
 
         # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
         # print(df_new_agg.groupby(['weeks_to_expire']).mean())

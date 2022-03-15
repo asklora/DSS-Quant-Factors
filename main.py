@@ -18,16 +18,17 @@ from general.sql_process import read_query, read_table, trucncate_table_in_datab
 from itertools import product
 import multiprocessing as mp
 
+
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
 
     # try:
     if True:
         data, sql_result, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, \
-            use_average, down_mkt_pct = mp_args
+        use_average, down_mkt_pct = mp_args
 
         logging.debug(f"===== test on y_type [{y_type}] =====")
-        sql_result['y_type'] = y_type   # random forest model predict all factor at the same time
+        sql_result['y_type'] = y_type  # random forest model predict all factor at the same time
         sql_result['tree_type'] = tree_type
         sql_result['testing_period'] = testing_period
         sql_result['group_code'] = group_code
@@ -35,8 +36,8 @@ def mp_rf(*mp_args):
         sql_result['n_splits'] = n_splits
         sql_result['valid_method'] = valid_method
         sql_result['qcut_q'] = qcut_q
-        sql_result['use_average'] = use_average     # neg_factor use average
-        sql_result['down_mkt_pct'] = down_mkt_pct     # neg_factor use average
+        sql_result['use_average'] = use_average  # neg_factor use average
+        sql_result['down_mkt_pct'] = down_mkt_pct  # neg_factor use average
 
         data.split_group(group_code, usd_for_all=True)
         # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
@@ -46,8 +47,8 @@ def mp_rf(*mp_args):
         y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
         load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
                             "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
-                                               "use_median": sql_result['qcut_q']>0, "defined_cut_bins": [],
-                                               "use_average":  sql_result['use_average']},
+                                               "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
+                                               "use_average": sql_result['use_average']},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
                                               "factor_pca": use_pca, "mi_pca": 0.6}}
         testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
@@ -71,14 +72,76 @@ def mp_rf(*mp_args):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             # calculate weight for negative / positive index
-            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0]<0, down_mkt_pct, 1-down_mkt_pct)
+            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
 
             sql_result['neg_factor'] = data.neg_factor
             rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result, sample_set=sample_set,
-                    x_col=data.x_col, y_col=data.y_col, group_index=data.test['group'].to_list()).write_db() # start hyperopt
+                    x_col=data.x_col, y_col=data.y_col,
+                    group_index=data.test['group'].to_list()).write_db()  # start hyperopt
             cv_number += 1
     # except Exception as e:
     #     to_slack("clair").message_to_slack(f'*** Exception: {testing_period},{use_pca},{y_type}: {e}')
+
+
+from results_analysis.calculation_rank import rank_pred
+from results_analysis.calculation_backtest import backtest_score_history
+from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
+
+
+def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False):
+    """ evaluate test results based on name_sql / eval args """
+
+    sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
+
+    eval_metric = eval_metric,
+    eval_n_configs = eval_n_configs,
+    eval_backtest_period = eval_backtest_period
+
+    # Step 1: pred -> ranking
+    factor_rank = rank_pred(1 / 3, name_sql=sql_result['name_sql'],
+                            pred_start_testing_period=pred_start_testing_period,
+                            # this period is before (+ weeks_to_expire)
+                            eval_current=eval_current,
+                            eval_metric=eval_metric,
+                            eval_top_config=eval_n_configs,
+                            eval_config_select_period=eval_backtest_period,
+                            ).write_to_db()
+
+    factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
+
+    factor_rank = pd.read_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
+
+    # ----------------------- modified factor_rank for testing ----------------------------
+    # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
+    # -------------------------------------------------------------------------------------
+
+    # Step 2: ranking -> backtest score
+    # set name_sql=None i.e. using current backtest table writen by rank_pred
+    backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric,
+                                         n_config=eval_n_configs, n_backtest_period=eval_backtest_period).return_df()
+
+    # Step 3: backtest score analysis
+    # top2_table_tickers_return(df=backtest_df)
+
+    top2_table_tickers_return(name_sql=sql_result['name_sql'], xlsx_name="fundamentals_momentum")
+
+
+def start_on_update(check_interval=60, table_names=None):
+    """ check if data tables finished ingestion -> then start """
+    waiting = True
+    while waiting:
+        update_time = read_table("ingestion_update_time", db_url_alibaba_prod)
+        update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
+        if all(update_time['finish'] == True) & all(
+                update_time['last_update'] > (dt.datetime.today() - relativedelta(days=3))):
+            waiting = False
+        else:
+            logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+            time.sleep(check_interval)
+    to_slack("clair").message_to_slack(
+        f"*[Start Factor]*: week_to_expire=[{args.weeks_to_expire}]\n-> updated {table_names}")
+    return True
+
 
 if __name__ == "__main__":
 
@@ -89,14 +152,14 @@ if __name__ == "__main__":
     parser.add_argument('--weeks_to_expire', default=4, type=int)
     parser.add_argument('--sample_interval', default=4, type=int)
     parser.add_argument('--average_days', default=7, type=int)
-    parser.add_argument('--processes', default=1, type=int)
+    parser.add_argument('--processes', default=mp.cpu_count(), type=int)
     parser.add_argument('--backtest_period', default=75, type=int)
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--eval_metric', default='net_ret', type=str)
-    parser.add_argument('--eval_n_configs', default=10, type=int)
-    parser.add_argument('--eval_backtest_period', default=36, type=int)
+    parser.add_argument('--eval_n_configs', default='10,20', type=str)
+    parser.add_argument('--eval_backtest_period', default='36,12', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
@@ -106,23 +169,9 @@ if __name__ == "__main__":
 
     # --------------------------------------- Schedule for Production --------------------------------
 
-    def start_on_update(check_interval=60, table_names=None):
-        ''' check if data tables finished ingestion -> then start '''
-        waiting = True
-        while waiting:
-            update_time = read_table("ingestion_update_time", db_url_alibaba_prod)
-            update_time = update_time.loc[update_time['tbl_name'].isin(table_names)]
-            if all(update_time['finish']==True) & all(update_time['last_update']>(dt.datetime.today()-relativedelta(days=3))):
-                waiting = False
-            else:
-                logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
-                time.sleep(check_interval)
-        to_slack("clair").message_to_slack(f"*[Start Factor]*: week_to_expire=[{args.weeks_to_expire}]\n-> updated {table_names}")
-        return True
-
     if not args.debug:
         # Check 1: if monthly -> only first Sunday every month
-        if dt.datetime.today().day>7:
+        if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
         # Check 2(b): monthly update after weekly update
@@ -142,7 +191,7 @@ if __name__ == "__main__":
     # --------------------------------- Different Configs -----------------------------------------
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
-    use_pca_list = [0.6, None]
+    use_pca_list = [0.4, None]
     n_splits_list = [.2, .1]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [0, 10]
@@ -159,70 +208,61 @@ if __name__ == "__main__":
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
     testing_period_list_all = read_query(query, db_url=db_url_read)
 
-    sample_interval = args.sample_interval # use if want non-overlap sample
-    testing_period_list = sorted(testing_period_list_all['trading_day'])[-sample_interval*args.backtest_period-1::sample_interval]
+    sample_interval = args.sample_interval  # use if want non-overlap sample
+    testing_period_list = sorted(testing_period_list_all['trading_day'])[
+                          -sample_interval * args.backtest_period - 1::sample_interval]
     # testing_period_list = testing_period_list[:-11]
 
-    logging.info(f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
+    logging.info(
+        f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
 
     # --------------------------------- Model Training ------------------------------------------
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
+    sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(),
+                                                                                                     '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
-    if type(args.restart) == type(None):
-        mode = 'trim' if args.trim else ''
-        data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
+    # if type(args.restart) == type(None):
+    mode = 'trim' if args.trim else ''
+    data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
-        all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
-                             tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
-                             down_mkt_pct_list)
-        all_groups = [tuple(e) for e in all_groups]
-        diff_config_col = ['group_code', 'testing_period', 'y_type',
-                           'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
-        all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
+    all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
+                         tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
+                         down_mkt_pct_list)
+    all_groups = [tuple(e) for e in all_groups]
+    diff_config_col = ['group_code', 'testing_period', 'y_type',
+                       'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
+    all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
 
-        # (restart) filter for failed iteration
-        if args.restart:
-            fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
-                                f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
-                                f"GROUP BY {', '.join(diff_config_col)}")
-            all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
-            all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
-            all_groups = all_groups_df.values.tolist()
-            sql_result["name_sql"] = args.restart
-            all_groups = [tuple([data, sql_result]+e) for e in all_groups]
-            to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
-
-        # Reset results table everytimes
-        with mp.Pool(processes=args.processes) as pool:
-            pool.starmap(mp_rf, all_groups)
+    # (restart) filter for failed iteration
+    # if args.restart:
+    #     fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
+    #                         f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
+    #                         f"GROUP BY {', '.join(diff_config_col)}")
+    #     all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
+    #     all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
+    #     all_groups = all_groups_df.values.tolist()
+    #     sql_result["name_sql"] = args.restart
+    #     all_groups = [tuple([data, sql_result]+e) for e in all_groups]
+    #     to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
+    #
+    #     # Reset results table everytimes
+    #     with mp.Pool(processes=args.processes) as pool:
+    #         pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
 
     sql_result["name_sql"] = args.restart
 
-    from results_analysis.calculation_rank import rank_pred
-    factor_rank = rank_pred(1/3, name_sql=sql_result['name_sql'],
-                            pred_start_testing_period='2019-09-01',  # this period is before (+ weeks_to_expire)
-                            eval_current=False,
-                            eval_metric=args.eval_metric,
-                            eval_top_config=args.eval_n_configs,
-                            eval_config_select_period=args.eval_backtest_period,
-                            ).write_to_db()
+    all_eval_groups = product([sql_result],
+                              args.eval_metric.split(','),
+                              [int(e) for e in args.eval_n_configs.split(',')],
+                              [int(e) for e in args.eval_backtest_period.split(',')])
+    all_eval_groups = [tuple(e) for e in all_eval_groups]
 
-    factor_rank.to_csv(f'factor_rank_{args.eval_metric}_{args.eval_n_configs}_{args.eval_backtest_period}.csv', index=False)
+    map(mp_eval, all_eval_groups)
 
-    factor_rank = pd.read_csv(f'factor_rank_{args.eval_metric}_{args.eval_n_configs}_{args.eval_backtest_period}.csv')
-
-    # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
-
-    # set name_sql=None i.e. using current backtest table writen by rank_pred
-    from results_analysis.calculation_backtest import backtest_score_history
-    backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=args.eval_metric,
-                           n_config=args.eval_n_configs, n_backtest_period=args.eval_backtest_period)
-
-    from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
-    top2_table_tickers_return(name_sql=sql_result['name_sql'])
+    # with mp.Pool(processes=1) as pool:
+    #     pool.starmap(mp_eval, all_eval_groups)
