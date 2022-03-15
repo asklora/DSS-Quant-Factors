@@ -36,21 +36,56 @@ rank_dtypes = dict(
     last_update=TIMESTAMP
 )
 
-backtest_eval_dtypes = dict(uid=TEXT(), name_sql=TEXT(), group=TEXT(), testing_period=TIMESTAMP(),
-                            max_factor=JSON(astext_type=TEXT()), min_factor=JSON(astext_type=TEXT()),
+backtest_eval_dtypes = dict(name_sql=TEXT(), group=TEXT(), testing_period=DATE,
+                            max_factor_count=JSON, min_factor_count=JSON,
+                            max_factor_pred=JSON, min_factor_pred=JSON,
+                            max_factor_actual=JSON, min_factor_actual=JSON,
                             max_ret=DOUBLE_PRECISION(precision=53), min_ret=DOUBLE_PRECISION(precision=53),
                             mae=DOUBLE_PRECISION(precision=53), mse=DOUBLE_PRECISION(precision=53),
                             r2=DOUBLE_PRECISION(precision=53), actual=DOUBLE_PRECISION(precision=53), y_type=TEXT(),
-                            weeks_to_expire=INTEGER(), config=JSON(astext_type=TEXT()))
+                            weeks_to_expire=INTEGER(), config=JSON(astext_type=TEXT()), last_update=TIMESTAMP)
+
+diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
 
 def apply_parallel(grouped, func):
+    """ (obsolete) parallel run groupby """
     g_list = Parallel(n_jobs=mp.cpu_count())(delayed(func)(group) for name, group in grouped)
     return pd.concat(g_list)
 
 
 def weight_qcut(x, q_):
+    """ qcut within groups """
     return pd.qcut(x, q=q_, labels=False, duplicates='drop')
+
+
+def download_prediction(name_sql, pred_y_type=None, pred_start_testing_period='2000-01-01',
+                        pred_start_uid='200000000000000000'):
+    """ download joined table factor_model / *_stock and save csv """
+
+    conditions = [f"name_sql='{name_sql}'",
+                  f"testing_period>='{pred_start_testing_period}'",
+                  f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
+                  f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')",
+                  ]
+    if pred_y_type:
+        conditions.append(f"y_type in {tuple(pred_y_type)}")
+
+    global diff_config_col
+    pred_col = ["uid", "pred", "actual", "factor_name", "\"group\""]
+    label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number', 'uid', 'group_code'] + diff_config_col
+    query = f'''SELECT P.\"group\", P.factor_name, P.actual, P.pred, S.* 
+                FROM (SELECT {', '.join(label_col)} FROM {result_score_table} WHERE {' AND '.join(conditions)}) S  
+                INNER JOIN (SELECT {', '.join(pred_col)} FROM {result_pred_table}) P
+                  ON S.uid=P.uid
+                ORDER BY S.uid'''
+    pred = read_query(query.replace(",)", ")")).fillna(0)
+    if len(pred) > 0:
+        # pred.to_json(f'pred_{name_sql}.json')
+        pred.to_pickle(f'pred_{name_sql}.pkl')
+    else:
+        raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
+    return pred
 
 
 class rank_pred:
@@ -58,9 +93,9 @@ class rank_pred:
 
     q_ = None
     eval_col = ['max_ret', 'r2', 'mae', 'mse']
-    iter_unique_col = ['name_sql', 'group', 'group_code', 'group_code', 'testing_period', 'factor_name']
-    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
-    if_plot = True
+    iter_unique_col = ['name_sql', 'group', 'group_code', 'testing_period', 'factor_name']
+    diff_config_col = diff_config_col
+    if_plot = False
 
     def __init__(self, q, name_sql,
                  pred_y_type=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000',
@@ -211,43 +246,22 @@ class rank_pred:
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    def _download_prediction(self, name_sql, pred_y_type, pred_start_testing_period, pred_start_uid):
+    @staticmethod
+    def _download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid):
         """ merge factor_stock & factor_model_stock """
 
         try:
-            pred = pd.read_csv(f'pred_{name_sql}.csv')
+            # pred = pd.read_csv(f'pred_{name_sql}.csv')
+            # data = json.loads(f'pred_{name_sql}.json')
+            # pred = pd.json_normalize(data)
+            pred = pd.read_pickle(f"pred_{name_sql}.pkl")
             logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
             pred = pred.rename(columns={"trading_day": "testing_period"})
 
-            pred['tree_type'] = 'rf'       # TODO: remove quick fix for "rf1"
         except Exception as e:
+            print(e)
             logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
-
-            conditions = [f"name_sql='{name_sql}'",
-                          f"testing_period>='{pred_start_testing_period}'",
-                          f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
-                          f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')",
-                          # "group_code<>'currency'"
-                          # "group_code='USD'"
-                          ]
-            if pred_y_type:
-                conditions.append(f"y_type in {tuple(pred_y_type)}")
-
-            pred_col = ["uid", "pred", "actual", "factor_name", "\"group\""]
-            label_col = ['name_sql', 'y_type', 'neg_factor', 'testing_period', 'cv_number',
-                         'uid', 'group_code'] + self.diff_config_col
-            query = f'''
-                SELECT * FROM (SELECT {', '.join(pred_col)} FROM {result_pred_table}) P 
-                INNER JOIN (SELECT {', '.join(label_col)} FROM {result_score_table} WHERE {' AND '.join(conditions)}) S 
-                    ON S.uid=P.uid
-                ORDER BY S.uid'''
-            pred = read_query(query.replace(",)", ")")).fillna(0)
-            # pred = pred.rename(columns={"testing_period": "testing_period"})
-            if len(pred) > 0:
-                pred.to_csv(f'pred_{name_sql}.csv', index=False)
-            else:
-                raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
-            pred = pd.read_csv(f'pred_{name_sql}.csv')  # keep this to avoid ERROR
+            download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid)
 
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
@@ -255,7 +269,7 @@ class rank_pred:
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
-    def __backtest_save_eval_metrics(self, result_all, y_type, name_sql, if_plot):
+    def __backtest_save_eval_metrics(self, result_all, y_type, name_sql):
         """ evaluate & rank different configuration;
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table """
 
@@ -275,8 +289,8 @@ class rank_pred:
         # 2.4.2. create DataFrame for eval results to DB
         result_all_comb["y_type"] = y_type
         result_all_comb["weeks_to_expire"] = self.weeks_to_expire
-        primary_keys = ["name_sql", "group", "testing_period", "y_type"] + self.diff_config_col
-        result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
+        primary_keys = ["name_sql", "group", "group_code", "testing_period", "y_type"] + self.diff_config_col
+        # result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
 
         # 2.4.3. save local plot for evaluation
         if self.if_plot:
@@ -286,8 +300,9 @@ class rank_pred:
         result_all_comb['config'] = result_all_comb[self.diff_config_col].to_dict(orient='records')
         result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
         result_all_comb['is_valid'] = True
+        result_all_comb['last_update'] = dt.datetime.now()
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
-                                db_url=db_url_write, how="update", dtype=backtest_eval_dtypes)
+                                db_url=db_url_write, how="append", dtype=backtest_eval_dtypes)
 
     def __get_summary_stats_in_group(self, g):
         """ Calculate basic evaluation metrics for factors """
@@ -320,7 +335,7 @@ class rank_pred:
             f"weeks_to_expire={self.weeks_to_expire}",
             f"y_type='{self.y_type}'",
             f"\"group\"='{group}'",
-            f"group_code={group_code}",
+            f"group_code='{group_code}'",
             f"testing_period < '{testing_period}'",
             f"testing_period >= '{testing_period - relativedelta(weeks=self.weeks_to_expire * self.eval_config_select_period)}'",
             f"is_valid"
@@ -362,7 +377,7 @@ class rank_pred:
             all_history = pd.concat([x["rank_df"] for x in self.all_history], axis=0)
             all_history = all_history.groupby(['group', 'group_code', 'testing_period', 'factor_name']).mean().reset_index()
             all_history['factor_weight'] = all_history.groupby(by=['group', 'group_code', 'testing_period'])[
-                'pred_z'].transform(partial(weight_qcut, q_=q_)).astype(int)
+                'pred_z'].transform(partial(weight_qcut, q_=self.q_)).astype(int)
             all_history['last_update'] = dt.datetime.now()
             all_history["weeks_to_expire"] = self.weeks_to_expire
 
@@ -374,7 +389,7 @@ class rank_pred:
         df_current = pd.concat([x["rank_df"] for x in self.all_current], axis=0)
         df_current = df_current.groupby(['group', 'group_code', 'testing_period', 'factor_name']).mean().reset_index()
         df_current['factor_weight'] = df_current.groupby(by=['group', 'group_code', 'testing_period'])['pred_z'].transform(
-            partial(weight_qcut, q_=q_)).astype(int)
+            partial(weight_qcut, q_=self.q_)).astype(int)
         df_current['last_update'] = dt.datetime.now()
         df_current["weeks_to_expire"] = self.weeks_to_expire
         df_current = df_current.drop(columns=['actual_z'])
@@ -437,21 +452,5 @@ class rank_pred:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--q', type=float, default=1 / 3)
-    parser.add_argument('--weeks_to_expire', type=str, default='%%')
-    parser.add_argument('--average_days', type=str, default='%%')
-    args = parser.parse_args()
-
-    # Example
-    # rank_pred(1/3, name_sql='w26_d7_20220207153438_debug', pred_start_testing_period=None, y_type=[]).write_to_db()
-    rank_pred(1 / 3, name_sql='w4_d7_official', pred_start_testing_period=None, eval_top_config=10).write_to_db()
-    rank_pred(1 / 3, name_sql='w8_d7_official', pred_start_testing_period=None, eval_top_config=10).write_to_db()
-    rank_pred(1 / 3, name_sql='w13_d7_official', pred_start_testing_period=None, eval_top_config=10).write_to_db()
-    # calc_rank = rank_pred(1/3, name_sql='w26_d7_official', pred_start_testing_period=None, eval_top_config=10).write_to_db()
-
-    # rank_pred(1/3, weeks_to_expire=1, average_days=1, pred_start_testing_period=None, y_type=[]).write_to_db()
-    # rank_pred(1/3, weeks_to_expire=26, pred_start_testing_period=None, y_type=[], pred_start_uid='20220128000000389209').write_to_db()
-
-    # from results_analysis.score_backtest import score_history
-    # score_history(self.weeks_to_expire)
+    download_prediction('w4_d-7_20220310130330_debug')
+    # download_prediction('w4_d-7_20220312222632_debug')

@@ -43,7 +43,9 @@ top_dtypes = {
 
 class score_scale:
 
-    def __init__(self, fundamentals, calculate_column, universe_currency_code, factor_formula, weeks_to_expire, factor_rank):
+    def __init__(self, fundamentals, calculate_column, universe_currency_code, factor_formula, weeks_to_expire, factor_rank, eval_metric):
+        self.eval_metric = eval_metric
+
         fundamentals = fundamentals.copy()
 
         # Scale factor scores
@@ -146,8 +148,7 @@ class score_scale:
         # print(minmax_column)
         return fundamentals, minmax_column
 
-    @staticmethod
-    def __calc_ai_score_pillar(factor_rank, fundamentals):
+    def __calc_ai_score_pillar(self, factor_rank, fundamentals):
         """ calculate ai_score by each currency_code (i.e. group) for each of [Quality, Value, Momentum] """
 
         # add column for 3 pillar score
@@ -162,11 +163,12 @@ class score_scale:
             fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] = \
                 fundamentals.loc[fundamentals["currency_code"] == group, score_col].mean(axis=1).values
 
-            sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
-            score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
-            score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
-            fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
-                fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
+            if self.eval_metric == 'net_ret':
+                sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
+                score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
+                score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
+                fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
+                    fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
 
         return fundamentals
 
@@ -362,7 +364,8 @@ class backtest_score_history:
             # Scale original fundamental score
             print(trading_day, score_date)
             g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
-                                  factor_rank_period, self.weeks_to_expire, factor_rank_period).score_update_scale()
+                                  factor_rank_period, self.weeks_to_expire, factor_rank_period,
+                                  eval_metric).score_update_scale()
 
             # Evaluate 2: calculate return for top 10 score / mode industry
             for i in n_top_ticker_list:

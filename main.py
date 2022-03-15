@@ -88,7 +88,7 @@ from results_analysis.calculation_backtest import backtest_score_history
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
 
 
-def mp_eval(*args, pred_start_testing_period='2021-09-01', eval_current=False, xlsx_name="fundamentals_momentum"):
+def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, xlsx_name="ai_score"):
     """ evaluate test results based on name_sql / eval args """
 
     sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
-    parser.add_argument('--eval_metric', default='net_ret', type=str)
+    parser.add_argument('--eval_metric', default='net_ret,max_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
     parser.add_argument('--eval_backtest_period', default='36,12', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
@@ -262,5 +262,6 @@ if __name__ == "__main__":
     # for e in all_eval_groups:
     #     mp_eval(*e)
 
-    with mp.Pool(processes=args.processes) as pool:
+    # with mp.Pool(processes=args.processes) as pool:
+    with mp.Pool(processes=1) as pool:
         pool.starmap(mp_eval, all_eval_groups)

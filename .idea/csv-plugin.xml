@@ -1340,6 +1340,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/general/send_slack.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/general/sql_output.py">
           <value>
             <Attribute>

@@ -21,7 +21,7 @@ class to_slack:
 
     def message_to_slack(self, message, trim_msg=True):
         if trim_msg:
-            message = str(message)[:100]
+            message = str(message)[:500]
         logging.info(message)
         try:
             client = WebClient(token=self.SLACK_API, timeout=30)

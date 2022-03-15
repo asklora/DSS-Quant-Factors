@@ -71,15 +71,20 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
         logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
         logging.info(f"=== URL: {db_url} ===")
 
+        # for k, v in data.dtypes():
+        #     if v == type({}):
+        #         data[k] = data[k].apply(json.dumps)
+
         engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
             with engine.connect() as conn:
-                extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': 20000}
+                extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': chunksize,
+                         'dtype': dtype}
                 data.to_sql(table, **extra)
             engine.dispose()
         else:
             if data.duplicated(subset=primary_key, keep=False).sum() > 0:
-                to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: [{primary_key}]")
+                to_slack("clair").message_to_slack(f"Exception: duplicated on primary key: {primary_key}")
 
             data = data.drop_duplicates(subset=primary_key, keep="first", inplace=False)
             data = data.dropna(subset=primary_key)
@@ -105,31 +110,31 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
             upsert(engine, **upsert_params)
             logging.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
-        if verbose>=0:
+        if verbose >= 0:
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
         record_table_update_time(table)
     except Exception as e:
-        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e}")
+        to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e.args}")
         return False
     return True
 
-def read_query(query, db_url=db_url_read):
+def read_query(query, db_url=db_url_read, mp=True):
     ''' Read specific query from SQL '''
 
     logging.debug(f'Download Table with query: [{query}]')
-    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     print(f'----> Query: {query}')
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn, chunksize=20000)
+        df = pd.read_sql(query, conn, chunksize=20000, )
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()
     return df
 
-def read_table(table, db_url=db_url_read):
+def read_table(table, db_url=db_url_read, mp=True):
     ''' Read entire table from SQL '''
 
     logging.debug(f'Download Entire Table from [{table}]')
-    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
+    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
         df = pd.concat(df, axis=0, ignore_index=True)
