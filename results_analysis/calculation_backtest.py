@@ -289,11 +289,12 @@ class backtest_score_history:
     weeks_to_expire = None
     add_factor_penalty = False
 
-    def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12):
+    def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12, xlsx_name='test'):
 
         self.n_config = n_config
         self.n_backtest_period = n_backtest_period
         self.eval_metric = eval_metric
+        self.xlsx_name = xlsx_name
 
         # DataFrame for [factor_rank]
         factor_rank["testing_period"] = pd.to_datetime(factor_rank["testing_period"])
@@ -339,7 +340,7 @@ class backtest_score_history:
 
         # add column for 3 pillar score
         fundamentals[[f"fundamentals_{name}" for name in factor_formula['pillar'].unique()]
-                     +['wts_rating', 'dlp_1m', 'earnings_pred_minmax_currency_code']] = np.nan
+                     + ['wts_rating', 'dlp_1m', 'earnings_pred_minmax_currency_code']] = np.nan
 
         # add industry_name to ticker
         industry_name = backtest_score_history.get_industry_name()
@@ -365,10 +366,7 @@ class backtest_score_history:
 
             # Evaluate 2: calculate return for top 10 score / mode industry
             for i in n_top_ticker_list:
-                # try:
                 eval_best_all[i][(score_date, weeks_to_expire)] = self.eval_best(g_score, best_n=i).copy()
-                # except Exception as e:
-                #     to_slack("clair").message_to_slack(f'*ERROR on calculation_backtest*: {e}')
 
         print("=== Update top 10/20 to DB ===")
         list_df = []
@@ -402,7 +400,7 @@ class backtest_score_history:
                                       (df['positive_pct'] * 100).astype(float).round(0).astype(int))
         df['bm_return'] = (pd.to_numeric(df['bm_return']) * 100).round(2).astype(float)
         df['bm_positive_pct'] = np.where(df['bm_return'].isnull(), None,
-                                      (df['bm_positive_pct'] * 100).astype(float).round(0).astype(int))
+                                        (df['bm_positive_pct'] * 100).astype(float).round(0).astype(int))
         df["weeks_to_expire"] = df["weeks_to_expire"].astype(int)
         df['name_sql'] = name_sql
         df['n_backtest_period'] = self.n_backtest_period
@@ -412,6 +410,7 @@ class backtest_score_history:
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
         # df["add_factor_penalty"] = self.add_factor_penalty
+        df['xlsx_name'] = self.xlsx_name
 
         # write to DB
         upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
@@ -424,6 +423,8 @@ class backtest_score_history:
     def eval_best(self, fundamentals, best_n=10, best_col='ai_score'):
         """ evaluate score history with top 10 score return & industry """
 
+        test_period = fundamentals['trading_day'].to_list()[0]
+
         top_ret = {}
         for name, g_all in fundamentals.groupby(["currency_code"]):
             if best_n > 0:
@@ -431,13 +432,17 @@ class backtest_score_history:
             else:
                 g = g_all.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
             top_ret[(name, "ticker_count")] = g.shape[0]
-            top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
-            top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
-            top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
-            top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g)
-            top_ret[(name, "bm_return")] = g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
-            top_ret[(name, "bm_positive_pct")] = np.sum(g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g_all)
-            top_ret[(name, "tickers")] = ', '.join(list(g.index))
+            if g.shape[0] > 0:
+                top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
+                top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
+                top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
+                top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g)
+                top_ret[(name, "bm_return")] = g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
+                top_ret[(name, "bm_positive_pct")] = np.sum(g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g_all)
+                top_ret[(name, "tickers")] = ', '.join(list(g.index))
+            else:
+                to_slack("clair").message_to_slack(f"*ERROR in calculation_backtest*: [{name}, best{best_n}, "
+                                                   f"{test_period}] has no ai_score")
 
         return top_ret
 
