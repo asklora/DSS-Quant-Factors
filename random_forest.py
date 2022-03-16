@@ -100,6 +100,23 @@ class rf_HPOT:
         best_factor = np.array([x[2:] for x in self.y_col])[pred_qcut[0, :] == 2]
         return ret, best_factor
 
+    def customize_score(self, actual, pred, multioutput=False):
+        """ adjusted metrics:
+            when rank(actual) (ranked by row) < rank(pred) (we overestimate premium) use mse
+            when rank(actual) > rank(pred) (we underestimate premium) use mae
+            # TODO: customize training loss also adjusted like this
+        """
+
+        actual_sort = actual.T.argsort().argsort()
+        pred_sort = pred.T.argsort().argsort()
+        # rank_r2 = r2_score(actual_sort, pred_sort, multioutput='uniform_average')
+        # rank_mse = mean_squared_error(actual_sort, pred_sort, multioutput='uniform_average')
+        # rank_mae = mean_absolute_error(actual_sort, pred_sort, multioutput='uniform_average')
+        diff = actual_sort - pred_sort
+        diff2 = np.where(diff > 0, diff, diff**2)  # if actual > pred
+        adj_mse = np.mean(diff2)
+        return {"adj_mse": adj_mse}  # {"rank_r2": rank_r2, "rank_mse": rank_mse, "rank_mae": rank_mae}
+
     def eval_regressor(self, rf_space):
         """ train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model """
 
@@ -113,10 +130,15 @@ class rf_HPOT:
 
         ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
         result = {'net_ret': ret}
-        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():
+        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error,
+                        "custom": self.customize_score}.items():
             for i in ['train_yy', 'valid_y', 'test_y']:
                 score = func(self.sample_set[i].T, self.sample_set[i + '_pred'].T, multioutput='raw_values')
-                result[f"{k}_{i.split('_')[0]}"] = np.median(score)
+                if type(score) == type({}):
+                    for socre_k, score_v in score.items():
+                        result[f"{k}_{i.split('_')[0]}_{socre_k}"] = score_v
+                else:
+                    result[f"{k}_{i.split('_')[0]}"] = np.median(score)
         logging.debug(f"R2 train: {result['r2_train']}")
         logging.debug(f"R2 valid: {result['r2_valid']}")
         logging.debug(f"R2 test: {result['r2_test']}")
@@ -132,7 +154,8 @@ class rf_HPOT:
         gc.collect()
         logging.info(f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
                      f"{str(result['net_ret'])[:6]}, {best_factor}")
-        return result['mse_valid']
+        # return result['mse_valid']
+        return result['custom_valid_adj_mse']
 
     def to_sql_prediction(self, Y_test_pred):
         """ prepare array Y_test_pred to DataFrame ready to write to SQL """

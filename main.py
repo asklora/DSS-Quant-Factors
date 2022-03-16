@@ -95,9 +95,9 @@ def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, x
 
     # Step 1: pred -> ranking
     try:
-        factor_rank = pd.read_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
+        factor_rank = pd.read_csv(f'fact1or_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
     except Exception as exp:
-        factor_rank = rank_pred(1 / 3, name_sql=sql_result['name_sql'],
+        factor_rank = rank_pred(2 / 3, name_sql=sql_result['name_sql'],
                                 pred_start_testing_period=pred_start_testing_period,
                                 # this period is before (+ weeks_to_expire)
                                 eval_current=eval_current,
@@ -115,12 +115,11 @@ def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, x
     # set name_sql=None i.e. using current backtest table writen by rank_pred
     backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric,
                                          n_config=eval_n_configs, n_backtest_period=eval_backtest_period,
-                                         xlsx_name=xlsx_name).return_df()
+                                         xlsx_name=xlsx_name).return_df
 
     # Step 3: backtest score analysis
     # top2_table_tickers_return(df=backtest_df)
-
-    top2_table_tickers_return(name_sql=sql_result['name_sql'], xlsx_name=xlsx_name)
+    # top2_table_tickers_return(name_sql=sql_result['name_sql'], xlsx_name=xlsx_name)
 
 
 def start_on_update(check_interval=60, table_names=None):
@@ -154,12 +153,13 @@ if __name__ == "__main__":
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
-    parser.add_argument('--eval_metric', default='net_ret,max_ret', type=str)
+    parser.add_argument('--eval_metric', default='max_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
     parser.add_argument('--eval_backtest_period', default='36,12', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
+    parser.add_argument('--restart_eval', action='store_true', help='restart evaluation only')
     args = parser.parse_args()
 
     group_code_list = ['USD', 'HKD', 'CNY', 'EUR']
@@ -221,33 +221,33 @@ if __name__ == "__main__":
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
-    # if type(args.restart) == type(None):
-    # mode = 'trim' if args.trim else ''
-    # data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
-    #
-    # all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
-    #                      tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
-    #                      down_mkt_pct_list)
-    # all_groups = [tuple(e) for e in all_groups]
-    # diff_config_col = ['group_code', 'testing_period', 'y_type',
-    #                    'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
-    # all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
+    if not args.restart_eval:
+        mode = 'trim' if args.trim else ''
+        data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
-    # (restart) filter for failed iteration
-    # if args.restart:
-    #     fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
-    #                         f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
-    #                         f"GROUP BY {', '.join(diff_config_col)}")
-    #     all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
-    #     all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
-    #     all_groups = all_groups_df.values.tolist()
-    #     sql_result["name_sql"] = args.restart
-    #     all_groups = [tuple([data, sql_result]+e) for e in all_groups]
-    #     to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
-    #
-    #     # Reset results table everytimes
-    #     with mp.Pool(processes=args.processes) as pool:
-    #         pool.starmap(mp_rf, all_groups)
+        all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
+                             tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
+                             down_mkt_pct_list)
+        all_groups = [tuple(e) for e in all_groups]
+        diff_config_col = ['group_code', 'testing_period', 'y_type',
+                           'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
+        all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
+
+        # (restart) filter for failed iteration
+        if args.restart:
+            fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
+                                f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
+                                f"GROUP BY {', '.join(diff_config_col)}")
+            all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
+            all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
+            all_groups = all_groups_df.values.tolist()
+            sql_result["name_sql"] = args.restart
+            all_groups = [tuple([data, sql_result]+e) for e in all_groups]
+            to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
+
+        # Reset results table everytimes
+        with mp.Pool(processes=args.processes) as pool:
+            pool.starmap(mp_rf, all_groups)
 
     # --------------------------------- Results Analysis ------------------------------------------
 

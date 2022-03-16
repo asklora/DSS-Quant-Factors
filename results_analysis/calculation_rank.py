@@ -134,6 +134,8 @@ class rank_pred:
         pred['uid_hpot'] = pred['uid'].str[:20]
         pred = self.__get_neg_factor_all(pred)
 
+        # pred.to_pickle('pred_cache.pkl')
+
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
         self.all_history = []
@@ -316,6 +318,7 @@ class rank_pred:
         result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
         result_all_comb['is_valid'] = True
         result_all_comb['last_update'] = dt.datetime.now()
+        result_all_comb['q'] = self.q
         upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
                                 db_url=db_url_write, how="append", dtype=backtest_eval_dtypes)
 
@@ -325,7 +328,7 @@ class rank_pred:
         ret_dict = {}
         g = g.dropna(how='any').copy()
         if len(g) > 0:
-            max_g = g[g['factor_weight'] == 2]
+            max_g = g[g['factor_weight'] == g['factor_weight'].max()]
             min_g = g[g['factor_weight'] == 0]
             ret_dict['max_factor_count'] = dict(Counter(max_g['factor_name'].tolist()))
             ret_dict['min_factor_count'] = dict(Counter(min_g['factor_name'].tolist()))
@@ -465,4 +468,55 @@ class rank_pred:
 
 if __name__ == "__main__":
     download_prediction('w4_d-7_20220310130330_debug')
+    download_prediction('w4_d-7_20220312222718_debug')
     # download_prediction('w4_d-7_20220312222632_debug')
+    exit(1)
+
+    q = 1/3
+    pred = pd.read_pickle('pred_cache.pkl')
+    pred['testing_period'] = pd.to_datetime(pred['testing_period'])
+
+    # pred_weight
+    try:
+        pred['pred_weight'] = pred.groupby(by='uid_hpot')['pred'].transform(
+            partial(weight_qcut, q_=[0., q, 1. - q, 1.]))
+        pred['actual_weight'] = pred.groupby(by='uid_hpot')['actual'].transform(
+            partial(weight_qcut, q_=[0., q, 1. - q, 1.]))
+    except Exception as e:
+        print(e)
+
+    # type date
+    pred.groupby(['y_type', 'group', 'group_code'])
+
+
+    # linechart
+    for factor, g in pred.groupby(['group', 'group_code', 'factor_name']):
+        g1 = g.groupby(['testing_period'])[['actual', 'pred']].mean()
+        plt.plot(g1)
+        plt.title(factor)
+        plt.show()
+
+    # TODO: factor selection (heatmap)
+    import seaborn as sns
+
+    for (y_type, group, group_code), g in pred.groupby(['y_type', 'group', 'group_code']):
+        try:
+            fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20, 10))
+
+            g_pred_agg = g.groupby(['group', 'group_code', 'testing_period', 'factor_name'])[
+                'pred_weight'].mean().unstack().fillna(1)
+            sns.heatmap(g_pred_agg, ax=ax[0])
+            ax[0].set_xlabel('pred_weight')
+
+            g_actual_agg = g.groupby(['group', 'group_code', 'testing_period', 'factor_name'])[
+                'actual_weight'].mean().unstack().fillna(1)
+            sns.heatmap(g_actual_agg, ax=ax[1])
+            ax[1].set_xlabel('actual_weight')
+
+            plt.suptitle('{}-{}-{}'.format(y_type, group, group_code))
+            plt.savefig('{}-{}-{}.png'.format(y_type, group, group_code))
+
+        except Exception as e:
+            print(e)
+
+    exit(1)

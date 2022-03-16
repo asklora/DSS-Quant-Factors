@@ -171,16 +171,16 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    # calc_premium_all(weeks_to_expire=26, average_days=28, weeks_to_offset=4, processes=1,
-    #                  all_groups=['CNY'], factor_list=['earnings_yield'], start_date=None)
+    calc_premium_all(weeks_to_expire=4, average_days=-7, weeks_to_offset=4, processes=1,
+                     all_groups=['CNY'], factor_list=['stock_return_ww1_0'], start_date='2020-02-02')
 
-    stock_return_map = {4: [-7, -28], 8: [-7, -28], 13: [-7, -28], 26: [-7, -28]}
-    start = datetime.now()
-    for fwd_weeks, avg_days in stock_return_map.items():
-        for d in avg_days:
-            calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
-                             all_groups=['HKD', 'EUR', 'USD', 'CNY'], processes=10)
-    end = datetime.now()
-
-    logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
+    # stock_return_map = {4: [-7]}
+    # start = datetime.now()
+    # for fwd_weeks, avg_days in stock_return_map.items():
+    #     for d in avg_days:
+    #         calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
+    #                          all_groups=['CNY'], processes=10)
+    # end = datetime.now()
+    #
+    # logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
     # write_local_csv_to_db()

@@ -1221,6 +1221,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_count.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_count_h5.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_formula_ratios_prod.csv">
           <value>
             <Attribute>
@@ -1319,6 +1333,41 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_rank_max_ret_10_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_max_ret_10_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_max_ret_20_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_max_ret_20_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_net_ret_10_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_rank_net_ret_10_36.csv">
           <value>
             <Attribute>
@@ -1327,6 +1376,20 @@
           </value>
         </entry>
         <entry key="/factor_rank_net_ret_10_48.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_net_ret_20_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/factor_rank_net_ret_20_36.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -1452,6 +1515,27 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/old cache/factor_rank_net_ret_10_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_net_ret_20_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_net_ret_20_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/original_ratio_replace_inf.py">
           <value>
             <Attribute>
@@ -1509,6 +1593,13 @@
           </value>
         </entry>
         <entry key="/premium_debug.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/premium_h5.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -1754,6 +1845,13 @@
           </value>
         </entry>
         <entry key="/results_analysis/analysis_score_backtest_eval2.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/analysis_score_backtest_eval3.py">
           <value>
             <Attribute>
               <option name="separator" value="," />

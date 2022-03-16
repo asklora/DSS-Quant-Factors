@@ -54,6 +54,15 @@ class score_scale:
         fundamentals, calculate_column_robust_score = score_scale.__scale3_robust_scaler(fundamentals, calculate_column)
         fundamentals, minmax_column = score_scale.__scale4_minmax_scaler(fundamentals, calculate_column)
 
+        # [fundamentals] add one for neg_factor
+        fundamentals = fundamentals.set_index(['ticker', 'trading_day', 'currency_code'])
+        fundamentals_neg = - fundamentals.filter(minmax_column).copy()
+        fundamentals.columns = ['(L)' + x if x in minmax_column else x for x in fundamentals]
+        fundamentals_neg.columns = ['(S)' + x for x in fundamentals_neg]
+        fundamentals = fundamentals.merge(fundamentals_neg, left_index=True, right_index=True)
+        fundamentals = fundamentals.reset_index()
+        del fundamentals_neg
+
         # Calculate AI Scores
         fundamentals = self.__calc_ai_score_pillar(factor_rank, fundamentals)
         fundamentals = score_scale.__calc_ai_score_extra(factor_rank, fundamentals)
@@ -166,7 +175,6 @@ class score_scale:
             if self.eval_metric == 'net_ret':
                 sub_g_neg = g.loc[(g["factor_weight"] == 0)]  # use all rank=0 (worst class)
                 score_col_neg = [f"{x}_{y}_currency_code" for x, y in sub_g_neg.loc[sub_g_neg["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
-                score_col_neg += [x for x in sub_g_neg.loc[sub_g_neg["scaler"].isnull(), "factor_name"]]
                 fundamentals.loc[fundamentals["currency_code"] == group, f"fundamentals_{pillar_name}"] -= \
                     fundamentals.loc[fundamentals["currency_code"] == group, score_col_neg].mean(axis=1).values
 
@@ -179,10 +187,9 @@ class score_scale:
         for group, g in factor_rank.groupby("group"):
             try:
                 print(f"Calculate Fundamentals [extra] in group [{group}]")
-                sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
+                sub_g = g.loc[(g["factor_weight"] == g["factor_weight"].max()) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
                 sub_g = sub_g.loc[(g["pred_z"] >= 1) | (
-                    g[
-                        "pred_z"].isnull())]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
+                    g["pred_z"].isnull())]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
 
                 if len(sub_g.dropna(
                         subset=["pred_z"])) > 0:  # if no factor rank=2, don"t add any factor into extra pillar
@@ -267,7 +274,8 @@ def update_factor_rank(factor_rank, factor_formula):
         replace_rank['group'] = i
         factor_rank = factor_rank.append(replace_rank, ignore_index=True)
 
-    factor_rank = factor_rank.merge(factor_formula, left_on=['factor_name'], right_index=True, how='outer')
+    factor_rank = factor_rank.merge(factor_formula, left_on=['factor_name_org'], right_index=True, how='outer')
+    factor_rank['factor_name'] = factor_rank['factor_name'].fillna(factor_rank['factor_name_org'])
     # factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
     factor_rank = factor_rank.dropna(subset=['pillar'])
 
@@ -314,31 +322,22 @@ class backtest_score_history:
                 lambda x: pd.qcut(x, q=3, labels=False, duplicates='drop')).astype(int)
             factor_rank['factor_weight_org'] = factor_rank['factor_weight'].copy()
             conditions = [
-                (factor_rank['factor_weight'] == 2) & (factor_rank['factor_weight_adj'] == 2),
+                (factor_rank['factor_weight'] == factor_rank['factor_weight'].max())
+                & (factor_rank['factor_weight_adj'] == factor_rank['factor_weight_adj'].max()),
                 (factor_rank['factor_weight'] == 0) & (factor_rank['factor_weight_adj'] == 0)
             ]
             factor_rank['factor_weight'] = np.select(conditions, [2, 0], 1)
 
             factor_rank.to_csv('factor_rank_adj.csv', index=False)
 
-        # [factor_rank]: change factor_name -> factor_name + long_large
-        # factor_rank["factor_name"] = factor_rank["factor_name"].str[:-4]
-        # factor_rank["long_large"] = (factor_rank["long_large"].str[-3:] == '(L)')
-        # factor_rank["long_large"] = (factor_rank["long_large"].astype(int) - 0.5) * 2
+        # [factor_rank]: change factor_name
+        factor_rank[["factor_name_org", "long_large"]] = factor_rank["factor_name"].str.split(' ', expand=True)
+        factor_rank["factor_name"] = factor_rank["long_large"] + factor_rank["factor_name_org"]
 
         # DataFrame for [fundamentals_score]
         fundamentals_score = get_fundamentals_score(start_date=start_date)
         print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
         # print(sorted(list(factor_rank["trading_day"].unique())))
-
-        # [fundamentals_score] add one for neg_factor
-        fundamentals_score = fundamentals_score.set_index(['ticker', 'trading_day', 'currency_code'])
-        fundamentals_score_neg = - fundamentals_score.copy()
-        fundamentals_score.columns = [x + ' (L)' for x in fundamentals_score]
-        fundamentals_score_neg.columns = [x + ' (S)' for x in fundamentals_score_neg]
-        fundamentals_score = fundamentals_score.merge(fundamentals_score_neg, left_index=True, right_index=True)
-        fundamentals_score = fundamentals_score.reset_index()
-        del fundamentals_score_neg
 
         # DataFrame for [factor_formula]
         factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
@@ -432,7 +431,7 @@ class backtest_score_history:
         # write to DB
         upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
                                 primary_key=["name_sql", "currency_code", "trading_day",
-                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric"],
+                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric", 'xlsx_name'],
                                 how='update', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
         return df
