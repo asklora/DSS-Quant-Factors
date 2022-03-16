@@ -94,18 +94,18 @@ def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, x
     sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
 
     # Step 1: pred -> ranking
-    # try:
-    #     factor_rank = pd.read_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
-    # except:
-    factor_rank = rank_pred(1 / 3, name_sql=sql_result['name_sql'],
-                            pred_start_testing_period=pred_start_testing_period,
-                            # this period is before (+ weeks_to_expire)
-                            eval_current=eval_current,
-                            eval_metric=eval_metric,
-                            eval_top_config=eval_n_configs,
-                            eval_config_select_period=eval_backtest_period,
-                            ).write_to_db()
-        # factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
+    try:
+        factor_rank = pd.read_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
+    except Exception as exp:
+        factor_rank = rank_pred(1 / 3, name_sql=sql_result['name_sql'],
+                                pred_start_testing_period=pred_start_testing_period,
+                                # this period is before (+ weeks_to_expire)
+                                eval_current=eval_current,
+                                eval_metric=eval_metric,
+                                eval_top_config=eval_n_configs,
+                                eval_config_select_period=eval_backtest_period,
+                                ).write_to_db()
+        factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
 
     # ----------------------- modified factor_rank for testing ----------------------------
     # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
@@ -262,6 +262,6 @@ if __name__ == "__main__":
     # for e in all_eval_groups:
     #     mp_eval(*e)
 
-    # with mp.Pool(processes=args.processes) as pool:
-    with mp.Pool(processes=1) as pool:
+    with mp.Pool(processes=args.processes) as pool:
+    # with mp.Pool(processes=1) as pool:
         pool.starmap(mp_eval, all_eval_groups)

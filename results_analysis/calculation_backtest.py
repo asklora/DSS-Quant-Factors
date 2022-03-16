@@ -50,12 +50,12 @@ class score_scale:
 
         # Scale factor scores
         fundamentals, calculate_column_score = score_scale.__scale1_trim_outlier(fundamentals, calculate_column)
-        fundamentals = score_scale.__scale2_reverse_neg_factor(factor_rank, fundamentals)
+        # fundamentals = score_scale.__scale2_reverse_neg_factor(factor_rank, fundamentals)
         fundamentals, calculate_column_robust_score = score_scale.__scale3_robust_scaler(fundamentals, calculate_column)
         fundamentals, minmax_column = score_scale.__scale4_minmax_scaler(fundamentals, calculate_column)
 
         # Calculate AI Scores
-        fundamentals = score_scale.__calc_ai_score_pillar(factor_rank, fundamentals)
+        fundamentals = self.__calc_ai_score_pillar(factor_rank, fundamentals)
         fundamentals = score_scale.__calc_ai_score_extra(factor_rank, fundamentals)
         # fundamentals = score_scale.__calc_esg(fundamentals)
         fundamentals = score_scale.__calc_ai_score(fundamentals)
@@ -94,7 +94,7 @@ class score_scale:
         for group, g in factor_rank.groupby(['group']):
             neg_factor = [x + '_score' for x in g.loc[(g['long_large'] == False), 'factor_name'].to_list()]
             print(group, neg_factor)
-            fundamentals.loc[(fundamentals['currency_code'] == group), neg_factor] *= -1
+            fundamentals.loc[(fundamentals['factor_name'] == group), neg_factor] *= -1
 
         return fundamentals
 
@@ -233,7 +233,7 @@ class score_scale:
         return fundamentals
 
 
-def get_fundamentals_score(start_date):
+def get_fundamentals_score(start_date='2016-01-01'):
     """ get fundamental scores from ratio table """
 
     start_date = '2016-01-01'
@@ -268,7 +268,7 @@ def update_factor_rank(factor_rank, factor_formula):
         factor_rank = factor_rank.append(replace_rank, ignore_index=True)
 
     factor_rank = factor_rank.merge(factor_formula, left_on=['factor_name'], right_index=True, how='outer')
-    factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
+    # factor_rank['long_large'] = factor_rank['long_large'].fillna(True)
     factor_rank = factor_rank.dropna(subset=['pillar'])
 
     # for non-calculating currency_code -> we add same for each one
@@ -321,10 +321,24 @@ class backtest_score_history:
 
             factor_rank.to_csv('factor_rank_adj.csv', index=False)
 
+        # [factor_rank]: change factor_name -> factor_name + long_large
+        # factor_rank["factor_name"] = factor_rank["factor_name"].str[:-4]
+        # factor_rank["long_large"] = (factor_rank["long_large"].str[-3:] == '(L)')
+        # factor_rank["long_large"] = (factor_rank["long_large"].astype(int) - 0.5) * 2
+
         # DataFrame for [fundamentals_score]
         fundamentals_score = get_fundamentals_score(start_date=start_date)
         print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
         # print(sorted(list(factor_rank["trading_day"].unique())))
+
+        # [fundamentals_score] add one for neg_factor
+        fundamentals_score = fundamentals_score.set_index(['ticker', 'trading_day', 'currency_code'])
+        fundamentals_score_neg = - fundamentals_score.copy()
+        fundamentals_score.columns = [x + ' (L)' for x in fundamentals_score]
+        fundamentals_score_neg.columns = [x + ' (S)' for x in fundamentals_score_neg]
+        fundamentals_score = fundamentals_score.merge(fundamentals_score_neg, left_index=True, right_index=True)
+        fundamentals_score = fundamentals_score.reset_index()
+        del fundamentals_score_neg
 
         # DataFrame for [factor_formula]
         factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
@@ -458,4 +472,5 @@ class backtest_score_history:
 
 
 if __name__ == "__main__":
+    get_fundamentals_score()
     pass

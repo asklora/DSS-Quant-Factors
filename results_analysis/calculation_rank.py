@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 from joblib import Parallel, delayed
 import multiprocessing as mp
 from functools import partial
-
+from general.send_slack import to_slack
 import global_vars
 from global_vars import *
 from sqlalchemy import text
@@ -127,11 +127,12 @@ class rank_pred:
         self.eval_metric = eval_metric
         self.eval_config_select_period = eval_config_select_period
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
+        self.average_days = int(name_sql.split('_')[1][1:])
 
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid)
         pred['uid_hpot'] = pred['uid'].str[:20]
-        self.neg_factor = rank_pred.__get_neg_factor_all(pred)
+        pred = self.__get_neg_factor_all(pred)
 
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
@@ -150,7 +151,7 @@ class rank_pred:
         # df['testing_period'] = pd.to_datetime(df['testing_period'])
 
         # 2.2. use average predictions from different validation sets
-        df_cv_avg = df.groupby(['uid_hpot'] + self.iter_unique_col + self.diff_config_col)[['pred', 'actual']].mean()
+        df_cv_avg = df.groupby(['uid_hpot'] + self.iter_unique_col + self.diff_config_col)[['pred', 'actual', 'actual_s']].mean()
 
         # 2.3. calculate 'pred_z'/'factor_weight' by ranking
         q = q / len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
@@ -177,7 +178,7 @@ class rank_pred:
             for i, row in best_config_df.iterrows():
                 best_config.update(row[self.diff_config_col])
                 g_best = g.loc[(g[self.diff_config_col] == row[self.diff_config_col]).all(axis=1)]
-                rank_df = self.rank_each_testing_period(testing_period, g_best)
+                rank_df = self.rank_each_testing_period(testing_period, g_best, group, group_code)
 
                 # 2.6.3. append to history / currency df list
                 if testing_period == df_cv_avg['testing_period'].max():  # if keep_all_history also write to prod table
@@ -192,16 +193,15 @@ class rank_pred:
 
         # 2.3.1. calculate factor_weight with qcut
         logging.info("---> Calculate factor_weight")
-        groupby_keys = ['uid_hpot', 'group', 'group_code', 'testing_period'] + diff_config_col
+        # groupby_keys = ['uid_hpot', 'group', 'group_code', 'testing_period'] + diff_config_col
 
         # df['factor_weight'] = apply_parallel(df.groupby(by=groupby_keys)['pred'], partial(weight_qcut, q_=q_))
-        df['factor_weight'] = df.groupby(by=groupby_keys)['pred'].transform(partial(weight_qcut, q_=q_))
-
+        df['factor_weight'] = df.groupby(by='uid_hpot')['pred'].transform(partial(weight_qcut, q_=q_))
         df = df.reset_index()
 
         # 2.3.2. count rank for debugging
-        rank_count = df.groupby(groupby_keys)['factor_weight'].apply(pd.value_counts)
-        rank_count = rank_count.unstack().fillna(0)
+        # rank_count = df.groupby(by='uid_hpot')['factor_weight'].apply(pd.value_counts)
+        # rank_count = rank_count.unstack().fillna(0)
         # logging.info(f'n_factor used:\n{rank_count}')
 
         # 2.3.3b. pred_z = original pred
@@ -215,16 +215,26 @@ class rank_pred:
 
         return df
 
-    @staticmethod
-    def __get_neg_factor_all(pred):
+    def __get_neg_factor_all(self, pred):
         """ get all neg factors for all (testing_period, group) """
-        pred_unique = pred.groupby(['group_code', 'testing_period'])[['neg_factor']].first()
-        if type(pred_unique["neg_factor"].to_list()[0]) != type([]):
-            pred_unique["neg_factor"] = pred_unique["neg_factor"].apply(ast.literal_eval)
-        neg_factor = pred_unique['neg_factor'].unstack().to_dict()
-        return neg_factor
 
-    def rank_each_testing_period(self, testing_period, g_best):
+        new_pred = []
+        pred['actual_s'] = pred['actual'].copy()
+        for uid_hpot, g in pred.groupby(['uid_hpot']):
+            neg_factor = g['neg_factor'].to_list()[0]
+            if len(neg_factor) > 0:
+                try:
+                    g.loc[g['factor_name'].isin(neg_factor), 'actual'] *= -1
+                    g['factor_name'] = [f'{x} (L)' if x in neg_factor else f'{x} (S)' for x in g['factor_name']]
+                    new_pred.append(g)
+                except Exception as e:
+                    to_slack("clair").message(f"*neg_factor ERROR*: {e.args}")
+
+        new_pred = pd.concat(new_pred, axis=0)
+
+        return new_pred
+
+    def rank_each_testing_period(self, testing_period, g_best, group, group_code):
         """ (2.6) rank for each testing_period """
 
         logging.debug(f'calculate (neg_factor, factor_weight) for each config: {testing_period}')
@@ -236,24 +246,20 @@ class rank_pred:
 
         # 2.6.2. record neg_factor
         # original premium is "small - big" = short_large -> those marked neg_factor = long_large
-        df['long_large'] = False
-        neg_factor = self.neg_factor[pd.Timestamp(testing_period)]
-        for k, v in neg_factor.items():  # write neg_factor i.e. label factors
-            if type(v) == type([]):
-                df.loc[(df['group_code'] == k) & (df['factor_name'].isin(v)), 'long_large'] = True
+        # df['long_large'] = False
+        # neg_factor = self.neg_factor[pd.Timestamp(testing_period)][f'{group_code}_{group}']
+        # for k, v in neg_factor.items():  # write neg_factor i.e. label factors
+        #     if type(v) == type([]):
+        #         df.loc[df['factor_name'].isin(v), 'long_large'] = True
 
         return df.sort_values(['group', 'group_code', 'pred_z'])
 
     # --------------------------------------- Download Prediction -------------------------------------------------
 
-    @staticmethod
-    def _download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid):
+    def _download_prediction(self, name_sql, pred_y_type, pred_start_testing_period, pred_start_uid):
         """ merge factor_stock & factor_model_stock """
 
         try:
-            # pred = pd.read_csv(f'pred_{name_sql}.csv')
-            # data = json.loads(f'pred_{name_sql}.json')
-            # pred = pd.json_normalize(data)
             pred = pd.read_pickle(f"pred_{name_sql}.pkl")
             logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
             pred = pred.rename(columns={"trading_day": "testing_period"})
@@ -265,6 +271,15 @@ class rank_pred:
 
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
+
+        # fix wrong "actual" premium in factor_model_stock (1)
+        premium = read_query(f"SELECT * FROM {factor_premium_table} "
+                             f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")
+        premium['trading_day'] = premium['trading_day'] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
+        premium = premium.set_index(['trading_day', "group", 'field'])['value']
+        pred = pred.join(premium, on=['testing_period', 'group', 'factor_name'])
+        pred = pred.drop(columns=['actual']).rename(columns={"value": 'actual'})
+
         return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
@@ -277,7 +292,7 @@ class rank_pred:
         logging.debug(f"=== Update [{production_factor_rank_backtest_eval_table}] ===")
 
         # actual factor premiums
-        result_all_avg = result_all.groupby(['name_sql', 'group', 'group_code', 'testing_period'])['actual'].mean()
+        result_all_avg = result_all.groupby(['name_sql', 'group', 'group_code', 'testing_period'])[['actual', 'actual_s']].mean()
         result_all_comb = result_all.groupby(['name_sql', 'group', 'group_code', 'testing_period'] + self.diff_config_col
                                              ).apply(self.__get_summary_stats_in_group)
         result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('testing_period') <
@@ -289,7 +304,7 @@ class rank_pred:
         # 2.4.2. create DataFrame for eval results to DB
         result_all_comb["y_type"] = y_type
         result_all_comb["weeks_to_expire"] = self.weeks_to_expire
-        primary_keys = ["name_sql", "group", "group_code", "testing_period", "y_type"] + self.diff_config_col
+        # primary_keys = ["name_sql", "group", "group_code", "testing_period", "y_type"] + self.diff_config_col
         # result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
 
         # 2.4.3. save local plot for evaluation
@@ -308,25 +323,22 @@ class rank_pred:
         """ Calculate basic evaluation metrics for factors """
 
         ret_dict = {}
-        g = g.copy()
-        c_date = g["testing_period"].to_list()[0]
-        c_group = g["group"].to_list()[0]
-        g['factor_name'] = [f'{x} (L)' if x in self.neg_factor[c_date][c_group] else f'{x} (S)' for x in
-                            g['factor_name']]
-        max_g = g[g['factor_weight'] == 2]
-        min_g = g[g['factor_weight'] == 0]
-        ret_dict['max_factor_count'] = dict(Counter(max_g['factor_name'].tolist()))
-        ret_dict['min_factor_count'] = dict(Counter(min_g['factor_name'].tolist()))
-        ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
-        ret_dict['min_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
-        ret_dict['max_factor_actual'] = max_g.groupby(['factor_name'])['actual'].mean().to_dict()
-        ret_dict['min_factor_actual'] = min_g.groupby(['factor_name'])['actual'].mean().to_dict()
-        ret_dict['max_ret'] = max_g['actual'].mean()
-        ret_dict['min_ret'] = min_g['actual'].mean()
-        ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
-        ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
-        ret_dict['r2'] = r2_score(g['pred'], g['actual'])
-        return pd.Series(ret_dict)
+        g = g.dropna(how='any').copy()
+        if len(g) > 0:
+            max_g = g[g['factor_weight'] == 2]
+            min_g = g[g['factor_weight'] == 0]
+            ret_dict['max_factor_count'] = dict(Counter(max_g['factor_name'].tolist()))
+            ret_dict['min_factor_count'] = dict(Counter(min_g['factor_name'].tolist()))
+            ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
+            ret_dict['min_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
+            ret_dict['max_factor_actual'] = max_g.groupby(['factor_name'])['actual'].mean().to_dict()
+            ret_dict['min_factor_actual'] = min_g.groupby(['factor_name'])['actual'].mean().to_dict()
+            ret_dict['max_ret'] = max_g['actual'].mean()
+            ret_dict['min_ret'] = min_g['actual'].mean()
+            ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
+            ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
+            ret_dict['r2'] = r2_score(g['pred'], g['actual'])
+            return pd.Series(ret_dict)
 
     def __backtest_find_calc_metric_avg(self, testing_period, group, group_code):
         """ Select Best Config (among other_group_col) """
