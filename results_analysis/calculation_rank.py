@@ -10,6 +10,7 @@ from joblib import Parallel, delayed
 import multiprocessing as mp
 from functools import partial
 from general.send_slack import to_slack
+from general.utils import to_excel
 import global_vars
 from global_vars import *
 from sqlalchemy import text
@@ -467,27 +468,10 @@ class rank_pred:
 
 
 if __name__ == "__main__":
-    download_prediction('w4_d-7_20220310130330_debug')
-    download_prediction('w4_d-7_20220312222718_debug')
-    # download_prediction('w4_d-7_20220312222632_debug')
-    exit(1)
-
-    q = 1/3
-    pred = pd.read_pickle('pred_cache.pkl')
-    pred['testing_period'] = pd.to_datetime(pred['testing_period'])
-
-    # pred_weight
-    try:
-        pred['pred_weight'] = pred.groupby(by='uid_hpot')['pred'].transform(
-            partial(weight_qcut, q_=[0., q, 1. - q, 1.]))
-        pred['actual_weight'] = pred.groupby(by='uid_hpot')['actual'].transform(
-            partial(weight_qcut, q_=[0., q, 1. - q, 1.]))
-    except Exception as e:
-        print(e)
-
-    # type date
-    pred.groupby(['y_type', 'group', 'group_code'])
-
+    # download_prediction('w4_d-7_20220310130330_debug')
+    # download_prediction('w4_d-7_20220312222718_debug')
+    # # download_prediction('w4_d-7_20220312222632_debug')
+    # exit(1)
 
     # linechart
     for factor, g in pred.groupby(['group', 'group_code', 'factor_name']):

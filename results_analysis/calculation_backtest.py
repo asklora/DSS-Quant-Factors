@@ -21,7 +21,7 @@ universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
 
 score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
 
-n_top_ticker_list = [10, 20, 30, 50, -10]
+n_top_ticker_list = [10, 20, 30, 50, -10, -50]
 # n_top_ticker_list = [10]
 
 # table dtypes for top backtest
@@ -299,11 +299,13 @@ class backtest_score_history:
     weeks_to_expire = None
     add_factor_penalty = False
 
-    def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', n_config=10, n_backtest_period=12, xlsx_name='test'):
+    def __init__(self, factor_rank=None, name_sql=None, eval_metric='net_ret', eval_q=1/3,
+                 n_config=10, n_backtest_period=12, xlsx_name='test'):
 
         self.n_config = n_config
         self.n_backtest_period = n_backtest_period
         self.eval_metric = eval_metric
+        self.eval_q = eval_q
         self.xlsx_name = xlsx_name
 
         # DataFrame for [factor_rank]
@@ -423,6 +425,7 @@ class backtest_score_history:
         df['n_top_ticker'] = n
         df['n_top_config'] = self.n_config
         df['eval_metric'] = self.eval_metric
+        df['eval_q'] = self.eval_q
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
         # df["add_factor_penalty"] = self.add_factor_penalty
@@ -431,7 +434,7 @@ class backtest_score_history:
         # write to DB
         upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
                                 primary_key=["name_sql", "currency_code", "trading_day",
-                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric", 'xlsx_name'],
+                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric", 'eval_q', 'xlsx_name'],
                                 how='update', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
         return df

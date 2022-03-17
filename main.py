@@ -80,9 +80,9 @@ def mp_rf(*mp_args):
         sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
 
         sql_result['neg_factor'] = data.neg_factor
-        stock_df, score_df, feature_df, status = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
-                                                         sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
-                                                         group_index=data.test['group'].to_list()).hpot_dfs
+        stock_df, score_df, feature_df = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
+                                                 sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
+                                                 group_index=data.test['group'].to_list()).hpot_dfs
         cv_number += 1
 
         stock_df_list.append(stock_df)
@@ -102,11 +102,16 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         upsert_data_to_database(feature_df_all, feature_importance_table, how="append", verbose=-1)
         return True
     except Exception as e:
+        # save to pickle file in local for recovery
+        stock_df_all.to_pickle('cache_stock_df_all.pkl')
+        score_df_all.to_pickle('cache_score_df_all.pkl')
+        feature_df_all.to_pickle('cache_feature_df_all.pkl')
+
         to_slack("clair").message_to_slack(f"*[Factor] ERROR [FINAL] write to DB*: {e.args}")
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, xlsx_name="ai_score"):
+def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.33):
     """ evaluate test results based on name_sql / eval args """
 
     sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
@@ -115,7 +120,7 @@ def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, x
     try:
         factor_rank = pd.read_csv(f'fact1or_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
     except Exception as exp:
-        factor_rank = rank_pred(2 / 3, name_sql=sql_result['name_sql'],
+        factor_rank = rank_pred(q, name_sql=sql_result['name_sql'],
                                 pred_start_testing_period=pred_start_testing_period,
                                 # this period is before (+ weeks_to_expire)
                                 eval_current=eval_current,
@@ -131,7 +136,7 @@ def mp_eval(*args, pred_start_testing_period='2019-09-01', eval_current=False, x
 
     # Step 2: ranking -> backtest score
     # set name_sql=None i.e. using current backtest table writen by rank_pred
-    backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric,
+    backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric, eval_q=q,
                                          n_config=eval_n_configs, n_backtest_period=eval_backtest_period,
                                          xlsx_name=xlsx_name).return_df
 
@@ -171,7 +176,7 @@ if __name__ == "__main__":
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
-    parser.add_argument('--eval_metric', default='max_ret', type=str)
+    parser.add_argument('--eval_metric', default='max_ret,net_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
     parser.add_argument('--eval_backtest_period', default='36,12', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
@@ -234,8 +239,8 @@ if __name__ == "__main__":
     # --------------------------------- Model Training ------------------------------------------
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + dt.datetime.strftime(dt.datetime.now(),
-                                                                                                     '%Y%m%d%H%M%S')
+    sql_result['name_sql'] = f'w{args.weeks_to_expire}_d{args.average_days}_' + \
+                             dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
