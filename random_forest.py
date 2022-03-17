@@ -7,6 +7,7 @@ from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from general.sql_process import upsert_data_to_database
 from global_vars import *
+from general.send_slack import to_slack
 
 
 def get_timestamp_now_str():
@@ -17,11 +18,11 @@ def get_timestamp_now_str():
 class rf_HPOT:
     """ use hyperopt on each set """
 
-    hpot = {'all_results': [], 'best_score': 10000}
     if_write_feature_imp = True
 
     def __init__(self, max_evals, sql_result, sample_set, x_col, y_col, group_index):
 
+        self.hpot = {'all_results': [], 'best_score': 10000}
         self.sql_result = sql_result
         self.sample_set = sample_set
         self.x_col = x_col
@@ -47,17 +48,34 @@ class rf_HPOT:
         best = fmin(fn=self.eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
         print(best)
 
-    def write_db(self,):
+    @property
+    def hpot_dfs(self):
+        hpot_write_db_status = self.write_db()
+        return self.hpot['best_stock_df'], pd.DataFrame(self.hpot['all_results']), \
+               self.hpot['best_stock_feature'], hpot_write_db_status
+
+    def write_db(self, local=True):
         """ write score/prediction/feature to DB """
 
+        if local:
+            db_url = db_url_local
+            schema = 'factor'
+        else:
+            db_url = db_url_write
+            schema = 'public'
+
         # update results
-        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, primary_key=["uid"], db_url=db_url_write,
-                                how="append", verbose=-1)
-        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, primary_key=["uid"],
-                                db_url=db_url_write, how="ignore", verbose=-1)
-        if self.if_write_feature_imp:
-            upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, primary_key=["uid"],
-                                    db_url=db_url_write, how="append", verbose=-1)
+        try:
+            upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, schema=schema, primary_key=["uid"],
+                                    db_url=db_url, how="append", verbose=-1)
+            upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, schema=schema,
+                                    primary_key=["uid"], db_url=db_url, how="ignore", verbose=-1)
+            upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, schema=schema,
+                                    primary_key=["uid"], db_url=db_url, how="append", verbose=-1)
+            return True
+        except Exception as e:
+            to_slack("clair").message_to_slack(f"*ERROR write to db within MP*: {e.args}")
+            return False
 
     def rf_train(self, space):
         """ train lightgbm booster based on training / validaton set -> give predictions of Y """

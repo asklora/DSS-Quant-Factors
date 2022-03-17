@@ -2152,6 +2152,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/test/mp_test.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/tests/backtest_selection.py">
           <value>
             <Attribute>

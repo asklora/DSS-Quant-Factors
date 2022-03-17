@@ -47,9 +47,9 @@ def delete_data_on_database(table, db_url=db_url_write, query=None):
     return True
 
 @retry(tries=3, delay=1)
-def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_write, how="update", verbose=1,
-                            dtype=None, chunksize=20000):
-    ''' upsert Table to DB
+def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], db_url=db_url_write, how="update",
+                            verbose=1, dtype=None, chunksize=20000):
+    """ upsert Table to DB
 
     Parameters
     ----------
@@ -57,6 +57,8 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
         data to write to DB Table
     table (Str, Optional):
         DB table name
+    schema (Str, Optional):
+        DB schema name
     db_url :
         write to which DB (default=Alibaba Dev)
     primary_key (List[Str], Optional):
@@ -65,21 +67,17 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
         how to write to DB (default=update)
     verbose (Float, Optional):
         if True, report write to DB to slack (default=1, i.e. report to DB)
-    '''
+    """
 
     try:
         logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
         logging.info(f"=== URL: {db_url} ===")
 
-        # for k, v in data.dtypes():
-        #     if v == type({}):
-        #         data[k] = data[k].apply(json.dumps)
-
         engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
             with engine.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': chunksize,
-                         'dtype': dtype}
+                         'dtype': dtype, "schema": schema}
                 data.to_sql(table, **extra)
             engine.dispose()
         else:
@@ -98,6 +96,7 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
                     chunksize=chunksize,
                     add_new_columns=True,
                     dtype=dtype,
+                    schema=schema
                 )
             else:
                 upsert_params = dict(
@@ -106,6 +105,7 @@ def upsert_data_to_database(data, table, primary_key=["uid"], db_url=db_url_writ
                     if_row_exists=how,
                     chunksize=chunksize,
                     add_new_columns=True,
+                    schema=schema
                 )
             upsert(engine, **upsert_params)
             logging.debug(f"DATA [{how}] TO {table}")

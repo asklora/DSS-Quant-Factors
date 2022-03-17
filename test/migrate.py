@@ -61,4 +61,9 @@ def get_table_dtypes(table_name):
 if __name__ == '__main__':
     # migrate_schema()
     # migrate_tables()
-    get_table_dtypes('factor_result_rank_backtest_eval')
+    # get_table_dtypes('factor_result_rank_backtest_eval')
+
+    import subprocess
+
+    # subprocess.check_output(['ls', '-l'])  # All that is technically needed...
+    print(subprocess.check_output(['sudo', 'dmidecode', '-s', 'system-uuid']))
