@@ -180,17 +180,13 @@ def uid_maker(df, primary_key):
 def migrate_local_save_to_prod():
     """ during factor training, we save to local in case error stop the process for recovery """
 
-    df = read_table(global_vars.result_score_table, db_url=global_vars.db_url_local)
-    upsert_data_to_database(df, global_vars.result_score_table, how="update")
-    delete_data_on_database(global_vars.result_score_table, db_url=global_vars.db_url_local)
-
-    df = read_table(global_vars.result_pred_table, db_url=global_vars.db_url_local)
-    upsert_data_to_database(df, global_vars.result_pred_table, how="append")
-    delete_data_on_database(global_vars.result_pred_table, db_url=global_vars.db_url_local)
-
-    df = read_table(global_vars.feature_importance_table, db_url=global_vars.db_url_local)
-    upsert_data_to_database(df, global_vars.feature_importance_table, how="append")
-    delete_data_on_database(global_vars.feature_importance_table, db_url=global_vars.db_url_local)
+    for t, how in {global_vars.result_score_table: "update",
+                   global_vars.result_pred_table: "append",
+                   global_vars.feature_importance_table: "append"}.items():
+        data = read_table(t, db_url=global_vars.db_url_local)
+        upsert_data_to_database(data, t, how=how)
+        delete_data_on_database(t, db_url=global_vars.db_url_local)
+        logging.info(f"-----> local DB save migrate to cloud: {t}")
 
     return True
 
