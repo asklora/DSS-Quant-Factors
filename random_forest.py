@@ -68,6 +68,7 @@ class rf_HPOT:
 
     @property
     def hpot_dfs(self):
+        self.write_db()
         return self.hpot['best_stock_df'], pd.DataFrame(self.hpot['all_results']), \
                self.hpot['best_stock_feature']
 

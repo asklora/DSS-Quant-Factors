@@ -108,8 +108,9 @@ def factor_weight(use_max_ret, q = 1 / 3):
     else:
         to_excel(xls, f'net_ret_factor_rotation_4-7', excel_cformat)
 
+
 def factor_pred_variance():
-    """ analyse factor based on period variance """
+    """ analyse factor based on period variance (overall, i.e. no specification on single factor) """
 
     pred = pd.read_pickle('pred_cache.pkl')
     pred['testing_period'] = pd.to_datetime(pred['testing_period'])
@@ -136,6 +137,35 @@ def factor_pred_variance():
     results = pred.groupby(['group', 'group_code', 'y_type', 'testing_period']).apply(group_metrics)
     results = pd.DataFrame(results.to_list(), index=results.index)
     return results
+
+
+def factor_pred_variance_single(is_rank=True):
+    """ analyse factor based on period variance (overall, i.e. no specification on single factor) """
+
+    pred = pd.read_pickle('pred_cache.pkl')
+    pred['testing_period'] = pd.to_datetime(pred['testing_period'])
+    pred['factor_name'] = pred['factor_name'].str[:-4]
+
+    from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+
+    def group_metrics(g):
+        g_actual = g.groupby(['uid_hpot', 'factor_name'])['actual'].mean().unstack().fillna(0)
+        g_pred = g.groupby(['uid_hpot', 'factor_name'])['pred'].mean().unstack()
+
+        if is_rank:
+            g_actual = g_actual.values.argsort().argsort()
+            g_pred = g_pred.values.argsort().argsort()
+
+        result = {}
+        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():
+            score = func(g_actual, g_pred, multioutput='raw_values')
+            result[k + '_mean'] = np.mean(score)
+        return result
+
+    results = pred.groupby(['group', 'group_code', 'y_type', 'testing_period']).apply(group_metrics)
+    results = pd.DataFrame(results.to_list(), index=results.index)
+    return results
+
 
 if __name__ == '__main__':
     factor_pred_variance()
