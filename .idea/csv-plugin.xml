@@ -1823,6 +1823,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/analysis_rank_factor_rotation.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/analysis_runtime_eval.py">
           <value>
             <Attribute>

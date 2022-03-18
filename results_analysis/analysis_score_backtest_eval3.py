@@ -115,16 +115,15 @@ def actual_good_prem():
     pass
 
 
-def eval_sortino_ratio():
+def eval_sortino_ratio(name_sql='w4_d-7_20220312222718_debug'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    # if type(df) == type(None):
-    #     tbl_name = global_vars.production_factor_rank_backtest_eval_table
-    #     df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
-    #     df.to_pickle('cache.pkl')
+    # tbl_name = global_vars.production_factor_rank_backtest_eval_table
+    # df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
+    # df.to_pickle('cache1.pkl')
 
-    df = pd.read_pickle('cache.pkl')
+    df = pd.read_pickle('cache1.pkl')
     df['testing_period'] = pd.to_datetime(df['testing_period'])
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
@@ -136,8 +135,12 @@ def eval_sortino_ratio():
     df['max_ret_ab2_d'] = np.square(np.clip(df['max_ret_ab'], np.inf, 0))
     df['max_ret_ab2'] = np.square(df['max_ret_ab'])
 
-    df_agg = df.groupby(['group', 'group_code'])[['net_ret', 'net_ret_ab2', 'max_ret', 'max_ret_ab2', 'net_ret_ab2_d',
-                                                  'max_ret_ab2_d']].mean()
+    df = df.loc[df['testing_period'] > dt.datetime(2020, 1, 1)]
+    df_std = df.groupby(['group', 'group_code', 'y_type'])[
+        ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual_s', 'actual']].std()
+
+    df_agg = df.groupby(['group', 'group_code', 'y_type', 'q'])[
+        ['net_ret', 'net_ret_ab2', 'max_ret', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d']].mean()
     df_agg['net_ret_sortino'] = df_agg['net_ret'].div(np.sqrt(df_agg['net_ret_ab2_d']))
     df_agg['max_ret_sortino'] = df_agg['max_ret'].div(np.sqrt(df_agg['max_ret_ab2_d']))
     df_agg['net_ret_sharpe'] = df_agg['net_ret'].div(np.sqrt(df_agg['net_ret_ab2']))

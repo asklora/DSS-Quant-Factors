@@ -6,8 +6,10 @@ import pandas as pd
 import datetime as dt
 from retry import retry
 
+import global_vars
 from global_vars import *
 from general.send_slack import to_slack
+
 
 def trucncate_table_in_database(table, db_url=db_url_write):
     ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
@@ -20,6 +22,7 @@ def trucncate_table_in_database(table, db_url=db_url_write):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
 
+
 def drop_table_in_database(table, db_url=db_url_write):
     ''' drop table in DB (for tables only kept the most recent model records) '''
     try:
@@ -31,11 +34,12 @@ def drop_table_in_database(table, db_url=db_url_write):
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
 
+
 def delete_data_on_database(table, db_url=db_url_write, query=None):
     ''' delete data from table in databased '''
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
-        if type(query)==type(None):
+        if type(query) == type(None):
             query = "True"
         with engine.connect() as conn:
             conn.execute(f"DELETE FROM {table} WHERE {query}")
@@ -45,6 +49,7 @@ def delete_data_on_database(table, db_url=db_url_write, query=None):
         to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
         return False
     return True
+
 
 @retry(tries=3, delay=1)
 def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], db_url=db_url_write, how="update",
@@ -88,7 +93,7 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
             data = data.dropna(subset=primary_key)
             data = data.set_index(primary_key)
 
-            if type(dtype)!=type(None):
+            if type(dtype) != type(None):
                 upsert_params = dict(
                     df=data,
                     table_name=table,
@@ -118,6 +123,7 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
         return False
     return True
 
+
 def read_query(query, db_url=db_url_read, mp=True):
     ''' Read specific query from SQL '''
 
@@ -130,6 +136,7 @@ def read_query(query, db_url=db_url_read, mp=True):
     engine.dispose()
     return df
 
+
 def read_table(table, db_url=db_url_read, mp=True):
     ''' Read entire table from SQL '''
 
@@ -140,6 +147,7 @@ def read_table(table, db_url=db_url_read, mp=True):
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()
     return df
+
 
 def record_table_update_time(table):
     ''' record last update time in table '''
@@ -157,6 +165,7 @@ def record_table_update_time(table):
            dtype=data_type)
     engine.dispose()
 
+
 def uid_maker(df, primary_key):
     ''' create uid columns for table when multiple columns used as primary_key '''
     df["uid"] = ''
@@ -167,14 +176,34 @@ def uid_maker(df, primary_key):
         df["uid"] += index
     return df
 
-if __name__=="__main__":
 
+def migrate_local_save_to_prod():
+    """ during factor training, we save to local in case error stop the process for recovery """
+
+    df = read_table(global_vars.result_score_table, db_url=global_vars.db_url_local)
+    upsert_data_to_database(df, global_vars.result_score_table, how="update")
+    delete_data_on_database(global_vars.result_score_table, db_url=global_vars.db_url_local)
+
+    df = read_table(global_vars.result_pred_table, db_url=global_vars.db_url_local)
+    upsert_data_to_database(df, global_vars.result_pred_table, how="append")
+    delete_data_on_database(global_vars.result_pred_table, db_url=global_vars.db_url_local)
+
+    df = read_table(global_vars.feature_importance_table, db_url=global_vars.db_url_local)
+    upsert_data_to_database(df, global_vars.feature_importance_table, how="append")
+    delete_data_on_database(global_vars.feature_importance_table, db_url=global_vars.db_url_local)
+
+    return True
+
+
+if __name__ == "__main__":
     df = read_table("universe_rating_history", db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
-    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')", db_url_aws_read)
+    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')",
+                          db_url_aws_read)
     df = df.merge(universe, on=["ticker"])
     df = df.sort_values(by=["ai_score"]).groupby(["currency_code", "trading_day"]).tail(10)
     df["trading_day"] = pd.to_datetime(df["trading_day"])
-    df = df.loc[df["trading_day"].isin([dt.datetime(2021,11,15), dt.datetime(2021,11,8), dt.datetime(2021,11,1), dt.datetime(2021,10,25)])]
+    df = df.loc[df["trading_day"].isin(
+        [dt.datetime(2021, 11, 15), dt.datetime(2021, 11, 8), dt.datetime(2021, 11, 1), dt.datetime(2021, 10, 25)])]
     df.to_csv("universe_rating_history.csv")
     pass
 

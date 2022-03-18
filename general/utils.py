@@ -47,7 +47,7 @@ def excel_cformat(writer, sheet_name):
     # percent_fmt = workbook.add_format({'num_format': '0.00%'})
 
     # Apply a conditional format to the cell range.
-    worksheet.conditional_format(f'E2:{last_cell}', {'type': '2_color_scale',
+    worksheet.conditional_format(f'B2:{last_cell}', {'type': '2_color_scale',
                                                      'min_color': "white",
                                                      'max_color': "green"})
     worksheet.set_column(f'E2:{last_cell}', None, cell_format1)
@@ -64,13 +64,15 @@ def to_excel(df_dict, file_name='test', cformat=None):
         if = Dict, need to be a dictionary of {sheet_name: DataFrame (content)};
         if = DataFrame, will use default sheet_name "Sheet1".
     file_name : file_name to save
+    excel_cformat: func for excel formating with args (writer, sheet_name)
     '''
 
     writer = pd.ExcelWriter(f'{file_name}.xlsx', engine='xlsxwriter')
     if type(df_dict) == type({}):
         for sheet_name, df in df_dict.items():
             df.to_excel(writer, sheet_name=sheet_name, index=False)
-            # writer = excel_cformat(writer, sheet_name)
+            if type(cformat) != type(None):
+                writer = cformat(writer, sheet_name)
         n = len(df_dict)
     else:
         df_dict.to_excel(writer, sheet_name='Sheet1', index=False)
