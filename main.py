@@ -40,56 +40,61 @@ def mp_rf(*mp_args):
     sql_result['use_average'] = use_average  # neg_factor use average
     sql_result['down_mkt_pct'] = down_mkt_pct  # neg_factor use average
 
-    data.split_group(group_code, usd_for_all=True)
-    # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
+    try:
+        data.split_group(group_code, usd_for_all=True)
+        # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
-    # map y_type name to list of factors
-    y_type_query = f"SELECT * FROM {factors_y_type_table}"
-    y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
-    load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
-                        "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
-                                           "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
-                                           "use_average": sql_result['use_average']},
-                        "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
-                                          "factor_pca": use_pca, "mi_pca": 0.6}}
-    testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
-    sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-    cv_number = 1  # represent which cross-validation sets
+        # map y_type name to list of factors
+        y_type_query = f"SELECT * FROM {factors_y_type_table}"
+        y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
+        load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
+                            "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
+                                               "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
+                                               "use_average": sql_result['use_average']},
+                            "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
+                                              "factor_pca": use_pca, "mi_pca": 0.6}}
+        testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
+        sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+        cv_number = 1  # represent which cross-validation sets
 
-    stock_df_list = []
-    score_df_list = []
-    feature_df_list = []
+        stock_df_list = []
+        score_df_list = []
+        feature_df_list = []
 
-    for train_index, valid_index in cv:  # roll over different validation set
-        sql_result['cv_number'] = cv_number
+        for train_index, valid_index in cv:  # roll over different validation set
+            sql_result['cv_number'] = cv_number
 
-        sample_set['valid_x'] = sample_set['train_x'][valid_index]
-        sample_set['train_xx'] = sample_set['train_x'][train_index]
-        sample_set['valid_y'] = sample_set['train_y'][valid_index]
-        sample_set['train_yy'] = sample_set['train_y'][train_index]
-        sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-        sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+            sample_set['valid_x'] = sample_set['train_x'][valid_index]
+            sample_set['train_xx'] = sample_set['train_x'][train_index]
+            sample_set['valid_y'] = sample_set['train_y'][valid_index]
+            sample_set['train_yy'] = sample_set['train_y'][train_index]
+            sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+            sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-        sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-        sql_result['valid_len'] = len(sample_set['valid_x'])
+            sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+            sql_result['valid_len'] = len(sample_set['valid_x'])
 
-        for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
-            sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+            for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
+                sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-        # calculate weight for negative / positive index
-        sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
+            # calculate weight for negative / positive index
+            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
 
-        sql_result['neg_factor'] = data.neg_factor
-        stock_df, score_df, feature_df, status = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
-                                                         sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
-                                                         group_index=data.test['group'].to_list()).hpot_dfs
-        cv_number += 1
+            sql_result['neg_factor'] = data.neg_factor
+            stock_df, score_df, feature_df, status = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
+                                                             sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
+                                                             group_index=data.test['group'].to_list()).hpot_dfs
+            cv_number += 1
 
-        stock_df_list.append(stock_df)
-        score_df_list.append(score_df)
-        feature_df_list.append(feature_df)
+            stock_df_list.append(stock_df)
+            score_df_list.append(score_df)
+            feature_df_list.append(feature_df)
 
-    return stock_df_list, score_df_list, feature_df_list
+        return stock_df_list, score_df_list, feature_df_list
+    except Exception as e:
+        details = [group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, use_average, down_mkt_pct]
+        to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {tuple(details)}: {e.args}")
+        return [], [], []
 
 
 def write_db(stock_df_all, score_df_all, feature_df_all):
