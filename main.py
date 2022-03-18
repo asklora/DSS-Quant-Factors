@@ -13,7 +13,8 @@ from preprocess.calculation_premium import calc_premium_all
 from random_forest import rf_HPOT
 from results_analysis.calculation_rank import rank_pred
 from general.send_slack import to_slack
-from general.sql_process import read_query, read_table, trucncate_table_in_database, upsert_data_to_database
+from general.sql_process import read_query, read_table, trucncate_table_in_database, upsert_data_to_database, \
+    migrate_local_save_to_prod
 from results_analysis.calculation_rank import rank_pred
 from results_analysis.calculation_backtest import backtest_score_history
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
