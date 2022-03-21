@@ -4,6 +4,7 @@ import datetime as dt
 import os
 from general.utils import to_excel
 from general.sql_process import read_query
+from functools import partial
 import ast
 from dateutil.relativedelta import relativedelta
 import global_vars
@@ -126,7 +127,8 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220312222718_debug'):
     # df = pd.read_pickle('cache2.pkl')
 
     df['testing_period'] = pd.to_datetime(df['testing_period'])
-    df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s', 'actual']].mean().unstack()
+    df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
+                                                                                   'actual']].mean().unstack()
     df_raw.to_csv(f'eval_raw_{name_sql}.csv')
     exit(1)
 
@@ -155,13 +157,71 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220312222718_debug'):
             ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual_s', 'actual']].std()
         df_std.columns = ['std_' + x for x in df_std]
 
+        df_std = df_p.groupby(['group', 'group_code', 'y_type', 'q'])[
+            ['net_ret', 'max_ret']].min()
+        df_std.columns = ['min_' + x for x in df_std]
+
         xls[d] = pd.concat([df_agg, df_std], axis=1).reset_index().drop(
             columns=['net_ret_ab2', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d'])
 
     to_excel(xls, f'sortino_ratio_{name_sql}_new')
     print(df)
 
+
+def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
+    """ calculate sortino / sharpe ratio for each of the factors
+        -> result: if we use sortino ratio max_ret > net_ret
+    """
+    tbl_name = global_vars.production_factor_rank_backtest_top_table
+    df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
+
+    df[['return', 'bm_return']] /= 100
+    # df.to_pickle('cache2.pkl')
+    # df = pd.read_pickle('cache2.pkl')
+
+    df['diff'] = df['return'] - df['bm_return']
+    df['diff2_d'] = np.square(np.clip(df['diff'], np.inf, 0))
+    df['diff2'] = np.square(df['diff'])
+    df['return2_d'] = np.square(np.clip(df['return'], np.inf, 0))
+    df['return2'] = np.square(df['return'])
+
+    xls = {}
+    groupby_col = ['currency_code', 'eval_metric', 'eval_q', 'n_top_config', 'n_top_ticker', 'n_backtest_period']
+    for d in ['2016-01-01', '2020-01-01', '2021-08-01']:
+        df_p = df.loc[df['trading_day'] > dt.datetime.strptime(d, '%Y-%m-%d').date()]
+
+        # calculate avg return
+        df_agg = df_p.groupby(groupby_col)[
+            ['return', 'bm_return', 'diff', 'diff2_d', 'diff2', 'return2_d', 'return2']].mean()
+
+        # calculate sortino / sharpe ratio
+        df_agg['sortino_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2_d']))
+        df_agg['sortino_0'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
+        df_agg['sharpe_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2']))
+        df_agg['sharpe_0'] = df_agg['return'].div(np.sqrt(df_agg['return2']))
+
+        # calculate std
+        df_std = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].std()
+        df_std.columns = ['std_' + x for x in df_std]
+
+        # calculate min period return
+        df_min = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].min()
+        df_min.columns = ['min_' + x for x in df_min]
+
+        df_quantile = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.1)
+        df_quantile.columns = ['q10_' + x for x in df_quantile]
+
+        df_quantile2 = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.05)
+        df_quantile2.columns = ['q5_' + x for x in df_quantile2]
+
+        xls[d] = pd.concat([df_agg, df_std, df_min, df_quantile, df_quantile2], axis=1).reset_index().drop(
+            columns=['diff2_d', 'diff2', 'return2_d', 'return2'])
+
+    to_excel(xls, f'sortino_ratio_{name_sql}_top')
+    print(df)
+
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    eval_sortino_ratio()
+    # eval_sortino_ratio()
+    eval_sortino_ratio_top()

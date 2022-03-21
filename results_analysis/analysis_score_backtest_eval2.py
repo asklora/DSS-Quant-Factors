@@ -178,7 +178,6 @@ class daily_trans_return:
 
         df = daily_trans_return.__fill_business_day(df).ffill()
 
-        # df.loc[df['ticker']=='0883.HK'].to_csv('sample.csv')
 
         df['tri'] = df.groupby(['ticker'])['tri'].pct_change().fillna(0)
         df['tri'] = np.log(df['tri'] + 1)

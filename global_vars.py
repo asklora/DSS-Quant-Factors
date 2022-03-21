@@ -15,9 +15,14 @@ feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
 # production_factor_rank_ratio_table = "factor_result_rank_ratio"
 # production_factor_rank_backtest_table = "factor_result_rank_backtest"
-production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval5"
-production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top5"  # updated version for non-peeking backtest
+production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval4"
+production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top4"  # updated version for non-peeking backtest
 production_factor_rank_history_table = "factor_result_rank_history"
+
+# TABLE name - factor config optimization results
+factor_config_score_table = 'factor_config_model'
+factor_config_prediction_table = 'factor_config_model_stock'
+factor_config_importance_table = 'factor_config_importance'
 
 # TABLE names - universe rating results
 production_score_current = "universe_rating" # in DROID v2 DB
