@@ -183,9 +183,9 @@ def migrate_local_save_to_prod():
     for t, how in {global_vars.result_score_table: "update",
                    global_vars.result_pred_table: "append",
                    global_vars.feature_importance_table: "append"}.items():
-        data = read_table(t, db_url=global_vars.db_url_local)
+        data = read_table('factor.' + t, db_url=global_vars.db_url_local)
         upsert_data_to_database(data, t, how=how)
-        delete_data_on_database(t, db_url=global_vars.db_url_local)
+        delete_data_on_database('factor.' + t, db_url=global_vars.db_url_local)
         logging.info(f"-----> local DB save migrate to cloud: {t}")
 
     return True
