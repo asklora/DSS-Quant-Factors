@@ -275,6 +275,9 @@ class rank_pred:
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
 
+        # TODO: fix bug for missing CNY 2021-09-12 in eval table
+        # pred = pred.loc[(pred['group_code'] == 'CNY') & (pred['testing_period'] == dt.date(2021, 9, 12))]
+
         # fix wrong "actual" premium in factor_model_stock (1)
         premium = read_query(f"SELECT * FROM {factor_premium_table} "
                              f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")

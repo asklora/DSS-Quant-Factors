@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-from global_vars import *
+from global_vars import processed_ratio_table
 from general.sql_process import read_query
 import matplotlib.pyplot as plt
 
@@ -84,6 +84,15 @@ def stock_return_boxplot(currency='USD', weeks_to_expire='%%', average_days='%%'
         current_ax.set_ylim((-.5, .5))
         c+=1
     plt.show()
+
+
+def ratio_cluster():
+
+    for cur in ['USD']:
+        df = read_query(f"SELECT * FROM {processed_ratio_table} "
+                        f"WHERE ticker in (SELECT * FROM universe WHERE currency_code='{cur}')")
+        print(df)
+
 
 if __name__ == '__main__':
     # stock_return_hist(weeks_to_expire=4, average_days=7)

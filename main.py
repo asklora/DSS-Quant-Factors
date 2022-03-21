@@ -117,7 +117,7 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.33):
+def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.67):
     """ evaluate test results based on name_sql / eval args """
 
     sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
