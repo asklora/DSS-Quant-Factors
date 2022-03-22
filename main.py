@@ -117,14 +117,14 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.67):
+def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.33):
     """ evaluate test results based on name_sql / eval args """
 
     sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
 
     # Step 1: pred -> ranking
     try:
-        factor_rank = pd.read_csv(f'fact1or_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
+        factor_rank = pd.read_csv(f'fac1tor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
     except Exception as exp:
         factor_rank = rank_pred(q, name_sql=sql_result['name_sql'],
                                 pred_start_testing_period=pred_start_testing_period,
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--eval_metric', default='max_ret,net_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
-    parser.add_argument('--eval_backtest_period', default='36,12', type=str)
+    parser.add_argument('--eval_backtest_period', default='12,36', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
