@@ -116,21 +116,21 @@ def actual_good_prem():
     pass
 
 
-def eval_sortino_ratio(name_sql='w4_d-7_20220312222718_debug'):
+def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
     tbl_name = global_vars.production_factor_rank_backtest_eval_table
     df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
 
-    # df.to_pickle('cache2.pkl')
+    df.to_pickle('cache2.pkl')
     # df = pd.read_pickle('cache2.pkl')
 
     df['testing_period'] = pd.to_datetime(df['testing_period'])
     df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
                                                                                    'actual']].mean().unstack()
     df_raw.to_csv(f'eval_raw_{name_sql}.csv')
-    exit(1)
+    # exit(1)
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
     df['net_ret_ab'] = df['net_ret'] - df['actual_s']
@@ -223,5 +223,5 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    # eval_sortino_ratio()
-    eval_sortino_ratio_top()
+    eval_sortino_ratio()
+    # eval_sortino_ratio_top()

@@ -30,7 +30,7 @@ def adj_mse_score(actual, pred, multioutput=False):
     diff = actual_sort - pred_sort
     diff2 = np.where(diff > 0, diff, diff**2)  # if actual > pred
     adj_mse = np.mean(diff2)
-    return {"adj_mse": adj_mse}  # {"rank_r2": rank_r2, "rank_mse": rank_mse, "rank_mae": rank_mae}
+    return adj_mse
 
 
 class rf_HPOT:
@@ -147,33 +147,46 @@ class rf_HPOT:
         if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
             self.sample_set['test_y'] = np.zeros(self.sample_set['test_y_pred'].shape)
 
-        ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
-        result = {'net_ret': ret}
-        for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error,
-                        "custom": adj_mse_score}.items():
+        if 'pillar' in self.sql_result['y_type']:
+            # eval: for cluster pillar
+            result = {}
             for i in ['train_yy', 'valid_y', 'test_y']:
-                score = func(self.sample_set[i].T, self.sample_set[i + '_pred'].T, multioutput='raw_values')
-                if type(score) == type({}):
-                    for socre_k, score_v in score.items():
-                        result[f"{k}_{i.split('_')[0]}_{socre_k}"] = score_v
+                for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():
+                    result[f"{k}_{i.split('_')[0]}"] = func(self.sample_set[i],
+                                                            self.sample_set[i + '_pred'],
+                                                            multioutput='uniform_average')
+                if self.sample_set['test_y'].shape[1] > 1:  # i.e. if multioutput = multi factors
+                    result[f"adj_mse_{i.split('_')[0]}"] = adj_mse_score(self.sample_set[i].T, self.sample_set[i + '_pred'].T)
+                    eval_metric = 'adj_mse_valid'
                 else:
-                    result[f"{k}_{i.split('_')[0]}"] = np.median(score)
-        logging.debug(f"R2 train: {result['r2_train']}")
-        logging.debug(f"R2 valid: {result['r2_valid']}")
-        logging.debug(f"R2 test: {result['r2_test']}")
+                    eval_metric = 'mse_valid'
+        else:
+            # eval: for pre-defined pillar
+            ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
+            result = {'net_ret': ret}
+            for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error,
+                            "adj_mse": adj_mse_score}.items():
+                for i in ['train_yy', 'valid_y', 'test_y']:
+                    score = func(self.sample_set[i].T, self.sample_set[i + '_pred'].T, multioutput='raw_values')
+                    result[f"{k}_{i.split('_')[0]}"] = np.mean(score)
+
+            logging.debug(f"R2 train: {result['r2_train']}")
+            logging.debug(f"R2 valid: {result['r2_valid']}")
+            logging.debug(f"R2 test: {result['r2_test']}")
+
+            eval_metric = 'adj_mse_valid'       # used to be [mse_valid]
+            logging.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
 
-        if result['custom_valid_adj_mse'] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
-            self.hpot['best_score'] = result['custom_valid_adj_mse']
+        if result[eval_metric] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
+            self.hpot['best_score'] = result[eval_metric]
             self.hpot['best_stock_df'] = self.to_sql_prediction(self.sample_set['test_y_pred'])
             self.hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
         gc.collect()
-        logging.info(f"HPOT --> {result['custom_valid_adj_mse']}, {str(result['net_ret'])[:6]}, {best_factor}")
-        # return result['mse_valid']
-        return result['custom_valid_adj_mse']   # TODO: if change rmb to change results < ... above
+        return result[eval_metric]
 
     def to_sql_prediction(self, Y_test_pred):
         """ prepare array Y_test_pred to DataFrame ready to write to SQL """

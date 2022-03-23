@@ -4,33 +4,42 @@ import numpy as np
 import argparse
 import time
 from dateutil.relativedelta import relativedelta
+from itertools import product
+import multiprocessing as mp
 
-import global_vars
-from global_vars import *
+from global_vars import (
+    logging, DEBUG,
+    factors_y_type_table,
+    factor_premium_table,
+    result_score_table,
+    result_pred_table,
+    feature_importance_table,
+    db_url_alibaba_prod
+)
+from general.send_slack import to_slack
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
+from preprocess.calculation_pillar_cluster import calc_pillar_cluster
 from random_forest import rf_HPOT
-from results_analysis.calculation_rank import rank_pred
-from general.send_slack import to_slack
-from general.sql_process import read_query, read_table, trucncate_table_in_database, upsert_data_to_database, \
+from general.sql_process import (
+    read_query,
+    read_table,
+    upsert_data_to_database,
     migrate_local_save_to_prod
+)
 from results_analysis.calculation_rank import rank_pred
 from results_analysis.calculation_backtest import backtest_score_history
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
-
-from itertools import product
-import multiprocessing as mp
 
 
 def mp_rf(*mp_args):
     ''' run random forest on multi-processor '''
 
     data, sql_result, group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, \
-    use_average, down_mkt_pct = mp_args
+    use_average, down_mkt_pct, subpillar_trh, pillar_trh = mp_args
 
     logging.debug(f"===== test on y_type [{y_type}] =====")
-    sql_result['y_type'] = y_type  # random forest model predict all factor at the same time
     sql_result['tree_type'] = tree_type
     sql_result['testing_period'] = testing_period
     sql_result['group_code'] = group_code
@@ -39,63 +48,76 @@ def mp_rf(*mp_args):
     sql_result['valid_method'] = valid_method
     sql_result['qcut_q'] = qcut_q
     sql_result['use_average'] = use_average  # neg_factor use average
-    sql_result['down_mkt_pct'] = down_mkt_pct  # neg_factor use average
+    sql_result['down_mkt_pct'] = down_mkt_pct
+    sql_result['subpillar_trh'] = subpillar_trh
+    sql_result['pillar_trh'] = pillar_trh
 
-    try:
-        data.split_group(group_code, usd_for_all=True)
-        # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
+    data.split_group(group_code, usd_for_all=True)
+    # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
 
-        # map y_type name to list of factors
+    # map y_type name to list of factors
+    if 'cluster' in y_type:
+        subpillar_dict, pillar_dict = calc_pillar_cluster(testing_period, sql_result['weeks_to_expire'], group_code,
+                                                          subpillar_trh=sql_result['subpillar_trh'],
+                                                          pillar_trh=sql_result['pillar_trh'])
+    else:
         y_type_query = f"SELECT * FROM {factors_y_type_table}"
-        y_type_map = read_query(y_type_query, db_url_read).set_index(["y_type"])["factor_list"].to_dict()
-        load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
-                            "output_options": {"y_type": y_type_map[y_type], "qcut_q": sql_result['qcut_q'],
-                                               "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
-                                               "use_average": sql_result['use_average']},
-                            "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
-                                              "factor_pca": use_pca, "mi_pca": 0.6}}
-        testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
-        sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
-        cv_number = 1  # represent which cross-validation sets
+        y_type_map = read_query(y_type_query).set_index(["y_type"])["factor_list"].to_dict()
+        pillar_dict = dict(y_type=y_type_map[y_type])
 
-        stock_df_list = []
-        score_df_list = []
-        feature_df_list = []
+    for y_type, factor_list in pillar_dict.items():
+        try:
+            sql_result['y_type'] = y_type  # random forest model predict all factor at the same time
+            load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
+                                "output_options": {"y_type": factor_list, "qcut_q": sql_result['qcut_q'],
+                                                   "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
+                                                   "use_average": sql_result['use_average']},
+                                "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
+                                                  "factor_pca": use_pca, "mi_pca": 0.6}}
+            testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
+            sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+            cv_number = 1  # represent which cross-validation sets
 
-        for train_index, valid_index in cv:  # roll over different validation set
-            sql_result['cv_number'] = cv_number
+            stock_df_list = []
+            score_df_list = []
+            feature_df_list = []
 
-            sample_set['valid_x'] = sample_set['train_x'][valid_index]
-            sample_set['train_xx'] = sample_set['train_x'][train_index]
-            sample_set['valid_y'] = sample_set['train_y'][valid_index]
-            sample_set['train_yy'] = sample_set['train_y'][train_index]
-            sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
-            sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
+            for train_index, valid_index in cv:  # roll over different validation set
+                sql_result['cv_number'] = cv_number
 
-            sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-            sql_result['valid_len'] = len(sample_set['valid_x'])
+                sample_set['valid_x'] = sample_set['train_x'][valid_index]
+                sample_set['train_xx'] = sample_set['train_x'][train_index]
+                sample_set['valid_y'] = sample_set['train_y'][valid_index]
+                sample_set['train_yy'] = sample_set['train_y'][train_index]
+                sample_set['valid_y_final'] = sample_set['train_y_final'][valid_index]
+                sample_set['train_yy_final'] = sample_set['train_y_final'][train_index]
 
-            for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
-                sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
+                sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
+                sql_result['valid_len'] = len(sample_set['valid_x'])
 
-            # calculate weight for negative / positive index
-            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
+                for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
+                    sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
-        sql_result['neg_factor'] = data.neg_factor
-        stock_df, score_df, feature_df = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
-                                                 sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
-                                                 group_index=data.test['group'].to_list()).hpot_dfs
-        cv_number += 1
+                # calculate weight for negative / positive index
+                sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
 
-        stock_df_list.append(stock_df)
-        score_df_list.append(score_df)
-        feature_df_list.append(feature_df)
+            sql_result['neg_factor'] = data.neg_factor
+            stock_df, score_df, feature_df = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
+                                                     sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
+                                                     group_index=data.test['group'].to_list()).hpot_dfs
+            cv_number += 1
 
-        return stock_df_list, score_df_list, feature_df_list
-    except Exception as e:
-        details = [group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q, use_average, down_mkt_pct]
-        to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {tuple(details)}: {e.args}")
-        return [], [], []
+            stock_df_list.append(stock_df)
+            score_df_list.append(score_df)
+            feature_df_list.append(feature_df)
+
+            return stock_df_list, score_df_list, feature_df_list
+
+        except Exception as e:
+            details = [group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q,
+                       use_average, down_mkt_pct]
+            to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {tuple(details)}: {e.args}")
+            return [], [], []
 
 
 def write_db(stock_df_all, score_df_all, feature_df_all):
@@ -218,21 +240,24 @@ if __name__ == "__main__":
     # tree_type_list = ['rf', 'extra', 'rf', 'extra', 'rf', 'extra']
     tree_type_list = ['rf']
     use_pca_list = [0.4, None]
-    n_splits_list = [.2, .1]
+    n_splits_list = [.2]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [0, 10]
     use_average_list = [True, False]
     down_mkt_pct_list = [0.5, 0.7]
+    subpillar_trh_list = [5]
+    pillar_trh_list = [2]
 
     # y_type_list = ["all"]
     # y_type_list = ["test"]
-    y_type_list = ["value", "quality", "momentum"]
+    # y_type_list = ["value", "quality", "momentum"]
     # y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
+    y_type_list = ["cluster"]
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
             f"WHERE weeks_to_expire={args.weeks_to_expire} AND average_days={args.average_days}"
-    testing_period_list_all = read_query(query, db_url=db_url_read)
+    testing_period_list_all = read_query(query)
 
     sample_interval = args.sample_interval  # use if want non-overlap sample
     testing_period_list = sorted(testing_period_list_all['trading_day'])[
@@ -255,18 +280,19 @@ if __name__ == "__main__":
         data = load_data(args.weeks_to_expire, args.average_days, mode=mode)  # load_data (class) STEP 1
 
         all_groups = product([data], [sql_result], group_code_list, testing_period_list, y_type_list,
-                             tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list, use_average_list,
-                             down_mkt_pct_list)
+                             tree_type_list, use_pca_list, n_splits_list, valid_method_list, qcut_q_list,
+                             use_average_list, down_mkt_pct_list, subpillar_trh_list, pillar_trh_list)
         all_groups = [tuple(e) for e in all_groups]
         diff_config_col = ['group_code', 'testing_period', 'y_type',
-                           'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct']
+                           'tree_type', 'use_pca', 'n_splits', 'valid_method', 'qcut_q', 'use_average', 'down_mkt_pct',
+                           'subpillar_trh', 'pillar_trh']
         all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
 
         # (restart) filter for failed iteration
         local_migrate_status = migrate_local_save_to_prod()     # save local db to cloud
         if args.restart:
             fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
-                                f"FROM {global_vars.result_score_table} WHERE name_sql='{args.restart}' "
+                                f"FROM {result_score_table} WHERE name_sql='{args.restart}' "
                                 f"GROUP BY {', '.join(diff_config_col)}")
             all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
             all_groups_df = all_groups_df.loc[all_groups_df['c'].isnull(), diff_config_col]
