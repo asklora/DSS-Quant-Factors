@@ -477,7 +477,8 @@ if __name__ == "__main__":
     # download_prediction('w4_d-7_20220310130330_debug')
     # download_prediction('w4_d-7_20220312222718_debug')
     # download_prediction('w4_d-7_20220317005620_debug')    # adj_mse (1)
-    download_prediction('w4_d-7_20220317125729_debug')      # adj_mse (2)
+    # download_prediction('w4_d-7_20220317125729_debug')      # adj_mse (2)
+    download_prediction('w4_d-7_20220321173435_debug')      # adj_mse (3) long history
     exit(1)
 
     # linechart

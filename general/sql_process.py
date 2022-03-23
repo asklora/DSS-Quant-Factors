@@ -129,7 +129,6 @@ def read_query(query, db_url=db_url_read, mp=True):
 
     logging.debug(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
-    print(f'----> Query: {query}')
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, chunksize=20000, )
         df = pd.concat(df, axis=0, ignore_index=True)
@@ -187,7 +186,6 @@ def migrate_local_save_to_prod():
         upsert_data_to_database(data, t, how=how)
         delete_data_on_database('factor.' + t, db_url=global_vars.db_url_local)
         logging.info(f"-----> local DB save migrate to cloud: {t}")
-
     return True
 
 

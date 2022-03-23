@@ -20,7 +20,7 @@ from functools import partial
 
 cls_lgbm_space = {
     'objective': 'multiclass',
-    'learning_rate': hp.choice('learning_rate', [0.05, 0.1]),
+    'learning_rate': hp.choice('learning_rate', [0.01, 0.1]),
     'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart']),
     'max_bin': hp.choice('max_bin', [128, 256, 512]),
     'num_leaves': hp.quniform('num_leaves', 50, 300, 50),
@@ -31,7 +31,7 @@ cls_lgbm_space = {
     'min_gain_to_split': 0,
     'lambda_l1': 0,
     'lambda_l2': hp.quniform('lambda_l2', 0, 40, 20),
-    'verbose': 2,
+    'verbose': 1,
     'random_state': 0,
 }
 
@@ -225,7 +225,7 @@ class load_date:
         df_x = pd.DataFrame(df['config'].to_list()).drop(columns=['tree_type'])
         if list(df['group'].unique()) != ['USD']:
             df_x['is_usd'] = (df['group_code'] == "USD").values
-        df_x['q'] = df['q'].values
+        # df_x['q'] = df['q'].values
         for i in range(1, 4):
             df_x[f'actual_{i}'] = df[f'actual_{i}'].values
         df_x['testing_period'] = df['testing_period'].values
@@ -287,8 +287,10 @@ if __name__ == "__main__":
     # df = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
     #                 f"WHERE name_sql='{args.name_sql}'")
     # df.to_pickle(f'eval_{args.name_sql}.pkl')
-
+    #
     df = pd.read_pickle(f'eval_{args.name_sql}.pkl')
+    print(df)
+
     df = df.sort_values(by=['testing_period'])
     for i in range(1, 4):
         df[f'actual_{i}'] = df.groupby(['testing_period'])['actual_s'].shift(i)
@@ -298,12 +300,12 @@ if __name__ == "__main__":
     sql_result['name_sql2'] = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')  # name_sql for config opt
     sql_result['class_weight'] = {i: 1 for i in range(args.qcut_q)}
 
-    # df = pd.read_pickle(args.name_sql + '.pkl')
-    print(df)
-
-    testing_period = np.sort(df['testing_period'].unique())[-12:]
+    testing_period = np.sort(df['testing_period'].unique())[-6:]
 
     for (group, y_type), g in df.groupby(['group', 'y_type']):
+        print(group, y_type)
+        sql_result['currency_code'] = group
+        sql_result['y_type'] = y_type
         data = load_date(g)
         for t in testing_period:
             X_train, X_test, y_train, y_test, y_train_cut, y_test_cut = data.split_all(t, qcut_q=args.qcut_q)

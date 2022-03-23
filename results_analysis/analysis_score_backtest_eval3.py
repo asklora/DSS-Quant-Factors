@@ -127,9 +127,9 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
     # df = pd.read_pickle('cache2.pkl')
 
     df['testing_period'] = pd.to_datetime(df['testing_period'])
-    df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
-                                                                                   'actual']].mean().unstack()
-    df_raw.to_csv(f'eval_raw_{name_sql}.csv')
+    # df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
+    #                                                                                'actual']].mean().unstack()
+    # df_raw.to_csv(f'eval_raw_{name_sql}.csv')
     # exit(1)
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
@@ -153,15 +153,26 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
         df_agg['net_ret_sharpe'] = df_agg['net_ret'].div(np.sqrt(df_agg['net_ret_ab2']))
         df_agg['max_ret_sharpe'] = df_agg['max_ret'].div(np.sqrt(df_agg['max_ret_ab2']))
 
-        df_std = df_p.groupby(['group', 'group_code', 'y_type', 'q'])[
+        groupby_col = ['group', 'group_code', 'y_type', 'q']
+        df_std = df_p.groupby(groupby_col)[
             ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual_s', 'actual']].std()
         df_std.columns = ['std_' + x for x in df_std]
 
-        df_std = df_p.groupby(['group', 'group_code', 'y_type', 'q'])[
+        df_std = df_p.groupby(groupby_col)[
             ['net_ret', 'max_ret']].min()
         df_std.columns = ['min_' + x for x in df_std]
 
-        xls[d] = pd.concat([df_agg, df_std], axis=1).reset_index().drop(
+        # calculate min period return
+        df_min = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].min()
+        df_min.columns = ['min_' + x for x in df_min]
+
+        df_quantile = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].quantile(q=0.1)
+        df_quantile.columns = ['q10_' + x for x in df_quantile]
+
+        df_quantile2 = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].quantile(q=0.05)
+        df_quantile2.columns = ['q5_' + x for x in df_quantile2]
+
+        xls[d] = pd.concat([df_agg, df_std, df_min, df_quantile, df_quantile2], axis=1).reset_index().drop(
             columns=['net_ret_ab2', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d'])
 
     to_excel(xls, f'sortino_ratio_{name_sql}_new')

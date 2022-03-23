@@ -65,9 +65,13 @@ def mp_rf(*mp_args):
         y_type_map = read_query(y_type_query).set_index(["y_type"])["factor_list"].to_dict()
         pillar_dict = dict(y_type=y_type_map[y_type])
 
+    stock_df_list = []
+    score_df_list = []
+    feature_df_list = []
     for y_type, factor_list in pillar_dict.items():
         try:
             sql_result['y_type'] = y_type  # random forest model predict all factor at the same time
+            sql_result['y_type_count'] = len(factor_list)  # random forest model predict all factor at the same time
             load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
                                 "output_options": {"y_type": factor_list, "qcut_q": sql_result['qcut_q'],
                                                    "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
@@ -76,15 +80,10 @@ def mp_rf(*mp_args):
                                                   "factor_pca": use_pca, "mi_pca": 0.6}}
             testing_period = dt.datetime.combine(testing_period, dt.datetime.min.time())
             sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
+
             cv_number = 1  # represent which cross-validation sets
-
-            stock_df_list = []
-            score_df_list = []
-            feature_df_list = []
-
             for train_index, valid_index in cv:  # roll over different validation set
                 sql_result['cv_number'] = cv_number
-
                 sample_set['valid_x'] = sample_set['train_x'][valid_index]
                 sample_set['train_xx'] = sample_set['train_x'][train_index]
                 sample_set['valid_y'] = sample_set['train_y'][valid_index]
@@ -105,19 +104,14 @@ def mp_rf(*mp_args):
             stock_df, score_df, feature_df = rf_HPOT(max_evals=(2 if DEBUG else 10), sql_result=sql_result,
                                                      sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
                                                      group_index=data.test['group'].to_list()).hpot_dfs
-            cv_number += 1
-
             stock_df_list.append(stock_df)
             score_df_list.append(score_df)
             feature_df_list.append(feature_df)
-
-            return stock_df_list, score_df_list, feature_df_list
+            cv_number += 1
 
         except Exception as e:
-            details = [group_code, testing_period, y_type, tree_type, use_pca, n_splits, valid_method, qcut_q,
-                       use_average, down_mkt_pct]
-            to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {tuple(details)}: {e.args}")
-            return [], [], []
+            to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {sql_result}: {e.args}")
+    return stock_df_list, score_df_list, feature_df_list
 
 
 def write_db(stock_df_all, score_df_all, feature_df_all):
@@ -289,8 +283,8 @@ if __name__ == "__main__":
         all_groups_df = pd.DataFrame([list(e)[2:] for e in all_groups], columns=diff_config_col)
 
         # (restart) filter for failed iteration
-        local_migrate_status = migrate_local_save_to_prod()     # save local db to cloud
         if args.restart:
+            local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
             fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as c "
                                 f"FROM {result_score_table} WHERE name_sql='{args.restart}' "
                                 f"GROUP BY {', '.join(diff_config_col)}")

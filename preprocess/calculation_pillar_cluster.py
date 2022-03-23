@@ -48,13 +48,13 @@ def calc_pillar_cluster(testing_period, weeks_to_expire, group='USD', subpillar_
     end_date = testing_period + relativedelta(weeks=weeks_to_expire)
     start_date = end_date - relativedelta(years=lookback)
 
-    # conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{group}')",
-    #               f"trading_day <= '{end_date}'",
-    #               f"trading_day > '{start_date}'"]
-    # query = f"SELECT * FROM {processed_ratio_table} WHERE {' AND '.join(conditions)}"
-    # df = read_query(query)
+    conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{group}')",
+                  f"trading_day <= '{end_date}'",
+                  f"trading_day > '{start_date}'"]
+    query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE {' AND '.join(conditions)}"
+    df = read_query(query)
     # df.to_pickle('cache_factor_ratio1.pkl')
-    df = pd.read_pickle('cache_factor_ratio1.pkl')
+    # df = pd.read_pickle('cache_factor_ratio1.pkl')
 
     # get active factor list
     df_formula = read_query(f"SELECT name FROM {global_vars.formula_factors_table_prod} WHERE is_active")
