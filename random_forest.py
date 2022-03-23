@@ -165,16 +165,15 @@ class rf_HPOT:
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
 
-        if result['mae_valid'] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
-            self.hpot['best_score'] = result['mae_valid']
+        if result['custom_valid_adj_mse'] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
+            self.hpot['best_score'] = result['custom_valid_adj_mse']
             self.hpot['best_stock_df'] = self.to_sql_prediction(self.sample_set['test_y_pred'])
             self.hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
 
         gc.collect()
-        logging.info(f"HPOT --> {str(result['mse_valid'] * 100)[:6]}, {str(result['mse_test'] * 100)[:6]}, "
-                     f"{str(result['net_ret'])[:6]}, {best_factor}")
+        logging.info(f"HPOT --> {result['custom_valid_adj_mse']}, {str(result['net_ret'])[:6]}, {best_factor}")
         # return result['mse_valid']
-        return result['custom_valid_adj_mse']
+        return result['custom_valid_adj_mse']   # TODO: if change rmb to change results < ... above
 
     def to_sql_prediction(self, Y_test_pred):
         """ prepare array Y_test_pred to DataFrame ready to write to SQL """

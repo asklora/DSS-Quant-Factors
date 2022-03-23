@@ -192,19 +192,4 @@ def migrate_local_save_to_prod():
 
 
 if __name__ == "__main__":
-    df = read_table("universe_rating_history", db_url_aws_read)[["ticker", "trading_day", "ai_score"]]
-    universe = read_query("SELECT ticker, currency_code FROM universe WHERE currency_code in ('HKD','USD')",
-                          db_url_aws_read)
-    df = df.merge(universe, on=["ticker"])
-    df = df.sort_values(by=["ai_score"]).groupby(["currency_code", "trading_day"]).tail(10)
-    df["trading_day"] = pd.to_datetime(df["trading_day"])
-    df = df.loc[df["trading_day"].isin(
-        [dt.datetime(2021, 11, 15), dt.datetime(2021, 11, 8), dt.datetime(2021, 11, 1), dt.datetime(2021, 10, 25)])]
-    df.to_csv("universe_rating_history.csv")
-    pass
-
-    df = read_table("iso_currency_code")
-    uid_maker(df, ["nation_code", "nation_name"])
-    # data = data.loc[data['nation_code']=='372']
-    # data['currency_code'] = "test"
-    # upsert_data_to_database(data, "iso_currency_code1", "nation_code", how="update")
+    migrate_local_save_to_prod()

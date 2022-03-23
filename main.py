@@ -237,7 +237,7 @@ if __name__ == "__main__":
     sample_interval = args.sample_interval  # use if want non-overlap sample
     testing_period_list = sorted(testing_period_list_all['trading_day'])[
                           -sample_interval * args.backtest_period - 1::sample_interval]
-    # testing_period_list = testing_period_list[:-11]
+    # testing_period_list = testing_period_list[:-30]
 
     logging.info(
         f'Testing period: [{testing_period_list[0]}] --> [{testing_period_list[-1]}] (n=[{len(testing_period_list)}])')
