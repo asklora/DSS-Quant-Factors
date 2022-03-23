@@ -275,6 +275,12 @@ class rank_pred:
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
 
+        # TODO: fix bug for missing CNY 2021-09-12 in eval table
+        # pred = pred.loc[(pred['group_code'] == 'CNY') & (pred['testing_period'] == dt.date(2021, 9, 12))]
+        # pred = pred.loc[pred['group_code'] == 'CNY']
+        # x = np.sort(pred['testing_period'].unique())[:, np.newaxis]
+        # pred = pred.loc[pred['testing_period'] == dt.datetime(2020, 3, 1, 0, 0, 0)]
+
         # fix wrong "actual" premium in factor_model_stock (1)
         premium = read_query(f"SELECT * FROM {factor_premium_table} "
                              f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")
@@ -470,8 +476,9 @@ class rank_pred:
 if __name__ == "__main__":
     # download_prediction('w4_d-7_20220310130330_debug')
     # download_prediction('w4_d-7_20220312222718_debug')
-    # # download_prediction('w4_d-7_20220312222632_debug')
-    # exit(1)
+    # download_prediction('w4_d-7_20220317005620_debug')    # adj_mse (1)
+    download_prediction('w4_d-7_20220317125729_debug')      # adj_mse (2)
+    exit(1)
 
     # linechart
     for factor, g in pred.groupby(['group', 'group_code', 'factor_name']):
