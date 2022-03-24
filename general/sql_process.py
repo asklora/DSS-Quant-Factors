@@ -127,7 +127,7 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
 def read_query(query, db_url=db_url_read, mp=True):
     ''' Read specific query from SQL '''
 
-    logging.debug(f'Download Table with query: [{query}]')
+    logging.info(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, chunksize=20000, )
@@ -139,7 +139,7 @@ def read_query(query, db_url=db_url_read, mp=True):
 def read_table(table, db_url=db_url_read, mp=True):
     ''' Read entire table from SQL '''
 
-    logging.debug(f'Download Entire Table from [{table}]')
+    logging.info(f'Download Entire Table from [{table}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)

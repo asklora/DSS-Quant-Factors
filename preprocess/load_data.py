@@ -22,10 +22,16 @@ def download_clean_macros():
     logging.info(f'Download macro data from {macro_data_table}')
 
     # combine macros & vix data
-    macros = read_table(macro_data_table, db_url_read)
+    macros = read_query(f"SELECT * FROM {macro_data_table} "
+                        f"WHERE field in (SELECT our_name FROM {ingestion_name_macro_table} WHERE is_active)")
+
     vix = read_table(vix_data_table, db_url_read)
     vix = vix.rename(columns={"vix_id": "field", "vix_value": "value"})
     macros = macros.append(vix)
+
+    fred = read_table(fred_data_table)
+    fred['field'] = "fred_data"
+    macros = macros.append(fred)
 
     macros = macros.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
@@ -51,7 +57,8 @@ def download_index_return():
     logging.info(f'Download index return data from [{processed_ratio_table}]')
 
     # read stock return from ratio calculation table
-    index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%'"
+    index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
+    index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%' AND field in {tuple(index_col)}"
     index_ret = read_query(index_query, db_url_read)
     index_ret = index_ret.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
@@ -59,8 +66,7 @@ def download_index_return():
     major_index = ['trading_day', '.SPX', '.CSI300', '.SXXGR', '.HSI']  # try include 3 major market index first
     index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
 
-    index_col = set(index_ret.columns.to_list()) & {'stock_return_ww1_0', 'stock_return_r6_2'}
-    index_ret = index_ret.set_index(['trading_day', 'ticker'])[list(index_col)].unstack()
+    index_ret = index_ret.set_index(['trading_day', 'ticker'])[index_col].unstack()
     index_ret.columns = [f'{x[1]}_{x[0]}' for x in index_ret.columns.to_list()]
     index_ret = index_ret.reset_index()
     index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'])

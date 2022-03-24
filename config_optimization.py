@@ -10,6 +10,7 @@ import gc
 import global_vars
 from general.send_slack import to_slack
 from general.sql_process import read_query, read_table, trucncate_table_in_database, upsert_data_to_database
+from preprocess.load_data import download_clean_macros, download_index_return
 
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 from lightgbm import cv, Dataset
@@ -24,14 +25,14 @@ cls_lgbm_space = {
     'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart']),
     'max_bin': hp.choice('max_bin', [128, 256, 512]),
     'num_leaves': hp.quniform('num_leaves', 50, 300, 50),
-    'min_data_in_leaf': hp.choice('min_data_in_leaf', [1]),
+    'min_data_in_leaf': hp.choice('min_data_in_leaf', [5, 10, 50]),
     'feature_fraction': hp.quniform('feature_fraction', 0.4, 0.8, 0.2),
     'bagging_fraction': hp.quniform('bagging_fraction', 0.4, 0.8, 0.2),
     'bagging_freq': hp.quniform('bagging_freq', 2, 8, 2),
     'min_gain_to_split': 0,
-    'lambda_l1': 0,
+    'lambda_l1': hp.quniform('lambda_l1', 0, 10, 5),
     'lambda_l2': hp.quniform('lambda_l2', 0, 40, 20),
-    'verbose': 1,
+    'verbose': 3,
     'random_state': 0,
 }
 
@@ -87,19 +88,24 @@ class HPOT:
             for i in ['train', 'test']:
                 pred_prob = model.predict(self.sample_set[f'{i}_x'])
                 result[f"len_{i}"] = pred_prob.shape[0]
+                result[f"bm_ret_{i}"] = self.sample_set[f'{i}_y'].mean()
+                result[f"bm_ret_std_{i}"] = self.sample_set[f'{i}_y'].std()
 
                 # eval top class prob distribution
-                result[f"top_class_prob_med"] = np.median(pred_prob[:, -1])
-                for q in [0.1, 0.25, 0.5, 0.75, 0.9]:
-                    result[f"top_class_prob_{q*100}_{i}"] = np.quantile(pred_prob[:, -1], q=q)
+                # result[f"top_class_prob_med"] = np.median(pred_prob[:, -1])
+                result[f"top_class_prob_{i}"] = [np.quantile(pred_prob[:, -1], q=q) for q in [0.1, 0.25, 0.5, 0.75, 0.9]]
 
                 for pct in [0.2, 0.25, 0.33, 0.5]:
-                    result[f"top_class_{pct*100}_ret_{i}"] = self.sample_set[f'{i}_y'][pred_prob[:, -1] > pct].mean()
+                    fit_sample = self.sample_set[f'{i}_y'][pred_prob[:, -1] > pct]
+                    result[f"top_class_{pct*100}_ret_{i}"] = fit_sample.mean()
+                    if lent(fit_sample) > 0:
+                        result[f"top_class_{pct*100}_ret_std_{i}"] = fit_sample.std()
 
                 all_prediction.append(pred_prob)
                 pred = pred_prob.argmax(axis=1)
                 # TODO: maybe add back -> "auc": partial(roc_auc_score, multi_class='ovo')
-                for k, func in {"accuracy": accuracy_score, "precision": partial(precision_score, average='weighted')}.items():
+                for k, func in {"accuracy": balanced_accuracy_score,
+                                "precision": partial(precision_score, average='samples')}.items():
                     result[f"{k}_{i}"] = func(self.sample_set[f'{i}_y_cut'], pred)
 
             # TODO: maybe change to real 'valid' set
@@ -221,14 +227,19 @@ class load_date:
     def __init__(self, df):
         """ create DataFrame for x, y for all testing periods """
 
+        # x += macros
+        macros = self.download_macros()
+
         # x = all configurations
         df_x = pd.DataFrame(df['config'].to_list()).drop(columns=['tree_type'])
         if list(df['group'].unique()) != ['USD']:
             df_x['is_usd'] = (df['group_code'] == "USD").values
         # df_x['q'] = df['q'].values
-        for i in range(1, 4):
-            df_x[f'actual_{i}'] = df[f'actual_{i}'].values
-        df_x['testing_period'] = df['testing_period'].values
+        # for i in range(1, 4):
+        #     df_x[f'actual_{i}'] = df[f'actual_{i}'].values
+        df_x['testing_period'] = pd.to_datetime(df['testing_period'].values)
+        df_x = df_x.merge(macros, left_on='testing_period', right_index=True, how='left')
+        df_x['testing_period'] = df_x['testing_period'].dt.date
 
         # add whether using [max_ret] column to x
         df_x['max_ret'] = True
@@ -241,7 +252,23 @@ class load_date:
         df_y_net = df['max_ret'] - df['min_ret']
         self.df_y = pd.concat([df_y_max, df_y_net], axis=0).reset_index(drop=True)
 
+    def download_macros(self):
+        """ download macro data as input """
+        # TODO: change to read from DB not cache
+        df_macros = download_clean_macros().set_index('trading_day')
+        df_macros.to_pickle('df_macros.pkl')
+        # df_macros = pd.read_pickle('df_macros.pkl')
+
+        df_index = download_index_return().set_index('trading_day')
+        df_index.to_pickle('df_index.pkl')
+        # df_index = pd.read_pickle('df_index.pkl')
+
+        df = df_macros.merge(df_index, left_index=True, right_index=True)
+        return df
+
+
     def split_all(self, testing_period, qcut_q=3):
+        """ split train / test sets """
         # [x]: split train / test
         X_train = self.df_x.loc[self.df_x["testing_period"] < testing_period].drop(columns=['testing_period'])
         # X_train['testing_period'] = (X_train['testing_period'] - testing_period).dt.days
@@ -276,7 +303,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='multiclass')
-    parser.add_argument('--name_sql', default='w4_d-7_20220312222718_debug')
+    parser.add_argument('--name_sql', default='w4_d-7_20220321173435_debug')
     parser.add_argument('--qcut_q', type=int, default=5)
     parser.add_argument('--nfold', type=int, default=5)
     parser.add_argument('--process', type=int, default=12)
@@ -284,11 +311,12 @@ if __name__ == "__main__":
 
     # --------------------------------- Load Data -----------------------------------------------
 
-    # df = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
-    #                 f"WHERE name_sql='{args.name_sql}'")
-    # df.to_pickle(f'eval_{args.name_sql}.pkl')
-    #
-    df = pd.read_pickle(f'eval_{args.name_sql}.pkl')
+    try:
+        df = pd.read_pickle(f'eval_{args.name_sql}.pkl')
+    except Exception as e:
+        df = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
+                        f"WHERE name_sql='{args.name_sql}'")
+        df.to_pickle(f'eval_{args.name_sql}.pkl')
     print(df)
 
     df = df.sort_values(by=['testing_period'])
