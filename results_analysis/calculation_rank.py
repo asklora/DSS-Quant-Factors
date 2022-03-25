@@ -32,7 +32,7 @@ rank_dtypes = dict(
     factor_name=TEXT,
     weeks_to_expire=INTEGER,
     factor_weight=INTEGER,
-    pred_z=DOUBLE_PRECISION,
+    pred=DOUBLE_PRECISION,
     long_large=BOOLEAN,
     last_update=TIMESTAMP
 )
@@ -44,7 +44,8 @@ backtest_eval_dtypes = dict(name_sql=TEXT(), group=TEXT(), testing_period=DATE,
                             max_ret=DOUBLE_PRECISION(precision=53), min_ret=DOUBLE_PRECISION(precision=53),
                             mae=DOUBLE_PRECISION(precision=53), mse=DOUBLE_PRECISION(precision=53),
                             r2=DOUBLE_PRECISION(precision=53), actual=DOUBLE_PRECISION(precision=53), y_type=TEXT(),
-                            weeks_to_expire=INTEGER(), config=JSON(astext_type=TEXT()), last_update=TIMESTAMP)
+                            weeks_to_expire=INTEGER(), config=JSON(astext_type=TEXT()), last_update=TIMESTAMP,
+                            is_remove_subpillar=BOOLEAN)
 
 diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
@@ -97,6 +98,9 @@ class rank_pred:
     iter_unique_col = ['name_sql', 'group', 'group_code', 'testing_period', 'factor_name']
     diff_config_col = diff_config_col
     if_plot = False
+    if_combine_pillar = False       # combine cluster pillars
+    is_remove_subpillar = True      # subpillar factors not selected together
+    subpillar_df = None
 
     def __init__(self, q, name_sql,
                  pred_y_type=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000',
@@ -130,21 +134,26 @@ class rank_pred:
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.average_days = int(name_sql.split('_')[1][1:])
 
+        if self.is_remove_subpillar:
+            self.subpillar_df = rank_pred._download_pillar_cluster_subpillar()
+
         # 1. Download & merge all prediction from iteration
         pred = self._download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid)
         pred['uid_hpot'] = pred['uid'].str[:20]
         pred = self.__get_neg_factor_all(pred)
 
         # pred.to_pickle('pred_cache.pkl')
+        if self.if_combine_pillar:
+            pred['y_type'] = "combine"
 
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
         self.all_history = []
         for y_type, g in pred.groupby('y_type'):
             self.y_type = y_type
-            self.rank_each_y_type(q, y_type, g, name_sql)
+            self.rank_each_y_type(y_type, g)
 
-    def rank_each_y_type(self, q, y_type, df, name_sql):
+    def rank_each_y_type(self, y_type, df):
         """ rank for each y_type """
 
         logging.info(f'=== Generate rank for [{y_type}] with results={df.shape}) ===')
@@ -154,18 +163,25 @@ class rank_pred:
         # df['testing_period'] = pd.to_datetime(df['testing_period'])
 
         # 2.2. use average predictions from different validation sets
-        df_cv_avg = df.groupby(['uid_hpot'] + self.iter_unique_col + self.diff_config_col)[['pred', 'actual', 'actual_s']].mean()
+        # df_cv = average of all pred / actual
+        df_cv = df.groupby(['uid_hpot'] + self.iter_unique_col + self.diff_config_col)[['pred', 'actual']].mean().reset_index()
 
         # 2.3. calculate 'pred_z'/'factor_weight' by ranking
-        q = q / len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
-        self.q_ = [0., q, 1. - q, 1.]
-        df_cv_avg = rank_pred.__calc_z_weight(self.q_, df_cv_avg, self.diff_config_col)
+        # q = q / len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
+        # self.q_ = [0., q, 1. - q, 1.]
+        # df_cv = rank_pred.__calc_z_weight(self.q_, df_cv, self.diff_config_col)
+
+        # 2.3(a).remove subpillar - same subpillar factors keep higher pred one
+        if self.is_remove_subpillar:
+            df_cv = df_cv.merge(self.subpillar_df, on=["testing_period", "group", "factor_name"], how="left")
+            df_cv["subpillar"] = df_cv["subpillar"].fillna(df_cv["factor_name"])
 
         # 2.4. save backtest evaluation metrics to DB Table [backtest_eval]
-        self.__backtest_save_eval_metrics(df_cv_avg, y_type, name_sql)
+        self.__backtest_save_eval_metrics(df_cv, y_type)
+        return
 
         # 2.6. rank for each testing_period
-        for (testing_period, group, group_code), g in df_cv_avg.groupby(['testing_period', 'group', 'group_code']):
+        for (testing_period, group, group_code), g in df_cv.groupby(['testing_period', 'group', 'group_code']):
             best_config = dict(y_type=self.y_type, testing_period=testing_period, group=group)
 
             # 2.5.1. use the best config prediction for this y_type
@@ -184,64 +200,65 @@ class rank_pred:
                 rank_df = self.rank_each_testing_period(testing_period, g_best, group, group_code)
 
                 # 2.6.3. append to history / currency df list
-                if testing_period == df_cv_avg['testing_period'].max():  # if keep_all_history also write to prod table
+                if testing_period == df_cv['testing_period'].max():  # if keep_all_history also write to prod table
                     self.all_current.append({"info": best_config, "rank_df": rank_df.copy()})
                 self.all_history.append({"info": best_config, "rank_df": rank_df.copy()})
 
             # break
 
-    @staticmethod
-    def __calc_z_weight(q_, df, diff_config_col):
-        """ calculate 'pred_z'/'factor_weight' by ranking within current testing_period """
-
-        # 2.3.1. calculate factor_weight with qcut
-        logging.info("---> Calculate factor_weight")
-        # groupby_keys = ['uid_hpot', 'group', 'group_code', 'testing_period'] + diff_config_col
-
-        # df['factor_weight'] = apply_parallel(df.groupby(by=groupby_keys)['pred'], partial(weight_qcut, q_=q_))
-        df['factor_weight'] = df.groupby(by='uid_hpot')['pred'].transform(partial(weight_qcut, q_=q_))
-        df = df.reset_index()
-
-        # 2.3.2. count rank for debugging
-        # rank_count = df.groupby(by='uid_hpot')['factor_weight'].apply(pd.value_counts)
-        # rank_count = rank_count.unstack().fillna(0)
-        # logging.info(f'n_factor used:\n{rank_count}')
-
-        # 2.3.3b. pred_z = original pred
-        logging.info("---> Calculate pred_z")
-        df['pred_z'] = df['pred']
-        df['actual_z'] = df['actual']
-
-        # 2.3.3a. calculate pred_z using mean & std of all predictions in entire testing history
-        # df['pred_z'] = df.groupby(by=['group'] + diff_config_col)['pred'].apply(lambda x: (x - np.mean(x)) / np.std(x))
-        # df['actual_z'] = df.groupby(by=['group'] + diff_config_col)['actual'].apply(lambda x: (x - np.mean(x)) / np.std(x))
-
-        return df
+    # @staticmethod
+    # def __calc_z_weight(q_, df, diff_config_col):
+    #     """ calculate 'pred_z'/'factor_weight' by ranking within current testing_period """
+    #
+    #     # 2.3.1. calculate factor_weight with qcut
+    #     logging.info("---> Calculate factor_weight")
+    #     # groupby_keys = ['uid_hpot', 'group', 'group_code', 'testing_period'] + diff_config_col
+    #
+    #     # df['factor_weight'] = apply_parallel(df.groupby(by=groupby_keys)['pred'], partial(weight_qcut, q_=q_))
+    #     df['factor_weight'] = df.groupby(by='uid_hpot')['pred'].transform(partial(weight_qcut, q_=q_))
+    #     df = df.reset_index()
+    #
+    #     # 2.3.2. count rank for debugging
+    #     # rank_count = df.groupby(by='uid_hpot')['factor_weight'].apply(pd.value_counts)
+    #     # rank_count = rank_count.unstack().fillna(0)
+    #     # logging.info(f'n_factor used:\n{rank_count}')
+    #
+    #     # 2.3.3b. pred_z = original pred
+    #     logging.info("---> Calculate pred_z")
+    #     df['pred_z'] = df['pred']
+    #     df['actual_z'] = df['actual']
+    #
+    #     # 2.3.3a. calculate pred_z using mean & std of all predictions in entire testing history
+    #     # df['pred_z'] = df.groupby(by=['group'] + diff_config_col)['pred'].apply(lambda x: (x - np.mean(x)) / np.std(x))
+    #     # df['actual_z'] = df.groupby(by=['group'] + diff_config_col)['actual'].apply(lambda x: (x - np.mean(x)) / np.std(x))
+    #
+    #     return df
 
     def __get_neg_factor_all(self, pred):
         """ get all neg factors for all (testing_period, group) """
 
-        new_pred = []
-        pred['actual_s'] = pred['actual'].copy()
-        for uid_hpot, g in pred.groupby(['uid_hpot']):
-            neg_factor = g['neg_factor'].to_list()[0]
-            if len(neg_factor) > 0:
-                try:
-                    g.loc[g['factor_name'].isin(neg_factor), 'actual'] *= -1
-                    g['factor_name'] = [f'{x} (L)' if x in neg_factor else f'{x} (S)' for x in g['factor_name']]
-                    new_pred.append(g)
-                except Exception as e:
-                    to_slack("clair").message(f"*neg_factor ERROR*: {e.args}")
+        neg_factor = pred.groupby(['uid_hpot'])['neg_factor'].first().reset_index().copy()
 
-        new_pred = pd.concat(new_pred, axis=0)
+        arr_len = neg_factor['neg_factor'].str.len().values
+        arr_info = np.repeat(neg_factor["uid_hpot"].values, arr_len, axis=0)
+        arr_factor = np.array([e for x in neg_factor["neg_factor"].to_list() for e in x])[:, np.newaxis]
 
-        return new_pred
+        idx = pd.Series(arr_info, name='uid_hpot')
+        neg_factor_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
+        neg_factor_new['neg_factor'] = True
+
+        pred = pred.drop(columns="neg_factor").merge(neg_factor_new, on=['uid_hpot', 'factor_name'], how='left')
+        pred['neg_factor'] = pred['neg_factor'].fillna(False)
+
+        pred.loc[pred['neg_factor'], ["actual", "pred"]] *= -1
+
+        return pred
 
     def rank_each_testing_period(self, testing_period, g_best, group, group_code):
         """ (2.6) rank for each testing_period """
 
         logging.debug(f'calculate (neg_factor, factor_weight) for each config: {testing_period}')
-        result_col = ['group', 'group_code', 'testing_period', 'factor_name', 'pred_z', 'factor_weight', 'actual_z']
+        result_col = ['group', 'group_code', 'testing_period', 'factor_name', 'pred', 'factor_weight', 'actual']
         df = g_best.loc[g_best['testing_period'] == testing_period, result_col].reset_index(drop=True)
 
         # 2.6.1. record basic info
@@ -255,9 +272,26 @@ class rank_pred:
         #     if type(v) == type([]):
         #         df.loc[df['factor_name'].isin(v), 'long_large'] = True
 
-        return df.sort_values(['group', 'group_code', 'pred_z'])
+        return df.sort_values(['group', 'group_code', 'pred'])
 
     # --------------------------------------- Download Prediction -------------------------------------------------
+
+    @staticmethod
+    def _download_pillar_cluster_subpillar():
+        """ download pillar cluster table """
+
+        # TODO: filter for cluster method
+        query = f"SELECT * FROM {factors_pillar_cluster_table} WHERE pillar like 'subpillar_%%'"
+        subpillar = read_query(query)
+        subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
+
+        arr_len = subpillar['factor_name'].str.len().values
+        arr_info = np.repeat(subpillar[["testing_period", "group", "pillar"]].values, arr_len, axis=0)
+        arr_factor = np.array([e for x in subpillar["factor_name"].to_list() for e in x])[:, np.newaxis]
+
+        idx = pd.MultiIndex.from_arrays(arr_info.T, names=["testing_period", "group", "subpillar"])
+        df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
+        return df_new
 
     def _download_prediction(self, name_sql, pred_y_type, pred_start_testing_period, pred_start_uid):
         """ merge factor_stock & factor_model_stock """
@@ -266,7 +300,6 @@ class rank_pred:
             pred = pd.read_pickle(f"pred_{name_sql}.pkl")
             logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
             pred = pred.rename(columns={"trading_day": "testing_period"})
-
         except Exception as e:
             print(e)
             logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
@@ -281,19 +314,20 @@ class rank_pred:
         # x = np.sort(pred['testing_period'].unique())[:, np.newaxis]
         # pred = pred.loc[pred['testing_period'] == dt.datetime(2020, 3, 1, 0, 0, 0)]
 
-        # fix wrong "actual" premium in factor_model_stock (1)
-        premium = read_query(f"SELECT * FROM {factor_premium_table} "
-                             f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")
-        premium['trading_day'] = premium['trading_day'] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
-        premium = premium.set_index(['trading_day', "group", 'field'])['value']
-        pred = pred.join(premium, on=['testing_period', 'group', 'factor_name'])
-        pred = pred.drop(columns=['actual']).rename(columns={"value": 'actual'})
+        # TODO: use if needing to fix wrong "actual" premium in factor_model_stock (1)
+        # premium = read_query(f"SELECT * FROM {factor_premium_table} "
+        #                      f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")
+        # premium['trading_day'] = premium['trading_day'] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
+        # premium = premium.set_index(['trading_day', "group", 'field'])['value']
+        # pred = pred.join(premium, on=['testing_period', 'group', 'factor_name'])
+        #
+        # pred = pred.drop(columns=['actual']).rename(columns={"value": 'actual'})
 
         return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
-    def __backtest_save_eval_metrics(self, result_all, y_type, name_sql):
+    def __backtest_save_eval_metrics(self, df, y_type):
         """ evaluate & rank different configuration;
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table """
 
@@ -301,32 +335,29 @@ class rank_pred:
         logging.debug(f"=== Update [{production_factor_rank_backtest_eval_table}] ===")
 
         # actual factor premiums
-        result_all_avg = result_all.groupby(['name_sql', 'group', 'group_code', 'testing_period'])[['actual', 'actual_s']].mean()
-        result_all_comb = result_all.groupby(['name_sql', 'group', 'group_code', 'testing_period'] + self.diff_config_col
-                                             ).apply(self.__get_summary_stats_in_group)
-        result_all_comb = result_all_comb.loc[result_all_comb.index.get_level_values('testing_period') <
-                                              result_all_comb.index.get_level_values(
-                                                  'testing_period').max()].reset_index()
-        result_all_comb[self.eval_col] = result_all_comb[self.eval_col].astype(float)
-        result_all_comb = result_all_comb.join(result_all_avg, on=['name_sql', 'group', 'group_code', 'testing_period'], how='left')
+        group_col = ['group', 'group_code', 'testing_period']
+        df_actual = df.groupby(group_col)[['actual']].mean()
+        df_eval = df.groupby(group_col + self.diff_config_col).apply(self.__get_summary_stats_in_group).reset_index()
+        df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
+        df_eval[self.eval_col] = df_eval[self.eval_col].astype(float)
+        df_eval = df_eval.join(df_actual, on=group_col, how='left')
 
         # 2.4.2. create DataFrame for eval results to DB
-        result_all_comb["y_type"] = y_type
-        result_all_comb["weeks_to_expire"] = self.weeks_to_expire
-        # primary_keys = ["name_sql", "group", "group_code", "testing_period", "y_type"] + self.diff_config_col
-        # result_all_comb = uid_maker(result_all_comb, primary_key=primary_keys)
+        df_eval["y_type"] = y_type
+        df_eval["weeks_to_expire"] = self.weeks_to_expire
 
         # 2.4.3. save local plot for evaluation
         if self.if_plot:
-            rank_pred.__save_plot_backtest_ret(result_all_comb, self.diff_config_col, y_type, name_sql)
+            rank_pred.__save_plot_backtest_ret(df_eval, self.diff_config_col, y_type)
 
         # 2.4.2. add config JSON column for configs
-        result_all_comb['config'] = result_all_comb[self.diff_config_col].to_dict(orient='records')
-        result_all_comb = result_all_comb.drop(columns=self.diff_config_col)
-        result_all_comb['is_valid'] = True
-        result_all_comb['last_update'] = dt.datetime.now()
-        result_all_comb['q'] = self.q
-        upsert_data_to_database(result_all_comb, production_factor_rank_backtest_eval_table, primary_key=["uid"],
+        df_eval['config'] = df_eval[self.diff_config_col].to_dict(orient='records')
+        df_eval = df_eval.drop(columns=self.diff_config_col)
+        df_eval['is_valid'] = True
+        df_eval['last_update'] = dt.datetime.now()
+        df_eval['q'] = self.q
+        df_eval['is_removed_subpillar'] = self.is_remove_subpillar
+        upsert_data_to_database(df_eval, production_factor_rank_backtest_eval_table, primary_key=["uid"],
                                 db_url=db_url_write, how="append", dtype=backtest_eval_dtypes)
 
     def __get_summary_stats_in_group(self, g):
@@ -334,9 +365,15 @@ class rank_pred:
 
         ret_dict = {}
         g = g.dropna(how='any').copy()
+
+        # df_cv = df_cv.groupby(['uid_hpot', 'subpillar']).apply(lambda x: x.nlargest(1, ['return'], keep='all'))
+
         if len(g) > 0:
-            max_g = g[g['factor_weight'] == g['factor_weight'].max()]
-            min_g = g[g['factor_weight'] == 0]
+            max_g = g[g['pred'] > np.quantile(g['pred'], 1 - self.q)]
+            min_g = g[g['pred'] < np.quantile(g['pred'], self.q)]
+            if self.is_remove_subpillar:
+                max_g = max_g.sort_values(by=["pred"]).drop_duplicates(subset=['subpillar'], keep="last")
+                min_g = min_g.sort_values(by=["pred"]).drop_duplicates(subset=['subpillar'], keep="first")
             ret_dict['max_factor_count'] = dict(Counter(max_g['factor_name'].tolist()))
             ret_dict['min_factor_count'] = dict(Counter(min_g['factor_name'].tolist()))
             ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
@@ -399,7 +436,7 @@ class rank_pred:
             all_history = pd.concat([x["rank_df"] for x in self.all_history], axis=0)
             all_history = all_history.groupby(['group', 'group_code', 'testing_period', 'factor_name']).mean().reset_index()
             all_history['factor_weight'] = all_history.groupby(by=['group', 'group_code', 'testing_period'])[
-                'pred_z'].transform(partial(weight_qcut, q_=self.q_)).astype(int)
+                'pred'].transform(partial(weight_qcut, q_=self.q_)).astype(int)
             all_history['last_update'] = dt.datetime.now()
             all_history["weeks_to_expire"] = self.weeks_to_expire
 
@@ -410,7 +447,7 @@ class rank_pred:
 
         df_current = pd.concat([x["rank_df"] for x in self.all_current], axis=0)
         df_current = df_current.groupby(['group', 'group_code', 'testing_period', 'factor_name']).mean().reset_index()
-        df_current['factor_weight'] = df_current.groupby(by=['group', 'group_code', 'testing_period'])['pred_z'].transform(
+        df_current['factor_weight'] = df_current.groupby(by=['group', 'group_code', 'testing_period'])['pred'].transform(
             partial(weight_qcut, q_=self.q_)).astype(int)
         df_current['last_update'] = dt.datetime.now()
         df_current["weeks_to_expire"] = self.weeks_to_expire
@@ -438,7 +475,7 @@ class rank_pred:
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------
 
     @staticmethod
-    def __save_plot_backtest_ret(result_all_comb, other_group_col, y_type, name_sql):
+    def __save_plot_backtest_ret(result_all_comb, other_group_col, y_type):
         """ Save Plot for backtest average ret """
 
         logging.debug(f'=== Save Plot for backtest average ret ===')
@@ -466,7 +503,7 @@ class rank_pred:
             if k == 1:
                 plt.legend(['best', 'average', 'worse'])
             k += 1
-        fig_name = f'#pred_{name_sql}_{y_type}.png'
+        fig_name = f'#pred_{rank_pred.name_sql}_{y_type}.png'
         plt.suptitle(' - '.join(other_group_col), fontsize=20)
         plt.savefig(fig_name)
         plt.close()

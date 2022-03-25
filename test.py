@@ -1,5 +1,23 @@
 from general.sql_process import read_query, upsert_data_to_database, uid_maker
 import pandas as pd
+import numpy as np
+
+df = pd.DataFrame({1: {"testing_period": "a", "group": "b", "factor_name": ["c", "d"]},
+                   2: {"testing_period": "a2", "group": "b2", "factor_name": ["c0", "c1", "d1"]}}).transpose()
+df['len'] = df['factor_name'].str.len()
+
+a = df[["testing_period", "group"]].values
+b = df['len'].values
+
+arr1 = np.repeat(df[["testing_period", "group"]].values, df['len'].values, axis=0)
+arr2 = np.array([e for x in df["factor_name"].to_list() for e in x])[:, np.newaxis]
+
+df_new = np.concatenate([arr1, arr2], axis=1)
+df_new = pd.DataFrame(df.columns.to_list())
+print(df)
+
+
+exit(1)
 
 df = pd.read_excel('macro_key.xlsx', sheet_name='Sheet1')
 df['Region'] = df['Region'].replace({"M#USKEY": "USD",

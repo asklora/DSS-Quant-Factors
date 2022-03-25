@@ -116,21 +116,29 @@ def actual_good_prem():
     pass
 
 
-def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
+def eval_sortino_ratio(name_sql='w4_d-7_20220324031027_debug'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    tbl_name = global_vars.production_factor_rank_backtest_eval_table
-    df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
 
-    df.to_pickle('cache2.pkl')
-    # df = pd.read_pickle('cache2.pkl')
+    try:
+        df = pd.read_pickle(f'cache_eval_{name_sql}.pkl')
+    except Exception as e:
+        tbl_name = global_vars.production_factor_rank_backtest_eval_table
+        df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
+        df.to_pickle(f'cache_eval_{name_sql}.pkl')
 
     df['testing_period'] = pd.to_datetime(df['testing_period'])
+    col = df.select_dtypes(float).columns.to_list()
     # df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
     #                                                                                'actual']].mean().unstack()
     # df_raw.to_csv(f'eval_raw_{name_sql}.csv')
     # exit(1)
+
+    df = df.loc[df['y_type'] != "combine"]
+    df = df.loc[((df['group'] != 'EUR') & (df['group'] == df['group_code'])) |
+                ((df['group'] == 'EUR') & (df['group_code'] == 'USD'))]
+    df = df.groupby(['group', 'testing_period'])[col].mean().reset_index()
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
     df['net_ret_ab'] = df['net_ret'] - df['actual_s']
@@ -146,21 +154,20 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
     for d in ['2016-01-01', '2020-01-01', '2021-08-01']:
         df_p = df.loc[df['testing_period'] > dt.datetime.strptime(d, '%Y-%m-%d')]
 
-        df_agg = df_p.groupby(['group', 'group_code', 'y_type', 'q'])[
+        df_agg = df_p.groupby(['group', 'q'])[
             ['net_ret', 'net_ret_ab2', 'max_ret', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d']].mean()
         df_agg['net_ret_sortino'] = df_agg['net_ret'].div(np.sqrt(df_agg['net_ret_ab2_d']))
         df_agg['max_ret_sortino'] = df_agg['max_ret'].div(np.sqrt(df_agg['max_ret_ab2_d']))
         df_agg['net_ret_sharpe'] = df_agg['net_ret'].div(np.sqrt(df_agg['net_ret_ab2']))
         df_agg['max_ret_sharpe'] = df_agg['max_ret'].div(np.sqrt(df_agg['max_ret_ab2']))
 
-        groupby_col = ['group', 'group_code', 'y_type', 'q']
+        groupby_col = ['group', 'q']
         df_std = df_p.groupby(groupby_col)[
             ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual_s', 'actual']].std()
         df_std.columns = ['std_' + x for x in df_std]
 
-        df_std = df_p.groupby(groupby_col)[
-            ['net_ret', 'max_ret']].min()
-        df_std.columns = ['min_' + x for x in df_std]
+        df_std = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].std()
+        df_std.columns = ['std_' + x for x in df_std]
 
         # calculate min period return
         df_min = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].min()
@@ -172,7 +179,7 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220321173435_debug'):
         df_quantile2 = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].quantile(q=0.05)
         df_quantile2.columns = ['q5_' + x for x in df_quantile2]
 
-        xls[d] = pd.concat([df_agg, df_std, df_min, df_quantile, df_quantile2], axis=1).reset_index().drop(
+        xls[d] = pd.concat([df_agg, df_std, df_min, df_quantile2, df_quantile], axis=1).reset_index().drop(
             columns=['net_ret_ab2', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d'])
 
     to_excel(xls, f'sortino_ratio_{name_sql}_new')

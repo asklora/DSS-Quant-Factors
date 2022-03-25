@@ -17,3 +17,4 @@ yagmail==0.14.260
 psycopg2==2.9.2
 tqdm==4.62.3
 retry==0.9.2
+xlsxwriter
