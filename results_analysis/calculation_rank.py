@@ -356,6 +356,7 @@ class rank_pred:
         df_eval['is_valid'] = True
         df_eval['last_update'] = dt.datetime.now()
         df_eval['q'] = self.q
+        df_eval['name_sql'] = self.name_sql
         df_eval['is_removed_subpillar'] = self.is_remove_subpillar
         upsert_data_to_database(df_eval, production_factor_rank_backtest_eval_table, primary_key=["uid"],
                                 db_url=db_url_write, how="append", dtype=backtest_eval_dtypes)

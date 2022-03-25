@@ -125,7 +125,7 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220324031027_debug'):
         df = pd.read_pickle(f'cache_eval_{name_sql}.pkl')
     except Exception as e:
         tbl_name = global_vars.production_factor_rank_backtest_eval_table
-        df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
+        df = read_query(f"SELECT * FROM {tbl_name}")
         df.to_pickle(f'cache_eval_{name_sql}.pkl')
 
     df['testing_period'] = pd.to_datetime(df['testing_period'])
@@ -138,14 +138,15 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220324031027_debug'):
     df = df.loc[df['y_type'] != "combine"]
     df = df.loc[((df['group'] != 'EUR') & (df['group'] == df['group_code'])) |
                 ((df['group'] == 'EUR') & (df['group_code'] == 'USD'))]
+    df['group'] = df['group'] + df['group_code']
     df = df.groupby(['group', 'testing_period'])[col].mean().reset_index()
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
-    df['net_ret_ab'] = df['net_ret'] - df['actual_s']
+    df['net_ret_ab'] = df['net_ret'] - df['actual']
     df['net_ret_ab2_d'] = np.square(np.clip(df['net_ret_ab'], np.inf, 0))
     df['net_ret_ab2'] = np.square(df['net_ret_ab'])
 
-    df['max_ret_ab'] = df['max_ret'] - df['actual_s']
+    df['max_ret_ab'] = df['max_ret'] - df['actual']
     df['max_ret_ab2_d'] = np.square(np.clip(df['max_ret_ab'], np.inf, 0))
     df['max_ret_ab2'] = np.square(df['max_ret_ab'])
 
@@ -163,7 +164,7 @@ def eval_sortino_ratio(name_sql='w4_d-7_20220324031027_debug'):
 
         groupby_col = ['group', 'q']
         df_std = df_p.groupby(groupby_col)[
-            ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual_s', 'actual']].std()
+            ['net_ret', 'net_ret_ab', 'max_ret', 'max_ret_ab', 'actual']].std()
         df_std.columns = ['std_' + x for x in df_std]
 
         df_std = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].std()
