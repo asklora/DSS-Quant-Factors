@@ -15,28 +15,30 @@ from preprocess.load_data import download_clean_macros, download_index_return
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
 from lightgbm import cv, Dataset
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, roc_auc_score, precision_score
+from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, balanced_accuracy_score
 from itertools import product
 from functools import partial
+from collections import Counter
 
 cls_lgbm_space = {
     'objective': 'multiclass',
     'learning_rate': hp.choice('learning_rate', [0.01, 0.1]),
     'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart']),
-    'max_bin': hp.choice('max_bin', [128, 256, 512]),
-    'num_leaves': hp.quniform('num_leaves', 50, 300, 50),
-    'min_data_in_leaf': hp.choice('min_data_in_leaf', [5, 10, 50]),
-    'feature_fraction': hp.quniform('feature_fraction', 0.4, 0.8, 0.2),
-    'bagging_fraction': hp.quniform('bagging_fraction', 0.4, 0.8, 0.2),
-    'bagging_freq': hp.quniform('bagging_freq', 2, 8, 2),
+    'max_bin': hp.choice('max_bin', [128, 256]),
+    'num_leaves': hp.choice('num_leaves', [5, 10]),
+    'min_data_in_leaf': hp.choice('min_data_in_leaf', [100, 500, 1000]),
+    'feature_fraction': hp.choice('feature_fraction', [.3, .5]),
+    'bagging_fraction': hp.choice('bagging_fraction', [.3, .7]),
+    'bagging_freq': hp.choice('bagging_freq', [2, 8]),
     'min_gain_to_split': 0,
-    'lambda_l1': hp.quniform('lambda_l1', 0, 10, 5),
-    'lambda_l2': hp.quniform('lambda_l2', 0, 40, 20),
+    'lambda_l1': hp.choice('lambda_l1', [10, 50]),
+    'lambda_l2': hp.choice('lambda_l2', [100, 250]),
     'verbose': 3,
     'random_state': 0,
 }
 
 count_plot = 0
+
 
 def get_timestamp_now_str():
     """ return timestamp in form of string of numbers """
@@ -46,7 +48,7 @@ def get_timestamp_now_str():
 class HPOT:
     """ use hyperopt on each set """
 
-    def __init__(self, sql_result, sample_set, max_evals=10, feature_names=None, sample_names=None):
+    def __init__(self, sql_result, sample_set, max_evals=20, feature_names=None, sample_names=None):
 
         self.sql_result = sql_result
         self.hpot = {'all_results': [], 'all_importance': [], 'best_score': 10000}  # initial accuracy_score = 0
@@ -65,6 +67,16 @@ class HPOT:
         self.__save_model()
 
     # ============================================== Evaluation =====================================================
+
+    @staticmethod
+    def top_class_precision(actual, pred):
+        pred_top = pred[pred == np.max(pred)]
+        # print(np.max(pred))
+        pred_top_pct = len(pred_top) / len(pred)
+        actual_top = actual[(pred == np.max(pred)) & (actual == np.max(actual))]
+        pred_top_precision = len(actual_top) / len(pred_top)
+        # print(np.max(actual))
+        return pred_top_pct, pred_top_precision
 
     def __eval(self, space, eval_metric='logloss_valid'):
         """ train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model """
@@ -93,20 +105,25 @@ class HPOT:
 
                 # eval top class prob distribution
                 # result[f"top_class_prob_med"] = np.median(pred_prob[:, -1])
-                result[f"top_class_prob_{i}"] = [np.quantile(pred_prob[:, -1], q=q) for q in [0.1, 0.25, 0.5, 0.75, 0.9]]
+                result[f"top_class_prob_{i}"] = [np.quantile(pred_prob[:, -1], q=q) for q in
+                                                 [0.1, 0.25, 0.5, 0.75, 0.9]]
 
                 for pct in [0.2, 0.25, 0.33, 0.5]:
                     fit_sample = self.sample_set[f'{i}_y'][pred_prob[:, -1] > pct]
-                    result[f"top_class_{pct*100}_ret_{i}"] = fit_sample.mean()
-                    if lent(fit_sample) > 0:
-                        result[f"top_class_{pct*100}_ret_std_{i}"] = fit_sample.std()
+                    result[f"top_class_{pct * 100}_ret_{i}"] = fit_sample.mean()
+                    if len(fit_sample) > 0:
+                        result[f"top_class_{pct * 100}_ret_std_{i}"] = fit_sample.std()
 
                 all_prediction.append(pred_prob)
                 pred = pred_prob.argmax(axis=1)
                 # TODO: maybe add back -> "auc": partial(roc_auc_score, multi_class='ovo')
-                for k, func in {"accuracy": balanced_accuracy_score,
-                                "precision": partial(precision_score, average='samples')}.items():
-                    result[f"{k}_{i}"] = func(self.sample_set[f'{i}_y_cut'], pred)
+                result[f"accuracy_{i}"] = balanced_accuracy_score(self.sample_set[f'{i}_y_cut'], pred)
+                result[f"top_class_pct_{i}"], result[f"top_class_precision_{i}"] = \
+                    HPOT.top_class_precision(self.sample_set[f'{i}_y_cut'], pred)
+
+                # for k, func in {"accuracy": balanced_accuracy_score,
+                #                 "precision": partial(precision_score, average='samples')}.items():
+                #     result[f"{k}_{i}"] = func(self.sample_set[f'{i}_y_cut'], pred)
 
             # TODO: maybe change to real 'valid' set
             cv_score.append(result[eval_metric])
@@ -114,7 +131,8 @@ class HPOT:
             self.hpot['all_results'].append(self.sql_result.copy())
 
             # if i == 'train':
-            feature_importance_df = pd.DataFrame(model.feature_importance(), index=self.feature_names, columns=['split'])
+            feature_importance_df = pd.DataFrame(model.feature_importance(), index=self.feature_names,
+                                                 columns=['split'])
             feature_importance_df = feature_importance_df.sort_values('split', ascending=False).reset_index()
             feature_importance_df['uid'] = self.sql_result['uid']
             self.hpot['all_importance'].append(feature_importance_df.copy())
@@ -147,7 +165,7 @@ class HPOT:
                      # metrics=self.sql_result['objective'],
                      nfold=nfold,
                      num_boost_round=1000,
-                     early_stopping_rounds=150,
+                     early_stopping_rounds=50,
                      eval_train_metric=True,
                      return_cvbooster=True,
                      )
@@ -231,15 +249,15 @@ class load_date:
         macros = self.download_macros()
 
         # x = all configurations
-        df_x = pd.DataFrame(df['config'].to_list()).drop(columns=['tree_type'])
+        config_col_x = [x.strip('_') for x in df.filter(regex="^__|_q|testing_period").columns.to_list() if x != '__tree_type']
+        df.columns = [x.strip('_') for x in df]
+        df_x = df[config_col_x]
         if list(df['group'].unique()) != ['USD']:
             df_x['is_usd'] = (df['group_code'] == "USD").values
         # df_x['q'] = df['q'].values
         # for i in range(1, 4):
         #     df_x[f'actual_{i}'] = df[f'actual_{i}'].values
-        df_x['testing_period'] = pd.to_datetime(df['testing_period'].values)
         df_x = df_x.merge(macros, left_on='testing_period', right_index=True, how='left')
-        df_x['testing_period'] = df_x['testing_period'].dt.date
 
         # add whether using [max_ret] column to x
         df_x['max_ret'] = True
@@ -265,7 +283,6 @@ class load_date:
 
         df = df_macros.merge(df_index, left_index=True, right_index=True)
         return df
-
 
     def split_all(self, testing_period, qcut_q=3):
         """ split train / test sets """
@@ -303,34 +320,56 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--objective', default='multiclass')
-    parser.add_argument('--name_sql', default='w4_d-7_20220321173435_debug')
-    parser.add_argument('--qcut_q', type=int, default=5)
+    parser.add_argument('--name_sql', default=None)
+    parser.add_argument('--qcut_q', type=int, default=3)
     parser.add_argument('--nfold', type=int, default=5)
-    parser.add_argument('--process', type=int, default=12)
+    parser.add_argument('--process', type=int, default=10)
     args = parser.parse_args()
 
     # --------------------------------- Load Data -----------------------------------------------
 
+    tbl_name = global_vars.production_factor_rank_backtest_eval_table
+    if type(args.name_sql) == type(None):
+        query = f"SELECT * FROM {tbl_name}"
+        pkl_name = f'cache_{tbl_name}.pkl'
+    else:
+        query = f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'"
+        pkl_name = f'cache_eval_{name_sql}.pkl'
+
     try:
-        df = pd.read_pickle(f'eval_{args.name_sql}.pkl')
+        df = pd.read_pickle(pkl_name)
     except Exception as e:
-        df = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
-                        f"WHERE name_sql='{args.name_sql}'")
-        df.to_pickle(f'eval_{args.name_sql}.pkl')
+        df = read_query(query)
+        df.to_pickle(pkl_name)
     print(df)
 
-    df = df.sort_values(by=['testing_period'])
-    for i in range(1, 4):
-        df[f'actual_{i}'] = df.groupby(['testing_period'])['actual_s'].shift(i)
+    df = df.sort_values(by=['_testing_period'])
+    # for i in range(1, 4):
+    #     df[f'actual_{i}'] = df.groupby(['testing_period'])['actual'].shift(i)
     df = df.dropna(how='any')
+    df['_testing_period'] = pd.to_datetime(df['_testing_period'])
+    config_col = df.filter(regex="^_").columns.to_list()
+
+    # defined configurations
+    # 1. HKD / CNY use clustered pillar
+    df_na = df.loc[(df['_group'].isin(['HKD', 'CNY'])) & (df['_name_sql'] == 'w4_d-7_20220324031027_debug')]
+    df_na = df_na.groupby([x for x in config_col if x != '_y_type'])[['max_ret', 'min_ret']].mean().reset_index()
+    df_na['_y_type'] = 'cluster'
+
+    # 2. USD / EUR use clustered pillar
+    df_ws = df.loc[((df['_group'] == 'EUR') & (df['_name_sql'] == 'w4_d-7_20220321173435_debug')) |
+                   ((df['_group'] == 'USD') & (df['_name_sql'] == 'w4_d-7_20220312222718_debug')),
+                   config_col + ['max_ret', 'min_ret']]
+    df = df_na.append(df_ws)
+    del df_na, df_ws
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result['name_sql2'] = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')  # name_sql for config opt
+    sql_result['name_sql2'] = input("config optimization model name_sql2: ")
     sql_result['class_weight'] = {i: 1 for i in range(args.qcut_q)}
 
-    testing_period = np.sort(df['testing_period'].unique())[-6:]
+    testing_period = np.sort(df['_testing_period'].unique())[-6:]
 
-    for (group, y_type), g in df.groupby(['group', 'y_type']):
+    for (group, y_type), g in df.groupby(['_group', '_y_type']):
         print(group, y_type)
         sql_result['currency_code'] = group
         sql_result['y_type'] = y_type

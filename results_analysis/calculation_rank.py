@@ -37,15 +37,15 @@ rank_dtypes = dict(
     last_update=TIMESTAMP
 )
 
-backtest_eval_dtypes = dict(name_sql=TEXT(), group=TEXT(), testing_period=DATE,
+backtest_eval_dtypes = dict(name_sql=TEXT, group=TEXT, group_code=TEXT, y_type=TEXT, testing_period=DATE,
                             max_factor_count=JSON, min_factor_count=JSON,
                             max_factor_pred=JSON, min_factor_pred=JSON,
                             max_factor_actual=JSON, min_factor_actual=JSON,
                             max_ret=DOUBLE_PRECISION(precision=53), min_ret=DOUBLE_PRECISION(precision=53),
                             mae=DOUBLE_PRECISION(precision=53), mse=DOUBLE_PRECISION(precision=53),
-                            r2=DOUBLE_PRECISION(precision=53), actual=DOUBLE_PRECISION(precision=53), y_type=TEXT(),
-                            weeks_to_expire=INTEGER(), config=JSON(astext_type=TEXT()), last_update=TIMESTAMP,
-                            is_remove_subpillar=BOOLEAN)
+                            r2=DOUBLE_PRECISION(precision=53), actual=DOUBLE_PRECISION(precision=53),
+                            weeks_to_expire=INTEGER, is_remove_subpillar=BOOLEAN,
+                            last_update=TIMESTAMP)
 
 diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
@@ -95,16 +95,16 @@ class rank_pred:
 
     q_ = None
     eval_col = ['max_ret', 'r2', 'mae', 'mse']
-    iter_unique_col = ['name_sql', 'group', 'group_code', 'testing_period', 'factor_name']
+    iter_unique_col = ['name_sql', 'group', 'group_code', 'y_type',  'testing_period', 'factor_name']
     diff_config_col = diff_config_col
     if_plot = False
     if_combine_pillar = False       # combine cluster pillars
-    is_remove_subpillar = True      # subpillar factors not selected together
     subpillar_df = None
 
     def __init__(self, q, name_sql,
                  pred_y_type=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000',
-                 eval_current=True, eval_top_config=10, eval_metric='net_ret', eval_config_select_period=12):
+                 eval_current=True, eval_top_config=10, eval_metric='net_ret', eval_config_select_period=12,
+                 eval_removed_subpillar=True):
         """
         Parameters
         ----------
@@ -133,6 +133,7 @@ class rank_pred:
         self.eval_config_select_period = eval_config_select_period
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.average_days = int(name_sql.split('_')[1][1:])
+        self.is_remove_subpillar = eval_removed_subpillar   # subpillar factors not selected together
 
         if self.is_remove_subpillar:
             self.subpillar_df = rank_pred._download_pillar_cluster_subpillar()
@@ -149,40 +150,42 @@ class rank_pred:
         # 2. Process separately for each y_type (i.e. momentum/value/quality/all)
         self.all_current = []
         self.all_history = []
-        for y_type, g in pred.groupby('y_type'):
-            self.y_type = y_type
-            self.rank_each_y_type(y_type, g)
+        self.rank_all(pred)
 
-    def rank_each_y_type(self, y_type, df):
+    def rank_all(self, df):
         """ rank for each y_type """
 
-        logging.info(f'=== Generate rank for [{y_type}] with results={df.shape}) ===')
+        logging.info(f'=== Generate rank for pred={df.shape}) ===')
 
         # 2.1. remove duplicate samples from running twice when testing
-        # df = df.drop_duplicates(subset=['uid'] + self.iter_unique_col + self.diff_config_col, keep='last')
+        # df = df.drop_duplicates(subset=['uid'] + self.iter_unique_col + diff_config_col, keep='last')
         # df['testing_period'] = pd.to_datetime(df['testing_period'])
 
         # 2.2. use average predictions from different validation sets
         # df_cv = average of all pred / actual
-        df_cv = df.groupby(['uid_hpot'] + self.iter_unique_col + self.diff_config_col)[['pred', 'actual']].mean().reset_index()
+        df_cv = df.groupby(['uid_hpot'] + self.iter_unique_col + diff_config_col)[['pred', 'actual']].mean().reset_index()
 
         # 2.3. calculate 'pred_z'/'factor_weight' by ranking
         # q = q / len(df['factor_name'].unique()) if isinstance(q, int) else q  # convert q(int) -> ratio
         # self.q_ = [0., q, 1. - q, 1.]
-        # df_cv = rank_pred.__calc_z_weight(self.q_, df_cv, self.diff_config_col)
+        # df_cv = rank_pred.__calc_z_weight(self.q_, df_cv, diff_config_col)
 
         # 2.3(a).remove subpillar - same subpillar factors keep higher pred one
         if self.is_remove_subpillar:
             df_cv = df_cv.merge(self.subpillar_df, on=["testing_period", "group", "factor_name"], how="left")
             df_cv["subpillar"] = df_cv["subpillar"].fillna(df_cv["factor_name"])
+            if 'pillar_0' not in df_cv['y_type'].unique():
+                # if use pre-defined pillar but try remove subpillar by only keeping top scores (assume max_score more importance)
+                df_cv = df_cv.sort_values(by=["pred"]).drop_duplicates(
+                    subset=["testing_period", "group", "group_code", 'subpillar'] + diff_config_col, keep="last")
 
         # 2.4. save backtest evaluation metrics to DB Table [backtest_eval]
-        self.__backtest_save_eval_metrics(df_cv, y_type)
+        self.__backtest_save_eval_metrics(df_cv)
         return
 
         # 2.6. rank for each testing_period
-        for (testing_period, group, group_code), g in df_cv.groupby(['testing_period', 'group', 'group_code']):
-            best_config = dict(y_type=self.y_type, testing_period=testing_period, group=group)
+        for (testing_period, group, group_code, y_type), g in df_cv.groupby(['testing_period', 'group', 'group_code', 'y_type']):
+            best_config = dict(y_type=y_type, testing_period=testing_period, group=group)
 
             # 2.5.1. use the best config prediction for this y_type
             # 2.5.2. use best [eval_top_config] config prediction for each (y_type, testing_period)
@@ -195,8 +198,8 @@ class rank_pred:
 
             # 2.5.2a. calculate rank for all config
             for i, row in best_config_df.iterrows():
-                best_config.update(row[self.diff_config_col])
-                g_best = g.loc[(g[self.diff_config_col] == row[self.diff_config_col]).all(axis=1)]
+                best_config.update(row[diff_config_col])
+                g_best = g.loc[(g[diff_config_col] == row[diff_config_col]).all(axis=1)]
                 rank_df = self.rank_each_testing_period(testing_period, g_best, group, group_code)
 
                 # 2.6.3. append to history / currency df list
@@ -327,7 +330,7 @@ class rank_pred:
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
-    def __backtest_save_eval_metrics(self, df, y_type):
+    def __backtest_save_eval_metrics(self, df):
         """ evaluate & rank different configuration;
             save backtest evaluation metrics -> production_factor_rank_backtest_eval_table """
 
@@ -335,31 +338,36 @@ class rank_pred:
         logging.debug(f"=== Update [{production_factor_rank_backtest_eval_table}] ===")
 
         # actual factor premiums
-        group_col = ['group', 'group_code', 'testing_period']
+        group_col = ['group', 'group_code', 'testing_period', 'y_type']
         df_actual = df.groupby(group_col)[['actual']].mean()
-        df_eval = df.groupby(group_col + self.diff_config_col).apply(self.__get_summary_stats_in_group).reset_index()
+        df_eval = df.groupby(group_col + diff_config_col).apply(self.__get_summary_stats_in_group).reset_index()
         df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
         df_eval[self.eval_col] = df_eval[self.eval_col].astype(float)
         df_eval = df_eval.join(df_actual, on=group_col, how='left')
 
         # 2.4.2. create DataFrame for eval results to DB
-        df_eval["y_type"] = y_type
+        df_eval['name_sql'] = self.name_sql
         df_eval["weeks_to_expire"] = self.weeks_to_expire
+        df_eval['q'] = self.q
+        df_eval['is_removed_subpillar'] = self.is_remove_subpillar
+        primary_key1 = ['name_sql', 'q', 'y_type', "weeks_to_expire", 'is_removed_subpillar'] + group_col
+        primary_key1_rename = {k: "_" + k for k in primary_key1}
+        diff_config_col_rename = {k: "__" + k for k in diff_config_col}
+        df_eval = df_eval.rename(columns={**primary_key1_rename, **diff_config_col_rename})
+        primary_key = list(primary_key1_rename.values()) + list(diff_config_col_rename.values())
+
+        df_eval['is_valid'] = True
+        df_eval['last_update'] = dt.datetime.now()
 
         # 2.4.3. save local plot for evaluation
         if self.if_plot:
-            rank_pred.__save_plot_backtest_ret(df_eval, self.diff_config_col, y_type)
+            rank_pred.__save_plot_backtest_ret(df_eval, diff_config_col, y_type)
 
         # 2.4.2. add config JSON column for configs
-        df_eval['config'] = df_eval[self.diff_config_col].to_dict(orient='records')
-        df_eval = df_eval.drop(columns=self.diff_config_col)
-        df_eval['is_valid'] = True
-        df_eval['last_update'] = dt.datetime.now()
-        df_eval['q'] = self.q
-        df_eval['name_sql'] = self.name_sql
-        df_eval['is_removed_subpillar'] = self.is_remove_subpillar
-        upsert_data_to_database(df_eval, production_factor_rank_backtest_eval_table, primary_key=["uid"],
-                                db_url=db_url_write, how="append", dtype=backtest_eval_dtypes)
+        # df_eval['config'] = df_eval[diff_config_col].to_dict(orient='records')
+        # df_eval = df_eval.drop(columns=diff_config_col)
+        upsert_data_to_database(df_eval, production_factor_rank_backtest_eval_table, primary_key=primary_key,
+                                db_url=db_url_write, how="update", dtype=backtest_eval_dtypes)
 
     def __get_summary_stats_in_group(self, g):
         """ Calculate basic evaluation metrics for factors """
@@ -369,31 +377,38 @@ class rank_pred:
 
         # df_cv = df_cv.groupby(['uid_hpot', 'subpillar']).apply(lambda x: x.nlargest(1, ['return'], keep='all'))
 
-        if len(g) > 0:
-            max_g = g[g['pred'] > np.quantile(g['pred'], 1 - self.q)]
-            min_g = g[g['pred'] < np.quantile(g['pred'], self.q)]
+        if len(g) > 1:
+            max_g = g.loc[g['pred'] > np.quantile(g['pred'], 1 - self.q)].sort_values(by=["pred"], ascending=False)
+            min_g = g.loc[g['pred'] < np.quantile(g['pred'], self.q)].sort_values(by=["pred"])
             if self.is_remove_subpillar:
-                max_g = max_g.sort_values(by=["pred"]).drop_duplicates(subset=['subpillar'], keep="last")
-                min_g = min_g.sort_values(by=["pred"]).drop_duplicates(subset=['subpillar'], keep="first")
-            ret_dict['max_factor_count'] = dict(Counter(max_g['factor_name'].tolist()))
-            ret_dict['min_factor_count'] = dict(Counter(min_g['factor_name'].tolist()))
-            ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
-            ret_dict['min_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
-            ret_dict['max_factor_actual'] = max_g.groupby(['factor_name'])['actual'].mean().to_dict()
-            ret_dict['min_factor_actual'] = min_g.groupby(['factor_name'])['actual'].mean().to_dict()
-            ret_dict['max_ret'] = max_g['actual'].mean()
-            ret_dict['min_ret'] = min_g['actual'].mean()
-            ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
-            ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
-            ret_dict['r2'] = r2_score(g['pred'], g['actual'])
-            return pd.Series(ret_dict)
+                max_g = max_g.drop_duplicates(subset=['subpillar'], keep="first")
+                min_g = min_g.drop_duplicates(subset=['subpillar'], keep="first")
+        # for cluster pillar in case only 1 factor in cluster
+        elif len(g) == 1:
+            max_g = g.loc[g['pred'] > .005]     # b/c 75% quantile pred is usually 0.005+
+            min_g = g.loc[g['pred'] < -.005]
+        else:
+            return None
 
-    def __backtest_find_calc_metric_avg(self, testing_period, group, group_code):
+        ret_dict['max_factor_count'] = max_g['factor_name'].tolist()
+        ret_dict['min_factor_count'] = min_g['factor_name'].tolist()
+        ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
+        ret_dict['min_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
+        ret_dict['max_factor_actual'] = max_g.groupby(['factor_name'])['actual'].mean().to_dict()
+        ret_dict['min_factor_actual'] = min_g.groupby(['factor_name'])['actual'].mean().to_dict()
+        ret_dict['max_ret'] = max_g['actual'].mean()
+        ret_dict['min_ret'] = min_g['actual'].mean()
+        ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
+        ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
+        ret_dict['r2'] = r2_score(g['pred'], g['actual'])
+        return pd.Series(ret_dict)
+
+    def __backtest_find_calc_metric_avg(self, testing_period, group, group_code, y_type):
         """ Select Best Config (among other_group_col) """
 
         conditions = [
             f"weeks_to_expire={self.weeks_to_expire}",
-            f"y_type='{self.y_type}'",
+            f"y_type='{y_type}'",
             f"\"group\"='{group}'",
             f"group_code='{group_code}'",
             f"testing_period < '{testing_period}'",
@@ -408,7 +423,7 @@ class rank_pred:
 
         if len(df) > 0:
             df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
-            df_mean = df.groupby(self.diff_config_col).mean().reset_index()  # average over testing_period
+            df_mean = df.groupby(diff_config_col).mean().reset_index()  # average over testing_period
             df_mean['net_ret'] = df_mean['max_ret'] - df_mean['min_ret']
 
             if self.eval_metric in ['max_ret', 'net_ret', 'r2']:
@@ -513,10 +528,11 @@ class rank_pred:
 
 if __name__ == "__main__":
     # download_prediction('w4_d-7_20220310130330_debug')
-    # download_prediction('w4_d-7_20220312222718_debug')
+    download_prediction('w4_d-7_20220312222718_debug')
     # download_prediction('w4_d-7_20220317005620_debug')    # adj_mse (1)
-    # download_prediction('w4_d-7_20220317125729_debug')      # adj_mse (2)
-    download_prediction('w4_d-7_20220321173435_debug')      # adj_mse (3) long history
+    # download_prediction('w4_d-7_20220317125729_debug')    # adj_mse (2)
+    # download_prediction('w4_d-7_20220321173435_debug')      # adj_mse (3) long history
+    # download_prediction('w4_d-7_20220324031027_debug')      # cluster pillar * 3
     exit(1)
 
     # linechart

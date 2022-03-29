@@ -1823,6 +1823,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/#describe_current.csv">
           <value>
             <Attribute>
@@ -1834,6 +1841,13 @@
           <value>
             <Attribute>
               <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/results_analysis/analysis_factor_config.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
             </Attribute>
           </value>
         </entry>

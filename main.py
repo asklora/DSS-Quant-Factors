@@ -133,10 +133,10 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.33):
+def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.2):
     """ evaluate test results based on name_sql / eval args """
 
-    sql_result, eval_metric, eval_n_configs, eval_backtest_period = args
+    sql_result, eval_metric, eval_n_configs, eval_backtest_period, eval_removed_subpillar = args
 
     # Step 1: pred -> ranking
     try:
@@ -149,9 +149,10 @@ def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, x
                                 eval_metric=eval_metric,
                                 eval_top_config=eval_n_configs,
                                 eval_config_select_period=eval_backtest_period,
+                                eval_removed_subpillar=eval_removed_subpillar,
                                 ).write_to_db()
         factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
-
+    raise Excpetion("STOP!")
     # ----------------------- modified factor_rank for testing ----------------------------
     # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
     # -------------------------------------------------------------------------------------
@@ -201,6 +202,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval_metric', default='max_ret,net_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
     parser.add_argument('--eval_backtest_period', default='12,36', type=str)
+    parser.add_argument('--eval_removed_subpillar', action='store_true', help='if removed subpillar in evaluation')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
@@ -315,8 +317,10 @@ if __name__ == "__main__":
     all_eval_groups = product([sql_result],
                               args.eval_metric.split(','),
                               [int(e) for e in args.eval_n_configs.split(',')],
-                              [int(e) for e in args.eval_backtest_period.split(',')])
+                              [int(e) for e in args.eval_backtest_period.split(',')],
+                              [args.eval_removed_subpillar])
     all_eval_groups = [tuple(e) for e in all_eval_groups]
+    logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
     with mp.Pool(processes=args.processes) as pool:
     # with mp.Pool(processes=1) as pool:
