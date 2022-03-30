@@ -1207,6 +1207,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/df_best_agg.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/df_best_importance.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/dsws_missing_ingestion_HKD.csv">
           <value>
             <Attribute>

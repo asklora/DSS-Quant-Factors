@@ -13,7 +13,7 @@ from general.sql_process import read_query, read_table, trucncate_table_in_datab
 from preprocess.load_data import download_clean_macros, download_index_return
 
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials, space_eval
-from lightgbm import cv, Dataset
+from lightgbm import cv, Dataset, train
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, balanced_accuracy_score
 from itertools import product
@@ -22,16 +22,16 @@ from collections import Counter
 
 cls_lgbm_space = {
     'objective': 'multiclass',
-    'learning_rate': hp.choice('learning_rate', [0.01, 0.1]),
-    'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart']),
+    'learning_rate': hp.choice('learning_rate', [0.1]),
+    'boosting_type': hp.choice('boosting_type', ['gbdt']),
     'max_bin': hp.choice('max_bin', [128, 256]),
-    'num_leaves': hp.choice('num_leaves', [5, 10]),
+    'num_leaves': hp.choice('num_leaves', [10, 20]),
     'min_data_in_leaf': hp.choice('min_data_in_leaf', [100, 500, 1000]),
     'feature_fraction': hp.choice('feature_fraction', [.3, .5]),
     'bagging_fraction': hp.choice('bagging_fraction', [.3, .7]),
     'bagging_freq': hp.choice('bagging_freq', [2, 8]),
     'min_gain_to_split': 0,
-    'lambda_l1': hp.choice('lambda_l1', [10, 50]),
+    'lambda_l1': hp.choice('lambda_l1', [10]),
     'lambda_l2': hp.choice('lambda_l2', [100, 250]),
     'verbose': 3,
     'random_state': 0,
@@ -48,7 +48,7 @@ def get_timestamp_now_str():
 class HPOT:
     """ use hyperopt on each set """
 
-    def __init__(self, sql_result, sample_set, max_evals=20, feature_names=None, sample_names=None):
+    def __init__(self, sql_result, sample_set, max_evals=10, feature_names=None, sample_names=None):
 
         self.sql_result = sql_result
         self.hpot = {'all_results': [], 'all_importance': [], 'best_score': 10000}  # initial accuracy_score = 0
@@ -99,27 +99,30 @@ class HPOT:
             result = {"logloss_train": eval_train_score, "logloss_valid": eval_valid_score}
             for i in ['train', 'test']:
                 pred_prob = model.predict(self.sample_set[f'{i}_x'])
+                all_prediction.append(pred_prob)
+                top_true = self.sample_set[f'{i}_y_cut'] == (self.sql_result['qcut_q'] - 1)
+
                 result[f"len_{i}"] = pred_prob.shape[0]
                 result[f"bm_ret_{i}"] = self.sample_set[f'{i}_y'].mean()
                 result[f"bm_ret_std_{i}"] = self.sample_set[f'{i}_y'].std()
 
                 # eval top class prob distribution
                 # result[f"top_class_prob_med"] = np.median(pred_prob[:, -1])
-                result[f"top_class_prob_{i}"] = [np.quantile(pred_prob[:, -1], q=q) for q in
-                                                 [0.1, 0.25, 0.5, 0.75, 0.9]]
+                # result[f"top_class_prob_{i}"] = [np.quantile(pred_prob[:, -1], q=q) for q in
+                #                                  [0.1, 0.25, 0.5, 0.75, 0.9]]
 
                 for pct in [0.2, 0.25, 0.33, 0.5]:
                     fit_sample = self.sample_set[f'{i}_y'][pred_prob[:, -1] > pct]
-                    result[f"top_class_{pct * 100}_ret_{i}"] = fit_sample.mean()
+                    result[f"c-1_pct_{int(pct * 100)}_{i}"] = len(fit_sample)/result[f"len_{i}"]
+                    result[f"c-1_ret_{int(pct * 100)}_{i}"] = fit_sample.mean()
                     if len(fit_sample) > 0:
-                        result[f"top_class_{pct * 100}_ret_std_{i}"] = fit_sample.std()
+                        result[f"c-1_ret_std_{int(pct * 100)}_{i}"] = fit_sample.std()
+                    result[f"c-1_prs_{int(pct * 100)}_{i}"] = balanced_accuracy_score(top_true, pred_prob[:, -1] > pct)
 
-                all_prediction.append(pred_prob)
-                pred = pred_prob.argmax(axis=1)
-                # TODO: maybe add back -> "auc": partial(roc_auc_score, multi_class='ovo')
-                result[f"accuracy_{i}"] = balanced_accuracy_score(self.sample_set[f'{i}_y_cut'], pred)
-                result[f"top_class_pct_{i}"], result[f"top_class_precision_{i}"] = \
-                    HPOT.top_class_precision(self.sample_set[f'{i}_y_cut'], pred)
+                # pred = pred_prob.argmax(axis=1)
+                # result[f"pred_pct_{i}"] = dict(Counter(pred))
+                # result[f"top_class_pct_{i}"], result[f"top_class_precision_{i}"] = \
+                #     HPOT.top_class_precision(self.sample_set[f'{i}_y_cut'], pred)
 
                 # for k, func in {"accuracy": balanced_accuracy_score,
                 #                 "precision": partial(precision_score, average='samples')}.items():
@@ -154,21 +157,38 @@ class HPOT:
 
         train_set = Dataset(sample_set['train_x'], sample_set['train_y_cut'],
                             weight=[self.sql_result['class_weight'][x] for x in sample_set['train_y_cut']],
-                            # group=sample_set['group'],
+                            feature_name=self.feature_names)
+        valid_set = Dataset(sample_set['valid_x'], sample_set['valid_y_cut'],
+                            weight=[self.sql_result['class_weight'][x] for x in sample_set['valid_y_cut']],
+                            reference=train_set,
                             feature_name=self.feature_names)
 
         params['num_class'] = self.sql_result['qcut_q']
         params['num_thread'] = args.process
 
-        results = cv(params=params,
-                     train_set=train_set,
-                     # metrics=self.sql_result['objective'],
-                     nfold=nfold,
-                     num_boost_round=1000,
-                     early_stopping_rounds=50,
-                     eval_train_metric=True,
-                     return_cvbooster=True,
-                     )
+        # results = cv(params=params,
+        #              train_set=train_set,
+        #              # metrics=self.sql_result['objective'],
+        #              nfold=nfold,
+        #              num_boost_round=1000,
+        #              early_stopping_rounds=50,
+        #              eval_train_metric=True,
+        #              return_cvbooster=True,
+        #              )
+        # eval_valid_score = results['valid multi_logloss-mean'][-1]
+        # eval_train_score = results['train multi_logloss-mean'][-1]
+        # boosters = results['cvbooster'].boosters
+
+        results = {}
+        boosters = lgb.train(params,
+                             train_set,
+                             valid_sets=[valid_set, train_set],
+                             valid_names=['valid', 'train'],
+                             num_boost_round=1000,
+                             early_stopping_rounds=150,
+                             feature_name=feature_names,
+                             evals_result=results)
+
         eval_valid_score = results['valid multi_logloss-mean'][-1]
         eval_train_score = results['train multi_logloss-mean'][-1]
 
@@ -177,7 +197,7 @@ class HPOT:
             self.__plot_eval_results(results)
             count_plot += 1
 
-        return results['cvbooster'].boosters, eval_valid_score, eval_train_score
+        return boosters, eval_valid_score, eval_train_score
 
     # ========================================== Results Saving ===================================================
 
@@ -284,21 +304,32 @@ class load_date:
         df = df_macros.merge(df_index, left_index=True, right_index=True)
         return df
 
-    def split_all(self, testing_period, qcut_q=3):
+    def split_all(self, testing_period, ts_year_valid=1, qcut_q=3):
         """ split train / test sets """
+
+        # if use CV (set [ts_year_valid] = 0)
+        valid_period = testing_period - relativedelta(year=ts_year_valid)  # use last year in training sets as validation
+
+        train_cond = self.df_x["testing_period"] < valid_period
+        valid_cond = (self.df_x["testing_period"] >= valid_period) & (self.df_x["testing_period"] < testing_period)
+        test_cond = self.df_x["testing_period"] == testing_period
+
         # [x]: split train / test
-        X_train = self.df_x.loc[self.df_x["testing_period"] < testing_period].drop(columns=['testing_period'])
+        X_train = self.df_x.loc[train_cond].drop(columns=['testing_period'])
+        X_valid = self.df_x.loc[valid_cond].drop(columns=['testing_period'])
         # X_train['testing_period'] = (X_train['testing_period'] - testing_period).dt.days
-        X_test = self.df_x.loc[self.df_x["testing_period"] == testing_period].drop(columns=['testing_period'])
+        X_test = self.df_x.loc[test_cond].drop(columns=['testing_period'])
         # X_test['testing_period'] = 0
         self.feature_names = X_train.columns.to_list()
 
         # [y]: split train / test + qcut
-        y_train = self.df_y.loc[self.df_x["testing_period"] < testing_period]
+        y_train = self.df_y.loc[train_cond]
         y_train_cut, self.cut_bins = pd.qcut(y_train, q=qcut_q, retbins=True, labels=False)
-        y_test = self.df_y.loc[self.df_x["testing_period"] == testing_period]
         cut_bins = self.cut_bins.copy()
         cut_bins[0], cut_bins[-1] = -np.inf, np.inf
+        y_valid = self.df_y.loc[self.df_x[valid_cond]]
+        y_valid_cut = pd.cut(y_valid, bins=self.cut_bins, labels=False)
+        y_test = self.df_y.loc[self.df_x[test_cond]]
         y_test_cut = pd.cut(y_test, bins=self.cut_bins, labels=False)
 
         # from collections import Counter
@@ -309,9 +340,10 @@ class load_date:
         scaler = StandardScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train.values)
+        X_valid = scaler.transform(X_valid.values)
         X_test = scaler.transform(X_test.values)
 
-        return X_train, X_test, y_train, y_test, y_train_cut.astype(int), y_test_cut.astype(int)
+        return X_train, X_valid, X_test, y_train, y_valid, y_test, y_train_cut, y_valid_cut, y_test_cut
 
 
 if __name__ == "__main__":
@@ -344,10 +376,11 @@ if __name__ == "__main__":
     print(df)
 
     df = df.sort_values(by=['_testing_period'])
+
     # for i in range(1, 4):
     #     df[f'actual_{i}'] = df.groupby(['testing_period'])['actual'].shift(i)
     df = df.dropna(how='any')
-    df['_testing_period'] = pd.to_datetime(df['_testing_period'])
+    df['_testing_period'] = pd.to_datetime(df['_testing_period']).dt.normalize()
     config_col = df.filter(regex="^_").columns.to_list()
 
     # defined configurations
@@ -365,9 +398,14 @@ if __name__ == "__main__":
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     sql_result['name_sql2'] = input("config optimization model name_sql2: ")
-    sql_result['class_weight'] = {i: 1 for i in range(args.qcut_q)}
 
-    testing_period = np.sort(df['_testing_period'].unique())[-6:]
+    sql_result['class_weight'] = {i: 1 for i in range(args.qcut_q)}
+    sql_result['class_weight'][0] = 2   # higher importance on really low iterations
+
+    testing_period = np.sort(df['_testing_period'].unique())[-12:]
+    print(df.dtypes)
+
+    df = df.loc[df['_group'] == "CNY"]  # TODO: debug CNY only
 
     for (group, y_type), g in df.groupby(['_group', '_y_type']):
         print(group, y_type)
@@ -375,10 +413,11 @@ if __name__ == "__main__":
         sql_result['y_type'] = y_type
         data = load_date(g)
         for t in testing_period:
-            X_train, X_test, y_train, y_test, y_train_cut, y_test_cut = data.split_all(t, qcut_q=args.qcut_q)
+            X_train, X_valid, X_test, y_train, y_valid, y_test, y_train_cut, y_valid_cut, y_test_cut\
+                = data.split_all(t, qcut_q=args.qcut_q)
             sql_result['cut_bins'] = list(data.cut_bins)
             HPOT(sql_result=sql_result,
-                 sample_set={"train_x": X_train, "test_x": X_test,
-                             "train_y": y_train, "test_y": y_test,
-                             "train_y_cut": y_train_cut, "test_y_cut": y_test_cut},
+                 sample_set={"train_x": X_train, "valid_x": X_valid, "test_x": X_test,
+                             "train_y": y_train, "valid_y": y_valid, "test_y": y_test,
+                             "train_y_cut": y_train_cut, "valid_y_cut": y_valid_cut, "test_y_cut": y_test_cut},
                  feature_names=data.feature_names)
