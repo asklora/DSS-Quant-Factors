@@ -35,20 +35,23 @@ def download_clean_macros():
 
     macros = macros.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
     macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
+    macros = macros.set_index("trading_day")
+    macros = macros.resample('D').ffill()
+    macros = macros.reset_index()
 
     yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
     # update yoy ratios
     macros_yoy = macros[["trading_day"] + list(yoy_col)]
-    macros_yoy["trading_day"] = macros_yoy["trading_day"].apply(lambda x: x - relativedelta(years=1))
-    macros = macros.merge(macros_yoy, on=["trading_day"], how="outer", suffixes=("", "_1yb"))
+    macros_yoy["trading_day"] = macros_yoy["trading_day"].apply(lambda x: x + relativedelta(years=1))
+    macros = macros.merge(macros_yoy, on=["trading_day"], how="left", suffixes=("", "_1yb"))
     macros = macros.sort_values(by="trading_day").fillna(method='ffill')
     for i in yoy_col:
         macros[i] = macros[i] / macros[i + "_1yb"] - 1
     macros = macros.dropna(subset=num_col, how="all")
 
-    return macros[["trading_day"] + list(num_col)]
+    return macros[["trading_day"] + list(num_col)].drop_duplicates("trading_day")
 
 
 def download_index_return():
@@ -491,6 +494,9 @@ class load_data:
 
 
 if __name__ == '__main__':
+    download_clean_macros()
+    exit(3000)
+
 
     testing_period = dt.datetime(2021, 12, 26)
     group_code = 'USD'
