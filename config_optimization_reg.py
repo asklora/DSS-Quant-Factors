@@ -39,22 +39,44 @@ from collections import Counter
 
 
 def log_clf(X, y, y_cut):
-    model = LogisticRegression(random_state=0).fit(X, y_cut)
+    # for p in ['l2']:    # 'l1', 'l2', 'elasticnet'
+    #     for t in range(8):
+    model = LogisticRegression(penalty='l2', tol=.1, random_state=0, max_iter=1000, verbose=3).fit(X, y_cut)
     score = model.score(X, y_cut)
-    print("score: ", score)
+    print(f"score: ", score)
+    # exit(10)
     print("coef: ", model.coef_)
-    print("intercept:: ", score.intercept_)
+    print("intercept:: ", model.intercept_)
     pred_prob = model.predict_proba(X_train)
     return pred_prob
 
 
-def lin_reg(X, y, y_cut):
-    model = LogisticRegression(random_state=0).fit(X, y)
-    score = model.score(X, y)
+def rdg_clf(X, y, y_cut):
+    model = RidgeClassifier(random_state=0).fit(X, y_cut)
+    score = model.score(X, y_cut)
     print("score: ", score)
     print("coef: ", model.coef_)
-    print("intercept:: ", score.intercept_)
-    pred_prob = model.predict(X_train)
+    print("intercept:: ", model.intercept_)
+    pred = model.predict(X_train)
+    return pred
+
+
+def lin_reg(X, y, y_cut):
+
+    new_row = int(len(X) // 4)    # 4 config for max_ret / is_usd
+
+    X_config = np.reshape(X[:, -2:], (new_row, 4*2), order='C')
+    y = np.reshape(y.values, (new_row, 4), order='C')
+    X = X[:new_row, :]
+
+    model = LinearRegression().fit(X, y)
+    pred = model.predict(X_train)
+    # pred_cut = pd.qcut(pred, q=3, labels=False)
+    # score = accuracy_score(y_cut, pred_cut)
+    score = model.score(y_cut, pred_cut)
+    print("score: ", score)
+    print("coef: ", model.coef_)
+    print("intercept:: ", model.intercept_)
     return pred_prob
 
 
@@ -69,7 +91,6 @@ class load_date:
         # x = all configurations
         # config_col_x = [x.strip('_') for x in df.filter(regex="^__|_q|testing_period").columns.to_list() if x != '__tree_type']
         df.columns = [x.strip('_') for x in df]
-        df = df.groupby(['group', 'group_code', 'testing_period']).mean().reset_index()
         df_x = df[['group_code', 'testing_period']].merge(macros, left_on='testing_period', right_index=True, how='left')
         if g != 'USD':
             df_x['is_usd'] = (df_x['group_code'] == "USD").values
@@ -88,9 +109,9 @@ class load_date:
     def download_macros(self, g):
         """ download macro data as input """
         # TODO: change to read from DB not cache
-        df_macros = download_clean_macros().set_index('trading_day')
-        df_macros.to_pickle('df_macros.pkl')
-        # df_macros = pd.read_pickle('df_macros.pkl')
+        # df_macros = download_clean_macros().set_index('trading_day')
+        # df_macros.to_pickle('df_macros.pkl')
+        df_macros = pd.read_pickle('df_macros.pkl')
 
         # df_index = download_index_return().set_index('trading_day')
         # df_index.to_pickle('df_index.pkl')
@@ -131,8 +152,6 @@ if __name__ == "__main__":
     parser.add_argument('--objective', default='multiclass')
     parser.add_argument('--name_sql', default=None)
     parser.add_argument('--qcut_q', type=int, default=3)
-    parser.add_argument('--nfold', type=int, default=5)
-    parser.add_argument('--process', type=int, default=10)
     args = parser.parse_args()
 
     # --------------------------------- Load Data -----------------------------------------------
@@ -145,30 +164,35 @@ if __name__ == "__main__":
         query = f"SELECT * FROM {tbl_name} WHERE name_sql='{args.name_sql}'"
         pkl_name = f'cache_eval_{args.name_sql}.pkl'
 
-    try:
-        df = pd.read_pickle(pkl_name)
-    except Exception as e:
-        df = read_query(query)
-        df.to_pickle(pkl_name)
-    print(df)
-
-    df = df.sort_values(by=['_testing_period'])
-    df = df.dropna(how='any')
-    df['_testing_period'] = pd.to_datetime(df['_testing_period']).dt.normalize()
-    config_col = df.filter(regex="^_").columns.to_list()
-
-    # defined configurations
-    # 1. HKD / CNY use clustered pillar
-    df_na = df.loc[(df['_group'].isin(['HKD', 'CNY'])) & (df['_name_sql'] == 'w4_d-7_20220324031027_debug')]
-    df_na = df_na.groupby([x for x in config_col if x != '_y_type'])[['max_ret', 'min_ret']].mean().reset_index()
-    df_na['_y_type'] = 'cluster'
-
-    # 2. USD / EUR use clustered pillar
-    df_ws = df.loc[((df['_group'] == 'EUR') & (df['_name_sql'] == 'w4_d-7_20220321173435_debug')) |
-                   ((df['_group'] == 'USD') & (df['_name_sql'] == 'w4_d-7_20220312222718_debug')),
-                   config_col + ['max_ret', 'min_ret']]
-    df = df_na.append(df_ws)
-    del df_na, df_ws
+    # try:
+    #     df = pd.read_pickle(pkl_name)
+    # except Exception as e:
+    #     df = read_query(query)
+    #     df.to_pickle(pkl_name)
+    # print(df)
+    #
+    # df = df.sort_values(by=['_testing_period'])
+    # df = df.dropna(how='any')
+    # df['_testing_period'] = pd.to_datetime(df['_testing_period']).dt.normalize()
+    # config_col = df.filter(regex="^_").columns.to_list()
+    #
+    # # defined configurations
+    # # 1. HKD / CNY use clustered pillar
+    # df_na = df.loc[(df['_group'].isin(['HKD', 'CNY'])) & (df['_name_sql'] == 'w4_d-7_20220324031027_debug')]
+    # df_na = df_na.groupby([x for x in config_col if x != '_y_type'])[['max_ret', 'min_ret']].mean().reset_index()
+    # df_na['_y_type'] = 'cluster'
+    #
+    # # 2. USD / EUR use clustered pillar
+    # df_ws = df.loc[((df['_group'] == 'EUR') & (df['_name_sql'] == 'w4_d-7_20220321173435_debug')) |
+    #                ((df['_group'] == 'USD') & (df['_name_sql'] == 'w4_d-7_20220312222718_debug')),
+    #                config_col + ['max_ret', 'min_ret']]
+    # df = df_na.append(df_ws)
+    # del df_na, df_ws
+    #
+    # df = df.groupby(['_group', '_group_code', '_testing_period', '_y_type']).mean().reset_index()
+    #
+    # df.to_pickle('mean-'+pkl_name)
+    df = pd.read_pickle('mean-'+pkl_name)
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     # sql_result['name_sql2'] = input("config optimization model name_sql2: ")
@@ -187,16 +211,42 @@ if __name__ == "__main__":
         sql_result['y_type'] = y_type
 
         data = load_date(g, group)
+        input_df = data.df_x.copy()
+        input_df["max_ret"] = input_df["max_ret"].replace({True: "max", False: "net"})
+        input_df["is_usd"] = input_df["is_usd"].replace({True: "USD", False: "own"})
+
         X_train, y_train, y_train_cut = data.get_train(qcut_q=args.qcut_q)
         true_df = pd.DataFrame(y_train, columns=["Return"])
 
-        # Logistic Regression
-        pred_prob = log_clf(X_train, y_train, y_train_cut)
-        pred_df = pd.DataFrame(pred_prob, columns=list(range(args.qcut_q)))
-        final_df = pd.concat([data.df_x, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
-        to_excel({"raw": final_df,
-                  "pivot": pd.pivot(final_df, columns=["testing_period"], index=["max_ret", "is_usd"]).reset_index()},
-                 f'{group}_config_log_clf')
+        # # [CLF1] Logistic Regression
+        # pred_prob = log_clf(X_train, y_train, y_train_cut)
+        # pred_df = pd.DataFrame(pred_prob, columns=list(range(args.qcut_q)))
+        # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
+        # final_df_agg = pd.pivot_table(final_df,
+        #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
+        #                                      'm_stock_return_r6_2', 'm_vix'],
+        #                               columns=["max_ret", "is_usd"],
+        #                               values=['Return', 2],
+        #                               aggfunc='mean').reset_index()
+        # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
+        # to_excel({"raw": final_df,
+        #           "pivot": final_df_agg},
+        #          f'{group}_config_log_clf')
+
+        # # [CLF2] Ridge Classificatoin
+        # pred_prob = rdg_clf(X_train, y_train, y_train_cut)
+        # pred_df = pd.DataFrame(pred_prob, columns=['Pred'])
+        # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
+        # final_df_agg = pd.pivot_table(final_df,
+        #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
+        #                                      'm_stock_return_r6_2', 'm_vix'],
+        #                               columns=["max_ret", "is_usd"],
+        #                               values=['Return', 'Pred'],
+        #                               aggfunc='mean').reset_index()
+        # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
+        # to_excel({"raw": final_df,
+        #           "pivot": final_df_agg},
+        #          f'{group}_config_rdg_clf')
 
         # Linear Regression
         pred_prob = lin_reg(X_train, y_train, y_train_cut)
@@ -204,4 +254,4 @@ if __name__ == "__main__":
         final_df = pd.concat([data.df_x, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
         to_excel({"raw": final_df,
                   "pivot": final_df.pivot(columns=["testing_period"], index=["max_ret", "is_usd"]).reset_index()},
-                 f'{group}_config_log_clf')
+                 f'{group}_config_lin_reg')

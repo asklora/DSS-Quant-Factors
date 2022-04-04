@@ -108,6 +108,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/config_optimization_reg.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/cron/alibaba_db_migration.py">
           <value>
             <Attribute>
