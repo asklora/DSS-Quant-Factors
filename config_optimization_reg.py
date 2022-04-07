@@ -1,3 +1,6 @@
+# simplfied configruation optimization model
+# find "Rule" (e.g. when indx_ret > 5%) or combination (40% max + 60% net)
+
 import datetime as dt
 import pandas as pd
 import numpy as np
@@ -25,11 +28,11 @@ from sklearn.linear_model import (
     Ridge,
 )
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, balanced_accuracy_score
-from itertools import product
+from itertools import product, combinations
 from functools import partial
 from collections import Counter, ChainMap
 import multiprocessing as mp
-
+import gc
 
 # def models(self):
 #     self.model['rig_clf'] = RidgeClassifier(random_state=0).fit(X, y_cut)
@@ -86,7 +89,7 @@ def lin_reg(X, y, y_cut):
 
 class load_date:
 
-    def __init__(self, df, g):
+    def __init__(self, df, g, y_type):
         """ create DataFrame for x, y for all testing periods """
 
         # x += macros
@@ -95,6 +98,7 @@ class load_date:
         # x = all configurations
         # config_col_x = [x.strip('_') for x in df.filter(regex="^__|_q|testing_period").columns.to_list() if x != '__tree_type']
         df.columns = [x.strip('_') for x in df]
+        # df = df.loc[df['y_type'] == y_type].copy()
 
         df['net_ret'] = df['max_ret'] - df['min_ret']
         df_pivot = df.groupby(['testing_period', 'group_code'])[['max_ret', 'net_ret']].mean().unstack()
@@ -134,11 +138,25 @@ class load_date:
         idx_map = {"CNY": ".CSI300", "HKD": ".HSI", "USD": ".SPX", "EUR": ".SXXGR"}
         index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
 
+        df[f"cum_{idx_map[g]}_stock_return_r6_2"] = (1 + df[f"{idx_map[g]}_stock_return_r6_2"]) * \
+                                                    (1 + df[f"{idx_map[g]}_stock_return_r1_0"]) - 1
+        df[f"cum_{idx_map['USD']}_stock_return_r6_2"] = (1 + df[f"{idx_map['USD']}_stock_return_r6_2"]) * \
+                                                        (1 + df[f"{idx_map['USD']}_stock_return_r1_0"]) - 1
+
+        df[f"cum_{idx_map[g]}_stock_return_r12_7"] = (1 + df[f"{idx_map[g]}_stock_return_r12_7"]) * \
+                                                     (1 + df[f"cum_{idx_map[g]}_stock_return_r6_2"]) - 1
+        df[f"cum_{idx_map['USD']}_stock_return_r12_7"] = (1 + df[f"{idx_map['USD']}_stock_return_r12_7"]) * \
+                                                         (1 + df[f"cum_{idx_map['USD']}_stock_return_r6_2"]) - 1
+
         g_cols = []
         for i in index_col:
             g_cols.append(f"{idx_map[g]}_{i}")
+            if i != 'stock_return_r1_0':
+                g_cols.append(f"cum_{idx_map[g]}_{i}")
             if g != "USD":
                 g_cols.append(f"{idx_map['USD']}_{i}")
+                if i != 'stock_return_r1_0':
+                    g_cols.append(f"cum_{idx_map['USD']}_{i}")
                 df[f'diff_{i}'] = df[f"{idx_map[g]}_{i}"] - df[f"{idx_map['USD']}_{i}"]
                 g_cols.append(f'diff_{i}')
 
@@ -148,10 +166,10 @@ class load_date:
         gdp_map = {"CNY": ["CHGDP...C"], "HKD": ["CHGDP...C", "HKGDP...C"], "USD": ["USGDP...D"], "EUR": ["EMGDP...D"]}
         g_cols.extend(gdp_map[g])
 
-        int_map = {"CNY": ["CHBANKR.", "CHPRATE."],
-                   "HKD": ["HKGBILL3", "HKBANKR.", "HKPRATE."],
-                   "USD": ["USGBILL3", "USINTER3", "USBANKR.", "USPRATE."],
-                   "EUR": ["EMIBOR3.", "EMINTER3", "EMPRATE."]}
+        int_map = {"CNY": [],
+                   "HKD": ["HKGBILL3"],
+                   "USD": ["USGBILL3", "USINTER3"],
+                   "EUR": ["EMIBOR3.", "EMINTER3"]}
         g_cols.extend(int_map[g])
 
         lead_map = {"CNY": ["CHCYLEADQ"], "HKD": ["CHCYLEADQ"], "USD": ["USCYLEADQ"], "EUR": []}
@@ -176,22 +194,29 @@ class load_date:
 
 def trial_accuracy(*args):
     """ grid search """
-    (x1, cutoff1), (x2, cutoff2), (x3, cutoff3), ddf = args
+    (x1, cutoff1, std1), (x2, cutoff2, std2), (x3, cutoff3, std3), ddf = args
     ddf1 = ddf.copy()
 
     print(x1, x2, x3)
     score_list = {}
-    for i in ['>', '<']:
+    for i in ['>', '<', '~']:
         if i == '>':
             ddf[f'use_usd'] = ddf[x1] > cutoff1
             ddf1[f'use_net'] = ddf1[x1] > cutoff1
             ddf[f'use_net'] = np.where(ddf[f'use_usd'], ddf[x2] > cutoff2, ddf[x3] > cutoff3)
             ddf1[f'use_usd'] = np.where(ddf1[f'use_net'], ddf1[x2] > cutoff2, ddf1[x3] > cutoff3)
-        else:
+        elif i == '<':
             ddf[f'use_usd'] = ddf[x1] < cutoff1
             ddf1[f'use_net'] = ddf1[x1] < cutoff1
             ddf[f'use_net'] = np.where(ddf[f'use_usd'], ddf[x2] < cutoff2, ddf[x3] < cutoff3)
             ddf1[f'use_usd'] = np.where(ddf1[f'use_net'], ddf1[x2] < cutoff2, ddf1[x3] < cutoff3)
+        else:
+            ddf[f'use_usd'] = (ddf[x1] > (cutoff1 - std1)) & (ddf[x1] < (cutoff1 + std1))
+            ddf1[f'use_net'] = (ddf[x1] > (cutoff1 - std1)) & (ddf[x1] < (cutoff1 + std1))
+            ddf[f'use_net'] = np.where(ddf[f'use_usd'], (ddf[x2] > (cutoff2 - std2)) & (ddf[x2] < (cutoff2 + std2)),
+                                       (ddf[x3] > (cutoff3 - std3)) & (ddf[x3] < (cutoff3 + std3)))
+            ddf1[f'use_usd'] = np.where(ddf1[f'use_net'], (ddf[x2] > (cutoff2 - std2)) & (ddf[x2] < (cutoff2 + std2)),
+                                        (ddf[x3] > (cutoff3 - std3)) & (ddf[x3] < (cutoff3 + std3)))
 
         ddf['Selection'] = ddf['use_net'] * 2 + ddf['use_usd']
         ddf1['Selection'] = ddf1['use_net'] * 2 + ddf1['use_usd']
@@ -202,7 +227,31 @@ def trial_accuracy(*args):
         score_list[(f'usd{i}', x1, cutoff1, x2, cutoff2, x3, cutoff3)] = score
         score_list[(f'net{i}', x1, cutoff1, x2, cutoff2, x3, cutoff3)] = score1
 
+    gc.collect()
+
     return score_list
+
+
+def trial_accuracy_usd(*args):
+    """ grid search """
+    (x1, cutoff1, std1), ddf = args
+
+    score_list = {}
+    for i in ['>', '<', '~']:
+        if i == '>':
+            ddf[f'use_net'] = ddf[x1] > cutoff1
+        elif i == '<':
+            ddf[f'use_net'] = ddf[x1] < cutoff1
+        else:
+            ddf[f'use_net'] = (ddf[x1] > (cutoff1 - std1)) & (ddf[x1] < (cutoff1 + std1))
+
+        score = accuracy_score(ddf['net_better'], ddf['use_net'])
+        score_list[(f'net{i}', x1, cutoff1)] = score
+
+    gc.collect()
+
+    return score_list
+
 
 if __name__ == "__main__":
 
@@ -224,35 +273,115 @@ if __name__ == "__main__":
         query = f"SELECT * FROM {tbl_name} WHERE name_sql='{args.name_sql}'"
         pkl_name = f'cache_eval_{args.name_sql}.pkl'
 
-    # try:
-    #     df = pd.read_pickle(pkl_name)
-    # except Exception as e:
-    #     df = read_query(query)
-    #     df.to_pickle(pkl_name)
-    # print(df)
-    #
-    # df = df.sort_values(by=['_testing_period'])
+    try:
+        df = pd.read_pickle(pkl_name)
+    except Exception as e:
+        df = read_query(query)
+        df.to_pickle(pkl_name)
+    print(df)
+
+    df = df.sort_values(by=['_testing_period'])
     # df = df.dropna(how='any')
-    # df['_testing_period'] = pd.to_datetime(df['_testing_period']).dt.normalize()
-    # config_col = df.filter(regex="^_").columns.to_list()
+    df['_testing_period'] = pd.to_datetime(df['_testing_period']).dt.normalize()
+    config_col = df.filter(regex="^_").columns.to_list()
+
+    # defined configurations
+    # 1. HKD / CNY use clustered pillar
+    df_cluster = df.loc[(df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
+                        (df['_is_removed_subpillar']) &
+                        (df['_q'] == 0.33),
+                        config_col + ['max_ret', 'min_ret']].fillna(0)
+    df_cluster['_y_type'] = 'cluster'
+
+    # 2. USD / EUR use clustered pillar
+    df_pillar = df.loc[(~df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
+                       (df['_q'] == 0.33),
+                       config_col + ['max_ret', 'min_ret']]
+    df = df_cluster.append(df_pillar)
+    del df_cluster, df_pillar
+
+    df = df.groupby(['_name_sql', '_group', '_group_code', '_testing_period', '_y_type']).mean().reset_index()
+    df.to_pickle('mean-'+pkl_name)
+    # df = pd.read_pickle('mean-'+pkl_name)
+
+    df_index = pd.read_pickle('df_index.pkl')
+    idx_map = {"CNY": ".CSI300_stock_return_r1_0", "HKD": ".HSI_stock_return_r1_0",
+               "USD": ".SPX_stock_return_r1_0", "EUR": ".SXXGR_stock_return_r1_0"}
+    df_index = df_index.filter(regex='_stock_return_r1_0$').stack().reset_index()
+    df_index['level_1'] = df_index['level_1'].replace({v: k for k, v in idx_map.items()})
+    df_index['trading_day'] = pd.to_datetime(df_index['trading_day']) - pd.tseries.offsets.DateOffset(weeks=4)
+    df_index = df_index.set_index(['trading_day', 'level_1'])[0].rename('actual')
+
+    df['_group_code'] = np.where(df['_group_code'] == df['_group'], 'own', 'usd')
+    df_pivot = df.groupby(['_name_sql', '_testing_period', '_y_type', '_group', '_group_code'])[['max_ret', 'min_ret']].mean().unstack()
+    df_pivot.columns = ['max_own', 'max_usd', 'min_own', 'min_usd']
+
+    for (x1, x2) in combinations(df_pivot, 2):
+        for q in np.arange(0.2, 1.1, 0.2):
+            df_pivot[f"{x1}_{x2}_{round(q, 1)}"] = df_pivot[x1] - q * df_pivot[x2]
+
+    # df_pivot['actual'] = df_pivot[['max_own', 'max_usd', 'min_own', 'min_usd']].mean(axis=1)
+    df_pivot = df_pivot.merge(df_index, left_on=['_testing_period', '_group'], right_index=True, how='left')
+    df_pivot['actual1'] = df_pivot.groupby(['_group', '_y_type'])['actual'].transform('mean')
+
+    ret_cols = df_pivot.columns.to_list()
+    df_pivot = df_pivot.reset_index()
+
+    def sortino(g, actual_col):
+        """ sortino ratio with actual = (current period average) or (all time average) """
+        if actual_col != 0:
+            ab = np.subtract(g, g[[actual_col]])
+        else:
+            ab = g
+        ab_down = np.clip(ab, -np.inf, 0)
+        ab2_down = np.square(ab_down)
+        ab2_down_std = np.sqrt(np.mean(ab2_down, axis=0))
+        avg = np.mean(ab, axis=0)
+        sortino = avg.div(ab2_down_std)
+        return sortino
+
+    def sharpe(g, actual_col):
+        """ sharpe ratio with actual = (current period average) or (all time average) """
+        if actual_col != 0:
+            ab = np.subtract(g, g[[actual_col]])
+        else:
+            ab = g
+        ab2 = np.square(ab)
+        ab2_std = np.sqrt(np.mean(ab2, axis=0))
+        avg = np.mean(ab, axis=0)
+        sharpe = avg.div(ab2_std)
+        return sharpe
+
+    df_pivot_avg = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].mean().stack().rename("mean")
+    df_pivot_std = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].std().stack().rename("std")
+    df_pivot_min = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].min().stack().rename("min")
+    df_pivot_quantile = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.05).stack().rename("q5")
+    df_pivot_quantile1 = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.1).stack().rename("q10")
+    df_pivot_sort0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col=0)).stack().rename("sortino_0")
+    df_pivot_sort = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual')).stack().rename("sortino")
+    df_pivot_sort1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual1')).stack().rename("sortino_ts")
+    df_pivot_sharpe0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col=0)).stack().rename("sharpe_0")
+    df_pivot_sharpe = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual')).stack().rename("sharpe")
+    df_pivot_sharpe1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual1')).stack().rename("sharpe_ts")
+
+    df_pivot_eval = pd.concat([df_pivot_avg, df_pivot_std, df_pivot_min, df_pivot_quantile, df_pivot_quantile1,
+                               df_pivot_sort0, df_pivot_sort, df_pivot_sort1,
+                               df_pivot_sharpe0, df_pivot_sharpe, df_pivot_sharpe1], axis=1).reset_index()
+    df_pivot_eval = df_pivot_eval.loc[df_pivot_eval['level_3'] != 'actual1']
+    xlsx_dict = {}
+    for i in ['mean', 'sortino_0', 'sortino', 'sortino_ts']:
+        xlsx_dict[i] = df_pivot_eval.sort_values(by=['_group', '_y_type', i], ascending=False).groupby(['_group', '_y_type']).head(1)
+    to_excel(xlsx_dict, 'config_opt_combination_top1')
+    exit(200)
+
+
+    # df_select1 = pd.read_excel('score_df_all3.xlsx', sheet_name='raw')
+    # df_select1 = df_select1.loc[df_select1['Select by Level 0'] == "Y"]
+    # print(df_select1)
     #
-    # # defined configurations
-    # # 1. HKD / CNY use clustered pillar
-    # df_na = df.loc[(df['_group'].isin(['HKD', 'CNY'])) & (df['_name_sql'] == 'w4_d-7_20220324031027_debug')]
-    # df_na = df_na.groupby([x for x in config_col if x != '_y_type'])[['max_ret', 'min_ret']].mean().reset_index()
-    # df_na['_y_type'] = 'cluster'
-    #
-    # # 2. USD / EUR use clustered pillar
-    # df_ws = df.loc[((df['_group'] == 'EUR') & (df['_name_sql'] == 'w4_d-7_20220321173435_debug')) |
-    #                ((df['_group'] == 'USD') & (df['_name_sql'] == 'w4_d-7_20220312222718_debug')),
-    #                config_col + ['max_ret', 'min_ret']]
-    # df = df_na.append(df_ws)
-    # del df_na, df_ws
-    #
-    # df = df.groupby(['_group', '_group_code', '_testing_period', '_y_type']).mean().reset_index()
-    #
-    # df.to_pickle('mean-'+pkl_name)
-    df = pd.read_pickle('mean-'+pkl_name)
+    # df_select2 = pd.read_excel('score_df_all3.xlsx', sheet_name='USD (>0.6)')
+    # df_select2 = df_select2.loc[df_select2['Select by Level 0'] == "Y"]
+    # print(df_select2)
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     # sql_result['name_sql2'] = input("config optimization model name_sql2: ")
@@ -269,21 +398,34 @@ if __name__ == "__main__":
     final_df_corr = {}
     score_df_list = []
     for (group, y_type), g in df.groupby(['_group', '_y_type']):
+        # if group not in ['CNY']:
+        #     continue
+
         print(group, y_type)
         sql_result['currency_code'] = group
         sql_result['y_type'] = y_type
 
-        data = load_date(g, group)
-
+        data = load_date(g, group, y_type)
         ddf = data.df_x.copy()
-        y_cols = ddf.columns.to_list()[-4:]
-        x_cols = ddf.columns.to_list()[:-4]
-        y_cols_replace = dict(zip(y_cols, range(4)))
-        ddf = ddf.rename(columns=y_cols_replace)
 
-        ddf['Best'] = ddf.iloc[:, -4:].idxmax(axis=1)
-        ddf['net_better'] = ddf[[2, 3]].sum(axis=1) > ddf[[0, 1]].sum(axis=1)
-        ddf['usd_better'] = ddf[[1, 3]].sum(axis=1) > ddf[[0, 2]].sum(axis=1)
+        # =================== grid search combination =======================
+
+        if group == 'USD':
+            y_cols = ddf.columns.to_list()[-2:]
+            x_cols = ddf.columns.to_list()[:-2]
+            y_cols_replace = dict(zip(y_cols, range(2)))
+            ddf = ddf.rename(columns=y_cols_replace)
+            ddf['net_better'] = ddf[1] > ddf[0]
+            df_select = df_select2.loc[df_select2['y_type'] == y_type]
+        else:
+            y_cols = ddf.columns.to_list()[-4:]
+            x_cols = ddf.columns.to_list()[:-4]
+            y_cols_replace = dict(zip(y_cols, range(4)))
+            ddf = ddf.rename(columns=y_cols_replace)
+            ddf['Best'] = ddf.iloc[:, -4:].idxmax(axis=1)
+            ddf['net_better'] = ddf[[2, 3]].sum(axis=1) > ddf[[0, 1]].sum(axis=1)
+            ddf['usd_better'] = ddf[[1, 3]].sum(axis=1) > ddf[[0, 2]].sum(axis=1)
+            df_select = df_select1.loc[(df_select1['y_type'] == y_type) & (df_select1['group'] == group)]
 
         # for y in y_cols:
         #     ddf[f'use_{y}'] = ddf[y] - ddf[[x for x in y_cols if x != y]].mean(axis=1)
@@ -293,33 +435,41 @@ if __name__ == "__main__":
         # final_df_corr[f"{group}_{y_type}"] = ddf.corr().iloc[:-11, -7:].reset_index()
 
         # =================== grid search =======================
-        options = []
-        for x in x_cols:
-            for i in range(1, 6):
-                cutoff = np.round(np.quantile(ddf[x], q=.2*i), 2)
-                options.append([x, cutoff])
-
-        options_comb = product(options, options, options, [ddf])
-        options_comb = [tuple(e) for e in options_comb]
-
-        with mp.Pool(processes=8) as pool:
-            results = pool.starmap(trial_accuracy, options_comb)
-        score_list = {k: v for element in results for k, v in element.items()}
-        score_df = pd.DataFrame(score_list, index=['accuracy']).transpose()
-        if group == 'USD':
-            score_df = score_df[score_df['accuracy'] > 0.8]
-        else:
-            score_df = score_df[score_df['accuracy'] > 0.4]
-        score_df = score_df.sort_values(by=['accuracy'], ascending=False).reset_index()
-        score_df.columns = ['first', 'usd_x', 'usd_q', 'usd_net_x', 'usd_net_x_q', 'nonusd_net_x', 'nonusd_net_x_q', 'accuracy']
-        score_df['y_type'] = y_type
-        score_df['group'] = group
-        print(score_df['accuracy'].max())
-        score_df_list.append(score_df)
-        continue
-
-    score_df_all = pd.concat(score_df_list, axis=0)
-    score_df_all.to_csv(f'score_df_all3.csv', index=False)
+    #     options = []
+    #     for x in x_cols:
+    #         std = np.round(np.std(ddf[x]), 2)
+    #         for i in range(1, 5):
+    #             cutoff = np.round(np.quantile(ddf[x], q=.2*i), 2)
+    #             options.append([x, cutoff, std])
+    #
+    #     if group == 'USD':
+    #         options_comb = product(options, [ddf])
+    #         options_comb = [tuple(e) for e in options_comb]
+    #         with mp.Pool(processes=12) as pool:
+    #             results = pool.starmap(trial_accuracy_usd, options_comb)
+    #         score_list = {k: v for element in results for k, v in element.items()}
+    #         score_df = pd.DataFrame(score_list, index=['accuracy']).transpose()
+    #         score_df = score_df[score_df['accuracy'] > 0.6]
+    #         score_df = score_df.sort_values(by=['accuracy'], ascending=False).reset_index()
+    #         score_df.columns = ['first', 'level_0', 'level_0_trh', 'accuracy']
+    #     else:
+    #         options_comb = product(options, options, options, [ddf])
+    #         options_comb = [tuple(e) for e in options_comb]
+    #         with mp.Pool(processes=12) as pool:
+    #             results = pool.starmap(trial_accuracy, options_comb)
+    #         score_list = {k: v for element in results for k, v in element.items()}
+    #         score_df = pd.DataFrame(score_list, index=['accuracy']).transpose()
+    #         score_df = score_df[score_df['accuracy'] > 0.4]
+    #         score_df = score_df.sort_values(by=['accuracy'], ascending=False).reset_index()
+    #         score_df.columns = ['first', 'level_0', 'level_0_trh', 'level_1+', 'level_1+_trh', 'level_1-', 'level_1-_trh', 'accuracy']
+    #     score_df['y_type'] = y_type
+    #     score_df['group'] = group
+    #     print(score_df['accuracy'].max())
+    #     score_df_list.append(score_df)
+    #     gc.collect()
+    #
+    # score_df_all = pd.concat(score_df_list, axis=0)
+    # score_df_all.to_csv(f'score_df_all6_CNY.csv', index=False)
 
         # =================== test assumption ====================
 

@@ -10,12 +10,12 @@ db_url_write = db_url_alibaba_prod
 
 # TABLE names - factor model results
 result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_model"    # cluster pillar
+result_score_table = "factor_model5"    # cluster pillar
 feature_importance_table = "factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
 # production_factor_rank_ratio_table = "factor_result_rank_ratio"
 # production_factor_rank_backtest_table = "factor_result_rank_backtest"
-production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval5"
+production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval6"
 production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top4"  # updated version for non-peeking backtest
 production_factor_rank_history_table = "factor_result_rank_history"
 

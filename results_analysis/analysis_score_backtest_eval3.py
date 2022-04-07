@@ -143,6 +143,11 @@ def eval_sortino_ratio(name_sql=None,
     df['_name_sql'] = df['_name_sql'].replace({'w4_d-7_20220321173435_debug': "pre-defined",
                                                'w4_d-7_20220324031027_debug': "cluster"})
 
+    df.loc[(df['_name_sql'] == "cluster") &
+           (df['_group'] == "CNY") &
+           (df['_group_code'] == "CNY") &
+           (df['_q'] == '0.33')].to_csv('test.xlsx')
+
     col = df.select_dtypes(float).columns.to_list()
     # df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
     #                                                                                'actual']].mean().unstack()
@@ -157,10 +162,14 @@ def eval_sortino_ratio(name_sql=None,
 
     df['net_ret'] = df['max_ret'] - df['min_ret']
     df['net_ret_ab'] = df['net_ret'] - df['actual']
+    # df['net_ret_ab'] = df['net_ret'] - 0
+
     df['net_ret_ab2_d'] = np.square(np.clip(df['net_ret_ab'], -np.inf, 0))
     df['net_ret_ab2'] = np.square(df['net_ret_ab'])
 
     df['max_ret_ab'] = df['max_ret'] - df['actual']
+    # df['max_ret_ab'] = df['max_ret'] - 0
+
     df['max_ret_ab2_d'] = np.square(np.clip(df['max_ret_ab'], -np.inf, 0))
     df['max_ret_ab2'] = np.square(df['max_ret_ab'])
 

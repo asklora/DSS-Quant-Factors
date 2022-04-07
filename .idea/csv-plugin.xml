@@ -1228,6 +1228,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/df_pivot_eval.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/dsws_missing_ingestion_HKD.csv">
           <value>
             <Attribute>
@@ -1543,7 +1550,42 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/old cache/factor_rank_max_ret_10_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_max_ret_10_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_max_ret_20_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_max_ret_20_36.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/old cache/factor_rank_net_ret_10_12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/old cache/factor_rank_net_ret_10_36.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

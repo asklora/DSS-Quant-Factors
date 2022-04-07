@@ -49,6 +49,10 @@ backtest_eval_dtypes = dict(name_sql=TEXT, group=TEXT, group_code=TEXT, y_type=T
 
 diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
+logging.info(f" ---> result_score_table: [{result_score_table}]")
+logging.info(f" ---> production_factor_rank_backtest_eval_table: [{production_factor_rank_backtest_eval_table}]")
+logging.info(f" ---> production_factor_rank_backtest_top_table: [{production_factor_rank_backtest_top_table}]")
+
 
 def apply_parallel(grouped, func):
     """ (obsolete) parallel run groupby """
@@ -104,7 +108,7 @@ class rank_pred:
     def __init__(self, q, name_sql,
                  pred_y_type=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000',
                  eval_current=True, eval_top_config=10, eval_metric='net_ret', eval_config_select_period=12,
-                 eval_removed_subpillar=True):
+                 eval_removed_subpillar=True, if_eval_top=False):
         """
         Parameters
         ----------
@@ -131,6 +135,7 @@ class rank_pred:
         self.eval_top_config = eval_top_config
         self.eval_metric = eval_metric
         self.eval_config_select_period = eval_config_select_period
+        self.if_eval_top = if_eval_top
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.average_days = int(name_sql.split('_')[1][1:])
         self.is_remove_subpillar = eval_removed_subpillar   # subpillar factors not selected together
@@ -181,33 +186,31 @@ class rank_pred:
 
         # 2.4. save backtest evaluation metrics to DB Table [backtest_eval]
         self.__backtest_save_eval_metrics(df_cv)
-        return
 
         # 2.6. rank for each testing_period
-        for (testing_period, group, group_code, y_type), g in df_cv.groupby(['testing_period', 'group', 'group_code', 'y_type']):
-            best_config = dict(y_type=y_type, testing_period=testing_period, group=group)
+        if self.if_eval_top:
+            for (testing_period, group, group_code, y_type), g in df_cv.groupby(['testing_period', 'group', 'group_code', 'y_type']):
+                best_config = dict(y_type=y_type, testing_period=testing_period, group=group)
 
-            # 2.5.1. use the best config prediction for this y_type
-            # 2.5.2. use best [eval_top_config] config prediction for each (y_type, testing_period)
-            logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metric}]')
-            best_config_df = self.__backtest_find_calc_metric_avg(testing_period, group, group_code)
-            if type(best_config_df) == type(None):
-                continue
-            eval = best_config_df[self.eval_col + ['net_ret']].mean().to_dict()
-            best_config.update(eval)
+                # 2.5.1. use the best config prediction for this y_type
+                # 2.5.2. use best [eval_top_config] config prediction for each (y_type, testing_period)
+                logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metric}]')
+                best_config_df = self.__backtest_find_calc_metric_avg(testing_period, group, group_code)
+                if type(best_config_df) == type(None):
+                    continue
+                eval = best_config_df[self.eval_col + ['net_ret']].mean().to_dict()
+                best_config.update(eval)
 
-            # 2.5.2a. calculate rank for all config
-            for i, row in best_config_df.iterrows():
-                best_config.update(row[diff_config_col])
-                g_best = g.loc[(g[diff_config_col] == row[diff_config_col]).all(axis=1)]
-                rank_df = self.rank_each_testing_period(testing_period, g_best, group, group_code)
+                # 2.5.2a. calculate rank for all config
+                for i, row in best_config_df.iterrows():
+                    best_config.update(row[diff_config_col])
+                    g_best = g.loc[(g[diff_config_col] == row[diff_config_col]).all(axis=1)]
+                    rank_df = self.rank_each_testing_period(testing_period, g_best, group, group_code)
 
-                # 2.6.3. append to history / currency df list
-                if testing_period == df_cv['testing_period'].max():  # if keep_all_history also write to prod table
-                    self.all_current.append({"info": best_config, "rank_df": rank_df.copy()})
-                self.all_history.append({"info": best_config, "rank_df": rank_df.copy()})
-
-            # break
+                    # 2.6.3. append to history / currency df list
+                    if testing_period == df_cv['testing_period'].max():  # if keep_all_history also write to prod table
+                        self.all_current.append({"info": best_config, "rank_df": rank_df.copy()})
+                    self.all_history.append({"info": best_config, "rank_df": rank_df.copy()})
 
     # @staticmethod
     # def __calc_z_weight(q_, df, diff_config_col):
@@ -306,7 +309,7 @@ class rank_pred:
         except Exception as e:
             print(e)
             logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
-            download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid)
+            pred = download_prediction(name_sql, pred_y_type, pred_start_testing_period, pred_start_uid)
 
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]

@@ -168,7 +168,7 @@ def calc_stock_return(ticker, restart, tri_return_only,
 
     # calculuate rolling average tri (before forward fill tri)
     logging.info(f'Stock tri rolling average ')
-    avg_day_options = set([i for x in stock_return_map.values() for i in x if i!=1])
+    avg_day_options = set([i for x in stock_return_map.values() for i in x if i != 1] + [7])
     for i in avg_day_options:
         if i > 0:
             tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)

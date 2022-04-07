@@ -40,7 +40,7 @@ def download_clean_macros():
     macros = macros.resample('D').ffill()
     macros = macros.reset_index()
 
-    yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 100]  # convert YoY
+    yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 80]  # convert YoY
     num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
 
     # update yoy ratios
@@ -294,7 +294,9 @@ class load_data:
 
         y_col = read_query(f'SELECT name FROM {formula_factors_table_prod} WHERE is_active')['name'].to_list()
 
-        if use_average:  # using average of training period -> next period +/-
+        if type(use_average) == type(None):
+            self.neg_factor = []
+        elif use_average:  # using average of training period -> next period +/-
             m = self.train.filter(y_col).mean(axis=0)
             self.neg_factor = list(m[m < 0].index)
         else:

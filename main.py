@@ -133,10 +133,10 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score", q=0.2):
+def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score"):
     """ evaluate test results based on name_sql / eval args """
 
-    sql_result, eval_metric, eval_n_configs, eval_backtest_period, eval_removed_subpillar = args
+    sql_result, eval_metric, eval_n_configs, eval_backtest_period, eval_removed_subpillar, q = args
 
     # Step 1: pred -> ranking
     try:
@@ -150,22 +150,22 @@ def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, x
                                 eval_top_config=eval_n_configs,
                                 eval_config_select_period=eval_backtest_period,
                                 eval_removed_subpillar=eval_removed_subpillar,
-                                ).write_to_db()
-        factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
-    raise Excpetion("STOP!")
+                                if_eval_top=sql_result['restart_eval_top'],
+                                )
+        if sql_result['restart_eval_top']:
+            factor_rank = factor_rank.write_to_db()
+            factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
+
     # ----------------------- modified factor_rank for testing ----------------------------
     # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
     # -------------------------------------------------------------------------------------
 
     # Step 2: ranking -> backtest score
     # set name_sql=None i.e. using current backtest table writen by rank_pred
-    backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric, eval_q=q,
-                                         n_config=eval_n_configs, n_backtest_period=eval_backtest_period,
-                                         xlsx_name=xlsx_name).return_df
-
-    # Step 3: backtest score analysis
-    # top2_table_tickers_return(df=backtest_df)
-    # top2_table_tickers_return(name_sql=sql_result['name_sql'], xlsx_name=xlsx_name)
+    if sql_result['restart_eval_top']:
+        backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric, eval_q=q,
+                                             n_config=eval_n_configs, n_backtest_period=eval_backtest_period,
+                                             xlsx_name=xlsx_name).return_df
 
 
 def start_on_update(check_interval=60, table_names=None):
@@ -196,9 +196,12 @@ if __name__ == "__main__":
     parser.add_argument('--average_days', default=7, type=int)
     parser.add_argument('--processes', default=mp.cpu_count(), type=int)
     parser.add_argument('--backtest_period', default=75, type=int)
+    parser.add_argument('--group_code', default='USD,HKD,CNY,EUR', type=str)
+    parser.add_argument('--y_type', default='momentum,value,quality', type=str)
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
+    parser.add_argument('--eval_q', default='0.2,0.33', type=str)
     parser.add_argument('--eval_metric', default='max_ret,net_ret', type=str)
     parser.add_argument('--eval_n_configs', default='10,20', type=str)
     parser.add_argument('--eval_backtest_period', default='12,36', type=str)
@@ -207,9 +210,10 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
     parser.add_argument('--restart_eval', action='store_true', help='restart evaluation only')
+    parser.add_argument('--restart_eval_top', action='store_true', help='restart evaluation top')
     args = parser.parse_args()
 
-    group_code_list = ['USD', 'HKD', 'CNY', 'EUR']
+    group_code_list = args.group_code.split(',')
 
     # --------------------------------------- Schedule for Production --------------------------------
 
@@ -239,7 +243,7 @@ if __name__ == "__main__":
     n_splits_list = [.2]
     valid_method_list = [2010, 2012, 2014]  # 'chron'
     qcut_q_list = [0, 10]
-    use_average_list = [True, False]
+    use_average_list = [None]       # True, False
     down_mkt_pct_list = [0.5, 0.7]
     subpillar_trh_list = [5]
     pillar_trh_list = [2]
@@ -248,7 +252,8 @@ if __name__ == "__main__":
     # y_type_list = ["test"]
     # y_type_list = ["value", "quality", "momentum"]
     # y_type_list = ["momentum_top4", "quality_top4", "value_top4"]
-    y_type_list = ["cluster"]
+    # y_type_list = ["cluster"]
+    y_type_list = args.y_type.split(',')
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} " \
@@ -318,7 +323,9 @@ if __name__ == "__main__":
                               args.eval_metric.split(','),
                               [int(e) for e in args.eval_n_configs.split(',')],
                               [int(e) for e in args.eval_backtest_period.split(',')],
-                              [args.eval_removed_subpillar])
+                              [args.eval_removed_subpillar],
+                              [float(e) for e in args.eval_q.split(',')],
+                              )
     all_eval_groups = [tuple(e) for e in all_eval_groups]
     logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
