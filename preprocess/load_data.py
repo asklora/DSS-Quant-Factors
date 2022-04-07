@@ -22,8 +22,9 @@ def download_clean_macros():
     logging.info(f'Download macro data from {macro_data_table}')
 
     # combine macros & vix data
-    macros = read_query(f"SELECT * FROM {macro_data_table} "
-                        f"WHERE field in (SELECT our_name FROM {ingestion_name_macro_table} WHERE is_active)")
+    query = f"SELECT * FROM {macro_data_table} "
+    # query += f"WHERE field in (SELECT our_name FROM {ingestion_name_macro_table} WHERE is_active)"
+    macros = read_query(query)
 
     vix = read_table(vix_data_table, db_url_read)
     vix = vix.rename(columns={"vix_id": "field", "vix_value": "value"})

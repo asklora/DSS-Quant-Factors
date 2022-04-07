@@ -27,7 +27,8 @@ from sklearn.linear_model import (
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, balanced_accuracy_score
 from itertools import product
 from functools import partial
-from collections import Counter
+from collections import Counter, ChainMap
+import multiprocessing as mp
 
 
 # def models(self):
@@ -65,19 +66,22 @@ def lin_reg(X, y, y_cut):
 
     new_row = int(len(X) // 4)    # 4 config for max_ret / is_usd
 
-    X_config = np.reshape(X[:, -2:], (new_row, 4*2), order='C')
-    y = np.reshape(y.values, (new_row, 4), order='C')
-    X = X[:new_row, :]
+    X_config = np.reshape(X[:, -2:], (new_row, 4*2), order='F')
+    y = np.reshape(y.values, (new_row, 4), order='F')
+    X = X[:new_row, :-2]
 
     model = LinearRegression().fit(X, y)
-    pred = model.predict(X_train)
-    # pred_cut = pd.qcut(pred, q=3, labels=False)
-    # score = accuracy_score(y_cut, pred_cut)
-    score = model.score(y_cut, pred_cut)
+    pred = model.predict(X)
+    score = model.score(X, y)
     print("score: ", score)
     print("coef: ", model.coef_)
     print("intercept:: ", model.intercept_)
-    return pred_prob
+
+    y_cut_row = pd.DataFrame(y).apply(pd.qcut, q=3, labels=False, axis=1).values
+    pred_cut_row = pd.DataFrame(pred).apply(pd.qcut, q=3, labels=False, axis=1).values
+    score = accuracy_score(y_cut_row.flatten(), pred_cut_row.flatten())
+
+    return y, pred
 
 
 class load_date:
@@ -91,20 +95,28 @@ class load_date:
         # x = all configurations
         # config_col_x = [x.strip('_') for x in df.filter(regex="^__|_q|testing_period").columns.to_list() if x != '__tree_type']
         df.columns = [x.strip('_') for x in df]
-        df_x = df[['group_code', 'testing_period']].merge(macros, left_on='testing_period', right_index=True, how='left')
-        if g != 'USD':
-            df_x['is_usd'] = (df_x['group_code'] == "USD").values
 
-        # add whether using [max_ret] column to x
-        df_x['max_ret'] = True
-        df_x_copy = df_x.copy()
-        df_x_copy['max_ret'] = False
-        self.df_x = pd.concat([df_x, df_x_copy], axis=0).reset_index(drop=True)
+        df['net_ret'] = df['max_ret'] - df['min_ret']
+        df_pivot = df.groupby(['testing_period', 'group_code'])[['max_ret', 'net_ret']].mean().unstack()
+        df_x = macros.merge(df_pivot, left_index=True, right_index=True, how='right')
+        df_x.columns = ['-'.join(x) if len(x) == 2 else x for x in df_x]
+        self.df_x = df_x
+
+        pass
+
+        # if g != 'USD':
+        #     df_x['is_usd'] = (df_x['group_code'] == "USD").values
+
+        # # add whether using [max_ret] column to x
+        # df_x['max_ret'] = True
+        # df_x_copy = df_x.copy()
+        # df_x_copy['max_ret'] = False
+        # self.df_x = pd.concat([df_x, df_x_copy], axis=0).reset_index(drop=True)
 
         # y = max_ret + net_ret
-        df_y_max = df['max_ret'].copy()
-        df_y_net = df['max_ret'] - df['min_ret']
-        self.df_y = pd.concat([df_y_max, df_y_net], axis=0).reset_index(drop=True)
+        # df_y_max = df['max_ret'].copy()
+        # df_y_net = df['max_ret'] - df['min_ret']
+        # self.df_y = pd.concat([df_y_max, df_y_net], axis=0).reset_index(drop=True)
 
     def download_macros(self, g):
         """ download macro data as input """
@@ -121,13 +133,31 @@ class load_date:
 
         idx_map = {"CNY": ".CSI300", "HKD": ".HSI", "USD": ".SPX", "EUR": ".SXXGR"}
         index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
+
+        g_cols = []
         for i in index_col:
-            df[f'm_{i}'] = df[f"{idx_map[g]}_{i}"] - df[f"{idx_map['USD']}_{i}"]
+            g_cols.append(f"{idx_map[g]}_{i}")
+            if g != "USD":
+                g_cols.append(f"{idx_map['USD']}_{i}")
+                df[f'diff_{i}'] = df[f"{idx_map[g]}_{i}"] - df[f"{idx_map['USD']}_{i}"]
+                g_cols.append(f'diff_{i}')
 
         vix_map = {"CNY": "VHSIVOL", "HKD": "VHSIVOL", "USD": "CBOEVIX", "EUR": "VSTOXXI"}
-        df[f'm_vix'] = df[vix_map[g]]
+        g_cols.append(vix_map[g])
 
-        return df.filter(regex="^m_")
+        gdp_map = {"CNY": ["CHGDP...C"], "HKD": ["CHGDP...C", "HKGDP...C"], "USD": ["USGDP...D"], "EUR": ["EMGDP...D"]}
+        g_cols.extend(gdp_map[g])
+
+        int_map = {"CNY": ["CHBANKR.", "CHPRATE."],
+                   "HKD": ["HKGBILL3", "HKBANKR.", "HKPRATE."],
+                   "USD": ["USGBILL3", "USINTER3", "USBANKR.", "USPRATE."],
+                   "EUR": ["EMIBOR3.", "EMINTER3", "EMPRATE."]}
+        g_cols.extend(int_map[g])
+
+        lead_map = {"CNY": ["CHCYLEADQ"], "HKD": ["CHCYLEADQ"], "USD": ["USCYLEADQ"], "EUR": []}
+        g_cols.extend(lead_map[g])
+
+        return df[g_cols]
 
     def get_train(self, qcut_q=3):
         """ split train / test sets """
@@ -143,6 +173,36 @@ class load_date:
 
         return X_train, y_train, y_train_cut
 
+
+def trial_accuracy(*args):
+    """ grid search """
+    (x1, cutoff1), (x2, cutoff2), (x3, cutoff3), ddf = args
+    ddf1 = ddf.copy()
+
+    print(x1, x2, x3)
+    score_list = {}
+    for i in ['>', '<']:
+        if i == '>':
+            ddf[f'use_usd'] = ddf[x1] > cutoff1
+            ddf1[f'use_net'] = ddf1[x1] > cutoff1
+            ddf[f'use_net'] = np.where(ddf[f'use_usd'], ddf[x2] > cutoff2, ddf[x3] > cutoff3)
+            ddf1[f'use_usd'] = np.where(ddf1[f'use_net'], ddf1[x2] > cutoff2, ddf1[x3] > cutoff3)
+        else:
+            ddf[f'use_usd'] = ddf[x1] < cutoff1
+            ddf1[f'use_net'] = ddf1[x1] < cutoff1
+            ddf[f'use_net'] = np.where(ddf[f'use_usd'], ddf[x2] < cutoff2, ddf[x3] < cutoff3)
+            ddf1[f'use_usd'] = np.where(ddf1[f'use_net'], ddf1[x2] < cutoff2, ddf1[x3] < cutoff3)
+
+        ddf['Selection'] = ddf['use_net'] * 2 + ddf['use_usd']
+        ddf1['Selection'] = ddf1['use_net'] * 2 + ddf1['use_usd']
+
+        score = accuracy_score(ddf['Best'], ddf['Selection'])
+        score1 = accuracy_score(ddf1['Best'], ddf1['Selection'])
+
+        score_list[(f'usd{i}', x1, cutoff1, x2, cutoff2, x3, cutoff3)] = score
+        score_list[(f'net{i}', x1, cutoff1, x2, cutoff2, x3, cutoff3)] = score1
+
+    return score_list
 
 if __name__ == "__main__":
 
@@ -203,55 +263,138 @@ if __name__ == "__main__":
     testing_period = np.sort(df['_testing_period'].unique())[-12:]
     print(df.dtypes)
 
-    df = df.loc[df['_group'] == "CNY"]  # TODO: debug CNY only
+    # df = df.loc[df['_group'] == "CNY"]  # TODO: debug CNY only
 
+    final_df_dict = {}
+    final_df_corr = {}
+    score_df_list = []
     for (group, y_type), g in df.groupby(['_group', '_y_type']):
         print(group, y_type)
         sql_result['currency_code'] = group
         sql_result['y_type'] = y_type
 
         data = load_date(g, group)
-        input_df = data.df_x.copy()
-        input_df["max_ret"] = input_df["max_ret"].replace({True: "max", False: "net"})
-        input_df["is_usd"] = input_df["is_usd"].replace({True: "USD", False: "own"})
 
-        X_train, y_train, y_train_cut = data.get_train(qcut_q=args.qcut_q)
-        true_df = pd.DataFrame(y_train, columns=["Return"])
+        ddf = data.df_x.copy()
+        y_cols = ddf.columns.to_list()[-4:]
+        x_cols = ddf.columns.to_list()[:-4]
+        y_cols_replace = dict(zip(y_cols, range(4)))
+        ddf = ddf.rename(columns=y_cols_replace)
 
-        # # [CLF1] Logistic Regression
-        # pred_prob = log_clf(X_train, y_train, y_train_cut)
-        # pred_df = pd.DataFrame(pred_prob, columns=list(range(args.qcut_q)))
-        # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
-        # final_df_agg = pd.pivot_table(final_df,
-        #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
-        #                                      'm_stock_return_r6_2', 'm_vix'],
-        #                               columns=["max_ret", "is_usd"],
-        #                               values=['Return', 2],
-        #                               aggfunc='mean').reset_index()
-        # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
-        # to_excel({"raw": final_df,
-        #           "pivot": final_df_agg},
-        #          f'{group}_config_log_clf')
+        ddf['Best'] = ddf.iloc[:, -4:].idxmax(axis=1)
+        ddf['net_better'] = ddf[[2, 3]].sum(axis=1) > ddf[[0, 1]].sum(axis=1)
+        ddf['usd_better'] = ddf[[1, 3]].sum(axis=1) > ddf[[0, 2]].sum(axis=1)
 
-        # # [CLF2] Ridge Classificatoin
-        # pred_prob = rdg_clf(X_train, y_train, y_train_cut)
-        # pred_df = pd.DataFrame(pred_prob, columns=['Pred'])
-        # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
-        # final_df_agg = pd.pivot_table(final_df,
-        #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
-        #                                      'm_stock_return_r6_2', 'm_vix'],
-        #                               columns=["max_ret", "is_usd"],
-        #                               values=['Return', 'Pred'],
-        #                               aggfunc='mean').reset_index()
-        # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
-        # to_excel({"raw": final_df,
-        #           "pivot": final_df_agg},
-        #          f'{group}_config_rdg_clf')
+        # for y in y_cols:
+        #     ddf[f'use_{y}'] = ddf[y] - ddf[[x for x in y_cols if x != y]].mean(axis=1)
+        # ddf['use_usd'] = (ddf['max_ret-USD'] + ddf['n et_ret-USD'] - ddf[f'max_ret-{group}'] - ddf[f'net_ret-{group}']) / 2
+        # ddf['use_max'] = (ddf['max_ret-USD'] - ddf['net_ret-USD'] + ddf[f'max_ret-{group}'] - ddf[f'net_ret-{group}']) / 2
+        # ddf['average'] = (ddf['max_ret-USD'] + ddf['net_ret-USD'] + ddf[f'max_ret-{group}'] + ddf[f'net_ret-{group}']) / 4
+        # final_df_corr[f"{group}_{y_type}"] = ddf.corr().iloc[:-11, -7:].reset_index()
 
-        # Linear Regression
-        pred_prob = lin_reg(X_train, y_train, y_train_cut)
-        pred_df = pd.DataFrame(pred_prob, columns=["Prediction"])
-        final_df = pd.concat([data.df_x, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
-        to_excel({"raw": final_df,
-                  "pivot": final_df.pivot(columns=["testing_period"], index=["max_ret", "is_usd"]).reset_index()},
-                 f'{group}_config_lin_reg')
+        # =================== grid search =======================
+        options = []
+        for x in x_cols:
+            for i in range(1, 6):
+                cutoff = np.round(np.quantile(ddf[x], q=.2*i), 2)
+                options.append([x, cutoff])
+
+        options_comb = product(options, options, options, [ddf])
+        options_comb = [tuple(e) for e in options_comb]
+
+        with mp.Pool(processes=8) as pool:
+            results = pool.starmap(trial_accuracy, options_comb)
+        score_list = {k: v for element in results for k, v in element.items()}
+        score_df = pd.DataFrame(score_list, index=['accuracy']).transpose()
+        if group == 'USD':
+            score_df = score_df[score_df['accuracy'] > 0.8]
+        else:
+            score_df = score_df[score_df['accuracy'] > 0.4]
+        score_df = score_df.sort_values(by=['accuracy'], ascending=False).reset_index()
+        score_df.columns = ['first', 'usd_x', 'usd_q', 'usd_net_x', 'usd_net_x_q', 'nonusd_net_x', 'nonusd_net_x_q', 'accuracy']
+        score_df['y_type'] = y_type
+        score_df['group'] = group
+        print(score_df['accuracy'].max())
+        score_df_list.append(score_df)
+        continue
+
+    score_df_all = pd.concat(score_df_list, axis=0)
+    score_df_all.to_csv(f'score_df_all3.csv', index=False)
+
+        # =================== test assumption ====================
+
+    #     ddf['use_net'] = ddf['diff_stock_return_r1_0'] > -0.04
+    #     score_net = accuracy_score(ddf['net_better'], ddf['use_net'])
+    #     print('net score: ', score_net)
+    #
+    #     ddf['use_usd'] = np.where(ddf['use_net'],
+    #                               ddf['diff_stock_return_r6_2'] > 0.03,
+    #                               ddf['.SPX_stock_return_r6_2'] > 0.06)
+    #     score_usd = accuracy_score(ddf['usd_better'], ddf['use_usd'])
+    #     print('usd score: ', score_usd)
+    #
+    #     ddf['Selection'] = ddf['use_net'] * 2 + ddf['use_usd']
+    #     ddf['correct'] = ddf['Best'] == ddf['Selection']
+    #     score = accuracy_score(ddf['Best'], ddf['Selection'])
+    #     print('final score: ', score)
+    #
+    #     ddf['Selection Return'] = ddf.apply(lambda x: x[x['Selection']], axis=1)
+    #     des = ddf.describe().transpose()
+    #     exit(1)
+    #
+    #     final_df_dict[f"{group}_{y_type}"] = ddf.reset_index()
+    #
+    # # to_excel(final_df_dict, f'config_lin_reg_pivot3')
+    # to_excel(final_df_corr, f'config_lin_reg_corr4')
+
+    # final_df = pd.concat([data.df_x, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
+    # to_excel({"raw": final_df,
+    #           "pivot": final_df.pivot(columns=["testing_period"], index=["max_ret", "is_usd"]).reset_index()},
+    #          f'{group}_config_lin_reg')
+
+    # input_df = data.df_x.copy()
+    # input_df["max_ret"] = input_df["max_ret"].replace({True: "max", False: "net"})
+    # input_df["is_usd"] = input_df["is_usd"].replace({True: "USD", False: "own"})
+    #
+    # X_train, y_train, y_train_cut = data.get_train(qcut_q=args.qcut_q)
+    # true_df = pd.DataFrame(y_train, columns=["Return"])
+
+    # # [CLF1] Logistic Regression
+    # pred_prob = log_clf(X_train, y_train, y_train_cut)
+    # pred_df = pd.DataFrame(pred_prob, columns=list(range(args.qcut_q)))
+    # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
+    # final_df_agg = pd.pivot_table(final_df,
+    #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
+    #                                      'm_stock_return_r6_2', 'm_vix'],
+    #                               columns=["max_ret", "is_usd"],
+    #                               values=['Return', 2],
+    #                               aggfunc='mean').reset_index()
+    # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
+    # to_excel({"raw": final_df,
+    #           "pivot": final_df_agg},
+    #          f'{group}_config_log_clf')
+
+    # # [CLF2] Ridge Classificatoin
+    # pred_prob = rdg_clf(X_train, y_train, y_train_cut)
+    # pred_df = pd.DataFrame(pred_prob, columns=['Pred'])
+    # final_df = pd.concat([input_df, true_df, pred_df], axis=1).sort_values(by=['testing_period'])
+    # final_df_agg = pd.pivot_table(final_df,
+    #                               index=["testing_period", 'm_stock_return_r12_7', 'm_stock_return_r1_0',
+    #                                      'm_stock_return_r6_2', 'm_vix'],
+    #                               columns=["max_ret", "is_usd"],
+    #                               values=['Return', 'Pred'],
+    #                               aggfunc='mean').reset_index()
+    # final_df_agg.columns = ['-'.join([str(e) for e in x if e != '']) for x in final_df_agg]
+    # to_excel({"raw": final_df,
+    #           "pivot": final_df_agg},
+    #          f'{group}_config_rdg_clf')
+
+    # Linear Regression
+
+    # y, pred = lin_reg(X_train, y_train, y_train_cut)
+    # true_df = pd.DataFrame(y, columns=["y-usd-max", "y-own-max", "y-usd-net", "y-own-net"]).reset_index(drop=True)
+    # pred_df = pd.DataFrame(pred, columns=["y-usd-max", "y-own-max", "y-usd-net", "y-own-net"])
+    # final_df = pd.concat([data.df_x.iloc[:new_row, :-2], true_df], axis=1).sort_values(by=['testing_period'])
+    # final_df_dict[f"{group}_{y_type}"] = data.df_x.reset_index()
+
+
