@@ -314,7 +314,8 @@ if __name__ == "__main__":
         feature_df_all = [e for x in result_dfs for e in x[2]]
         feature_df_all_df = pd.concat(feature_df_all, axis=0)
 
-        write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)
+        if not args.debug:
+            write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)
 
     # --------------------------------- Results Analysis ------------------------------------------
 

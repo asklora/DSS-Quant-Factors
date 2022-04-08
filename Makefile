@@ -31,4 +31,4 @@ trial:
 		--group_code USD,currency --y_type momentum,value,quality --hpot_eval_metric mse_valid
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
 		--backtest_period 80 --weeks_to_expire 4 --sample_interval 4 --average_days -7 --processes 30 --debug \
-		--group_code EUR,currency --y_type momentum,value,quality --hpot_eval_metric adj_mse_valid
+		--group_code EUR,currency --y_type momentum,value,quality --hpot_eval_metric mse_valid
