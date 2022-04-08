@@ -28,7 +28,7 @@ from sklearn.linear_model import (
     Ridge,
 )
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, balanced_accuracy_score
-from itertools import product, combinations
+from itertools import product, combinations, permutations
 from functools import partial
 from collections import Counter, ChainMap
 import multiprocessing as mp
@@ -289,13 +289,13 @@ if __name__ == "__main__":
     # 1. HKD / CNY use clustered pillar
     df_cluster = df.loc[(df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
                         (df['_is_removed_subpillar']) &
-                        (df['_q'] == 0.33),
+                        (df['_q'] == 0.2),
                         config_col + ['max_ret', 'min_ret']].fillna(0)
     df_cluster['_y_type'] = 'cluster'
 
     # 2. USD / EUR use clustered pillar
     df_pillar = df.loc[(~df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
-                       (df['_q'] == 0.33),
+                       (df['_q'] == 0.2),
                        config_col + ['max_ret', 'min_ret']]
     df = df_cluster.append(df_pillar)
     del df_cluster, df_pillar
@@ -316,9 +316,11 @@ if __name__ == "__main__":
     df_pivot = df.groupby(['_name_sql', '_testing_period', '_y_type', '_group', '_group_code'])[['max_ret', 'min_ret']].mean().unstack()
     df_pivot.columns = ['max_own', 'max_usd', 'min_own', 'min_usd']
 
-    for (x1, x2) in combinations(df_pivot, 2):
+    for (x1, x2) in permutations(df_pivot, 2):
         for q in np.arange(0.2, 1.1, 0.2):
             df_pivot[f"{x1}_{x2}_{round(q, 1)}"] = df_pivot[x1] - q * df_pivot[x2]
+
+    to_excel(df_pivot.reset_index(), 'config_opt_combination_raw')
 
     # df_pivot['actual'] = df_pivot[['max_own', 'max_usd', 'min_own', 'min_usd']].mean(axis=1)
     df_pivot = df_pivot.merge(df_index, left_on=['_testing_period', '_group'], right_index=True, how='left')
@@ -370,8 +372,8 @@ if __name__ == "__main__":
     df_pivot_eval = df_pivot_eval.loc[df_pivot_eval['level_3'] != 'actual1']
     xlsx_dict = {}
     for i in ['mean', 'sortino_0', 'sortino', 'sortino_ts']:
-        xlsx_dict[i] = df_pivot_eval.sort_values(by=['_group', '_y_type', i], ascending=False).groupby(['_group', '_y_type']).head(1)
-    to_excel(xlsx_dict, 'config_opt_combination_top1')
+        xlsx_dict[i] = df_pivot_eval.sort_values(by=['_group', '_y_type', i], ascending=False).groupby(['_group', '_y_type']).head(3)
+    to_excel(xlsx_dict, 'config_opt_combination_top3_0.2')
     exit(200)
 
 

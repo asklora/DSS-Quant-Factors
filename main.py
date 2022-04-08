@@ -196,6 +196,7 @@ if __name__ == "__main__":
     parser.add_argument('--average_days', default=7, type=int)
     parser.add_argument('--processes', default=mp.cpu_count(), type=int)
     parser.add_argument('--backtest_period', default=75, type=int)
+    parser.add_argument('--hpot_eval_metric', default='adj_mse_valid')
     parser.add_argument('--group_code', default='USD,HKD,CNY,EUR', type=str)
     parser.add_argument('--y_type', default='momentum,value,quality', type=str)
     # parser.add_argument('--n_splits', default=3, type=int)      # validation set partition
@@ -318,17 +319,19 @@ if __name__ == "__main__":
     # --------------------------------- Results Analysis ------------------------------------------
 
     sql_result["name_sql"] = args.restart
+    try:
+        all_eval_groups = product([sql_result],
+                                  args.eval_metric.split(','),
+                                  [int(e) for e in args.eval_n_configs.split(',')],
+                                  [int(e) for e in args.eval_backtest_period.split(',')],
+                                  [args.eval_removed_subpillar],
+                                  [float(e) for e in args.eval_q.split(',')],
+                                  )
+        all_eval_groups = [tuple(e) for e in all_eval_groups]
+        logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
-    all_eval_groups = product([sql_result],
-                              args.eval_metric.split(','),
-                              [int(e) for e in args.eval_n_configs.split(',')],
-                              [int(e) for e in args.eval_backtest_period.split(',')],
-                              [args.eval_removed_subpillar],
-                              [float(e) for e in args.eval_q.split(',')],
-                              )
-    all_eval_groups = [tuple(e) for e in all_eval_groups]
-    logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
-
-    with mp.Pool(processes=args.processes) as pool:
-    # with mp.Pool(processes=1) as pool:
-        pool.starmap(mp_eval, all_eval_groups)
+        with mp.Pool(processes=args.processes) as pool:
+        # with mp.Pool(processes=1) as pool:
+            pool.starmap(mp_eval, all_eval_groups)
+    except Exception as e:
+        to_slack("clair").message_to_slack(f"ERROR in func mp_eval(): {e}")
