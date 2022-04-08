@@ -157,7 +157,7 @@ class rf_HPOT:
                                                             multioutput='uniform_average')
                 if self.sample_set['test_y'].shape[1] > 1:  # i.e. if multioutput = multi factors
                     result[f"adj_mse_{i.split('_')[0]}"] = adj_mse_score(self.sample_set[i].T, self.sample_set[i + '_pred'].T)
-                    eval_metric = sql_result['hpot_eval_metric']
+                    eval_metric = self.sql_result['hpot_eval_metric']
                 else:
                     eval_metric = 'mse_valid'
         else:
