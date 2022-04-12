@@ -16,28 +16,26 @@ from general.sql_process import read_query, read_table, upsert_data_to_database
 from general.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
-from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
+from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER, TIMESTAMP
 from collections import Counter, OrderedDict
 
 universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
 # universe_currency_code = ['CNY']
 
-score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
 
 # table dtypes for top backtest
 top_dtypes = {
+    "n_top": INTEGER,
     "currency_code": TEXT,
     "trading_day": DATE,
-    "weeks_to_expire": INTEGER,
     "mode": TEXT,
     "mode_count": INTEGER,
     "positive_pct": DOUBLE_PRECISION,
     "return": DOUBLE_PRECISION,
+    "bm_positive_pct": DOUBLE_PRECISION,
+    "bm_return": DOUBLE_PRECISION,
     "tickers": TEXT,
-    "name_sql": TEXT,
-    "start_date": DATE,
-    "n_period": INTEGER,
-    "n_top": INTEGER
+    "updated": TIMESTAMP,
 }
 
 
@@ -91,16 +89,18 @@ def scale_fundamental_scores(fundamentals):
     # TODO: decide what to do with ESG (added in production)
     # TODO: decide how to deal with extra_col
     fundamentals = fundamentals.set_index(['ticker', 'industry_name'])
+    return_col = fundamentals.filter(regex='^stock_return_y_').columns.to_list()
 
     # transform original score -> 0 - 10 scale
     pipe = Pipeline(steps=[('trim', TrimOutlierTransformer(skew_trh=5, std_trh=2)),
                            ('robust', RobustScaler()),
                            ('minmax', MinMaxScaler(feature_range=(0, 10)))])
-    adj_fundamentals = pipe.fit_transform(fundamentals)
+    adj_fundamentals = 10 - pipe.fit_transform(fundamentals)    # we use 10 - minmax(0, 10) because factor model is S-L
 
     # fillna for scores with average for that pillar
     adj_fundamentals = pd.DataFrame(adj_fundamentals, index=fundamentals.index, columns=fundamentals.columns)
     adj_fundamentals = adj_fundamentals.fillna(adj_fundamentals.mean(axis=0))
+    adj_fundamentals[return_col] = fundamentals[return_col]     # return cols has no adjustment
 
     return adj_fundamentals
 
@@ -126,7 +126,7 @@ def get_minmax_factors(name_sql,
                   f"_q={eval_q}",
                   f"_is_removed_subpillar={is_removed_subpillar}"]
     if y_type != "cluster":
-        conditions.append(f"_y_type='{y_type}")
+        conditions.append(f"_y_type='{y_type}'")
     factor_eval_query = f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} " \
                         f"WHERE {' AND '.join(conditions)} ORDER BY _testing_period"
     factor_eval = read_query(factor_eval_query)
@@ -143,7 +143,7 @@ def get_minmax_factors(name_sql,
 
     # in case of cluster pillar combine different cluster selection
     factor_eval_agg = factor_eval.groupby(config_col + ['trading_day']).agg(
-        {'max_factor': 'sum', 'min_factor': 'sum', 'max_ret': 'mean', 'net_ret': 'mean'}).reset_index()
+        {'max_factor': 'sum', 'min_factor': 'sum', 'max_ret': 'mean', 'net_ret': 'mean', 'avg_ret': 'mean'}).reset_index()
 
     # calculate different config rolling average return
     factor_eval_agg['rolling_ret'] = factor_eval_agg.groupby(config_col)[eval_metric].rolling(n_backtest_period, closed='left').mean().values
@@ -160,13 +160,14 @@ def get_minmax_factors(name_sql,
         select_col = ['max_factor', 'min_factor']   # i.e. net return
     period_agg = factor_eval_agg_select.groupby('trading_day')[select_col].sum()
     period_agg_filter = pd.DataFrame(index=period_agg.index, columns=select_col + [x + "_trh" for x in select_col])
+    period_agg_counter = period_agg[select_col].applymap(lambda x: dict(Counter(x)))
 
     for col in select_col:
         min_occur_pct = 1
         while any(period_agg_filter[col + "_trh"].isnull()) and min_occur_pct > 0:
             min_occur = n_config * n_config_pct * min_occur_pct
             temp = period_agg[col].apply(lambda x: [k for k, v in dict(Counter(x)).items() if v >= min_occur])
-            temp = pd.DataFrame(temp[temp.apply(lambda x: len(x) > 5)])
+            temp = pd.DataFrame(temp[temp.apply(lambda x: len(x) >= 2)])
             temp[col + "_trh"] = round(min_occur_pct, 2)
             period_agg_filter = period_agg_filter.fillna(temp)
             min_occur_pct -= 0.1
@@ -218,27 +219,6 @@ class TrimOutlierTransformer(BaseEstimator, TransformerMixin):
         return X
 
 
-def pillar_score(fundamentals, max_col, min_col, base=5):
-    """ calculate score for single currency / pillar """
-
-    # TODO: decide what to do with ESG (added in production)
-    # TODO: decide how to deal with extra_col
-
-    # transform original score -> 0 - 10 scale
-    pipe = Pipeline(steps=[('trim', TrimOutlierTransformer(skew_trh=5, std_trh=2)),
-                           ('robust', RobustScaler()),
-                           ('minmax', MinMaxScaler(feature_range=(0, 10)))])
-    adj_fundamentals = pipe.fit_transform(fundamentals.set_index(['ticker', 'trading_day', 'industry_code']))
-
-    # fillna for scores with average for that pillar
-    adj_fundamentals = adj_fundamentals.fillna(adj_fundamentals.mean(axis=0))
-
-    # reverse for mi
-    adj_fundamentals['score'] = base + adj_fundamentals[max_col].mean(axis=1) - adj_fundamentals[min_col].mean(axis=1)
-
-    return adj_fundamentals
-
-
 class backtest_score_history:
     """  calculate score with DROID v2 method & evaluate, write to table [factor_result_rank_backtest_top]
 
@@ -251,60 +231,79 @@ class backtest_score_history:
     weeks_to_expire = None
     add_factor_penalty = False
     xlsx_name = 'test'
+    base = 5
 
     def __init__(self):
 
         # Download: DataFrame for [fundamentals_score] / [factor_formula]
-        fundamentals, factor_formula = get_fundamental_scores(start_date='2016-01-10', sample_interval=4)
-
-        fundamentals = fundamentals.loc[fundamentals['currency_code'] == 'HKD']     # TODO: remove after debug
-
-        adj_fundamentals = fundamentals.groupby(['currency_code', 'trading_day']).apply(scale_fundamental_scores)
-        print(fundamentals["trading_day"].min(), fundamentals["trading_day"].max())
-        adj_fundamentals.to_pickle('cache_adj_fundamentals.pkl')
+        # fundamentals, factor_formula = get_fundamental_scores(start_date='2016-01-10', sample_interval=4)
+        #
+        # # fundamentals = fundamentals.loc[fundamentals['currency_code'] == 'HKD']     # TODO: remove after debug
+        #
+        # adj_fundamentals = fundamentals.groupby(['currency_code', 'trading_day']).apply(scale_fundamental_scores)
+        # adj_fundamentals = adj_fundamentals.reset_index()
+        #
+        # print(fundamentals["trading_day"].min(), fundamentals["trading_day"].max())
+        #
+        # adj_fundamentals.to_pickle('cache_adj_fundamentals.pkl')
+        adj_fundamentals = pd.read_pickle('cache_adj_fundamentals.pkl')
 
         # Download: DataFrame for list of selected factors
         models_key = ["name_sql", "group", "group_code", "weeks_to_expire", "eval_q", "is_removed_subpillar", "y_type",
                       "eval_metric", "n_backtest_period", "n_config_pct"]
-        models_value = [('w4_d-7_20220324031027_debug', "HKD", "HKD", 4, 0.33, True, "cluster", "net_ret", 12, 0.1)]    # TODO: add for loop for each type
+        models_value = [
+            ('w4_d-7_20220324031027_debug', "HKD", "HKD", 4, 0.33, True, "cluster", "net_ret", 36, 0.2),
+            ('w4_d-7_20220324031027_debug', "CNY", "CNY", 4, 0.33, True, "cluster", "max_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "momentum", "avg_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "quality", "max_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "value", "max_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "momentum", "avg_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "quality", "avg_ret", 36, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "value", "avg_ret", 36, 0.2)
+        ]
+        kwargs_df = pd.DataFrame(models_value, columns=models_key)
+        kwargs_df["updated"] = dt.datetime.now()
+        upsert_data_to_database(kwargs_df, global_vars.production_factor_rank_backtest_top_table + '_kwargs', how='append')
 
-        score_df = pd.DataFrame()
+        score_df_list = []
         for values in models_value:
             kwargs = dict(zip(models_key, values))
             minmax_factors = get_minmax_factors(**kwargs)
 
             for trading_day, f in minmax_factors.to_dict(orient='index').items():
-                g = fundamentals.loc[fundamentals['trading_day'] == trading_day].copy()
+                g = adj_fundamentals.loc[(adj_fundamentals['trading_day'] == trading_day) &
+                                         (adj_fundamentals['currency_code'] == kwargs["group"])].copy()
+                g['return'] = g[f'stock_return_y_w{kwargs["weeks_to_expire"]}_d-7']
                 if kwargs['eval_metric'] == "max_ret":
-                    g[kwargs['y_type'] + '_score'] = base + g[f['max_factor']].mean(axis=1)
+                    g[kwargs['y_type'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1)
                 else:
-                    g[kwargs['y_type'] + '_score'] = base + g[f['max_factor']].mean(axis=1) - g[f['min_factor']].mean(axis=1)
-                score_df.append(g)
-        score_df['ai_score'] = score_df.filter(regex='_score$').mean(axis=1)
+                    g[kwargs['y_type'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1) - g[f['min_factor']].mean(axis=1)
+                score_df_list.append(g)
+
+        score_df = pd.concat(score_df_list, axis=0)
+        score_df_comb = score_df.groupby(['currency_code', 'trading_day', 'ticker', 'industry_name']).mean().reset_index()
+        score_df_comb['ai_score'] = score_df_comb.filter(regex='_score$').mean(axis=1)
 
         # Evaluate: calculate return for top 10 score / mode industry
         eval_best_all = {}  # calculate score
         n_top_ticker_list = [10, 20, 30, 50, -10, -50]
         for i in n_top_ticker_list:
-            for currency, g_score in score_df.groupby(['currency']):
-                eval_best_all[('currency', i)] = self.eval_best(g_score, best_n=i).copy()
+            for (currency, trading_day), g_score in score_df_comb.groupby(['currency_code', 'trading_day']):
+                try:
+                    eval_best_all[(i, currency, trading_day)] = self.eval_best(g_score, best_n=i).copy()
+                except Exception as e:
+                    to_slack("clair").message_to_slack(
+                        f" === ERROR in eval backtest ===: [best{i}, {currency}, {trading_day}] has no ai_score: {e}")
 
         print("=== Update top 10/20 to DB ===")
-        list_df = []
-        # self.write_topn_to_db(eval_best_all10, 10, name_sql)
-        for i in n_top_ticker_list:
-            df = self.write_topn_to_db(eval_best_all[i], i, name_sql)
-            list_df.append(df)
-        self.final_df = pd.concat(list_df, axis=0)
+        df = self.write_topn_to_db(eval_best_all)
 
-    def write_topn_to_db(self, eval_dict=None, n=None, name_sql=None):
+    def write_topn_to_db(self, eval_dict=None):
         """ for each backtest eval : write top 10 ticker to DB """
 
         # concat different trading_day top n selection ticker results
-        df = pd.DataFrame(eval_dict).stack(level=[-2, -1]).unstack(level=1)
-        df = df.reset_index().rename(columns={"level_0": "currency_code",
-                                              "level_1": "trading_day",
-                                              "level_2": "weeks_to_expire", })
+        df = pd.DataFrame(eval_dict).transpose().reset_index()
+        df = df.rename(columns={"level_0": "top_n", "level_1": "currency_code", "level_2": "trading_day"})
 
         # keep this because ERROR: (psycopg2.ProgrammingError) can't adapt type 'numpy.int64'
         df.to_csv('test.csv', index=False)
@@ -318,47 +317,34 @@ class backtest_score_history:
         df['bm_return'] = (pd.to_numeric(df['bm_return']) * 100).round(2).astype(float)
         df['bm_positive_pct'] = np.where(df['bm_return'].isnull(), None,
                                         (df['bm_positive_pct'] * 100).astype(float).round(0).astype(int))
-        df["weeks_to_expire"] = df["weeks_to_expire"].astype(int)
-        df['name_sql'] = name_sql
-        df['n_backtest_period'] = self.n_backtest_period
-        df['n_top_ticker'] = n
-        df['n_top_config'] = self.n_config
-        df['eval_metric'] = self.eval_metric
-        df['eval_q'] = self.eval_q
         df["trading_day"] = df["trading_day"].dt.date
         df["updated"] = dt.datetime.now()
         # df["add_factor_penalty"] = self.add_factor_penalty
-        df['xlsx_name'] = self.xlsx_name
 
         # write to DB
-        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
-                                primary_key=["name_sql", "currency_code", "trading_day",
-                                             "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric", 'eval_q', 'xlsx_name'],
-                                how='update', db_url=global_vars.db_url_alibaba_prod,
+        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table + '_36',
+                                primary_key=["currency_code", "trading_day", "top_n"],
+                                how='append', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
         return df
 
-    def eval_best(self, fundamentals, best_n=10, best_col='ai_score'):
+    def eval_best(self, g_all, best_n=10, best_col='ai_score'):
         """ evaluate score history with top 10 score return & industry """
 
         top_ret = {}
-        for trading_day, g_all in fundamentals.groupby(["trading_day"]):
-            if best_n > 0:
-                g = g_all.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
-            else:
-                g = g_all.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
-            top_ret[(name, "ticker_count")] = g.shape[0]
-            if g.shape[0] > 0:
-                top_ret[(name, "return")] = g[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
-                top_ret[(name, "mode")] = g[f"industry_name"].mode()[0]
-                top_ret[(name, "mode_count")] = np.sum(g[f"industry_name"] == top_ret[(name, "mode")])
-                top_ret[(name, "positive_pct")] = np.sum(g[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g)
-                top_ret[(name, "bm_return")] = g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'].mean()
-                top_ret[(name, "bm_positive_pct")] = np.sum(g_all[f'stock_return_y_w{self.weeks_to_expire}_d-7'] > 0) / len(g_all)
-                top_ret[(name, "tickers")] = ', '.join(list(g.index))
-            else:
-                to_slack("clair").message_to_slack(f"*ERROR in calculation_backtest*: [{name}, best{best_n}, "
-                                                   f"{test_period}] has no ai_score")
+        if best_n > 0:
+            g = g_all.set_index('ticker').nlargest(best_n, columns=[best_col], keep='all')
+        else:
+            g = g_all.set_index('ticker').nsmallest(-best_n, columns=[best_col], keep='all')
+
+        top_ret["ticker_count"] = g.shape[0]
+        top_ret["return"] = g['return'].mean()
+        top_ret["mode"] = g[f"industry_name"].mode()[0]
+        top_ret["mode_count"] = np.sum(g[f"industry_name"] == top_ret["mode"])
+        top_ret["positive_pct"] = np.sum(g['return'] > 0) / len(g)
+        top_ret["bm_return"] = g_all['return'].mean()
+        top_ret["bm_positive_pct"] = np.sum(g_all['return'] > 0) / len(g_all)
+        top_ret["tickers"] = ', '.join(list(g.index))
 
         return top_ret
 
