@@ -2012,6 +2012,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/results_analysis/calculation_backtest_from_eval.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/results_analysis/calculation_rank.py">
           <value>
             <Attribute>
@@ -2226,6 +2233,13 @@
           <value>
             <Attribute>
               <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/skaffold.yaml">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
             </Attribute>
           </value>
         </entry>

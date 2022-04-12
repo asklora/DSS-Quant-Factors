@@ -289,45 +289,59 @@ if __name__ == "__main__":
     # 1. HKD / CNY use clustered pillar
     df_cluster = df.loc[(df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
                         (df['_is_removed_subpillar']) &
-                        (df['_q'] == 0.2),
+                        (df['_q'].astype(float) == 0.33),
                         config_col + ['max_ret', 'min_ret']].fillna(0)
     df_cluster['_y_type'] = 'cluster'
 
     # 2. USD / EUR use clustered pillar
     df_pillar = df.loc[(~df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
-                       (df['_q'] == 0.2),
+                       (df['_q'].astype(float) == 0.33),
                        config_col + ['max_ret', 'min_ret']]
     df = df_cluster.append(df_pillar)
     del df_cluster, df_pillar
+
+    df['_name_sql'] = df['_name_sql'].replace({'w4_d-7_20220324031027_debug': "adj_mse",
+                                               'w4_d-7_20220329120327_debug': "mse",
+                                               'w4_d-7_20220321173435_debug': "adj_mse",
+                                               'w4_d-7_20220312222718_debug': "mse"})
 
     df = df.groupby(['_name_sql', '_group', '_group_code', '_testing_period', '_y_type']).mean().reset_index()
     df.to_pickle('mean-'+pkl_name)
     # df = pd.read_pickle('mean-'+pkl_name)
 
-    df_index = pd.read_pickle('df_index.pkl')
-    idx_map = {"CNY": ".CSI300_stock_return_r1_0", "HKD": ".HSI_stock_return_r1_0",
-               "USD": ".SPX_stock_return_r1_0", "EUR": ".SXXGR_stock_return_r1_0"}
-    df_index = df_index.filter(regex='_stock_return_r1_0$').stack().reset_index()
-    df_index['level_1'] = df_index['level_1'].replace({v: k for k, v in idx_map.items()})
-    df_index['trading_day'] = pd.to_datetime(df_index['trading_day']) - pd.tseries.offsets.DateOffset(weeks=4)
-    df_index = df_index.set_index(['trading_day', 'level_1'])[0].rename('actual')
+    # df_index = pd.read_pickle('df_index.pkl')
+    # idx_map = {"CNY": ".CSI300_stock_return_r1_0", "HKD": ".HSI_stock_return_r1_0",
+    #            "USD": ".SPX_stock_return_r1_0", "EUR": ".SXXGR_stock_return_r1_0"}
+    # df_index = df_index.filter(regex='_stock_return_r1_0$').stack().reset_index()
+    # df_index['level_1'] = df_index['level_1'].replace({v: k for k, v in idx_map.items()})
+    # df_index['trading_day'] = pd.to_datetime(df_index['trading_day']) - pd.tseries.offsets.DateOffset(weeks=4)
+    # df_index = df_index.set_index(['trading_day', 'level_1'])[0].rename('actual')
 
     df['_group_code'] = np.where(df['_group_code'] == df['_group'], 'own', 'usd')
     df_pivot = df.groupby(['_name_sql', '_testing_period', '_y_type', '_group', '_group_code'])[['max_ret', 'min_ret']].mean().unstack()
     df_pivot.columns = ['max_own', 'max_usd', 'min_own', 'min_usd']
 
-    for (x1, x2) in permutations(df_pivot, 2):
-        for q in np.arange(0.2, 1.1, 0.2):
-            df_pivot[f"{x1}_{x2}_{round(q, 1)}"] = df_pivot[x1] - q * df_pivot[x2]
+    df_pivot['net_own'] = df_pivot['max_own'] - df_pivot['min_own']
+    df_pivot['avg_own'] = df_pivot[['net_own', 'max_own']].mean(axis=1)
+    df_pivot['net_usd'] = df_pivot['max_usd'] - df_pivot['min_usd']
+    df_pivot['avg_usd'] = df_pivot[['net_usd', 'max_usd']].mean(axis=1)
+    df_pivot['avg_max'] = df_pivot[['max_own', 'max_usd']].mean(axis=1)
+    df_pivot['avg_net'] = df_pivot[['net_own', 'net_usd']].mean(axis=1)
+    df_pivot.loc[df_pivot['net_usd'].isnull(), ['max_usd', 'net_usd', 'avg_usd', 'avg_max', 'avg_net']] = np.nan
 
-    to_excel(df_pivot.reset_index(), 'config_opt_combination_raw')
+    # for (x1, x2) in permutations(df_pivot, 2):
+    #     for q in np.arange(0.2, 1.1, 0.2):
+    #         df_pivot[f"{x1}_{x2}_{round(q, 1)}"] = df_pivot[x1] - q * df_pivot[x2]
+    # to_excel(df_pivot.reset_index(), 'config_opt_combination_raw')
 
     # df_pivot['actual'] = df_pivot[['max_own', 'max_usd', 'min_own', 'min_usd']].mean(axis=1)
-    df_pivot = df_pivot.merge(df_index, left_on=['_testing_period', '_group'], right_index=True, how='left')
-    df_pivot['actual1'] = df_pivot.groupby(['_group', '_y_type'])['actual'].transform('mean')
+    # df_pivot = df_pivot.merge(df_index, left_on=['_testing_period', '_group'], right_index=True, how='left')
+    # df_pivot['actual1'] = df_pivot.groupby(['_group', '_y_type'])['actual'].transform('mean')
 
-    ret_cols = df_pivot.columns.to_list()
+    ret_cols =['max_own', 'max_usd', 'net_own', 'net_usd', 'avg_own', 'avg_usd', 'avg_max', 'avg_net']
     df_pivot = df_pivot.reset_index()
+    df_pivot['best'] = df_pivot[ret_cols].idxmax(axis=1)
+    df_pivot_count = df_pivot.groupby(['_name_sql', '_group', '_y_type'])['best'].apply(lambda x: dict(Counter(x)))
 
     def sortino(g, actual_col):
         """ sortino ratio with actual = (current period average) or (all time average) """
@@ -360,20 +374,20 @@ if __name__ == "__main__":
     df_pivot_quantile = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.05).stack().rename("q5")
     df_pivot_quantile1 = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.1).stack().rename("q10")
     df_pivot_sort0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col=0)).stack().rename("sortino_0")
-    df_pivot_sort = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual')).stack().rename("sortino")
-    df_pivot_sort1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual1')).stack().rename("sortino_ts")
+    # df_pivot_sort = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual')).stack().rename("sortino")
+    # df_pivot_sort1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual1')).stack().rename("sortino_ts")
     df_pivot_sharpe0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col=0)).stack().rename("sharpe_0")
-    df_pivot_sharpe = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual')).stack().rename("sharpe")
-    df_pivot_sharpe1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual1')).stack().rename("sharpe_ts")
+    # df_pivot_sharpe = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual')).stack().rename("sharpe")
+    # df_pivot_sharpe1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual1')).stack().rename("sharpe_ts")
 
     df_pivot_eval = pd.concat([df_pivot_avg, df_pivot_std, df_pivot_min, df_pivot_quantile, df_pivot_quantile1,
-                               df_pivot_sort0, df_pivot_sort, df_pivot_sort1,
-                               df_pivot_sharpe0, df_pivot_sharpe, df_pivot_sharpe1], axis=1).reset_index()
+                               df_pivot_sort0, df_pivot_sharpe0], axis=1).reset_index()
     df_pivot_eval = df_pivot_eval.loc[df_pivot_eval['level_3'] != 'actual1']
-    xlsx_dict = {}
-    for i in ['mean', 'sortino_0', 'sortino', 'sortino_ts']:
-        xlsx_dict[i] = df_pivot_eval.sort_values(by=['_group', '_y_type', i], ascending=False).groupby(['_group', '_y_type']).head(3)
-    to_excel(xlsx_dict, 'config_opt_combination_top3_0.2')
+    xlsx_dict = {'raw': df_pivot_eval.sort_values(by=['_group', '_y_type', 'sortino_0'], ascending=False).groupby(['_group', '_y_type']).head(20)}
+    for i in ['mean', 'sortino_0', 'min']:
+        xlsx_dict[i] = df_pivot_eval.groupby(['_group', '_y_type', 'level_3'])[i].mean().unstack().reset_index()
+    xlsx_dict['count'] = df_pivot_count.unstack().reset_index()
+    to_excel(xlsx_dict, 'config_opt_combination_top20')
     exit(200)
 
 

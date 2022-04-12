@@ -1,0 +1,48 @@
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: quant-factor
+build:
+  artifacts:
+    - image: quant-factor
+      context: .
+      docker:
+        dockerfile: ./Dockerfile
+deploy:
+  kubectl:
+    manifests:
+      - k8s.yaml
+
+profiles:
+
+  - name: quant-factor-minikube
+    activation:
+      - kubeContext: minikube
+    deploy:
+      kubectl:
+        manifests:
+          - k8s.yaml
+        hooks:
+          after:
+            - host:
+                command:
+                  [
+                    "echo",
+                    "Skaffold Profile: quant-factor-minikube"
+                  ]
+
+  - name: quant-factor-microk8s
+    activation:
+      - kubeContext: microk8s
+    deploy:
+      kubectl:
+        manifests:
+          - k8s.yaml
+        hooks:
+          after:
+            - host:
+                command:
+                  [
+                    "echo",
+                    "Skaffold Profile: quant-ingestion-microk8s"
+                  ]

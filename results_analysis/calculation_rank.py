@@ -37,15 +37,16 @@ rank_dtypes = dict(
     last_update=TIMESTAMP
 )
 
-backtest_eval_dtypes = dict(name_sql=TEXT, group=TEXT, group_code=TEXT, y_type=TEXT, testing_period=DATE,
+backtest_eval_dtypes = dict(_name_sql=TEXT, _group=TEXT, _group_code=TEXT, _y_type=TEXT, _testing_period=DATE,
                             max_factor_count=JSON, min_factor_count=JSON,
                             max_factor_pred=JSON, min_factor_pred=JSON,
                             max_factor_actual=JSON, min_factor_actual=JSON,
                             max_ret=DOUBLE_PRECISION(precision=53), min_ret=DOUBLE_PRECISION(precision=53),
                             mae=DOUBLE_PRECISION(precision=53), mse=DOUBLE_PRECISION(precision=53),
                             r2=DOUBLE_PRECISION(precision=53), actual=DOUBLE_PRECISION(precision=53),
-                            weeks_to_expire=INTEGER, is_remove_subpillar=BOOLEAN,
-                            last_update=TIMESTAMP)
+                            _weeks_to_expire=INTEGER, _is_remove_subpillar=BOOLEAN,
+                            last_update=TIMESTAMP, __use_average=BOOLEAN, __tree_type=TEXT, __use_pca=DOUBLE_PRECISION,
+                            __qcut_q=INTEGER, __n_splits=DOUBLE_PRECISION, __valid_method=INTEGER, __down_mkt_pct=DOUBLE_PRECISION)
 
 diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
@@ -195,7 +196,7 @@ class rank_pred:
                 # 2.5.1. use the best config prediction for this y_type
                 # 2.5.2. use best [eval_top_config] config prediction for each (y_type, testing_period)
                 logging.info(f'best config for [{y_type}]: top ({self.eval_top_config}) [{self.eval_metric}]')
-                best_config_df = self.__backtest_find_calc_metric_avg(testing_period, group, group_code)
+                best_config_df = self.__backtest_find_calc_metric_avg(testing_period, group, group_code, y_type)
                 if type(best_config_df) == type(None):
                     continue
                 eval = best_config_df[self.eval_col + ['net_ret']].mean().to_dict()
@@ -343,6 +344,8 @@ class rank_pred:
         # actual factor premiums
         group_col = ['group', 'group_code', 'testing_period', 'y_type']
         df_actual = df.groupby(group_col)[['actual']].mean()
+
+
         df_eval = df.groupby(group_col + diff_config_col).apply(self.__get_summary_stats_in_group).reset_index()
         df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
         df_eval[self.eval_col] = df_eval[self.eval_col].astype(float)
@@ -369,6 +372,7 @@ class rank_pred:
         # 2.4.2. add config JSON column for configs
         # df_eval['config'] = df_eval[diff_config_col].to_dict(orient='records')
         # df_eval = df_eval.drop(columns=diff_config_col)
+        df['use_average'] = df['use_average'].replace(0, np.nan)
         upsert_data_to_database(df_eval, production_factor_rank_backtest_eval_table, primary_key=primary_key,
                                 db_url=db_url_write, how="update", dtype=backtest_eval_dtypes)
 
@@ -401,9 +405,14 @@ class rank_pred:
         ret_dict['min_factor_actual'] = min_g.groupby(['factor_name'])['actual'].mean().to_dict()
         ret_dict['max_ret'] = max_g['actual'].mean()
         ret_dict['min_ret'] = min_g['actual'].mean()
-        ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
-        ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
-        ret_dict['r2'] = r2_score(g['pred'], g['actual'])
+        if len(g) > 1:
+            ret_dict['mae'] = mean_absolute_error(g['pred'], g['actual'])
+            ret_dict['mse'] = mean_squared_error(g['pred'], g['actual'])
+            ret_dict['r2'] = r2_score(g['pred'], g['actual'])
+        else:
+            ret_dict['mae'] = np.nan
+            ret_dict['mse'] = np.nan
+            ret_dict['r2'] = np.nan
         return pd.Series(ret_dict)
 
     def __backtest_find_calc_metric_avg(self, testing_period, group, group_code, y_type):

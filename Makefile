@@ -12,15 +12,17 @@ factor_weekly:
 eval_eval:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
 		--processes 1 --debug --eval_metric max_ret --eval_n_configs 10 --eval_backtest_period 36 \
-		--eval_removed_subpillar  --restart w4_d-7_20220312222718_debug --restart_eval
+		--eval_removed_subpillar  --restart w4_d-7_20220408122219_debug --restart_eval
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
 		--processes 1 --debug --eval_metric max_ret --eval_n_configs 10 --eval_backtest_period 36 \
-		--restart w4_d-7_20220312222718_debug --restart_eval
+		--restart w4_d-7_20220408122219_debug --restart_eval
 
 eval_top:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--processes 1 --debug --eval_metric max_ret --eval_n_configs 10 --eval_backtest_period 36 \
-		--eval_removed_subpillar  --restart w4_d-7_20220329120327_debug --restart_eval --restart_eval_top
+		--processes 10 --debug --eval_removed_subpillar  --restart w4_d-7_20220324031027_debug --restart_eval --restart_eval_top
+	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
+		--processes 10 --debug  --restart w4_d-7_20220324031027_debug --restart_eval --restart_eval_top
+
 
 trial:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \

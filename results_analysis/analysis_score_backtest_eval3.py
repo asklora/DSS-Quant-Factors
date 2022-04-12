@@ -128,7 +128,7 @@ def eval_sortino_ratio(name_sql=None,
         pkl_name = f'cache_{tbl_name}.pkl'
         xls_name = f'sortino_ratio_{tbl_name}'
     else:
-        query = f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'"
+        query = f"SELECT * FROM {tbl_name} WHERE _name_sql='{name_sql}'"
         pkl_name = f'cache_eval_{name_sql}.pkl'
         xls_name = f'sortino_ratio_{name_sql}'
 
@@ -263,5 +263,5 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    eval_sortino_ratio()
+    eval_sortino_ratio(name_sql='w4_d-7_20220408122219_debug')
     # eval_sortino_ratio_top()

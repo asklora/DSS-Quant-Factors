@@ -4,19 +4,20 @@ db_url_alibaba_prod = "postgresql://asklora:AskLORAv2@pgm-3nscoa6v8c876g5xlo.pg.
 
 db_url_alibaba_temp = "postgresql://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.pg.rds.aliyuncs.com:5432/postgres"
 db_url_local = "postgresql://postgres:AskLORAv2@localhost:5432/postgres"
+db_url_local_pc1 = "postgresql://postgres:AskLORAv2@localhost:15432/postgres"
 
 db_url_read = db_url_alibaba_prod
 db_url_write = db_url_alibaba_prod
 
 # TABLE names - factor model results
-result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_model5"    # cluster pillar
-feature_importance_table = "factor_result_importance"
+result_pred_table = "factor.factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
+result_score_table = "factor.factor_model5"    # cluster pillar
+feature_importance_table = "factor.factor_result_importance"
 production_factor_rank_table = "factor_result_rank"
 # production_factor_rank_ratio_table = "factor_result_rank_ratio"
 # production_factor_rank_backtest_table = "factor_result_rank_backtest"
 production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval6"
-production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top4"  # updated version for non-peeking backtest
+production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top6"  # updated version for non-peeking backtest
 production_factor_rank_history_table = "factor_result_rank_history"
 
 # TABLE name - factor config optimization results

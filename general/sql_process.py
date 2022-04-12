@@ -190,4 +190,6 @@ def migrate_local_save_to_prod():
 
 
 if __name__ == "__main__":
-    migrate_local_save_to_prod()
+    t = 'factor_formula_pillar_cluster'
+    data = read_table(t)
+    upsert_data_to_database(data, t, how='append')

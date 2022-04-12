@@ -142,6 +142,8 @@ def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, x
     try:
         factor_rank = pd.read_csv(f'fac1tor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
     except Exception as exp:
+        from time import time
+        start = time()
         factor_rank = rank_pred(q, name_sql=sql_result['name_sql'],
                                 pred_start_testing_period=pred_start_testing_period,
                                 # this period is before (+ weeks_to_expire)
@@ -152,9 +154,11 @@ def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, x
                                 eval_removed_subpillar=eval_removed_subpillar,
                                 if_eval_top=sql_result['restart_eval_top'],
                                 )
-        if sql_result['restart_eval_top']:
-            factor_rank = factor_rank.write_to_db()
-            factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
+        end = time()
+        to_slack("clair").message_to_slack(f"[rank_pred] time: {end - start}")
+
+        # factor_rank = factor_rank.write_to_db()
+        factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
 
     # ----------------------- modified factor_rank for testing ----------------------------
     # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
@@ -203,10 +207,10 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
     parser.add_argument('--eval_q', default='0.2,0.33', type=str)
-    parser.add_argument('--eval_metric', default='max_ret,net_ret', type=str)
-    parser.add_argument('--eval_n_configs', default='10,20', type=str)
-    parser.add_argument('--eval_backtest_period', default='12,36', type=str)
     parser.add_argument('--eval_removed_subpillar', action='store_true', help='if removed subpillar in evaluation')
+    parser.add_argument('--eval_top_metric', default='max_ret,net_ret', type=str)
+    parser.add_argument('--eval_top_n_configs', default='10,20', type=str)
+    parser.add_argument('--eval_top_backtest_period', default='12,36', type=str)
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
@@ -322,9 +326,9 @@ if __name__ == "__main__":
     sql_result["name_sql"] = args.restart
     try:
         all_eval_groups = product([sql_result],
-                                  args.eval_metric.split(','),
-                                  [int(e) for e in args.eval_n_configs.split(',')],
-                                  [int(e) for e in args.eval_backtest_period.split(',')],
+                                  args.eval_top_metric.split(','),
+                                  [int(e) for e in args.eval_top_n_configs.split(',')],
+                                  [int(e) for e in args.eval_top_backtest_period.split(',')],
                                   [args.eval_removed_subpillar],
                                   [float(e) for e in args.eval_q.split(',')],
                                   )
