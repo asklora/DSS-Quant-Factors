@@ -208,27 +208,29 @@ The flowchart of dactor selection and ranking process is as:
 use `python3 main.py --option *sth*` to train and test model by a signal script.
 
 #### Parser
-| Option | Explanation | Input |
-|--------|-------------|------------|
-| recalc_premium | recalculate stock premiums | None |
-| recalc_ratio | recalculate stock to vector ratios | None |
-| weeks_to_expire | how many weeks for this prediction to expire | n (int) |
-| processes | create how many parallel process (multiprocessing) to run the script | n (int) |
-| backtest_period | use how many weeks as test dataset | n (int) |
-| trim | trim outliers (top & bottom 5% of each dataset) | True/False |
-| debug | run script in dev mode (will not affect prod database) | True/False |
-
-The scheduled training used options can refer to [Makefile](Makefile).
-
-#### Schedule for Production
-In production (i.e. run main.py without --debug) will cause the script to wait until all following requirements are met:
-
-For weekly training:
-- Weekly training will only start after weekly ingestion of Worldscope / IBES / Macroeconomics data finished. 
-
-For monthly training:
-- only start on the first Sunday of each month; 
-- only start after weekly training finished. 
+| Purpose        | Option                   | Explanation                                                                                                      | Input   |
+|----------------|--------------------------|------------------------------------------------------------------------------------------------------------------|---------|
+| Data - Period  | weeks_to_expire          | how many weeks for this prediction to expire                                                                     | n (int) |
+|                | backtest_period          | use how many periods as test dataset (total test week = weeks_to_expire * backtest_period)                       | n (int) |
+|                | sample_interval          | number of weeks between two consecutive samples                                                                  | n (int) |
+|                | average_days             | number of days averaging in calculating returns (if negative means future)                                       | n (int) |
+| Data - Group   | currency_codes           | currencies to predict                                                                                            | str     |
+|                | pillars                  | pillars to predict                                                                                               | str     |
+| Data - Update? | recalc_premium           | recalculate stock premiums                                                                                       | Bool    |
+|                | recalc_ratio             | recalculate stock to vector ratios                                                                               | Bool    |
+|                | trim                     | trim outliers (top & bottom 5% of each dataset)                                                                  | Bool    |
+| Model          | objective                | random forest model training objective                                                                           | str     |
+|                | hpot_eval_metric         | Hyperopt model optimization objective                                                                            | str     |
+|                | processes                | create how many parallel process (multiprocessing) to run the script                                             | n (int) |
+| Eval           | eval_q                   | quantile defined as good / bad factors                                                                           | n (int) |
+|                | eval_removed_subpillar   | whether to remove subpillar (keep top ranking factor only within subpillars)                                     | n (int) |
+|                | eval_top_metric          | evaluation metric (max_ret/net_ret/average_ret) for backtest top configs selection                               | n (int) |
+|                | eval_top_n_configs       |                                                                                                                  | n (int) |
+|                | eval_top_backtest_period | number of backtest period                                                                                        | n (int) |
+| Runtime        | debug                    | run script in dev mode (will not affect prod database)                                                           | Bool    |
+|                | restart                  | name_sql to retart (if None start new training)                                                                  | Bool    |
+|                | restart_eval             | whether to restart write aggregate backtest results on factors to _eval Table (if True will pass training part)  | Bool    |
+|                | restart_eval_top         | whether to restart write aggregate backtest results on top n stocks _top Table (if True will pass training part) | Bool    |
 
 #### Rerun Write Premium
 Update ratio / premium tables if `--recalc_ratio` & `--recalc_premium`.
@@ -254,6 +256,27 @@ Tree models are not saved as time required for the whole process is short (depen
 
 #### Results Analysis
 Calculate ranks of premiums based on model predictions with [calculation_rank.py](results_analysis/calculation_rank.py).
+
+### Production
+
+#### Schedule
+
+The scheduled training timing & used options can refer to cronjobs in [k8s.yaml](k8s.yaml).
+
+We update factor selection for 4 / 8 / 13 / 26 week on the first Sunday of each month.
+
+#### Data Prep
+
+Before 4-week model start, we update ratio table with `--recalc_ratio`. And before each of the model, we update premium table with `--recalc_premium`.
+
+We use fix certain configurations based on our backtesting on 4-week model for each currency.
+
+Please refer to table: **factor_formula_config_train_prod**
+
+#### Development
+
+Run [main.py](main.py) with `--debug`. This is pause all the date / table update checking for production. 
+
 
 
 ---
