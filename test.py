@@ -2,6 +2,21 @@ from general.sql_process import read_query, upsert_data_to_database, uid_maker
 import pandas as pd
 import numpy as np
 
+query = "SELECT * FROM universe_rating_posneg_factor_history"
+
+# logger.info(query)
+df = read_query(query.replace(",)", ")"))
+df['trading_day'] = pd.to_datetime(df['trading_day'])
+df = df.set_index('trading_day').groupby(['ticker', 'weeks_to_expire'], as_index=False).resample('D').pad()
+df = df.reset_index().drop(columns="level_0")
+
+upsert_data_to_database(df, "universe_rating_posneg_factor_history", primary_key=['ticker', 'weeks_to_expire',
+                                                                                  'trading_day'], how="ignore")
+
+exit(2000)
+
+
+
 df = pd.DataFrame({1: {"testing_period": "a", "group": "b", "factor_name": ["c", "d"]},
                    2: {"testing_period": "a2", "group": "b2", "factor_name": ["c0", "c1", "d1"]}}).transpose()
 df['len'] = df['factor_name'].str.len()

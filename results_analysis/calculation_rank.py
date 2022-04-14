@@ -38,7 +38,7 @@ rank_dtypes = dict(
 )
 
 backtest_eval_dtypes = dict(_name_sql=TEXT, _group=TEXT, _group_code=TEXT, _y_type=TEXT, _testing_period=DATE,
-                            max_factor_count=JSON, min_factor_count=JSON,
+                            max_factor=JSON, min_factor=JSON,
                             max_factor_pred=JSON, min_factor_pred=JSON,
                             max_factor_actual=JSON, min_factor_actual=JSON,
                             max_ret=DOUBLE_PRECISION(precision=53), min_ret=DOUBLE_PRECISION(precision=53),
@@ -397,8 +397,8 @@ class rank_pred:
         else:
             return None
 
-        ret_dict['max_factor_count'] = max_g['factor_name'].tolist()
-        ret_dict['min_factor_count'] = min_g['factor_name'].tolist()
+        ret_dict['max_factor'] = max_g['factor_name'].tolist()
+        ret_dict['min_factor'] = min_g['factor_name'].tolist()
         ret_dict['max_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
         ret_dict['min_factor_pred'] = max_g.groupby('factor_name')['pred'].mean().to_dict()
         ret_dict['max_factor_actual'] = max_g.groupby(['factor_name'])['actual'].mean().to_dict()

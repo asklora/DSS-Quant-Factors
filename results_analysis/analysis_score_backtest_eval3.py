@@ -212,8 +212,8 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    tbl_name = global_vars.production_factor_rank_backtest_top_table
-    df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
+    tbl_name = global_vars.production_factor_rank_backtest_top_table + '_12'
+    df = read_query(f"SELECT * FROM {tbl_name}")
 
     df[['return', 'bm_return']] /= 100
     # df.to_pickle('cache2.pkl')
@@ -226,9 +226,10 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
     df['return2'] = np.square(df['return'])
 
     xls = {}
-    groupby_col = ['currency_code', 'eval_metric', 'eval_q', 'n_top_config', 'n_top_ticker', 'n_backtest_period']
-    for d in ['2016-01-01', '2020-01-01', '2021-08-01']:
+    groupby_col = ['currency_code', 'top_n']
+    for d in ['2016-01-01', '2017-07-01', '2019-11-01', '2020-01-01', '2021-08-01']:
         df_p = df.loc[df['trading_day'] > dt.datetime.strptime(d, '%Y-%m-%d').date()]
+        d = f"{df_p['trading_day'].min()} ({len(df_p['trading_day'].unique())})"
 
         # calculate avg return
         df_agg = df_p.groupby(groupby_col)[
@@ -237,31 +238,30 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
         # calculate sortino / sharpe ratio
         df_agg['sortino_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2_d']))
         df_agg['sortino_0'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
-        df_agg['sharpe_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2']))
-        df_agg['sharpe_0'] = df_agg['return'].div(np.sqrt(df_agg['return2']))
+        # df_agg['sharpe_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2']))
+        # df_agg['sharpe_0'] = df_agg['return'].div(np.sqrt(df_agg['return2']))
 
-        # calculate std
-        df_std = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].std()
-        df_std.columns = ['std_' + x for x in df_std]
+        # # calculate std
+        # df_std = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].std()
+        # df_std.columns = ['std_' + x for x in df_std]
 
         # calculate min period return
         df_min = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].min()
         df_min.columns = ['min_' + x for x in df_min]
 
-        df_quantile = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.1)
-        df_quantile.columns = ['q10_' + x for x in df_quantile]
+        # df_quantile = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.1)
+        # df_quantile.columns = ['q10_' + x for x in df_quantile]
+        #
+        # df_quantile2 = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.05)
+        # df_quantile2.columns = ['q5_' + x for x in df_quantile2]
 
-        df_quantile2 = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.05)
-        df_quantile2.columns = ['q5_' + x for x in df_quantile2]
+        xls[d] = pd.concat([df_agg, df_min], axis=1).reset_index().drop(columns=['diff2_d', 'diff2', 'return2_d', 'return2'])
 
-        xls[d] = pd.concat([df_agg, df_std, df_min, df_quantile, df_quantile2], axis=1).reset_index().drop(
-            columns=['diff2_d', 'diff2', 'return2_d', 'return2'])
-
-    to_excel(xls, f'sortino_ratio_{name_sql}_top')
+    to_excel(xls, f'sortino_ratio_top_12')
     print(df)
 
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    eval_sortino_ratio(name_sql='w4_d-7_20220408122219_debug')
-    # eval_sortino_ratio_top()
+    # eval_sortino_ratio(name_sql='w4_d-7_20220408122219_debug')
+    eval_sortino_ratio_top()

@@ -252,14 +252,14 @@ class backtest_score_history:
         models_key = ["name_sql", "group", "group_code", "weeks_to_expire", "eval_q", "is_removed_subpillar", "y_type",
                       "eval_metric", "n_backtest_period", "n_config_pct"]
         models_value = [
-            ('w4_d-7_20220324031027_debug', "HKD", "HKD", 4, 0.33, True, "cluster", "net_ret", 36, 0.2),
-            ('w4_d-7_20220324031027_debug', "CNY", "CNY", 4, 0.33, True, "cluster", "max_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "momentum", "avg_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "quality", "max_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "value", "max_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "momentum", "avg_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "quality", "avg_ret", 36, 0.2),
-            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "value", "avg_ret", 36, 0.2)
+            ('w4_d-7_20220324031027_debug', "HKD", "HKD", 4, 0.33, True, "cluster", "net_ret", 12, 0.2),
+            ('w4_d-7_20220324031027_debug', "CNY", "CNY", 4, 0.33, True, "cluster", "max_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "momentum", "avg_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "quality", "max_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "EUR", "USD", 4, 0.33, True, "value", "max_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "momentum", "avg_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "quality", "avg_ret", 12, 0.2),
+            ('w4_d-7_20220312222718_debug', "USD", "USD", 4, 0.33, True, "value", "avg_ret", 12, 0.2)
         ]
         kwargs_df = pd.DataFrame(models_value, columns=models_key)
         kwargs_df["updated"] = dt.datetime.now()
@@ -322,7 +322,7 @@ class backtest_score_history:
         # df["add_factor_penalty"] = self.add_factor_penalty
 
         # write to DB
-        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table + '_36',
+        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table + '_12',
                                 primary_key=["currency_code", "trading_day", "top_n"],
                                 how='append', db_url=global_vars.db_url_alibaba_prod,
                                 dtype=top_dtypes)
