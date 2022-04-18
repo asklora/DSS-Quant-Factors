@@ -21,6 +21,7 @@ spec:
             - main.py --backtest_period 12 --weeks_to_expire 13 --sample_interval 4 --average_days 7 --processes 30 --recalc_ratio
             - main.py --backtest_period 12 --weeks_to_expire 26 --sample_interval 4 --average_days 7 --processes 30 --recalc_ratio
             resources:
+              # TODO: update requirements
               requests:
                 memory: "8Mi"
                 cpu: "30000m"

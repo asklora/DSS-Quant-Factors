@@ -93,20 +93,14 @@ def insert_prem_for_group(*args):
         prem['average_days'] = average_days
         if trim_outlier_:
             prem['field'] = 'trim_'+prem['field']
-        upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
-                                table=factor_premium_table,
-                                primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
-                                db_url=db_url_write,
-                                how="update",
-                                verbose=-1,
-                                dtype=prem_dtypes)
+        return prem
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
-        return False
-    return True
+        return pd.DataFrame()
+
 
 def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_outlier_=False, processes=12,
-                     all_groups=['USD', 'EUR'], factor_list=[], start_date=None):
+                     all_groups=None, factor_list=[], start_date=None):
     '''  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
     Parameters
@@ -163,7 +157,16 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     all_groups = [tuple(e) for e in all_groups]
 
     with mp.Pool(processes=processes) as pool:
-        pool.starmap(insert_prem_for_group, all_groups)
+        prem = pool.starmap(insert_prem_for_group, all_groups)
+    prem = pd.concat(prem, axis=0)
+
+    upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
+                            table=factor_premium_table,
+                            primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
+                            db_url=db_url_write,
+                            how="update",
+                            verbose=-1,
+                            dtype=prem_dtypes)
 
     to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 

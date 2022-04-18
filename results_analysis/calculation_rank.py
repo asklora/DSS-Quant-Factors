@@ -495,9 +495,7 @@ class rank_pred:
         """ concat rank current/history & write """
 
         all_history = self.write_backtest_rank_()
-        # if not DEBUG:
-        #     self.write_current_rank_()
-        #     logging.INFO("calculation_rank will not write to [current] in DEBUG mode")
+        self.write_current_rank_()
         return all_history
 
     # ---------------------------------- Save local Plot for evaluation --------------------------------------------

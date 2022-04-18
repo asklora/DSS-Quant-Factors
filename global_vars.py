@@ -51,20 +51,19 @@ factor_premium_table = "factor_processed_premium"
 
 # TABLE names - preprocess formula
 formula_factors_table_prod = "factor_formula_ratios_prod"
+factor_formula_config_train_prod = "factor_formula_config_train_prod"
+factor_formula_config_eval_prod = "factor_formula_config_eval_prod"
 factors_y_type_table = "factor_formula_y_type"
 factors_pillar_cluster_table = "factor_formula_pillar_cluster"
 update_time_table = "ingestion_update_time"     # all table update time record in this table
 
-# Set DEBUG status
-import sys
-gettrace = getattr(sys, 'gettrace', None)
-DEBUG = gettrace() is not None
-print('DEBUG: ', DEBUG)
+# # Set DEBUG status
+# import sys
+# gettrace = getattr(sys, 'gettrace', None)
+# DEBUG = gettrace() is not None
+# print('DEBUG: ', DEBUG)
 
 # Add Logging
 import logging
 logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
-if DEBUG:
-    logging.getLogger().setLevel(logging.DEBUG)
-else:
-    logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().setLevel(logging.DEBUG)

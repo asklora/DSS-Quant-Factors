@@ -136,6 +136,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/define_config.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/descriptive_factor/30_best_history.csv">
           <value>
             <Attribute>
@@ -1747,6 +1754,13 @@
           </value>
         </entry>
         <entry key="/preprocess/cached_vol_ret.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/preprocess/calculation_pillar_cluster.py">
           <value>
             <Attribute>
               <option name="separator" value="," />

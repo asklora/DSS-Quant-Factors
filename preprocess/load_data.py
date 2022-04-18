@@ -78,7 +78,7 @@ def download_index_return():
     return index_ret
 
 
-def combine_data(weeks_to_expire, average_days, update_since=None, mode='v2'):
+def combine_data(weeks_to_expire, average_days, update_since=None, trim=False):
     ''' combine factor premiums with ratios '''
 
     # calc_premium_all(stock_last_week_avg, use_biweekly_stock)
@@ -95,14 +95,15 @@ def combine_data(weeks_to_expire, average_days, update_since=None, mode='v2'):
         update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
-    prem_query = f'SELECT * FROM {factor_table_name} WHERE {" AND ".join(conditions)};'
+    prem_query = f"SELECT * FROM {factor_table_name} WHERE {' AND '.join(conditions)};"
     df = read_query(prem_query, db_url_read)
     df = df.pivot(index=['trading_day', 'group'], columns=['field'], values="value")
 
-    if mode == 'trim':
-        df = df.filter(regex='^trim_')
-    elif mode == 'v2':
-        df = df.drop(regex='^trim_')
+    trim_cols = df.filter(regex='^trim_').columns.to_list()
+    if trim:
+        df = df[trim_cols]
+    else:
+        df = df.drop(trim_cols)
 
     df.columns.name = None
     df = df.reset_index()
@@ -113,8 +114,7 @@ def combine_data(weeks_to_expire, average_days, update_since=None, mode='v2'):
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]  # filter existing columns from factors
 
     # Research stage using 10 selected factor only
-    x_col = {}
-    x_col['factor'] = formula['name'].to_list()  # x_col remove highly correlated variables
+    x_col = {'factor': formula['name'].to_list()}
 
     for p in formula['pillar'].unique():
         x_col[p] = formula.loc[formula['pillar'] == p, 'name'].to_list()  # factor for each pillar
@@ -158,16 +158,16 @@ class load_data:
     group_name = None
     usd_for_all = None
 
-    def __init__(self, weeks_to_expire, average_days, update_since=None, mode=''):
-        ''' combine all possible data to be used 
-        
+    def __init__(self, weeks_to_expire, average_days, update_since=None, trim=False):
+        """ combine all possible data to be used
+
         Parameters
         ----------
         weeks_to_expire : text
         update_since : bool, optional
-        mode : {''(default), 'trim'}, optional
+        trim : {False(default), True}, optional
 
-        '''
+        """
 
         # define self objects
         self.sample_set = {}
@@ -175,7 +175,7 @@ class load_data:
         self.weeks_to_expire = weeks_to_expire
         self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire, average_days,
                                                                     update_since=update_since,
-                                                                    mode=mode)  # combine all data
+                                                                    trim=trim)  # combine all data
 
         # calculate y for all factors
         df_y = self.main[['group', 'trading_day'] + self.x_col_dict['factor']].rename(

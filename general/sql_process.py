@@ -11,8 +11,10 @@ from global_vars import *
 from general.send_slack import to_slack
 
 
+# ============================================ EXECUTE QUERY ================================================
+
 def trucncate_table_in_database(table, db_url=db_url_write):
-    ''' truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure'''
+    """ truncate table in DB (for tables only kept the most recent model records) -> but need to keep table structure """
     try:
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
@@ -50,6 +52,8 @@ def delete_data_on_database(table, db_url=db_url_write, query=None):
         return False
     return True
 
+
+# ============================================== WRITE TABLE ==================================================
 
 @retry(tries=3, delay=1)
 def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], db_url=db_url_write, how="update",
@@ -123,6 +127,8 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
         return False
     return True
 
+
+# =============================================== READ TABLE ==================================================
 
 def read_query(query, db_url=db_url_read, mp=True):
     ''' Read specific query from SQL '''
