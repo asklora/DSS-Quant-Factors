@@ -59,7 +59,6 @@ class rf_HPOT:
             'min_impurity_decrease': 0,
             'max_samples': hp.choice('max_samples', [0.7, 0.9]),
             'ccp_alpha': hp.choice('ccp_alpha', [0]),
-            # 'random_state': 666
         }
 
         trials = Trials()
@@ -101,16 +100,17 @@ class rf_HPOT:
         params = space.copy()
         for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
             params[k] = int(params[k])
-        self.sql_result.update(params)
+        self.sql_result.update({f"__{k}": v for k, v in params})
+
         params['bootstrap'] = True
         params['n_jobs'] = 1
 
-        if 'extra' in self.sql_result['tree_type']:
+        if 'extra' in self.sql_result['_tree_type']:
             regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
-        elif 'rf' in self.sql_result['tree_type']:
+        elif 'rf' in self.sql_result['_tree_type']:
             regr = RandomForestRegressor(criterion=self.sql_result['objective'], **params)
         else:
-            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['tree_type']}]")
+            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['_tree_type']}]")
 
         regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'],
                  sample_weight=self.sample_set['train_yy_weight'])
@@ -144,11 +144,8 @@ class rf_HPOT:
         self.sample_set['train_yy_pred'], self.sample_set['valid_y_pred'], self.sample_set['test_y_pred'], \
             feature_importance_df = self.rf_train(rf_space)
 
-        if len(self.sample_set['test_y']) == 0:  # for the actual prediction iteration
-            self.sample_set['test_y'] = np.zeros(self.sample_set['test_y_pred'].shape)
-
+        # eval: for cluster pillar
         if 'pillar' in self.sql_result['y_type']:
-            # eval: for cluster pillar
             result = {}
             for i in ['train_yy', 'valid_y', 'test_y']:
                 for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():

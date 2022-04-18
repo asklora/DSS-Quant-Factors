@@ -11,7 +11,8 @@ from global_vars import (
     logging,
     factor_formula_config_train_prod,
     factor_formula_config_eval_prod,
-    factors_y_type_table,
+    factors_pillar_defined_table,
+    factors_pillar_cluster_table,
     factor_premium_table,
     result_score_table,
     result_pred_table,
@@ -33,40 +34,28 @@ from general.sql_process import (
 from results_analysis.calculation_rank import rank_pred
 from results_analysis.calculation_backtest import backtest_score_history
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
-from functools import partial
 
 
-def mp_rf(data, sql_result, kwargs):
+def mp_rf(*args):
     """ run random forest on multi-processor """
 
+    data, sql_result, kwargs = args
     sql_result.update(kwargs)
 
     logging.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
-    data.split_group(group_code, usd_for_all=True)
-    # start_lasso(sql_result['testing_period'], sql_result['y_type'], sql_result['group_code'])
-
-    # map y_type name to list of factors
-    if 'cluster' in sql_result['pillar']:
-        # read from cluster table
-        pass
-    else:
-        y_type_query = f"SELECT * FROM {factors_y_type_table}"
-        y_type_map = read_query(y_type_query).set_index(["y_type"])["factor_list"].to_dict()
-        pillar_dict = dict(y_type=y_type_map[y_type])
+    data.split_group(sql_result["train_currency"], sql_result["pred_currency"])
+    # start_lasso(sql_result['testing_period'], sql_result['pillar'], sql_result['group_code'])
 
     stock_df_list = []
     score_df_list = []
     feature_df_list = []
-    factor_list = pillar_dict[y_type]
     try:
-        sql_result['y_type'] = y_type  # random forest model predict all factor at the same time
-        sql_result['y_type_count'] = len(factor_list)  # random forest model predict all factor at the same time
-        load_data_params = {'valid_method': sql_result['valid_method'], 'n_splits': sql_result['n_splits'],
-                            "output_options": {"y_type": factor_list, "qcut_q": sql_result['qcut_q'],
-                                               "use_median": sql_result['qcut_q'] > 0, "defined_cut_bins": [],
-                                               "use_average": sql_result['use_average']},
+        load_data_params = {'valid_method': sql_result['_valid_method'], 'n_splits': sql_result['_n_splits'],
+                            "output_options": {"y_type": sql_result["factor_list"], "qcut_q": sql_result['_qcut_q'],
+                                               "use_median": sql_result['_qcut_q'] > 0, "defined_cut_bins": [],
+                                               "use_average": sql_result['_use_average']},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
-                                              "factor_pca": use_pca, "mi_pca": 0.6}}
+                                              "factor_pca": sql_result["_use_pca"], "mi_pca": 0.6}}
         testing_period = dt.datetime.combine(sql_result['testing_period'], dt.datetime.min.time())
         sample_set, cv = data.split_all(testing_period, **load_data_params)  # load_data (class) STEP 3
 
@@ -87,7 +76,8 @@ def mp_rf(data, sql_result, kwargs):
                 sample_set[k] = np.nan_to_num(sample_set[k], nan=0)
 
             # calculate weight for negative / positive index
-            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0, down_mkt_pct, 1 - down_mkt_pct)
+            sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0,
+                                                     sql_result["_down_mkt_pct"], 1 - sql_result["_down_mkt_pct"])
 
         sql_result['neg_factor'] = data.neg_factor
         stock_df, score_df, feature_df = rf_HPOT(max_evals=10, sql_result=sql_result,
@@ -204,6 +194,7 @@ if __name__ == "__main__":
     parser.add_argument('--pillar', default='momentum', type=str)
     parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
     parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
+    parser.add_argument('--recalc_subpillar', action='store_true', help='Recalculate cluster pillar / subpillar = True')
     parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
     parser.add_argument('--objective', default='squared_error')
     parser.add_argument('--hpot_eval_metric', default='adj_mse_valid')
@@ -267,8 +258,6 @@ if __name__ == "__main__":
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
-    subpillar_dict, pillar_dict = False  # TODO: when training retrieve from DB
-
     load_options = {
         "_tree_type": ['rf'],
         "_use_pca": [0.4, None],
@@ -284,54 +273,70 @@ if __name__ == "__main__":
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
             f"AND average_days={args.average_days} ORDER BY trading_day DESC"
     period_list_all = read_query(query)['trading_day'].to_list()
-    period_list = period_list_all[args.sample_interval * args.backtest_period + 1::args.sample_interval]
+    period_list = period_list_all[:args.sample_interval * args.backtest_period + 1:args.sample_interval]
     logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
     cluster_configs = {"_subpillar_trh": [5], "_pillar_trh": [2]}
-    for c in data_configs:
-        if c["pillar"] == "cluster":
-            for period in period_list:
-                for subpillar_trh in cluster_configs["_subpillar_trh"]:
-                    for pillar_trh in cluster_configs["_pillar_trh"]:
-                        calc_pillar_cluster(period, args.weeks_to_expire, c['train_currency'], subpillar_trh, pillar_trh)
-            logger.info(f"=== Update Cluster Partition for [{c['train_currency']}] ===")
+    if args.recalc_subpillar:
+        for c in data_configs:
+            if c["pillar"] == "cluster":
+                for period in period_list:
+                    for subpillar_trh in cluster_configs["_subpillar_trh"]:
+                        for pillar_trh in cluster_configs["_pillar_trh"]:
+                            calc_pillar_cluster(period, args.weeks_to_expire, c['train_currency'], subpillar_trh, pillar_trh)
+        logging.info(f"=== Update Cluster Partition for {cluster_configs} ===")
 
     # --------------------------------- Model Training ------------------------------------------
 
     # sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
-    sql_result = {
-        'name_sql': f"w{args.weeks_to_expire}_d{args.average_days}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')}"}
+    datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
+    sql_result = {'name_sql': f"w{args.weeks_to_expire}_d{args.average_days}_{datetimeNow}"}
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
     if not args.restart_eval:
         data = load_data(args.weeks_to_expire, args.average_days, trim=args.trim)  # load_data (class) STEP 1
 
+        # all_groups ignore [cluster_configs] -> fix subpillar for now (change if needed)
         all_groups = product([{**a, **l, **{"testing_period": p}}
                               for a in data_configs for l in load_configs for p in period_list])
-        all_groups = [tuple(e) for e in all_groups]
-        all_groups_df = pd.DataFrame(all_groups)
+        all_groups_df = pd.DataFrame([tuple(e)[0] for e in all_groups])
+
+        # Get factor list by merging pillar tables & configs
+        cluster_pillar = read_query(f"SELECT \"group\" as train_currency, testing_period, pillar, factor_list "
+                                    f"FROM {factors_pillar_cluster_table}")
+        defined_pillar = read_query(f"SELECT pillar, factor_list FROM {factors_pillar_defined_table}")
+
+        all_groups_defined_df = all_groups_df.loc[all_groups_df["pillar"] != "cluster"]
+        all_groups_cluster_df = all_groups_df.loc[all_groups_df["pillar"] == "cluster"].drop(columns=["pillar"])
+
+        all_groups_defined_df = all_groups_defined_df.merge(defined_pillar, on=["pillar"], how="left")
+        cluster_pillar_pillar = cluster_pillar.loc[cluster_pillar["pillar"].str.startswith("pillar")]
+        all_groups_cluster_df = all_groups_cluster_df.merge(cluster_pillar_pillar,
+                                                            on=["train_currency", "testing_period"], how="left")
+        all_groups_df = all_groups_defined_df.append(all_groups_cluster_df)
 
         # (restart) filter for failed iteration
         if args.restart:
             local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
+            sql_result["name_sql"] = args.restart
 
-            diff_config_col = list(all_groups.keys())
+            diff_config_col = [x for x in all_groups_df if x != "factor_list"]
             fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as uid "
                                 f"FROM {result_score_table} WHERE name_sql='{args.restart}' "
                                 f"GROUP BY {', '.join(diff_config_col)}")
             all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
             all_groups_df = all_groups_df.loc[all_groups_df['uid'].isnull(), diff_config_col]
-            all_groups = all_groups_df.to_dict("records")
+            to_slack("clair").message_to_slack(
+                f"=== Restart [{args.restart}]: rest iterations (n={len(all_groups_df)}) ===")
 
-            sql_result["name_sql"] = args.restart
-            all_groups = [tuple(e) for e in all_groups]
-            to_slack("clair").message_to_slack(f'\n===Restart [{args.restart}]: rest iterations (n={len(all_groups)})===\n')
+        all_groups = all_groups_df.to_dict("records")
+        all_groups = [tuple([data, sql_result, e]) for e in all_groups]
 
         # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
         with mp.Pool(processes=args.processes) as pool:
-            result_dfs = pool.starmap(partial(mp_rf, data=data, sql_result=sql_result), all_groups)
+            result_dfs = pool.starmap(mp_rf, all_groups)
 
         stock_df_all = [e for x in result_dfs for e in x[0]]
         stock_df_all_df = pd.concat(stock_df_all, axis=0)
@@ -344,6 +349,8 @@ if __name__ == "__main__":
             write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)
 
     # --------------------------------- Results Analysis ------------------------------------------
+
+    subpillar_dict, pillar_dict = False  # TODO: when training retrieve from DB
 
     sql_result["name_sql"] = args.restart
     try:

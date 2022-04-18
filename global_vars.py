@@ -53,7 +53,7 @@ factor_premium_table = "factor_processed_premium"
 formula_factors_table_prod = "factor_formula_ratios_prod"
 factor_formula_config_train_prod = "factor_formula_config_train_prod"
 factor_formula_config_eval_prod = "factor_formula_config_eval_prod"
-factors_y_type_table = "factor_formula_y_type"
+factors_pillar_defined_table = "factor_formula_pillar_defined"
 factors_pillar_cluster_table = "factor_formula_pillar_cluster"
 update_time_table = "ingestion_update_time"     # all table update time record in this table
 

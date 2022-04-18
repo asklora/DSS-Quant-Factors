@@ -155,9 +155,6 @@ class load_data:
         1. split train + valid + test -> sample set
         2. convert x with standardization, y with qcut '''
 
-    group_name = None
-    usd_for_all = None
-
     def __init__(self, weeks_to_expire, average_days, update_since=None, trim=False):
         """ combine all possible data to be used
 
@@ -184,26 +181,17 @@ class load_data:
         self.main = self.main.merge(df_y, on=["group", "trading_day"], how="outer")
         print(self.main)
 
-    def split_group(self, group_name=None, usd_for_all=False):
-        ''' split main sample sets in to industry_parition or country_partition '''
+    def split_group(self, train_currency, pred_currency):
+        """ split main sample sets in to industry_parition or country_partition """
 
-        # curr_list = ['KRW','GBP','HKD','EUR','CNY','USD','TWD','JPY','SGD'] #
-        curr_list = ['CNY', 'HKD', 'EUR', 'USD']
-
-        self.group_name = group_name
-
-        if group_name == 'currency':
-            self.group = self.main.loc[self.main['group'].isin(curr_list)]  # train on industry partition factors
-        elif (group_name == 'USD') & usd_for_all:
-            self.group = self.main.loc[self.main['group'].isin(curr_list)]  # USD model for all currency prediction
-            self.usd_for_all = True
-        elif group_name == 'industry':
-            self.group = self.main.loc[~self.main['group'].str.len() != 3]  # train on currency partition factors
-        elif group_name in curr_list:
-            self.group = self.main.loc[self.main['group'] == group_name]
+        if train_currency == 'currency':
+            self.train_currency = ['CNY', 'HKD', 'EUR', 'USD']
         else:
-            self.group = self.main.loc[self.main['group'].isin(group_name.split(','))]
+            self.train_currency = train_currency.split(',')
+        self.pred_currency = pred_currency.split(',')
 
+        all_currency = list(set(self.pred_currency + self.train_currency))
+        self.group = self.main.loc[self.main['group'].isin(all_currency)]  # train on currency partition factors
 
     @staticmethod
     def y_replace_median(qcut_q, arr, arr_cut, arr_test, arr_test_cut):
@@ -355,22 +343,19 @@ class load_data:
             self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])  # add MA variables name to x_col
 
         # 3. [Split training/testing] sets based on testing_period
+        train_end_date = testing_period - relativedelta(weeks=self.weeks_to_expire)     # avoid data snooping
         self.train = current_group.loc[(start <= current_group['trading_day']) &
-                                       (current_group['trading_day'] <= (
-                                                   testing_period - relativedelta(weeks=self.weeks_to_expire)))].copy()
-        if self.usd_for_all:
-            self.train = self.train.loc[self.train['group'] == 'USD']
-
-        self.test = current_group.loc[current_group['trading_day'] == testing_period].reset_index(drop=True).copy()
+                                       (current_group['trading_day'] <= train_end_date) &
+                                       (current_group['group'].isin(self.train_currency))].reset_index(drop=True).copy()
+        self.test = current_group.loc[(current_group['trading_day'] == testing_period) &
+                                      (current_group['group'].isin(self.pred_currency))].reset_index(drop=True).copy()
 
         # 4. [Prep Y]: qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
         self.y_col = self.y_qcut_all(**output_options)
-        self.train = self.train.dropna(subset=self.y_col, how='any').reset_index(
-            drop=True)  # remove training sample with NaN Y
+        self.train = self.train.dropna(subset=self.y_col, how='any').reset_index(drop=True)  # remove training sample with NaN Y
 
         # if using feature selection with PCA
-        arma_factor = [x for x in self.x_col_dict['ar'] + self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if
-                       f in x]
+        arma_factor = [x for x in self.x_col_dict['ar'] + self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if f in x]
 
         # 5. [Prep X] use PCA on all Factor + ARMA inputs
         factor_pca_col = self.x_col_dict['factor'] + arma_factor
@@ -383,12 +368,9 @@ class load_data:
 
         # 6. [Prep X] use PCA on all index/macro inputs
         group_index = {"USD": ".SPX", "HKD": ".HSI", "EUR": ".SXXGR", "CNY": ".CSI300"}
-        if self.group_name == 'currency':
-            mi_pca_col = []
-            for v in group_index.values():
-                mi_pca_col += [x for x in self.x_col_dict['index'] if re.match(f'^{v}', x)]
-        else:
-            mi_pca_col = [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[self.group_name]}', x)]
+        mi_pca_col = []
+        for train_cur in self.train_currency:
+            mi_pca_col += [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[train_cur]}', x)]
         mi_pca_col += self.x_col_dict['macro']
         mi_pca_train, mi_pca_test, mi_feature_name = load_data.standardize_pca_x(
             self.train[mi_pca_col], self.test[mi_pca_col], input_options["mi_pca"])
@@ -398,12 +380,11 @@ class load_data:
         logging.info(f"After {input_options['mi_pca']} PCA [Macro+Index]: {len(mi_feature_name)}")
 
         def divide_set(df):
-            ''' split x, y from main '''
+            """ split x, y from main """
             x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
             y_col_cut = [x + '_cut' for x in self.y_col]
-            return df.filter(x_col).values, np.nan_to_num(df[self.y_col].values, 0), np.nan_to_num(
-                df[y_col_cut].values), \
-                   df.filter(x_col).columns.to_list()  # Assuming using all factors
+            return df.filter(x_col).values, df[self.y_col].values, df[y_col_cut].values, \
+                   df.filter(x_col).columns.to_list()
 
         self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'], _ = divide_set(
             self.train)
@@ -497,29 +478,4 @@ class load_data:
 
 
 if __name__ == '__main__':
-    download_clean_macros()
-    exit(3000)
-
-
-    testing_period = dt.datetime(2021, 12, 26)
-    group_code = 'USD'
-
-    data = load_data(weeks_to_expire=4, average_days=7)
-    y_type = data.factor_list[:5]  # random forest model predict all factor at the same time
-
-    data.split_group(group_code)
-
-    # for y in y_type:
-    sample_set, cv = data.split_all(testing_period, valid_method='chron', n_splits=0.2,
-                                    output_options={"y_type": y_type, "qcut_q": 10, "use_median": False,
-                                                    "defined_cut_bins": []},
-                                    input_options={"ar_period": [], "ma3_period": [], "ma12_period": [],
-                                                   "factor_pca": 0.6, "mi_pca": 0.9})
-    # print(data.cut_bins)
-
-    print(data.x_col)
-
-    for train_index, test_index in cv:
-        print(len(train_index), len(test_index))
-
-    exit(0)
+    pass
