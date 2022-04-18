@@ -22,8 +22,8 @@ def adj_mse_score(actual, pred, multioutput=False):
         # TODO: customize training loss also adjusted like this
     """
 
-    actual_sort = actual.T.argsort().argsort()
-    pred_sort = pred.T.argsort().argsort()
+    actual_sort = actual.argsort().argsort()
+    pred_sort = pred.argsort().argsort()
     # rank_r2 = r2_score(actual_sort, pred_sort, multioutput='uniform_average')
     # rank_mse = mean_squared_error(actual_sort, pred_sort, multioutput='uniform_average')
     # rank_mae = mean_absolute_error(actual_sort, pred_sort, multioutput='uniform_average')

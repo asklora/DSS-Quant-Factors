@@ -104,9 +104,9 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return True
     except Exception as e:
         # save to pickle file in local for recovery
-        # stock_df_all.to_pickle('cache_stock_df_all.pkl')
-        # score_df_all.to_pickle('cache_score_df_all.pkl')
-        # feature_df_all.to_pickle('cache_feature_df_all.pkl')
+        stock_df_all.to_pickle('cache_stock_df_all.pkl')
+        score_df_all.to_pickle('cache_score_df_all.pkl')
+        feature_df_all.to_pickle('cache_feature_df_all.pkl')
 
         to_slack("clair").message_to_slack(f"*[Factor] ERROR [FINAL] write to DB*: {e.args}")
         return False
