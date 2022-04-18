@@ -22,7 +22,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
         df.to_csv(name_sql+'.csv', index=False)
     df['uid_hpot'] = df['uid'].str[:20]
 
-    iter_unique_col = ['name_sql', 'group_code', 'y_type', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
+    iter_unique_col = ['name_sql', 'group_code', 'pillar', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
     # 1. remove duplicate samples from running twice when testing
@@ -39,8 +39,8 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
 
     # 1.2. check iterations not done
     df1 = df.groupby(diff_config_col)['r2_valid'].count().reset_index()
-    df2 = df.groupby(diff_config_col + ['group_code', 'y_type'])['r2_valid'].count()
-    df3 = df.groupby(diff_config_col + ['group_code', 'y_type', 'testing_period'])['r2_valid'].count()
+    df2 = df.groupby(diff_config_col + ['group_code', 'pillar'])['r2_valid'].count()
+    df3 = df.groupby(diff_config_col + ['group_code', 'pillar', 'testing_period'])['r2_valid'].count()
 
     # 2. find best in cv groups
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
@@ -51,7 +51,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
 
     df_pillar_all = []
     # for each pillar
-    for name, df_best in df_best_all.groupby(['y_type']):
+    for name, df_best in df_best_all.groupby(['pillar']):
         df_best_avg_config = {}
         df_corr_config = {}
         for i in diff_config_col:
@@ -73,7 +73,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
         df_corr.columns = [x + '_corr' for x in df_corr.columns.to_list()]
 
         df_pillar = df_best_avg.merge(df_corr, left_index=True, right_index=True).reset_index()
-        df_pillar['y_type'] = name
+        df_pillar['pillar'] = name
         print(df_pillar)
         df_pillar_all.append(df_pillar)
 

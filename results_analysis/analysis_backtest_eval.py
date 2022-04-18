@@ -18,10 +18,10 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     df['net_ret'] = df['max_ret'] - df['min_ret']
     all_df = pd.concat([df, pd.DataFrame(df['config'].to_list())], axis=1)
 
-    iter_unique_col = ['name_sql', 'group', 'y_type', 'trading_day']  # keep 'cv_number' in last one for averaging
+    iter_unique_col = ['name_sql', 'group', 'pillar', 'trading_day']  # keep 'cv_number' in last one for averaging
     diff_config_col = list(df['config'].to_list()[0].keys())
 
-    for name, df in all_df.groupby(['group', 'y_type']):
+    for name, df in all_df.groupby(['group', 'pillar']):
 
         df_avg_time = df.groupby(iter_unique_col[:-1] + diff_config_col).mean().reset_index().sort_values(by='max_ret', ascending=False)
         continue

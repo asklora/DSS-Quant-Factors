@@ -95,13 +95,13 @@ def factor_weight(use_max_ret, q = 1 / 3):
     # type date
     xls = {}
     valid_group = [('USD', 'USD'), ('USD', 'EUR'), ('CNY', 'CNY'), ('HKD', 'HKD')]
-    for (group, group_code, y_type), g in pred.groupby(['group', 'group_code', 'y_type']):
+    for (group, group_code, pillar), g in pred.groupby(['group', 'group_code', 'pillar']):
         if (group_code, group) not in valid_group:
             continue
         g_mean = g.groupby(['testing_period', 'factor_name'])['good_pred'].mean().unstack().replace(0, np.nan)
         g_count = g.groupby(['testing_period', 'factor_name'])['select_pred'].mean().unstack().replace(0, np.nan)
-        xls[f'{group}{group_code}_{y_type}_mean'] = g_mean.reset_index()
-        xls[f'{group}{group_code}_{y_type}_count'] = g_count.reset_index()
+        xls[f'{group}{group_code}_{pillar}_mean'] = g_mean.reset_index()
+        xls[f'{group}{group_code}_{pillar}_count'] = g_count.reset_index()
 
     if use_max_ret:
         to_excel(xls, f'max_ret_factor_rotation_4-7', excel_cformat)
@@ -134,7 +134,7 @@ def factor_pred_variance():
                 result[k + '_mean'] = np.mean(score)
         return result
 
-    results = pred.groupby(['group', 'group_code', 'y_type', 'testing_period']).apply(group_metrics)
+    results = pred.groupby(['group', 'group_code', 'pillar', 'testing_period']).apply(group_metrics)
     results = pd.DataFrame(results.to_list(), index=results.index)
     return results
 
@@ -162,7 +162,7 @@ def factor_pred_variance_single(is_rank=True):
             result[k + '_mean'] = np.mean(score)
         return result
 
-    results = pred.groupby(['group', 'group_code', 'y_type', 'testing_period']).apply(group_metrics)
+    results = pred.groupby(['group', 'group_code', 'pillar', 'testing_period']).apply(group_metrics)
     results = pd.DataFrame(results.to_list(), index=results.index)
     return results
 

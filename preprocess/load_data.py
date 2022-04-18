@@ -105,6 +105,9 @@ def combine_data(weeks_to_expire, average_days, update_since=None, trim=False):
     else:
         df = df.drop(trim_cols)
 
+    # remove null > 50% sample
+    df = df.loc[df.isnull().sum(axis=1) < df.shape[1]/2]
+    df = df.T.fillna(df.T.mean()).T
     df.columns.name = None
     df = df.reset_index()
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
@@ -218,12 +221,12 @@ class load_data:
     #
     #     return best_best
 
-    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, y_type, use_average=False):
+    def y_qcut_all(self, qcut_q, defined_cut_bins, use_median, pillar, use_average=False):
         ''' convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period '''
 
         null_col = self.train.isnull().sum()
         null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
-        y_col = ['y_' + x for x in y_type if x not in null_col]
+        y_col = ['y_' + x for x in pillar if x not in null_col]
         cut_col = [x + "_cut" for x in y_col]
 
         # convert consistently negative premium factor to positive
@@ -257,7 +260,7 @@ class load_data:
             self.cut_bins_df = self.cut_bins_df.divide(self.cut_bins_df.sum(axis=1).values, axis=0).reset_index()
             self.cut_bins_df['negative'] = False
             # self.cut_bins_df.loc[self.cut_bins_df['index'].isin([x+'_cut' for x in neg_factor]), 'negative'] = True
-            self.cut_bins_df['y_type'] = [x[2:-4] for x in self.cut_bins_df['index']]
+            self.cut_bins_df['pillar'] = [x[2:-4] for x in self.cut_bins_df['index']]
             self.cut_bins_df['cut_bins_low'] = cut_bins[1]
             self.cut_bins_df['cut_bins_high'] = cut_bins[-2]
         else:
@@ -467,7 +470,7 @@ class load_data:
         return gkf
 
     def split_all(self, testing_period, n_splits=5, valid_method='cv',
-                  output_options={"y_type": None, "qcut_q": 10, "use_median": False, "defined_cut_bins": []},
+                  output_options={"pillar": None, "qcut_q": 10, "use_median": False, "defined_cut_bins": []},
                   input_options={"ar_period": [1, 2], "ma3_period": [3, 6, 9], "ma12_period": [12], "factor_pca": 0.6,
                                  "mi_pca": 0.9}):
         ''' work through cleansing process '''

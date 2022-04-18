@@ -386,8 +386,8 @@ if __name__ == "__main__":
     # defined configurations
     # 1. HKD / CNY use clustered pillar
     df_na = df.loc[(df['_group'].isin(['HKD', 'CNY'])) & (df['_name_sql'] == 'w4_d-7_20220324031027_debug')]
-    df_na = df_na.groupby([x for x in config_col if x != '_y_type'])[['max_ret', 'min_ret']].mean().reset_index()
-    df_na['_y_type'] = 'cluster'
+    df_na = df_na.groupby([x for x in config_col if x != '_pillar'])[['max_ret', 'min_ret']].mean().reset_index()
+    df_na['_pillar'] = 'cluster'
 
     # 2. USD / EUR use clustered pillar
     df_ws = df.loc[((df['_group'] == 'EUR') & (df['_name_sql'] == 'w4_d-7_20220321173435_debug')) |
@@ -407,10 +407,10 @@ if __name__ == "__main__":
 
     df = df.loc[df['_group'] == "CNY"]  # TODO: debug CNY only
 
-    for (group, y_type), g in df.groupby(['_group', '_y_type']):
-        print(group, y_type)
+    for (group, pillar), g in df.groupby(['_group', '_pillar']):
+        print(group, pillar)
         sql_result['currency_code'] = group
-        sql_result['y_type'] = y_type
+        sql_result['pillar'] = pillar
         data = load_date(g)
         for t in testing_period:
             X_train, X_valid, X_test, y_train, y_valid, y_test, y_train_cut, y_valid_cut, y_test_cut\

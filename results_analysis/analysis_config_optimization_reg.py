@@ -89,7 +89,7 @@ def lin_reg(X, y, y_cut):
 
 class load_date:
 
-    def __init__(self, df, g, y_type):
+    def __init__(self, df, g, pillar):
         """ create DataFrame for x, y for all testing periods """
 
         # x += macros
@@ -98,7 +98,7 @@ class load_date:
         # x = all configurations
         # config_col_x = [x.strip('_') for x in df.filter(regex="^__|_q|testing_period").columns.to_list() if x != '__tree_type']
         df.columns = [x.strip('_') for x in df]
-        # df = df.loc[df['y_type'] == y_type].copy()
+        # df = df.loc[df['pillar'] == pillar].copy()
 
         df['net_ret'] = df['max_ret'] - df['min_ret']
         df_pivot = df.groupby(['testing_period', 'group_code'])[['max_ret', 'net_ret']].mean().unstack()
@@ -291,7 +291,7 @@ if __name__ == "__main__":
                         (df['_is_removed_subpillar']) &
                         (df['_q'].astype(float) == 0.33),
                         config_col + ['max_ret', 'min_ret']].fillna(0)
-    df_cluster['_y_type'] = 'cluster'
+    df_cluster['_pillar'] = 'cluster'
 
     # 2. USD / EUR use clustered pillar
     df_pillar = df.loc[(~df['_name_sql'].isin(['w4_d-7_20220324031027_debug', 'w4_d-7_20220329120327_debug'])) &
@@ -305,7 +305,7 @@ if __name__ == "__main__":
                                                'w4_d-7_20220321173435_debug': "adj_mse",
                                                'w4_d-7_20220312222718_debug': "mse"})
 
-    df = df.groupby(['_name_sql', '_group', '_group_code', '_testing_period', '_y_type']).mean().reset_index()
+    df = df.groupby(['_name_sql', '_group', '_group_code', '_testing_period', '_pillar']).mean().reset_index()
     df.to_pickle('mean-'+pkl_name)
     # df = pd.read_pickle('mean-'+pkl_name)
 
@@ -318,7 +318,7 @@ if __name__ == "__main__":
     # df_index = df_index.set_index(['trading_day', 'level_1'])[0].rename('actual')
 
     df['_group_code'] = np.where(df['_group_code'] == df['_group'], 'own', 'usd')
-    df_pivot = df.groupby(['_name_sql', '_testing_period', '_y_type', '_group', '_group_code'])[['max_ret', 'min_ret']].mean().unstack()
+    df_pivot = df.groupby(['_name_sql', '_testing_period', '_pillar', '_group', '_group_code'])[['max_ret', 'min_ret']].mean().unstack()
     df_pivot.columns = ['max_own', 'max_usd', 'min_own', 'min_usd']
 
     df_pivot['net_own'] = df_pivot['max_own'] - df_pivot['min_own']
@@ -336,12 +336,12 @@ if __name__ == "__main__":
 
     # df_pivot['actual'] = df_pivot[['max_own', 'max_usd', 'min_own', 'min_usd']].mean(axis=1)
     # df_pivot = df_pivot.merge(df_index, left_on=['_testing_period', '_group'], right_index=True, how='left')
-    # df_pivot['actual1'] = df_pivot.groupby(['_group', '_y_type'])['actual'].transform('mean')
+    # df_pivot['actual1'] = df_pivot.groupby(['_group', '_pillar'])['actual'].transform('mean')
 
     ret_cols =['max_own', 'max_usd', 'net_own', 'net_usd', 'avg_own', 'avg_usd', 'avg_max', 'avg_net']
     df_pivot = df_pivot.reset_index()
     df_pivot['best'] = df_pivot[ret_cols].idxmax(axis=1)
-    df_pivot_count = df_pivot.groupby(['_name_sql', '_group', '_y_type'])['best'].apply(lambda x: dict(Counter(x)))
+    df_pivot_count = df_pivot.groupby(['_name_sql', '_group', '_pillar'])['best'].apply(lambda x: dict(Counter(x)))
 
     def sortino(g, actual_col):
         """ sortino ratio with actual = (current period average) or (all time average) """
@@ -368,24 +368,24 @@ if __name__ == "__main__":
         sharpe = avg.div(ab2_std)
         return sharpe
 
-    df_pivot_avg = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].mean().stack().rename("mean")
-    df_pivot_std = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].std().stack().rename("std")
-    df_pivot_min = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].min().stack().rename("min")
-    df_pivot_quantile = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.05).stack().rename("q5")
-    df_pivot_quantile1 = df_pivot.groupby(['_name_sql', '_group', '_y_type'])[ret_cols].quantile(q=0.1).stack().rename("q10")
-    df_pivot_sort0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col=0)).stack().rename("sortino_0")
-    # df_pivot_sort = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual')).stack().rename("sortino")
-    # df_pivot_sort1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sortino(x[ret_cols], actual_col='actual1')).stack().rename("sortino_ts")
-    df_pivot_sharpe0 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col=0)).stack().rename("sharpe_0")
-    # df_pivot_sharpe = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual')).stack().rename("sharpe")
-    # df_pivot_sharpe1 = df_pivot.groupby(['_name_sql', '_group', '_y_type']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual1')).stack().rename("sharpe_ts")
+    df_pivot_avg = df_pivot.groupby(['_name_sql', '_group', '_pillar'])[ret_cols].mean().stack().rename("mean")
+    df_pivot_std = df_pivot.groupby(['_name_sql', '_group', '_pillar'])[ret_cols].std().stack().rename("std")
+    df_pivot_min = df_pivot.groupby(['_name_sql', '_group', '_pillar'])[ret_cols].min().stack().rename("min")
+    df_pivot_quantile = df_pivot.groupby(['_name_sql', '_group', '_pillar'])[ret_cols].quantile(q=0.05).stack().rename("q5")
+    df_pivot_quantile1 = df_pivot.groupby(['_name_sql', '_group', '_pillar'])[ret_cols].quantile(q=0.1).stack().rename("q10")
+    df_pivot_sort0 = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sortino(x[ret_cols], actual_col=0)).stack().rename("sortino_0")
+    # df_pivot_sort = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sortino(x[ret_cols], actual_col='actual')).stack().rename("sortino")
+    # df_pivot_sort1 = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sortino(x[ret_cols], actual_col='actual1')).stack().rename("sortino_ts")
+    df_pivot_sharpe0 = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sharpe(x[ret_cols], actual_col=0)).stack().rename("sharpe_0")
+    # df_pivot_sharpe = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual')).stack().rename("sharpe")
+    # df_pivot_sharpe1 = df_pivot.groupby(['_name_sql', '_group', '_pillar']).apply(lambda x: sharpe(x[ret_cols], actual_col='actual1')).stack().rename("sharpe_ts")
 
     df_pivot_eval = pd.concat([df_pivot_avg, df_pivot_std, df_pivot_min, df_pivot_quantile, df_pivot_quantile1,
                                df_pivot_sort0, df_pivot_sharpe0], axis=1).reset_index()
     df_pivot_eval = df_pivot_eval.loc[df_pivot_eval['level_3'] != 'actual1']
-    xlsx_dict = {'raw': df_pivot_eval.sort_values(by=['_group', '_y_type', 'sortino_0'], ascending=False).groupby(['_group', '_y_type']).head(20)}
+    xlsx_dict = {'raw': df_pivot_eval.sort_values(by=['_group', '_pillar', 'sortino_0'], ascending=False).groupby(['_group', '_pillar']).head(20)}
     for i in ['mean', 'sortino_0', 'min']:
-        xlsx_dict[i] = df_pivot_eval.groupby(['_group', '_y_type', 'level_3'])[i].mean().unstack().reset_index()
+        xlsx_dict[i] = df_pivot_eval.groupby(['_group', '_pillar', 'level_3'])[i].mean().unstack().reset_index()
     xlsx_dict['count'] = df_pivot_count.unstack().reset_index()
     to_excel(xlsx_dict, 'config_opt_combination_top20')
     exit(200)
@@ -413,15 +413,15 @@ if __name__ == "__main__":
     final_df_dict = {}
     final_df_corr = {}
     score_df_list = []
-    for (group, y_type), g in df.groupby(['_group', '_y_type']):
+    for (group, pillar), g in df.groupby(['_group', '_pillar']):
         # if group not in ['CNY']:
         #     continue
 
-        print(group, y_type)
+        print(group, pillar)
         sql_result['currency_code'] = group
-        sql_result['y_type'] = y_type
+        sql_result['pillar'] = pillar
 
-        data = load_date(g, group, y_type)
+        data = load_date(g, group, pillar)
         ddf = data.df_x.copy()
 
         # =================== grid search combination =======================
@@ -432,7 +432,7 @@ if __name__ == "__main__":
             y_cols_replace = dict(zip(y_cols, range(2)))
             ddf = ddf.rename(columns=y_cols_replace)
             ddf['net_better'] = ddf[1] > ddf[0]
-            df_select = df_select2.loc[df_select2['y_type'] == y_type]
+            df_select = df_select2.loc[df_select2['pillar'] == pillar]
         else:
             y_cols = ddf.columns.to_list()[-4:]
             x_cols = ddf.columns.to_list()[:-4]
@@ -441,14 +441,14 @@ if __name__ == "__main__":
             ddf['Best'] = ddf.iloc[:, -4:].idxmax(axis=1)
             ddf['net_better'] = ddf[[2, 3]].sum(axis=1) > ddf[[0, 1]].sum(axis=1)
             ddf['usd_better'] = ddf[[1, 3]].sum(axis=1) > ddf[[0, 2]].sum(axis=1)
-            df_select = df_select1.loc[(df_select1['y_type'] == y_type) & (df_select1['group'] == group)]
+            df_select = df_select1.loc[(df_select1['pillar'] == pillar) & (df_select1['group'] == group)]
 
         # for y in y_cols:
         #     ddf[f'use_{y}'] = ddf[y] - ddf[[x for x in y_cols if x != y]].mean(axis=1)
         # ddf['use_usd'] = (ddf['max_ret-USD'] + ddf['n et_ret-USD'] - ddf[f'max_ret-{group}'] - ddf[f'net_ret-{group}']) / 2
         # ddf['use_max'] = (ddf['max_ret-USD'] - ddf['net_ret-USD'] + ddf[f'max_ret-{group}'] - ddf[f'net_ret-{group}']) / 2
         # ddf['average'] = (ddf['max_ret-USD'] + ddf['net_ret-USD'] + ddf[f'max_ret-{group}'] + ddf[f'net_ret-{group}']) / 4
-        # final_df_corr[f"{group}_{y_type}"] = ddf.corr().iloc[:-11, -7:].reset_index()
+        # final_df_corr[f"{group}_{pillar}"] = ddf.corr().iloc[:-11, -7:].reset_index()
 
         # =================== grid search =======================
     #     options = []
@@ -478,7 +478,7 @@ if __name__ == "__main__":
     #         score_df = score_df[score_df['accuracy'] > 0.4]
     #         score_df = score_df.sort_values(by=['accuracy'], ascending=False).reset_index()
     #         score_df.columns = ['first', 'level_0', 'level_0_trh', 'level_1+', 'level_1+_trh', 'level_1-', 'level_1-_trh', 'accuracy']
-    #     score_df['y_type'] = y_type
+    #     score_df['pillar'] = pillar
     #     score_df['group'] = group
     #     print(score_df['accuracy'].max())
     #     score_df_list.append(score_df)
@@ -508,7 +508,7 @@ if __name__ == "__main__":
     #     des = ddf.describe().transpose()
     #     exit(1)
     #
-    #     final_df_dict[f"{group}_{y_type}"] = ddf.reset_index()
+    #     final_df_dict[f"{group}_{pillar}"] = ddf.reset_index()
     #
     # # to_excel(final_df_dict, f'config_lin_reg_pivot3')
     # to_excel(final_df_corr, f'config_lin_reg_corr4')
@@ -561,6 +561,6 @@ if __name__ == "__main__":
     # true_df = pd.DataFrame(y, columns=["y-usd-max", "y-own-max", "y-usd-net", "y-own-net"]).reset_index(drop=True)
     # pred_df = pd.DataFrame(pred, columns=["y-usd-max", "y-own-max", "y-usd-net", "y-own-net"])
     # final_df = pd.concat([data.df_x.iloc[:new_row, :-2], true_df], axis=1).sort_values(by=['testing_period'])
-    # final_df_dict[f"{group}_{y_type}"] = data.df_x.reset_index()
+    # final_df_dict[f"{group}_{pillar}"] = data.df_x.reset_index()
 
 

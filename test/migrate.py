@@ -30,13 +30,13 @@ def migrate_tables():
     engine_prod = create_engine(global_vars.db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT")
 
     with engine_prod.connect() as conn_prod, engine_dev.connect() as conn_dev:
-        for t in ['data_vix', 'data_macro', 'factor_formula_ratios_prod', 'factor_formula_y_type']:
+        for t in ['data_vix', 'data_macro', 'factor_formula_ratios_prod', 'factor_formula_pillar']:
             print(f'----> migrate data: {t}')
             df = pd.read_sql(f'SELECT * FROM {t}', conn_prod)
 
             extra = {'con': conn_dev, 'index': False, 'if_exists': "append", 'method': 'multi', 'chunksize': 20000}
-            if t == 'factor_formula_y_type':
-                extra["dtype"] = {"y_type": TEXT, "factor_list": JSON}
+            if t == 'factor_formula_pillar':
+                extra["dtype"] = {"pillar": TEXT, "factor_list": JSON}
             df.to_sql(t, **extra)
 
     engine_dev.dispose()

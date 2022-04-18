@@ -27,7 +27,7 @@ class read_v2_top_excel:
 
     @staticmethod
     def evaluate_topn_returns(df_top10):
-        # c = df_top10.groupby(['weeks', 'currency_code', 'trading_day', 'y_type']).count()
+        # c = df_top10.groupby(['weeks', 'currency_code', 'trading_day', 'pillar']).count()
 
         for n in [10, 20, 40, 80]:
             df_n_avg = df_top10.groupby(['weeks', 'currency_code']).apply(lambda x:
@@ -38,7 +38,7 @@ class read_v2_top_excel:
     @staticmethod
     def evaluate_config_accuracy(df_top10):
         for col in config_col:
-            df_config = df_top10.groupby(['weeks', 'y_type', col, 'currency_code'])['return'].mean().unstack()
+            df_config = df_top10.groupby(['weeks', 'pillar', col, 'currency_code'])['return'].mean().unstack()
             print(df_config)
 
 
@@ -103,7 +103,7 @@ class read_v2_actual_eval:
         ret_data.holding(weeks_to_expire=self.weeks_to_expire)
 
         best_config_info = {}
-        for (y_type, group), g in df.groupby(['y_type', 'group']):
+        for (pillar, group), g in df.groupby(['pillar', 'group']):
             for n_period in self.n_period_list:
                 for i in range(len(date_list)):
                     ret_series = ret_data.period_average(date_list[i])  # pd.Series: ticker -> ret
@@ -122,14 +122,14 @@ class read_v2_actual_eval:
                         for n_config in self.n_config_list:
                             config_best = g_backtest_avg.head(n_config).reset_index()
 
-                            top_best = self.df_top10.loc[(self.df_top10['y_type'] == y_type) &
+                            top_best = self.df_top10.loc[(self.df_top10['pillar'] == pillar) &
                                                          (self.df_top10['currency_code'] == group) &
                                                          (self.df_top10['trading_day'] == date_list[i])]
                             top_best = top_best.merge(config_best, on=config_col)
 
-                            print('---> finish', (y_type, group, date_list[i], m, n_config, n_period))
+                            print('---> finish', (pillar, group, date_list[i], m, n_config, n_period))
                             if self.is_config_test:
-                                best_config_info[(y_type, group, date_list[i], m, n_config, n_period)] = top_best[
+                                best_config_info[(pillar, group, date_list[i], m, n_config, n_period)] = top_best[
                                     ['positive_pct', 'return']].mean()
                             # else:
                             #     tickers = top_best['tickers'] =
@@ -142,7 +142,7 @@ class read_v2_actual_eval:
     @staticmethod
     def save_test_config_excel(best_config_info):
         best_config_info = pd.DataFrame(best_config_info).transpose().reset_index().dropna(subset=['return'])
-        best_config_info.columns = ['y_type', 'group', 'trading_day', 'm',
+        best_config_info.columns = ['pillar', 'group', 'trading_day', 'm',
                                     'n_configs', 'n_period', 'positive_pct', 'return']
         print(best_config_info)
 

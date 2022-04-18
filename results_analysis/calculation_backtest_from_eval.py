@@ -111,7 +111,7 @@ def get_minmax_factors(name_sql,
                        weeks_to_expire=4,
                        eval_q=0.33,
                        is_removed_subpillar=True,
-                       y_type='cluster',
+                       pillar='cluster',
                        eval_metric='net_ret',
                        n_backtest_period=None,
                        n_config_pct=None):
@@ -125,12 +125,12 @@ def get_minmax_factors(name_sql,
                   f"_weeks_to_expire={weeks_to_expire}",
                   f"_q={eval_q}",
                   f"_is_removed_subpillar={is_removed_subpillar}"]
-    if y_type != "cluster":
-        conditions.append(f"_y_type='{y_type}'")
+    if pillar != "cluster":
+        conditions.append(f"_pillar='{pillar}'")
     factor_eval_query = f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} " \
                         f"WHERE {' AND '.join(conditions)} ORDER BY _testing_period"
     factor_eval = read_query(factor_eval_query)
-    factor_eval['_y_type'] = y_type
+    factor_eval['_pillar'] = pillar
 
     # testing_period = start date of test sets (i.e. data cutoff should be 1 period later / last return = 2p later)
     factor_eval["trading_day"] = pd.to_datetime(factor_eval["_testing_period"]) + pd.tseries.offsets.DateOffset(weeks=4)
@@ -249,7 +249,7 @@ class backtest_score_history:
         adj_fundamentals = pd.read_pickle('cache_adj_fundamentals.pkl')
 
         # Download: DataFrame for list of selected factors
-        models_key = ["name_sql", "group", "group_code", "weeks_to_expire", "eval_q", "is_removed_subpillar", "y_type",
+        models_key = ["name_sql", "group", "group_code", "weeks_to_expire", "eval_q", "is_removed_subpillar", "pillar",
                       "eval_metric", "n_backtest_period", "n_config_pct"]
         models_value = [
             ('w4_d-7_20220324031027_debug', "HKD", "HKD", 4, 0.33, True, "cluster", "net_ret", 12, 0.2),
@@ -275,9 +275,9 @@ class backtest_score_history:
                                          (adj_fundamentals['currency_code'] == kwargs["group"])].copy()
                 g['return'] = g[f'stock_return_y_w{kwargs["weeks_to_expire"]}_d-7']
                 if kwargs['eval_metric'] == "max_ret":
-                    g[kwargs['y_type'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1)
+                    g[kwargs['pillar'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1)
                 else:
-                    g[kwargs['y_type'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1) - g[f['min_factor']].mean(axis=1)
+                    g[kwargs['pillar'] + '_score'] = self.base + g[f['max_factor']].mean(axis=1) - g[f['min_factor']].mean(axis=1)
                 score_df_list.append(g)
 
         score_df = pd.concat(score_df_list, axis=0)

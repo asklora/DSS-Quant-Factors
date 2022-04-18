@@ -100,7 +100,7 @@ class rf_HPOT:
         params = space.copy()
         for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
             params[k] = int(params[k])
-        self.sql_result.update({f"__{k}": v for k, v in params})
+        self.sql_result.update({f"__{k}": v for k, v in params.items()})
 
         params['bootstrap'] = True
         params['n_jobs'] = 1
@@ -144,38 +144,31 @@ class rf_HPOT:
         self.sample_set['train_yy_pred'], self.sample_set['valid_y_pred'], self.sample_set['test_y_pred'], \
             feature_importance_df = self.rf_train(rf_space)
 
-        # eval: for cluster pillar
-        if 'pillar' in self.sql_result['y_type']:
-            result = {}
-            for i in ['train_yy', 'valid_y', 'test_y']:
-                for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error}.items():
+        # calculate evaluation scores
+        result = {}
+        score_map = {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error, "adj_mse": adj_mse_score}
+        for i in ['train_yy', 'valid_y', 'test_y']:
+            try:
+                for k, func in score_map.items():
                     result[f"{k}_{i.split('_')[0]}"] = func(self.sample_set[i],
                                                             self.sample_set[i + '_pred'],
                                                             multioutput='uniform_average')
-                if self.sample_set['test_y'].shape[1] > 1:  # i.e. if multioutput = multi factors
-                    result[f"adj_mse_{i.split('_')[0]}"] = adj_mse_score(self.sample_set[i].T, self.sample_set[i + '_pred'].T)
-                    eval_metric = self.sql_result['hpot_eval_metric']
-                else:
-                    eval_metric = 'mse_valid'
-        else:
-            # eval: for pre-defined pillar
-            ret, best_factor = self._eval_test_return(self.sample_set['test_y'], self.sample_set['test_y_pred'])
-            result = {'net_ret': ret}
-            for k, func in {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error,
-                            "adj_mse": adj_mse_score}.items():
-                for i in ['train_yy', 'valid_y', 'test_y']:
-                    score = func(self.sample_set[i].T, self.sample_set[i + '_pred'].T, multioutput='raw_values')
-                    result[f"{k}_{i.split('_')[0]}"] = np.mean(score)
-
-            logging.debug(f"R2 train: {result['r2_train']}")
-            logging.debug(f"R2 valid: {result['r2_valid']}")
-            logging.debug(f"R2 test: {result['r2_test']}")
-
-            eval_metric = 'adj_mse_valid'       # used to be [mse_valid]
-            logging.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
+            except Exception as e:
+                logging.warning(e)
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
+
+        # i.e. if multioutput = multi factors
+        if self.sample_set['test_y'].shape[1] > 1:
+            eval_metric = self.sql_result['hpot_eval_metric']
+        else:
+            eval_metric = 'mse_valid'       # if only 1 factor in pillar
+
+        # try:    # print runtime evaluation
+        #     logging.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
+        # except Exception as e:
+        #     logging.warning(e)
 
         if result[eval_metric] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
             self.hpot['best_score'] = result[eval_metric]

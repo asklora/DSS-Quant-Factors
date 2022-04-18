@@ -389,7 +389,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
 
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
     df = pd.concat([factor_selection, pd.DataFrame(factor_selection['config'].to_list())], axis=1)
-    factor_selection_best = df.groupby(['group', 'y_type']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
+    factor_selection_best = df.groupby(['group', 'pillar']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
     factor_selection_best = factor_selection_best.drop(columns=diff_config_col)
 
     csv_name = 'top{}_{}'.format(top_config, start_year)
@@ -545,7 +545,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                 g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
                                       factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
 
-                current_score_col = 'fundamentals_'+iter["info"]["y_type"].to_list()[0]
+                current_score_col = 'fundamentals_'+iter["info"]["pillar"].to_list()[0]
 
                 # Evaluate 1: calculate return on 10-qcut portfolios
                 eval_qcut_all[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_qcut(g_score, [current_score_col],

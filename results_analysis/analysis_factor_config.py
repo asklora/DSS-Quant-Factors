@@ -38,7 +38,7 @@ class main:
         score_col = df.filter(regex='_train$|_valid$|_test$').columns.to_list()
 
         df_best = df.sort_values(by='logloss_valid').groupby(['hpot_uid']).first()
-        df_best_agg = df_best.groupby(['currency_code', 'y_type'])[score_col].mean()
+        df_best_agg = df_best.groupby(['currency_code', 'pillar'])[score_col].mean()
 
         corr_best = df_best.corr()
 

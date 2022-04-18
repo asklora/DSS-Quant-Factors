@@ -241,8 +241,8 @@ Defined configs to be selected as **[hyperparameters]** of entire model with Gri
 - *Tree type*: Random Forest / ExtraTree Forest
 - *Validation Method* (i.e. n_splits)
 
-Define **[y_type]** of the training, i.e. what factors (n>1) to predict.
-- The detailed list of factors in each y type can refer to `factor_formula_y_type`.
+Define **[pillar]** of the training, i.e. what factors (n>1) to predict.
+- The detailed list of factors in each y type can refer to `factor_formula_pillar`.
 
 Define **[testing_period]** of the training based on 
 - Based on available trading days in `factor_processed_premium` given specific `--weeks_to_expire *n*` & `--average_days *n*`.
@@ -307,8 +307,8 @@ Including:
    - Logs for different model training config / updates.
 2. `factor_formula_ratios_prod`:
    - Factors calculation formula for ratio calculation.
-3. `factor_formula_y_type`:
-   - Map y_type names to list of factor. 
+3. `factor_formula_pillar`:
+   - Map pillar names to list of factor. 
 4. `factor_processed_ratio`:
    - Weekly factor ratios calculated for each ticker.
 5. `factor_processed_premium`:

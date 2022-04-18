@@ -29,7 +29,7 @@ class eval3_factor_selection:
 
         total_period = len(df['testing_period'].unique())
 
-        col = ['group', 'group_code', 'testing_period', 'y_type']
+        col = ['group', 'group_code', 'testing_period', 'pillar']
         df = df.set_index(col)
 
         # count
@@ -44,9 +44,9 @@ class eval3_factor_selection:
         factor_count = max_factor_count.merge(min_factor_count, left_index=True, right_index=True).reset_index()
 
         factor_count['year'] = factor_count['testing_period'].dt.year
-        factor_count = factor_count.groupby(['group', 'group_code', 'factor_name', 'y_type', 'year'])[['count_max', 'count_min']].mean().reset_index()
+        factor_count = factor_count.groupby(['group', 'group_code', 'factor_name', 'pillar', 'year'])[['count_max', 'count_min']].mean().reset_index()
         factor_count = factor_count.replace(0, np.nan).dropna(subset=['count_max', 'count_min'], how='all')
-        factor_count = factor_count.sort_values(by=['group', 'group_code', 'y_type', 'factor_name', 'year'])
+        factor_count = factor_count.sort_values(by=['group', 'group_code', 'pillar', 'factor_name', 'year'])
 
         factor_count_h5 = factor_count.sort_values(by=['count_max'], ascending=False).groupby(['group', 'group_code', 'year']).head(5).sort_values(by=['group', 'group_code', 'year', 'count_max'], ascending=False)
         # factor_count_h10 = factor_count.sort_values(by=['count_max'], ascending=False).groupby(['group', 'group_code', 'year']).head(10).sort_values(by=['group', 'group_code', 'year', 'count_max'], ascending=False)
@@ -149,12 +149,12 @@ def eval_sortino_ratio(name_sql=None,
            (df['_q'] == '0.33')].to_csv('test.xlsx')
 
     col = df.select_dtypes(float).columns.to_list()
-    # df_raw = df.groupby(['group', 'group_code', 'y_type', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
+    # df_raw = df.groupby(['group', 'group_code', 'pillar', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
     #                                                                                'actual']].mean().unstack()
     # df_raw.to_csv(f'eval_raw_{name_sql}.csv')
     # exit(1)
 
-    # df = df.loc[df['_y_type'] != "combine"]
+    # df = df.loc[df['_pillar'] != "combine"]
     # df = df.loc[((df['_group'] != 'EUR') & (df['_group'] == df['_group_code'])) |
     #             ((df['_group'] == 'EUR') & (df['_group_code'] == 'USD'))]
     # df['_group'] = df['_group'] + df['_group_code']

@@ -51,7 +51,7 @@ def mp_rf(*args):
     feature_df_list = []
     try:
         load_data_params = {'valid_method': sql_result['_valid_method'], 'n_splits': sql_result['_n_splits'],
-                            "output_options": {"y_type": sql_result["factor_list"], "qcut_q": sql_result['_qcut_q'],
+                            "output_options": {"pillar": sql_result["factor_list"], "qcut_q": sql_result['_qcut_q'],
                                                "use_median": sql_result['_qcut_q'] > 0, "defined_cut_bins": [],
                                                "use_average": sql_result['_use_average']},
                             "input_options": {"ar_period": [], "ma3_period": [], "ma12_period": [],
@@ -291,7 +291,8 @@ if __name__ == "__main__":
 
     # sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
-    sql_result = {'name_sql': f"w{args.weeks_to_expire}_d{args.average_days}_{datetimeNow}"}
+    sql_result = {"name_sql": f"w{args.weeks_to_expire}_d{args.average_days}_{datetimeNow}",
+                  "objective": args.objective}
     if args.debug:
         sql_result['name_sql'] += f'_debug'
 
