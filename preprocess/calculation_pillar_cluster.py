@@ -74,11 +74,12 @@ class calc_pillar_cluster:
 
         if save_to_db:
             config = dict(weeks_to_expire=weeks_to_expire, currency_code=currency_code, subpillar_trh=subpillar_trh,
-                          pillar_trh=pillar_trh, lookback=lookback, updated=dt.datetime.now())
+                          pillar_trh=pillar_trh, lookback=lookback)
             results = results.reset_index().rename(columns={"index": "pillar"})
+            results["updated"] = dt.datetime.now()
             for k, v in config.items():
                 results[k] = v
-            primary_key = list(config.keys()) + ['pillar']
+            primary_key = list(config.keys()) + ['pillar', "testing_period"]
             upsert_data_to_database(results, global_vars.factors_pillar_cluster_table, primary_key=primary_key,
                                     how="update", dtype=dtype_pillar)
 
@@ -88,7 +89,7 @@ class calc_pillar_cluster:
         testing_period, = args
         end_date = testing_period + relativedelta(weeks=weeks_to_expire)
         start_date = end_date - relativedelta(years=lookback)
-        df = self.df.loc[(self.df.index.get_level_values("trading_day").date < end_date) &
+        df = self.df.loc[(self.df.index.get_level_values("trading_day").date <= end_date) &
                          (self.df.index.get_level_values("trading_day").date > start_date)]
 
         # general cluster for distance calculation

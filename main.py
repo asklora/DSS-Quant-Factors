@@ -270,10 +270,10 @@ if __name__ == "__main__":
     load_configs = [dict(zip(load_options.keys(), e)) for e in product(*load_options.values())]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
-            f"AND average_days={args.average_days} AND trading_day<='2022-03-31' ORDER BY trading_day DESC"
-    period_list_all = read_query(query)['trading_day'].to_list()
-    period_list = period_list_all[:args.sample_interval * args.backtest_period + 1:args.sample_interval]
+    query = f"SELECT max(trading_day) trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
+            f"AND average_days={args.average_days}"
+    period_list_last = read_query(query)['trading_day'].to_list()[0]
+    period_list = [period_list_last - relativedelta(weeks=args.sample_interval*i) for i in range(args.backtest_period+1)]
     logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
