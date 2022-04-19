@@ -73,8 +73,8 @@ class calc_pillar_cluster:
         results = pd.concat(results, axis=0)
 
         if save_to_db:
-            config = dict(weeks_to_expire=weeks_to_expire, currency_code=currency_code,
-                          subpillar_trh=subpillar_trh, pillar_trh=pillar_trh, lookback=lookback)
+            config = dict(weeks_to_expire=weeks_to_expire, currency_code=currency_code, subpillar_trh=subpillar_trh,
+                          pillar_trh=pillar_trh, lookback=lookback, updated=dt.datetime.now())
             results = results.reset_index().rename(columns={"index": "pillar"})
             for k, v in config.items():
                 results[k] = v
@@ -115,8 +115,8 @@ class calc_pillar_cluster:
             logging.info(Counter(pillar_label))
             pillar = {f"pillar_{k}": list(self.feature_names[pillar_label == k]) for k, v in dict(Counter(pillar_label)).items()}
 
-            df_pillar = pd.DataFrame({"factor_name": {**pillar, **subpillar}})
-            df_pillar["trading_day"] = testing_period
+            df_pillar = pd.DataFrame({"factor_list": {**pillar, **subpillar}})
+            df_pillar["testing_period"] = testing_period
             return df_pillar
         except Exception as e:
             logging.info(e)
