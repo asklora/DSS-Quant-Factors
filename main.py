@@ -279,12 +279,10 @@ if __name__ == "__main__":
     # update cluster separation table for any currency with 'cluster' pillar
     cluster_configs = {"_subpillar_trh": [5], "_pillar_trh": [2]}
     if args.recalc_subpillar:
-        for c in data_configs:
-            if c["pillar"] == "cluster":
-                for period in period_list:
-                    for subpillar_trh in cluster_configs["_subpillar_trh"]:
-                        for pillar_trh in cluster_configs["_pillar_trh"]:
-                            calc_pillar_cluster(period, args.weeks_to_expire, c['train_currency'], subpillar_trh, pillar_trh)
+        for e in data_configs:
+            if e["pillar"] == "cluster":
+                calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"],
+                                    subpillar_trh=5, pillar_trh=2, lookback=5)        # TODO: remove for debug
         logging.info(f"=== Update Cluster Partition for {cluster_configs} ===")
 
     # --------------------------------- Model Training ------------------------------------------
@@ -306,7 +304,7 @@ if __name__ == "__main__":
         all_groups_df = pd.DataFrame([tuple(e)[0] for e in all_groups])
 
         # Get factor list by merging pillar tables & configs
-        cluster_pillar = read_query(f"SELECT \"group\" as train_currency, testing_period, pillar, factor_list "
+        cluster_pillar = read_query(f"SELECT currency_code as train_currency, testing_period, pillar, factor_list "
                                     f"FROM {factors_pillar_cluster_table}")
         defined_pillar = read_query(f"SELECT pillar, factor_list FROM {factors_pillar_defined_table}")
 
