@@ -226,8 +226,8 @@ if __name__ == "__main__":
         data_configs = [dict(zip(data_options.keys(), e)) for e in product(*data_options.values())]
     else:
         # Check 1: if monthly -> only first Sunday every month
-        if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        # if dt.datetime.today().day > 7:
+        #     raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
         # Check 2(b): monthly update after weekly update
         start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
@@ -262,7 +262,7 @@ if __name__ == "__main__":
         "_tree_type": ['rf'],
         "_use_pca": [0.4, None],
         "_n_splits": [.2],
-        "_valid_method": [2010, 2012, 2014],
+        "_valid_method": [2010, 2012],
         "_qcut_q": [0, 10],
         "_use_average": [None],                 # True, False
         "_down_mkt_pct": [0.5, 0.7]
@@ -270,21 +270,19 @@ if __name__ == "__main__":
     load_configs = [dict(zip(load_options.keys(), e)) for e in product(*load_options.values())]
 
     # create date list of all testing period
-    query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
-            f"AND average_days={args.average_days} ORDER BY trading_day DESC"
-    period_list_all = read_query(query)['trading_day'].to_list()
-    period_list = period_list_all[:args.sample_interval * args.backtest_period + 1:args.sample_interval]
+    query = f"SELECT max(trading_day) trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
+            f"AND average_days={args.average_days}"
+    period_list_last = read_query(query)['trading_day'].to_list()[0]
+    period_list = [period_list_last - relativedelta(weeks=args.sample_interval*i) for i in range(args.backtest_period+1)]
     logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
     cluster_configs = {"_subpillar_trh": [5], "_pillar_trh": [2]}
     if args.recalc_subpillar:
-        for c in data_configs:
-            if c["pillar"] == "cluster":
-                for period in period_list:
-                    for subpillar_trh in cluster_configs["_subpillar_trh"]:
-                        for pillar_trh in cluster_configs["_pillar_trh"]:
-                            calc_pillar_cluster(period, args.weeks_to_expire, c['train_currency'], subpillar_trh, pillar_trh)
+        for e in data_configs:
+            if e["pillar"] == "cluster":
+                calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"],
+                                    subpillar_trh=5, pillar_trh=2, lookback=5)        # TODO: remove for debug
         logging.info(f"=== Update Cluster Partition for {cluster_configs} ===")
 
     # --------------------------------- Model Training ------------------------------------------
@@ -306,7 +304,7 @@ if __name__ == "__main__":
         all_groups_df = pd.DataFrame([tuple(e)[0] for e in all_groups])
 
         # Get factor list by merging pillar tables & configs
-        cluster_pillar = read_query(f"SELECT \"group\" as train_currency, testing_period, pillar, factor_list "
+        cluster_pillar = read_query(f"SELECT currency_code as train_currency, testing_period, pillar, factor_list "
                                     f"FROM {factors_pillar_cluster_table}")
         defined_pillar = read_query(f"SELECT pillar, factor_list FROM {factors_pillar_defined_table}")
 

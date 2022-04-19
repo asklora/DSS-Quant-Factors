@@ -215,38 +215,56 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
     tbl_name = global_vars.production_factor_rank_backtest_top_table + '_12'
     df = read_query(f"SELECT * FROM {tbl_name}")
 
+    # filter
+    df = df.loc[df['trading_day'] < dt.date(2022, 4, 3)]
+    df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
+    df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
+
+    df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_return "
+                          f"FROM factor_processed_ratio "
+                          f"WHERE ticker in ('.SPX', '.HSI') AND field='stock_return_y_w4_d-7'")
+    df_index["currency_code"] = df_index["currency_code"].replace({".SPX": "USD", ".HSI": "HKD"})
+    # df['trading_day'] = pd.to_datetime(df['trading_day'])
+    # df_index['trading_day'] = pd.to_datetime(df_index['trading_day'])
+
+    df = df.merge(df_index, on=["currency_code", "trading_day"], how="left")
     df[['return', 'bm_return']] /= 100
     # df.to_pickle('cache2.pkl')
     # df = pd.read_pickle('cache2.pkl')
 
-    df['diff'] = df['return'] - df['bm_return']
-    df['diff2_d'] = np.square(np.clip(df['diff'], np.inf, 0))
-    df['diff2'] = np.square(df['diff'])
-    df['return2_d'] = np.square(np.clip(df['return'], np.inf, 0))
-    df['return2'] = np.square(df['return'])
+    # df['return2_d'] = np.square(np.clip(df['return'], np.inf, 0))
+    # df['bm_return2_d'] = np.square(np.clip(df['bm_return'], np.inf, 0))
+    # df['index_return2_d'] = np.square(np.clip(df['index_return'], np.inf, 0))
 
-    xls = {}
+    df['return2_d'] = np.square(df['return'])
+    df['bm_return2_d'] = np.square(df['bm_return'])
+    df['index_return2_d'] = np.square(df['index_return'])
+
+    xls = {"raw": df}
     groupby_col = ['currency_code', 'top_n']
-    for d in ['2016-01-01', '2017-07-01', '2019-11-01', '2020-01-01', '2021-08-01']:
+    for d in ['2019-03-15', '2017-03-15']:
         df_p = df.loc[df['trading_day'] > dt.datetime.strptime(d, '%Y-%m-%d').date()]
         d = f"{df_p['trading_day'].min()} ({len(df_p['trading_day'].unique())})"
 
         # calculate avg return
         df_agg = df_p.groupby(groupby_col)[
-            ['return', 'bm_return', 'diff', 'diff2_d', 'diff2', 'return2_d', 'return2']].mean()
+            ['return', 'bm_return', 'index_return', 'return2_d', 'bm_return2_d', 'index_return2_d']].mean()
 
         # calculate sortino / sharpe ratio
-        df_agg['sortino_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2_d']))
-        df_agg['sortino_0'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
-        # df_agg['sharpe_mkt'] = df_agg['diff'].div(np.sqrt(df_agg['diff2']))
-        # df_agg['sharpe_0'] = df_agg['return'].div(np.sqrt(df_agg['return2']))
+        # df_agg['sortino'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
+        # df_agg['sortino_bm'] = df_agg['bm_return'].div(np.sqrt(df_agg['bm_return2_d']))
+        # df_agg['sortino_index'] = df_agg['index_return'].div(np.sqrt(df_agg['index_return2_d']))
+
+        df_agg['sharpe'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
+        df_agg['sharpe_bm'] = df_agg['bm_return'].div(np.sqrt(df_agg['bm_return2_d']))
+        df_agg['sharpe_index'] = df_agg['index_return'].div(np.sqrt(df_agg['index_return2_d']))
 
         # # calculate std
         # df_std = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].std()
         # df_std.columns = ['std_' + x for x in df_std]
 
         # calculate min period return
-        df_min = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].min()
+        df_min = df_p.groupby(groupby_col)[['return', 'bm_return', 'index_return']].min()
         df_min.columns = ['min_' + x for x in df_min]
 
         # df_quantile = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.1)
@@ -255,9 +273,15 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
         # df_quantile2 = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.05)
         # df_quantile2.columns = ['q5_' + x for x in df_quantile2]
 
-        xls[d] = pd.concat([df_agg, df_min], axis=1).reset_index().drop(columns=['diff2_d', 'diff2', 'return2_d', 'return2'])
+        final_df = pd.concat([df_agg, df_min], axis=1).reset_index().drop(
+            columns=['return2_d', 'bm_return2_d', 'index_return2_d'])
 
-    to_excel(xls, f'sortino_ratio_top_12')
+        final_df['sort'] = final_df['top_n'].map({-10: 0, -50: 1, 50: 2, 10: 3})
+        final_df = final_df.sort_values(by=["currency_code", "sort"]).drop(columns=["sort"])
+
+        xls[d] = final_df
+
+    to_excel(xls, f'sortino_ratio_top_12_sharpe')
     print(df)
 
 if __name__ == '__main__':
