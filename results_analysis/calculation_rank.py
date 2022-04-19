@@ -94,6 +94,40 @@ def download_prediction(name_sql, pred_pillar=None, pred_start_testing_period='2
         raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
     return pred
 
+    @staticmethod
+    def _download_pillar_cluster_subpillar():
+        """ download pillar cluster table """
+
+        # TODO: filter for cluster method
+        query = f"SELECT * FROM {factors_pillar_cluster_table} WHERE pillar like 'subpillar_%%'"
+        subpillar = read_query(query)
+        subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
+
+        arr_len = subpillar['factor_name'].str.len().values
+        arr_info = np.repeat(subpillar[["testing_period", "group", "pillar"]].values, arr_len, axis=0)
+        arr_factor = np.array([e for x in subpillar["factor_name"].to_list() for e in x])[:, np.newaxis]
+
+        idx = pd.MultiIndex.from_arrays(arr_info.T, names=["testing_period", "group", "subpillar"])
+        df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
+        return df_new
+
+    def _download_prediction(self, name_sql, pred_pillar, pred_start_testing_period, pred_start_uid):
+        """ merge factor_stock & factor_model_stock """
+
+        try:
+            pred = pd.read_pickle(f"pred_{name_sql}.pkl")
+            logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
+            pred = pred.rename(columns={"trading_day": "testing_period"})
+        except Exception as e:
+            print(e)
+            logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
+            pred = download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
+
+        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
+        pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
+        return pred
+
+
 
 class rank_pred:
     """ process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation """
@@ -280,57 +314,6 @@ class rank_pred:
         #         df.loc[df['factor_name'].isin(v), 'long_large'] = True
 
         return df.sort_values(['group', 'group_code', 'pred'])
-
-    # --------------------------------------- Download Prediction -------------------------------------------------
-
-    @staticmethod
-    def _download_pillar_cluster_subpillar():
-        """ download pillar cluster table """
-
-        # TODO: filter for cluster method
-        query = f"SELECT * FROM {factors_pillar_cluster_table} WHERE pillar like 'subpillar_%%'"
-        subpillar = read_query(query)
-        subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
-
-        arr_len = subpillar['factor_name'].str.len().values
-        arr_info = np.repeat(subpillar[["testing_period", "group", "pillar"]].values, arr_len, axis=0)
-        arr_factor = np.array([e for x in subpillar["factor_name"].to_list() for e in x])[:, np.newaxis]
-
-        idx = pd.MultiIndex.from_arrays(arr_info.T, names=["testing_period", "group", "subpillar"])
-        df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
-        return df_new
-
-    def _download_prediction(self, name_sql, pred_pillar, pred_start_testing_period, pred_start_uid):
-        """ merge factor_stock & factor_model_stock """
-
-        try:
-            pred = pd.read_pickle(f"pred_{name_sql}.pkl")
-            logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
-            pred = pred.rename(columns={"trading_day": "testing_period"})
-        except Exception as e:
-            print(e)
-            logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
-            pred = download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
-
-        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
-        pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
-
-        # TODO: fix bug for missing CNY 2021-09-12 in eval table
-        # pred = pred.loc[(pred['group_code'] == 'CNY') & (pred['testing_period'] == dt.date(2021, 9, 12))]
-        # pred = pred.loc[pred['group_code'] == 'CNY']
-        # x = np.sort(pred['testing_period'].unique())[:, np.newaxis]
-        # pred = pred.loc[pred['testing_period'] == dt.datetime(2020, 3, 1, 0, 0, 0)]
-
-        # TODO: use if needing to fix wrong "actual" premium in factor_model_stock (1)
-        # premium = read_query(f"SELECT * FROM {factor_premium_table} "
-        #                      f"WHERE weeks_to_expire={self.weeks_to_expire} and average_days={self.average_days}")
-        # premium['trading_day'] = premium['trading_day'] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
-        # premium = premium.set_index(['trading_day', "group", 'field'])['value']
-        # pred = pred.join(premium, on=['testing_period', 'group', 'factor_name'])
-        #
-        # pred = pred.drop(columns=['actual']).rename(columns={"value": 'actual'})
-
-        return pred
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 

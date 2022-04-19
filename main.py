@@ -225,13 +225,14 @@ if __name__ == "__main__":
         }
         data_configs = [dict(zip(data_options.keys(), e)) for e in product(*data_options.values())]
     else:
-        # Check 1: if monthly -> only first Sunday every month      # TODO: start for production
-        # if dt.datetime.today().day > 7:
-        #     raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        # Check 1: if monthly -> only first Sunday every month
+        if dt.datetime.today().day > 7:
+            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
         # Check 2(b): monthly update after weekly update
         start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
 
+        # for production: use defined configs
         data_configs = read_query(f"SELECT train_currency, pred_currency, pillar, hpot_eval_metric "
                                   f"FROM {factor_formula_config_train_prod} "
                                   f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")
@@ -242,19 +243,18 @@ if __name__ == "__main__":
 
     # ---------------------------------------- Rerun Write Premium -----------------------------------------------
 
-    # TODO: report to production
-    # if args.recalc_ratio:
-    #     calc_factor_variables_multi(ticker=None,
-    #                                 restart=False,
-    #                                 tri_return_only=False,
-    #                                 processes=args.processes)
-    # if args.recalc_premium:
-    #     calc_premium_all(weeks_to_expire=args.weeks_to_expire,
-    #                      average_days=args.average_days,
-    #                      weeks_to_offset=min(4, args.weeks_to_expire),
-    #                      trim_outlier_=args.trim,
-    #                      all_groups=premium_currency_list,
-    #                      processes=args.processes)
+    if args.recalc_ratio:
+        calc_factor_variables_multi(ticker=None,
+                                    restart=False,
+                                    tri_return_only=False,
+                                    processes=args.processes)
+    if args.recalc_premium:
+        calc_premium_all(weeks_to_expire=args.weeks_to_expire,
+                         average_days=args.average_days,
+                         weeks_to_offset=min(4, args.weeks_to_expire),
+                         trim_outlier_=args.trim,
+                         all_groups=premium_currency_list,
+                         processes=args.processes)
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
@@ -297,6 +297,7 @@ if __name__ == "__main__":
         sql_result['name_sql'] += f'_debug'
 
     if not args.restart_eval:
+
         data = load_data(args.weeks_to_expire, args.average_days, trim=args.trim)  # load_data (class) STEP 1
 
         # all_groups ignore [cluster_configs] -> fix subpillar for now (change if needed)
@@ -351,9 +352,6 @@ if __name__ == "__main__":
 
     # --------------------------------- Results Analysis ------------------------------------------
 
-    subpillar_dict, pillar_dict = False  # TODO: when training retrieve from DB
-
-    sql_result["name_sql"] = args.restart
     try:
         all_eval_groups = product([sql_result],
                                   args.eval_top_metric.split(','),
@@ -362,10 +360,29 @@ if __name__ == "__main__":
                                   [args.eval_removed_subpillar],
                                   [float(e) for e in args.eval_q.split(',')],
                                   )
-        all_eval_groups = [tuple(e) for e in all_eval_groups]
+        if args.debug:
+            eval_configs = {
+                "pred_currency": args.pred_currency.split(","),
+                "eval_top_metric": args.eval_top_metric.split(','),
+                "eval_top_n_configs": [int(e) for e in args.eval_top_n_configs.split(',')],
+                "eval_top_backtest_period": [int(e) for e in args.eval_top_backtest_period.split(',')],
+                "eval_removed_subpillar": [args.eval_removed_subpillar],
+                "eval_q": [float(e) for e in args.eval_q.split(',')]
+            }
+            eval_configs = [dict(zip(eval_configs.keys(), e)) for e in product(*eval_configs.values())]
+        else:
+            eval_configs = read_query(f"SELECT * FROM {factor_formula_config_eval_prod} "
+                                      f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")
+
+            logging.warning(f'Production will ignore args (eval_top_metric, eval_top_n_configs, '
+                            f'eval_top_backtest_period, eval_removed_subpillar, eval_q) '
+                            f'and use combination in [{factor_formula_config_eval_prod}')
+
+        all_eval_groups = [tuple([sql_result, e]) for e in all_eval_groups]
         logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
         with mp.Pool(processes=args.processes) as pool:
             pool.starmap(mp_eval, all_eval_groups)
+
     except Exception as e:
         to_slack("clair").message_to_slack(f"ERROR in func mp_eval(): {e}")
