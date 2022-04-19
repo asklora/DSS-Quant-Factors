@@ -127,7 +127,7 @@ def resample_to_weekly(df, date_col):
 
 
 def calc_stock_return(ticker, restart, tri_return_only,
-                      stock_return_map={4: [-7, -28], 8: [-7, -28], 13: [-7, -28], 26: [-7, -28]}):
+                      stock_return_map={4: [-7], 8: [-7], 13: [-7], 26: [-7]}):
     '''   Calcualte monthly stock return
 
     Parameters
@@ -145,8 +145,6 @@ def calc_stock_return(ticker, restart, tri_return_only,
 
     drop_col = ['tri']
     ffill_col = []
-    if tri_return_only:
-        restart = True  # SELECT restart = True when
     tri, market_cap_anchor = get_tri(ticker, restart)
     market_cap_anchor = market_cap_anchor.loc[market_cap_anchor['ticker'].isin(tri['ticker'].unique())]
 
@@ -378,7 +376,7 @@ def combine_stock_factor_data(ticker, restart, tri_return_only):
     # 1. Stock return/volatility/volume
     tri, stocks_col = calc_stock_return(ticker, restart, tri_return_only)
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    check_duplicates(tri, 'tri')
+    # check_duplicates(tri, 'tri')
 
     if tri_return_only:
         return tri, stocks_col
@@ -496,10 +494,11 @@ def calc_factor_variables(*args, restart, tri_return_only):
     ticker, = args
 
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
-    try:
+    # try:
+    if 1==1:
         df, stocks_col = combine_stock_factor_data(ticker, restart, tri_return_only)
         if (tri_return_only) or (ticker[0] == '.'):
-            return tri
+            return df
 
         formula = read_table(formula_factors_table_prod, db_url_read)
         formula = formula.loc[formula['is_active']]
@@ -591,10 +590,10 @@ def calc_factor_variables(*args, restart, tri_return_only):
             df = df.loc[df["trading_day"] > (dt.datetime.today() - relativedelta(months=3))]
         return df
 
-    except Exception as e:
-        error_msg = f"===  ERROR IN Getting Data {ticker} == {e}"
-        to_slack("clair").message_to_slack(error_msg)
-        return pd.DataFrame()
+    # except Exception as e:
+    #     error_msg = f"===  ERROR IN Getting Data {ticker} == {e}"
+    #     to_slack("clair").message_to_slack(error_msg)
+    #     return pd.DataFrame()
 
 
 def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_return_only=False, processes=1):
@@ -670,4 +669,4 @@ def test_missing(df_org, formula, ingestion_cols):
 
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=False)
+    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=True)

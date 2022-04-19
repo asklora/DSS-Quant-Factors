@@ -174,9 +174,10 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=4, average_days=-7, weeks_to_offset=4, processes=1,
-                     all_groups=['CNY'], factor_list=['stock_return_ww1_0'], start_date='2020-02-02')
-
+    calc_premium_all(weeks_to_expire=8, average_days=-7, weeks_to_offset=4, processes=12,
+                     all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
+    calc_premium_all(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
+                     all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
     # stock_return_map = {4: [-7]}
     # start = datetime.now()
     # for fwd_weeks, avg_days in stock_return_map.items():
