@@ -373,9 +373,9 @@ def drop_dup(df, col='trading_day'):
 
 
 def combine_stock_factor_data(ticker, restart, tri_return_only):
-    ''' This part do the following:
+    """ This part do the following:
         1. import all data from DB refer to other functions
-        2. combined stock_return, worldscope, ibes, macroeconomic tables '''
+        2. combined stock_return, worldscope, ibes, macroeconomic tables """
 
     # 1. Stock return/volatility/volume
     tri, stocks_col = calc_stock_return(ticker, restart, tri_return_only)
@@ -483,8 +483,10 @@ def calc_fx_conversion(df):
     return df[org_cols]
 
 
-def calc_factor_variables(ticker, restart, tri_return_only):
-    ''' Calculate all factor used referring to DB ratio table '''
+def calc_factor_variables(*args, restart, tri_return_only):
+    """ Calculate all factor used referring to DB ratio table """
+
+    ticker = args
 
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     try:
@@ -601,7 +603,7 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_re
             Get From Table "data_tri"/"data_worldscope"/"data_ibes" for recent 2 years
             (we use longer history because ratios, e.g. stock_return_r12_7).
     tri_return_only (Bool, Optional, default=False):
-        if True, only write for 'stock_return_y_%' columns; this will also force restart=True
+        if True, only write for 'stock_return_y_%' columns; this will also force restart=True.
     '''
 
     if ticker:
@@ -612,6 +614,7 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_re
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
+    tickers = [tuple([e]) for e in tickers]
     with mp.Pool(processes=processes) as pool:
         df = pool.starmap(partial(calc_factor_variables, restart=restart, tri_return_only=tri_return_only), tickers)
     df = pd.concat(df, axis=0)
