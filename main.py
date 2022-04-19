@@ -262,7 +262,7 @@ if __name__ == "__main__":
         "_tree_type": ['rf'],
         "_use_pca": [0.4, None],
         "_n_splits": [.2],
-        "_valid_method": [2010, 2012, 2014],
+        "_valid_method": [2010, 2012],
         "_qcut_q": [0, 10],
         "_use_average": [None],                 # True, False
         "_down_mkt_pct": [0.5, 0.7]
@@ -271,7 +271,7 @@ if __name__ == "__main__":
 
     # create date list of all testing period
     query = f"SELECT DISTINCT trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire} " \
-            f"AND average_days={args.average_days} ORDER BY trading_day DESC"
+            f"AND average_days={args.average_days} AND trading_day<='2022-03-31' ORDER BY trading_day DESC"
     period_list_all = read_query(query)['trading_day'].to_list()
     period_list = period_list_all[:args.sample_interval * args.backtest_period + 1:args.sample_interval]
     logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")

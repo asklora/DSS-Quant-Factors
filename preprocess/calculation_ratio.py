@@ -195,16 +195,18 @@ def calc_stock_return(ticker, restart, tri_return_only,
 
     if not tri_return_only:
         # update market_cap/market_cap_usd refer to tri for each period
-        market_cap_anchor = market_cap_anchor.set_index('ticker')[
-            'mkt_cap'].to_dict()  # use mkt_cap from fundamental score
-        tri['trading_day'] = pd.to_datetime(tri['trading_day'])
-        anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
-        tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
-        tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
-        tri[['anchor_tri', 'market_cap']] = tri.groupby('ticker')[['anchor_tri', 'market_cap']].apply(
-            lambda x: x.ffill().bfill())
-        tri['market_cap'] = tri['market_cap'] / tri['anchor_tri'] * tri['tri']
-        drop_col += ['anchor_tri']
+        try:
+            market_cap_anchor = market_cap_anchor.set_index('ticker')['mkt_cap'].to_dict()  # use mkt_cap from fundamental score
+            tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+            anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
+            tri.loc[anchor_idx, 'market_cap'] = tri.loc[anchor_idx, 'ticker'].map(market_cap_anchor)
+            tri.loc[tri['market_cap'].notnull(), 'anchor_tri'] = tri.loc[tri['market_cap'].notnull(), 'tri']
+            tri[['anchor_tri', 'market_cap']] = tri.groupby('ticker')[['anchor_tri', 'market_cap']].apply(
+                lambda x: x.ffill().bfill())
+            tri['market_cap'] = tri['market_cap'] / tri['anchor_tri'] * tri['tri']
+            drop_col += ['anchor_tri']
+        except:
+            tri['market_cap'] = np.nan
 
     # Calculate future stock return (Y)
     logging.info(f'Calculate future stock returns')
@@ -242,12 +244,7 @@ def calc_stock_return(ticker, restart, tri_return_only,
         ret_col = tri.filter(regex="^stock_return_y_").columns.to_list()
         tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=ret_col, var_name="field",
                       value_name="value").dropna(subset=["value"])
-        delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
-        status = upsert_data_to_database(tri, processed_ratio_table, primary_key=['ticker', "trading_day", "field"],
-                                         db_url=db_url_write, how="append",
-                                         dtype=ratio_dtypes)
         logging.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
-        exit(status)
 
     return tri, stock_col
 
@@ -318,6 +315,7 @@ def update_trading_day(ws=None):
 
     ws["trading_day"] = pd.to_datetime(ws["trading_day"], format='%Y-%m-%d')
     ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y%m%d')
+    ws['fiscal_year_end'] = ws['fiscal_year_end'].replace("NA", np.nan)
     ws['fiscal_year_end'] = (pd.to_datetime(ws['fiscal_year_end'], format='%b') + MonthEnd(0)).dt.strftime('%m%d')
     ws["year"] = pd.DatetimeIndex(ws["trading_day"]).year
     ws["frequency_number"] = np.ceil(pd.DatetimeIndex(ws["trading_day"]).month / 3)
@@ -382,54 +380,63 @@ def combine_stock_factor_data(ticker, restart, tri_return_only):
     tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
     check_duplicates(tri, 'tri')
 
-    # 2. Fundamental financial data - from Worldscope
-    # 3. Consensus forecasts - from I/B/E/S
-    # 4. Universe
-    ws, ibes, universe = download_clean_worldscope_ibes(ticker, restart)
+    if tri_return_only:
+        return tri, stocks_col
+    elif ticker[0] == '.':
+        logging.warning(f"index [{ticker}] calculate stock_return ratios only")
+        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stocks_col, var_name="field",
+                      value_name="value").dropna(subset=["value"])
+        return tri, stocks_col
+    else:
+        # 2. Fundamental financial data - from Worldscope
+        # 3. Consensus forecasts - from I/B/E/S
+        # 4. Universe
+        ws, ibes, universe = download_clean_worldscope_ibes(ticker, restart)
 
-    # align worldscope / ibes data with stock return date (monthly/biweekly)
-    ws = fill_all_given_date(ws, tri)
-    ibes = fill_all_given_date(ibes, tri)
+        # align worldscope / ibes data with stock return date (monthly/biweekly)
+        ws = fill_all_given_date(ws, tri)
+        ibes = fill_all_given_date(ibes, tri)
 
-    check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + trading_day
-    check_duplicates(ibes, 'ibes')
+        check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + trading_day
+        check_duplicates(ibes, 'ibes')
 
-    # Use 6-digit ICB code in industry groups
-    universe['industry_code'] = universe['industry_code'].replace('NA', np.nan).dropna().astype(int).astype(str). \
-        replace({'10102010': '101021', '10102015': '101022', '10102020': '101023', '10102030': '101024',
-                 '10102035': '101024'})  # split industry 101020 - software (100+ samples)
-    universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
+        # Use 6-digit ICB code in industry groups
+        universe['industry_code'] = universe['industry_code'].replace('NA', np.nan).dropna().astype(int).astype(str). \
+            replace({'10102010': '101021', '10102015': '101022', '10102020': '101023', '10102030': '101024',
+                     '10102035': '101024'})  # split industry 101020 - software (100+ samples)
+        universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
 
-    # Combine all data for table (1) - (6) above
-    logging.info(f'Merge all dataframes ')
-    df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
-    df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
-    df = df.sort_values(by=['ticker', 'trading_day'])
+        # Combine all data for table (1) - (6) above
+        logging.info(f'Merge all dataframes ')
+        df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
+        df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
+        df = df.sort_values(by=['ticker', 'trading_day'])
 
-    # Update close price to adjusted value
-    def adjust_close(df):
-        ''' using market cap to adjust close price for stock split, ...'''
+        # Update close price to adjusted value
+        def adjust_close(df):
+            ''' using market cap to adjust close price for stock split, ...'''
 
-        logging.info(f'Adjust closing price with market cap ')
+            logging.info(f'Adjust closing price with market cap ')
 
-        df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
-        df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
-        df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
-        df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
+            df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
+            df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
+            df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
+            df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
 
-        return df[['ticker', 'trading_day', 'close']]
+            return df[['ticker', 'trading_day', 'close']]
 
-    df.update(adjust_close(df))
+        df.update(adjust_close(df))
 
-    # Forward fill for fundamental data
-    cols = df.select_dtypes('float').columns.to_list()
-    cols = [x for x in cols if not x.startswith("stock_return_y")]  # for stock_return_y -> no ffill
-    df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
-    df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
-    df = df.merge(universe, on=['ticker'], how='left',
-                  suffixes=('_old', ''))  # label industry_code, currency_code for each ticker
-    check_duplicates(df, 'final')
-    return df, stocks_col
+        # Forward fill for fundamental data
+        cols = df.select_dtypes('float').columns.to_list()
+        cols = [x for x in cols if not x.startswith("stock_return_y")]  # for stock_return_y -> no ffill
+        df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
+        df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
+        df = df.merge(universe, on=['ticker'], how='left',
+                      suffixes=('_old', ''))  # label industry_code, currency_code for each ticker
+        check_duplicates(df, 'final')
+
+        return df, stocks_col
 
 
 def calc_fx_conversion(df):
@@ -483,12 +490,16 @@ def calc_fx_conversion(df):
     return df[org_cols]
 
 
-def calc_factor_variables(ticker, restart, tri_return_only):
+def calc_factor_variables(*args, restart, tri_return_only):
     ''' Calculate all factor used referring to DB ratio table '''
+
+    ticker, = args
 
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     try:
         df, stocks_col = combine_stock_factor_data(ticker, restart, tri_return_only)
+        if (tri_return_only) or (ticker[0] == '.'):
+            return tri
 
         formula = read_table(formula_factors_table_prod, db_url_read)
         formula = formula.loc[formula['is_active']]
@@ -612,13 +623,21 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_re
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
-    with mp.Pool(processes=processes) as pool:
-        df = pool.starmap(partial(calc_factor_variables, restart=restart, tri_return_only=tri_return_only), tickers)
-    df = pd.concat(df, axis=0)
+    # tickers = [tuple([e]) for e in tickers]
+    # with mp.Pool(processes=processes) as pool:
+    #     df = pool.starmap(partial(calc_factor_variables, restart=restart, tri_return_only=tri_return_only), tickers)
+    # df = pd.concat(df, axis=0)
+
+    df = calc_factor_variables(tickers, restart=restart, tri_return_only=tri_return_only)
 
     # save calculated ratios to DB
     db_table_name = processed_ratio_table
-    if (restart) & (type(ticker) == type(None)):
+
+    if tri_return_only:
+        delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
+        upsert_data_to_database(df, processed_ratio_table, primary_key=['ticker', "trading_day", "field"],
+                                db_url=db_url_write, how="append", dtype=ratio_dtypes)
+    elif (restart) & (type(ticker) == type(None)):
         trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
         upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
                                 db_url=db_url_write, how="append", dtype=ratio_dtypes)
@@ -651,4 +670,4 @@ def test_missing(df_org, formula, ingestion_cols):
 
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=True)
+    calc_factor_variables_multi(ticker=None, restart=False, tri_return_only=False)
