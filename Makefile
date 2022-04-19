@@ -30,11 +30,6 @@ eval_top:
 
 trial:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--backtest_period 80 --weeks_to_expire 4 --sample_interval 4 --average_days -7 --processes 30 --debug \
-		--group_code HKD,CNY,currency --pillar cluster --hpot_eval_metric adj_mse_valid
+		--backtest_period 80 --weeks_to_expire 8 --sample_interval 4 --average_days -7 --processes 32
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--backtest_period 80 --weeks_to_expire 4 --sample_interval 4 --average_days -7 --processes 30 --debug \
-		--group_code USD,currency --pillar momentum,value,quality --hpot_eval_metric mse_valid
-	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--backtest_period 80 --weeks_to_expire 4 --sample_interval 4 --average_days -7 --processes 30 --debug \
-		--group_code EUR,currency --pillar momentum,value,quality --hpot_eval_metric mse_valid
+		--backtest_period 80 --weeks_to_expire 26 --sample_interval 4 --average_days -7 --processes 32

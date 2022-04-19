@@ -226,8 +226,8 @@ if __name__ == "__main__":
         data_configs = [dict(zip(data_options.keys(), e)) for e in product(*data_options.values())]
     else:
         # Check 1: if monthly -> only first Sunday every month
-        if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        # if dt.datetime.today().day > 7:
+        #     raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
         # Check 2(b): monthly update after weekly update
         start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
