@@ -1277,6 +1277,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/factor_eval_agg_check.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/factor_formula_ratios_prod.csv">
           <value>
             <Attribute>
@@ -2243,6 +2250,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/score_df_all4.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/score_df_all5.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/score_evaluate.py">
           <value>
             <Attribute>
@@ -2321,6 +2342,13 @@
           </value>
         </entry>
         <entry key="/tests/test_premiums.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/top_eval_df.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

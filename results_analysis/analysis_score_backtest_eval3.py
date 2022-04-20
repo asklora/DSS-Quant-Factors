@@ -117,7 +117,7 @@ def actual_good_prem():
 
 
 def eval_sortino_ratio(name_sql=None,
-                       groupby_col=['_group', '_group_code', '_name_sql', '_is_removed_subpillar', '_q']):
+                       groupby_col=['_currency_code', 'name_sql', '_eval_removed_subpillar', '_eval_q']):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
@@ -128,7 +128,7 @@ def eval_sortino_ratio(name_sql=None,
         pkl_name = f'cache_{tbl_name}.pkl'
         xls_name = f'sortino_ratio_{tbl_name}'
     else:
-        query = f"SELECT * FROM {tbl_name} WHERE _name_sql='{name_sql}'"
+        query = f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'"
         pkl_name = f'cache_eval_{name_sql}.pkl'
         xls_name = f'sortino_ratio_{name_sql}'
 
@@ -138,15 +138,15 @@ def eval_sortino_ratio(name_sql=None,
         df = read_query(query)
         df.to_pickle(pkl_name)
 
-    df['_q'] = df['_q'].astype(str)
+    df['_eval_q'] = df['_eval_q'].astype(str)
     df['_testing_period'] = pd.to_datetime(df['_testing_period'])
-    df['_name_sql'] = df['_name_sql'].replace({'w4_d-7_20220321173435_debug': "pre-defined",
-                                               'w4_d-7_20220324031027_debug': "cluster"})
-
-    df.loc[(df['_name_sql'] == "cluster") &
-           (df['_group'] == "CNY") &
-           (df['_group_code'] == "CNY") &
-           (df['_q'] == '0.33')].to_csv('test.xlsx')
+    # df['_name_sql'] = df['_name_sql'].replace({'w4_d-7_20220321173435_debug': "pre-defined",
+    #                                            'w4_d-7_20220324031027_debug': "cluster"})
+    #
+    # df.loc[(df['_name_sql'] == "cluster") &
+    #        (df['_group'] == "CNY") &
+    #        (df['_group_code'] == "CNY") &
+    #        (df['_q'] == '0.33')].to_csv('test.xlsx')
 
     col = df.select_dtypes(float).columns.to_list()
     # df_raw = df.groupby(['group', 'group_code', 'pillar', 'testing_period', 'q'])[['max_ret', 'net_ret', 'actual_s',
@@ -208,11 +208,11 @@ def eval_sortino_ratio(name_sql=None,
     print(df)
 
 
-def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
+def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    tbl_name = global_vars.production_factor_rank_backtest_top_table + '_12'
+    tbl_name = global_vars.production_factor_rank_backtest_top_table
     df = read_query(f"SELECT * FROM {tbl_name}")
 
     # filter
@@ -287,5 +287,5 @@ def eval_sortino_ratio_top(name_sql='w4_d-7_20220312222718_debug'):
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    # eval_sortino_ratio(name_sql='w4_d-7_20220408122219_debug')
-    eval_sortino_ratio_top()
+    eval_sortino_ratio(name_sql='w8_d-7_20220419172420')
+    # eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420')

@@ -380,7 +380,7 @@ def combine_stock_factor_data(ticker, restart, tri_return_only):
 
     if tri_return_only:
         return tri, stocks_col
-    elif ticker[0] == '.':
+    elif (len(ticker) == 1) and (ticker[0][0] == '.'):
         logging.warning(f"index [{ticker}] calculate stock_return ratios only")
         tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stocks_col, var_name="field",
                       value_name="value").dropna(subset=["value"])
@@ -489,14 +489,16 @@ def calc_fx_conversion(df):
 
 
 def calc_factor_variables(*args, restart, tri_return_only):
-    ''' Calculate all factor used referring to DB ratio table '''
+    """ Calculate all factor used referring to DB ratio table """
 
     ticker, = args
+    status_df = pd.DataFrame({"trading_day": dt.datetime.now(), "field": "status", "value": 1, "ticker": ticker}, index=[0])
 
     logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
     try:
         df, stocks_col = combine_stock_factor_data(ticker, restart, tri_return_only)
-        if (tri_return_only) or (ticker[0] == '.'):
+        if (tri_return_only) or ((len(ticker) == 1) and (ticker[0][0] == '.')):
+            df = df.append(status_df)
             return df
 
         formula = read_table(formula_factors_table_prod, db_url_read)
@@ -584,6 +586,7 @@ def calc_factor_variables(*args, restart, tri_return_only):
         df = df.filter(['ticker', 'trading_day'] + y_col + formula['name'].to_list())
         df = pd.melt(df, id_vars=['ticker', "trading_day"], var_name="field", value_name="value").dropna(
             subset=["value"])
+        df = df.append(status_df)
 
         if not restart:
             df = df.loc[df["trading_day"] > (dt.datetime.today() - relativedelta(months=3))]
@@ -592,7 +595,8 @@ def calc_factor_variables(*args, restart, tri_return_only):
     except Exception as e:
         error_msg = f"===  ERROR IN Getting Data {ticker} == {e}"
         to_slack("clair").message_to_slack(error_msg)
-        return pd.DataFrame()
+        status_df["value"] = 0
+        return status_df
 
 
 def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_return_only=False, processes=1):
@@ -621,7 +625,7 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_re
     else:
         tickers = read_query(f"SELECT ticker FROM universe WHERE is_active")["ticker"].to_list()
 
-    tickers = [tuple([e]) for e in tickers]
+    tickers = [tuple([[e]]) for e in tickers]
     with mp.Pool(processes=processes) as pool:
         df = pool.starmap(partial(calc_factor_variables, restart=restart, tri_return_only=tri_return_only), tickers)
     df = pd.concat(df, axis=0)
@@ -631,17 +635,16 @@ def calc_factor_variables_multi(ticker=None, currency=None, restart=True, tri_re
     # save calculated ratios to DB
     db_table_name = processed_ratio_table
 
-    if tri_return_only:
-        delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
-        upsert_data_to_database(df, processed_ratio_table, primary_key=['ticker', "trading_day", "field"],
-                                db_url=db_url_write, how="append", dtype=ratio_dtypes)
-    elif (restart) & (type(ticker) == type(None)):
+    if (restart) & (type(ticker) == type(None)):
         trucncate_table_in_database(f"{processed_ratio_table}", db_url_write)
         upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
                                 db_url=db_url_write, how="append", dtype=ratio_dtypes)
     else:
         upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
                                 db_url=db_url_write, how="update", dtype=ratio_dtypes)
+        # delete_data_on_database(processed_ratio_table, db_url_write, query="field like 'stock_return_y_%%'")
+        # upsert_data_to_database(df, processed_ratio_table, primary_key=['ticker', "trading_day", "field"],
+        #                         db_url=db_url_write, how="append", dtype=ratio_dtypes)
 
 
 def test_missing(df_org, formula, ingestion_cols):
@@ -668,4 +671,4 @@ def test_missing(df_org, formula, ingestion_cols):
 
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(ticker=None, restart=True, tri_return_only=True)
+    calc_factor_variables_multi(currency=["HKD", "USD"], ticker=None, restart=False, tri_return_only=True, processes=10)

@@ -17,6 +17,8 @@ from global_vars import (
     result_score_table,
     result_pred_table,
     feature_importance_table,
+    production_factor_rank_backtest_eval_table,
+    production_factor_rank_backtest_top_table,
     db_url_alibaba_prod
 )
 from general.send_slack import to_slack
@@ -31,8 +33,8 @@ from general.sql_process import (
     upsert_data_to_database,
     migrate_local_save_to_prod
 )
-from results_analysis.calculation_rank import rank_pred
-from results_analysis.calculation_backtest import backtest_score_history
+from results_analysis.calculation_rank import calculate_rank_pred, backtest_eval_dtypes
+from results_analysis.calculation_backtest_from_eval import top_dtypes
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
 
 
@@ -112,45 +114,6 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
         return False
 
 
-def mp_eval(*args, pred_start_testing_period='2015-09-01', eval_current=False, xlsx_name="ai_score"):
-    """ evaluate test results based on name_sql / eval args """
-
-    sql_result, eval_metric, eval_n_configs, eval_backtest_period, eval_removed_subpillar, q = args
-
-    # Step 1: pred -> ranking
-    try:
-        factor_rank = pd.read_csv(f'fac1tor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv')
-    except Exception as exp:
-        from time import time
-        start = time()
-        factor_rank = rank_pred(q, name_sql=sql_result['name_sql'],
-                                pred_start_testing_period=pred_start_testing_period,
-                                # this period is before (+ weeks_to_expire)
-                                eval_current=eval_current,
-                                eval_metric=eval_metric,
-                                eval_top_config=eval_n_configs,
-                                eval_config_select_period=eval_backtest_period,
-                                eval_removed_subpillar=eval_removed_subpillar,
-                                if_eval_top=sql_result['restart_eval_top'],
-                                )
-        end = time()
-        to_slack("clair").message_to_slack(f"[rank_pred] time: {end - start}")
-
-        # factor_rank = factor_rank.write_to_db()
-        factor_rank.to_csv(f'factor_rank_{eval_metric}_{eval_n_configs}_{eval_backtest_period}.csv', index=False)
-
-    # ----------------------- modified factor_rank for testing ----------------------------
-    # factor_rank = factor_rank.loc[factor_rank['group'] == 'CNY']
-    # -------------------------------------------------------------------------------------
-
-    # Step 2: ranking -> backtest score
-    # set name_sql=None i.e. using current backtest table writen by rank_pred
-    if sql_result['restart_eval_top']:
-        backtest_df = backtest_score_history(factor_rank, sql_result['name_sql'], eval_metric=eval_metric, eval_q=q,
-                                             n_config=eval_n_configs, n_backtest_period=eval_backtest_period,
-                                             xlsx_name=xlsx_name).return_df
-
-
 # TODO: change all report to "clair" -> report to factor slack channel
 def start_on_update(check_interval=60, table_names=None, report_only=True):
     """ check if data tables finished ingestion -> then start
@@ -207,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
     parser.add_argument('--restart_eval', action='store_true', help='restart evaluation only')      # TODO: pass training if True
-    parser.add_argument('--restart_eval_top', action='store_true', help='restart evaluation top')   # TODO: pass training if True
+    # parser.add_argument('--eval_top', action='store_true', help='restart evaluation top')   # TODO: pass training if True
     args = parser.parse_args()
 
     # --------------------------------------- Production / Development --------------------------------------------
@@ -293,9 +256,11 @@ if __name__ == "__main__":
                   "objective": args.objective}
     if args.debug:
         sql_result['name_sql'] += f'_debug'
+    if args.restart:
+        sql_result['name_sql'] = args.restart
+        args.weeks_to_expire = int(sql_result['name_sql'].split('_')[0][1:])
 
     if not args.restart_eval:
-
         data = load_data(args.weeks_to_expire, args.average_days, trim=args.trim)  # load_data (class) STEP 1
 
         # all_groups ignore [cluster_configs] -> fix subpillar for now (change if needed)
@@ -320,7 +285,6 @@ if __name__ == "__main__":
         # (restart) filter for failed iteration
         if args.restart:
             local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
-            sql_result["name_sql"] = args.restart
 
             diff_config_col = [x for x in all_groups_df if x != "factor_list"]
             fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as uid "
@@ -350,37 +314,44 @@ if __name__ == "__main__":
 
     # --------------------------------- Results Analysis ------------------------------------------
 
-    try:
-        all_eval_groups = product([sql_result],
-                                  args.eval_top_metric.split(','),
-                                  [int(e) for e in args.eval_top_n_configs.split(',')],
-                                  [int(e) for e in args.eval_top_backtest_period.split(',')],
-                                  [args.eval_removed_subpillar],
-                                  [float(e) for e in args.eval_q.split(',')],
-                                  )
-        if args.debug:
-            eval_configs = {
-                "pred_currency": args.pred_currency.split(","),
-                "eval_top_metric": args.eval_top_metric.split(','),
-                "eval_top_n_configs": [int(e) for e in args.eval_top_n_configs.split(',')],
-                "eval_top_backtest_period": [int(e) for e in args.eval_top_backtest_period.split(',')],
-                "eval_removed_subpillar": [args.eval_removed_subpillar],
-                "eval_q": [float(e) for e in args.eval_q.split(',')]
-            }
-            eval_configs = [dict(zip(eval_configs.keys(), e)) for e in product(*eval_configs.values())]
-        else:
-            eval_configs = read_query(f"SELECT * FROM {factor_formula_config_eval_prod} "
-                                      f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")
+    if args.debug:
+        # TODO: fix debug: make sure eval configs in same format as prod
+        eval_configs = {
+            "pred_currency": args.pred_currency.split(","),
+            "eval_top_metric": args.eval_top_metric.split(','),
+            "eval_top_n_configs": [int(e) for e in args.eval_top_n_configs.split(',')],
+            "eval_top_backtest_period": [int(e) for e in args.eval_top_backtest_period.split(',')],
+            "eval_removed_subpillar": [args.eval_removed_subpillar],
+            "eval_q": [float(e) for e in args.eval_q.split(',')]
+        }
+        eval_configs = [dict(zip(eval_configs.keys(), e)) for e in product(*eval_configs.values())]
+    else:
+        eval_configs = read_query(f"SELECT * FROM {factor_formula_config_eval_prod} "
+                                  f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")     # TODO: change currency_code
 
-            logging.warning(f'Production will ignore args (eval_top_metric, eval_top_n_configs, '
-                            f'eval_top_backtest_period, eval_removed_subpillar, eval_q) '
-                            f'and use combination in [{factor_formula_config_eval_prod}')
+        logging.warning(f'[Warning] Production will ignore args (eval_top_metric, eval_top_n_configs, '
+                        f'eval_top_backtest_period, eval_removed_subpillar, eval_q) '
+                        f'and use combination in [{factor_formula_config_eval_prod}')
 
-        all_eval_groups = [tuple([sql_result, e]) for e in all_eval_groups]
-        logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
+    all_eval_groups = [tuple([e]) for e in eval_configs]
+    logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
-        with mp.Pool(processes=args.processes) as pool:
-            pool.starmap(mp_eval, all_eval_groups)
+    rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01')
+    with mp.Pool(processes=args.processes) as pool:
+        eval_results = pool.starmap(rank_cls.rank_all, all_eval_groups)
 
-    except Exception as e:
-        to_slack("clair").message_to_slack(f"ERROR in func mp_eval(): {e}")
+    eval_df = pd.concat([e[0] for e in eval_results], axis=0)
+    top_eval_df = pd.concat([e[1] for e in eval_results], axis=0)
+    rank_df = pd.concat([e[2] for e in eval_results], axis=0)
+
+    eval_df["name_sql"] = sql_result["name_sql"]
+    eval_primary_key = eval_df.filter(regex="^_").columns.to_list() + ["name_sql"]
+    upsert_data_to_database(eval_df, production_factor_rank_backtest_eval_table,
+                            primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
+
+    top_eval_df["name_sql"] = sql_result["name_sql"]
+    upsert_data_to_database(top_eval_df, production_factor_rank_backtest_top_table,
+                            primary_key=["name_sql", "currency_code", "trading_day", "top_n"],
+                            how='append', dtype=top_dtypes)
+
+    # TODO: write rank_df to table

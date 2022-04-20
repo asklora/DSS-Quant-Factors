@@ -16,8 +16,8 @@ feature_importance_table = "factor_result_importance_bk"
 production_factor_rank_table = "factor_result_rank"
 # production_factor_rank_ratio_table = "factor_result_rank_ratio"
 # production_factor_rank_backtest_table = "factor_result_rank_backtest"
-production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval6"
-production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top6"  # updated version for non-peeking backtest
+production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval_bk"
+production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top_bk"  # updated version for non-peeking backtest
 production_factor_rank_history_table = "factor_result_rank_history"
 
 # TABLE name - factor config optimization results
