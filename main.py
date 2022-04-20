@@ -169,9 +169,12 @@ if __name__ == "__main__":
     parser.add_argument('--eval_top_backtest_period', default='12,36', type=str)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--restart', default=None, type=str)
-    parser.add_argument('--restart_eval', action='store_true', help='restart evaluation only')      # TODO: pass training if True
-    # parser.add_argument('--eval_top', action='store_true', help='restart evaluation top')   # TODO: pass training if True
+    parser.add_argument('--pass_train', action='store_true', help='pass train & restart from evaluation')
+    parser.add_argument('--pass_eval', action='store_true', help='restart evaluation only & restart from top ticker evaluation')
     args = parser.parse_args()
+
+    if args.restart:
+        local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
 
     # --------------------------------------- Production / Development --------------------------------------------
 
@@ -260,13 +263,14 @@ if __name__ == "__main__":
         sql_result['name_sql'] = args.restart
         args.weeks_to_expire = int(sql_result['name_sql'].split('_')[0][1:])
 
-    if not args.restart_eval:
+    if not args.pass_train:
         data = load_data(args.weeks_to_expire, args.average_days, trim=args.trim)  # load_data (class) STEP 1
 
         # all_groups ignore [cluster_configs] -> fix subpillar for now (change if needed)
         all_groups = product([{**a, **l, **{"testing_period": p}}
                               for a in data_configs for l in load_configs for p in period_list])
         all_groups_df = pd.DataFrame([tuple(e)[0] for e in all_groups])
+        print()
 
         # Get factor list by merging pillar tables & configs
         cluster_pillar = read_query(f"SELECT currency_code as train_currency, testing_period, pillar, factor_list "
@@ -284,8 +288,6 @@ if __name__ == "__main__":
 
         # (restart) filter for failed iteration
         if args.restart:
-            local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
-
             diff_config_col = [x for x in all_groups_df if x != "factor_list"]
             fin_df = read_query(f"SELECT {', '.join(diff_config_col)}, count(uid) as uid "
                                 f"FROM {result_score_table} WHERE name_sql='{args.restart}' "
@@ -336,9 +338,14 @@ if __name__ == "__main__":
     all_eval_groups = [tuple([e]) for e in eval_configs]
     logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
-    rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01')
+    rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
+                                   pass_eval=args.pass_eval)
+
     with mp.Pool(processes=args.processes) as pool:
-        eval_results = pool.starmap(rank_cls.rank_all, all_eval_groups)
+        eval_results = pool.starmap(rank_cls.rank_all, all_eval_groups)   # TODO: restart for debug
+
+    # for i in all_eval_groups:
+    #     rank_cls.rank_all(i[0])
 
     eval_df = pd.concat([e[0] for e in eval_results], axis=0)
     top_eval_df = pd.concat([e[1] for e in eval_results], axis=0)

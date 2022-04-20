@@ -9,6 +9,13 @@ db_url_local_pc1 = "postgresql://postgres:AskLORAv2@localhost:15432/postgres"
 db_url_read = db_url_alibaba_prod
 db_url_write = db_url_alibaba_prod
 
+# TABLE names - preprocess formula
+formula_factors_table_prod = "factor_formula_ratios_prod"
+factor_formula_config_train_prod = "factor_formula_config_train_prod_bk"
+factor_formula_config_eval_prod = "factor_formula_config_eval_prod_bk"
+factors_pillar_defined_table = "factor_formula_pillar_defined"
+factors_pillar_cluster_table = "factor_formula_pillar_cluster"
+
 # TABLE names - factor model results
 result_pred_table = "factor_model_stock_bk"     # + "_lgbm"/"_rf" + "_reg/class"
 result_score_table = "factor_model_bk"    # cluster pillar
@@ -25,10 +32,6 @@ factor_config_score_table = 'factor_config_model'
 factor_config_prediction_table = 'factor_config_model_stock'
 factor_config_importance_table = 'factor_config_importance'
 
-# TABLE names - universe rating results
-production_score_current = "universe_rating" # in DROID v2 DB
-production_score_current_history = "universe_rating_history"
-
 # TABLE names - raw data
 universe_table = "universe"
 worldscope_data_table = "data_worldscope"
@@ -44,24 +47,15 @@ eikon_fx_table = "data_factor_eikon_fx"
 currency_history_table = "currency_price_history"
 ingestion_name_table = "ingestion_name"
 ingestion_name_macro_table = "ingestion_name_macro"
+update_time_table = "ingestion_update_time"     # all table update time record in this table
 
 # TABLE names - preprocessed data
 processed_ratio_table = "factor_processed_ratio"
 factor_premium_table = "factor_processed_premium"
 
-# TABLE names - preprocess formula
-formula_factors_table_prod = "factor_formula_ratios_prod"
-factor_formula_config_train_prod = "factor_formula_config_train_prod_bk"
-factor_formula_config_eval_prod = "factor_formula_config_eval_prod"
-factors_pillar_defined_table = "factor_formula_pillar_defined"
-factors_pillar_cluster_table = "factor_formula_pillar_cluster"
-update_time_table = "ingestion_update_time"     # all table update time record in this table
-
-# # Set DEBUG status
-# import sys
-# gettrace = getattr(sys, 'gettrace', None)
-# DEBUG = gettrace() is not None
-# print('DEBUG: ', DEBUG)
+# TABLE names - universe rating results
+production_score_current = "universe_rating" # in DROID v2 DB
+production_score_current_history = "universe_rating_history"
 
 # Add Logging
 import logging

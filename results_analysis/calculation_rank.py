@@ -77,7 +77,8 @@ class calculate_rank_pred:
     if_eval_top = True
     if_return_rank = False  # TODO: change to True for prod
 
-    def __init__(self, name_sql, pred_pillar=None, pred_start_testing_period='2000-01-01', pred_start_uid='200000000000000000'):
+    def __init__(self, name_sql, pred_pillar=None, pred_start_testing_period='2000-01-01',
+                 pred_start_uid='200000000000000000', pass_eval=False):
         """
         Parameters
         ----------
@@ -100,58 +101,59 @@ class calculate_rank_pred:
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.average_days = int(name_sql.split('_')[1][1:])
+        self.pass_eval = pass_eval
 
-        # 1. Download subpillar table (if removed)
-        self.subpillar_df = self._download_pillar_cluster_subpillar(pred_start_testing_period)
+        if not self.pass_eval:
+            # 1. Download subpillar table (if removed)
+            self.subpillar_df = self._download_pillar_cluster_subpillar(pred_start_testing_period)
 
-        # 2. Download & merge all prediction from iteration
-        self.pred = self._download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
-        self.pred['uid_hpot'] = self.pred['uid'].str[:20]
-        self.pred = self.__get_neg_factor_all(self.pred)
+            # 2. Download & merge all prediction from iteration
+            self.pred = self._download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
+            self.pred['uid_hpot'] = self.pred['uid'].str[:20]
+            self.pred = self.__get_neg_factor_all(self.pred)
 
-        if self.if_combine_pillar:
-            self.pred['pillar'] = "combine"
+            if self.if_combine_pillar:
+                self.pred['pillar'] = "combine"
+        else:
+            self.eval_df_all = self._download_eval(name_sql)
 
         if self.if_eval_top:
             self.top_eval_cls = calculate_backtest_score()
 
-        # # 2. Process separately for each pillar (i.e. momentum/value/quality/all)
-        # self.all_current = []
-        # self.all_history = []
-        # self.rank_all(pred)
-
     def rank_all(self, *args):
-        """ rank for each pillar """
-
+        """ rank based on config defined by each row in pred_config table  """
         kwargs, = args
-        df = self.pred.copy(1)
-        df = df.rename(columns={"group": "currency_code"})      # TODO: remove after changing all table columns
-        if kwargs["pillar"] != "cluster":
-            df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"] == kwargs["pillar"])]
-        else:
-            df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"].str.startswith("pillar"))]
 
-        logging.info(f'=== Generate rank [n={df.shape}] for [{kwargs}] ===')
-
-        # 1. remove subpillar - same subpillar factors keep higher pred one
-        if kwargs["eval_removed_subpillar"]:
-            df = df.merge(self.subpillar_df, on=["testing_period", "currency_code", "factor_name"], how="left")
-            df["subpillar"] = df["subpillar"].fillna(df["factor_name"])
-
-            # for defined pillar to remove subpillar cross all pillar by keep top pred only
-            if "pillar" not in kwargs["pillar"]:
-                df = df.sort_values(by=["pred"]).drop_duplicates(
-                    subset=["testing_period", "currency_code", 'subpillar'] + self.select_config_col, keep="last")
-
-        # 2.4. save backtest evaluation metrics to DB Table [backtest_eval]
-        try:
-            eval_df = self.__backtest_save_eval_metrics(df, **kwargs)
-            if self.if_eval_top:
-                top_eval_df = self.top_eval_cls.eval_to_top(eval_df, **kwargs)
+        if not self.pass_eval:
+            df = self.pred.copy(1)
+            df = df.rename(columns={"group": "currency_code"})      # TODO: remove after changing all table columns
+            if kwargs["pillar"] != "cluster":
+                df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"] == kwargs["pillar"])]
             else:
-                top_eval_df = pd.DataFrame()
-        except Exception as e:
-            print(e)
+                df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"].str.startswith("pillar"))]
+
+            logging.info(f'=== Generate rank [n={df.shape}] for [{kwargs}] ===')
+
+            # 1. remove subpillar - same subpillar factors keep higher pred one
+            if kwargs["eval_removed_subpillar"]:
+                df = df.merge(self.subpillar_df, on=["testing_period", "currency_code", "factor_name"], how="left")
+                df["subpillar"] = df["subpillar"].fillna(df["factor_name"])
+
+                # for defined pillar to remove subpillar cross all pillar by keep top pred only
+                if "pillar" not in kwargs["pillar"]:
+                    df = df.sort_values(by=["pred"]).drop_duplicates(
+                        subset=["testing_period", "currency_code", 'subpillar'] + self.select_config_col, keep="last")
+
+            # 2.4. save backtest evaluation metrics to DB Table [backtest_eval]
+            eval_df = self.__backtest_save_eval_metrics(df, **kwargs)
+        else:
+            eval_df = self.eval_df_all.loc[(self.eval_df_all["_currency_code"] == kwargs["pred_currency"]) &
+                                           (self.eval_df_all["_pillar"] == kwargs["pillar"])].copy(1)
+
+        if self.if_eval_top:
+             top_eval_df = self.top_eval_cls.eval_to_top(eval_df, **kwargs)
+        else:
+            top_eval_df = pd.DataFrame()
 
         if self.if_return_rank:
             # TODO: add return rank code (for prod)
@@ -273,10 +275,18 @@ class calculate_rank_pred:
                 pred.to_pickle(f'pred_{name_sql}.pkl')
             else:
                 raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
+
         self.select_config_col = pred.filter(regex='^_[a-z]').columns.to_list()
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
         return pred
+
+    def _download_eval(self, name_sql):
+        """ download eval Table directly for top ticker evaluation """
+
+        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql='{name_sql}'"
+        eval_df = read_query(query)
+        return eval_df
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 

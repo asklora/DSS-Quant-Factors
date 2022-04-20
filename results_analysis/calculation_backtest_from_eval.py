@@ -143,11 +143,11 @@ def get_minmax_factors(factor_eval, pillar, weeks_to_expire, eval_metric, n_conf
         while any(period_agg_filter[col + "_trh"].isnull()) and min_occur_pct > 0:
             min_occur = n_config * n_config_pct * min_occur_pct
             temp = period_agg[col].apply(lambda x: [k for k, v in dict(Counter(x)).items() if v >= min_occur])
-            temp = pd.DataFrame(temp[temp.apply(lambda x: len(x) >= 2)])
+            temp = pd.DataFrame(temp[temp.apply(lambda x: len(x) >= 1)])        # TODO: change minimum factor
             temp[col + "_trh"] = round(min_occur_pct, 2)
             period_agg_filter = period_agg_filter.fillna(temp)
             min_occur_pct -= 0.1
-    period_agg_count = period_agg_filter[select_col].applymap(lambda x: len(x))
+    # period_agg_count = period_agg_filter[select_col].applymap(lambda x: len(x))
 
     return period_agg_filter
 
@@ -223,6 +223,8 @@ class calculate_backtest_score:
             g['return'] = g[f'stock_return_y_w{weeks_to_expire}_d-7']     # TODO: change for prod
             if eval_top_metric == "max_ret":
                 g[f'{pillar}_score'] = self.base + g[f['max_factor']].mean(axis=1)
+            elif eval_top_metric == "avg_ret":
+                g[f'{pillar}_score'] = self.base + g[f['max_factor']].mean(axis=1) - 0.5*g[f['min_factor']].mean(axis=1)
             else:
                 g[f'{pillar}_score'] = self.base + g[f['max_factor']].mean(axis=1) - g[f['min_factor']].mean(axis=1)
             score_df_list.append(g)
@@ -233,14 +235,14 @@ class calculate_backtest_score:
 
         # Evaluate: calculate return for top 10 score / mode industry
         eval_best_all = {}  # calculate score
-        n_top_ticker_list = [-10, -50, 50, 10]
+        n_top_ticker_list = [-10, -50, -100, 100, 50, 10]
         for i in n_top_ticker_list:
             for (currency, trading_day), g_score in score_df_comb.groupby(['currency_code', 'trading_day']):
-                try:
-                    eval_best_all[(i, currency, trading_day)] = self.eval_best(g_score, best_n=i).copy()
-                except Exception as e:
-                    to_slack("clair").message_to_slack(
-                        f" === ERROR in eval backtest ===: [best{i}, {currency}, {trading_day}] has no ai_score: {e}")
+                # try:
+                eval_best_all[(i, currency, trading_day)] = self.eval_best(g_score, best_n=i).copy()
+                # except Exception as e:
+                #     to_slack("clair").message_to_slack(
+                #         f" === ERROR in eval backtest ===: [best{i}, {currency}, {trading_day}] has no ai_score: {e}")
 
         # concat different trading_day top n selection ticker results
         df = pd.DataFrame(eval_best_all).transpose().reset_index()
@@ -323,7 +325,6 @@ if __name__ == "__main__":
     # score_df_list = []
     # for values in models_value:
     #     kwargs = dict(zip(models_key, values))
-
 
     # # TODO: rewrite add_factor_penalty -> [factor_rank] past period factor prediction
     # if self.add_factor_penalty:
