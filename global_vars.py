@@ -51,7 +51,7 @@ factor_premium_table = "factor_processed_premium"
 
 # TABLE names - preprocess formula
 formula_factors_table_prod = "factor_formula_ratios_prod"
-factor_formula_config_train_prod = "factor_formula_config_train_prod"
+factor_formula_config_train_prod = "factor_formula_config_train_prod_bk"
 factor_formula_config_eval_prod = "factor_formula_config_eval_prod"
 factors_pillar_defined_table = "factor_formula_pillar_defined"
 factors_pillar_cluster_table = "factor_formula_pillar_cluster"
