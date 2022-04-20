@@ -262,7 +262,7 @@ class calculate_rank_pred:
             if pred_pillar:
                 conditions.append(f"pillar in {tuple(pred_pillar)}")
 
-            query = f'''SELECT P.\"group\", P.factor_name, P.actual, P.pred, S.* 
+            query = f'''SELECT P.currency_code, P.factor_name, P.actual, P.pred, S.* 
                         FROM (SELECT * FROM {result_score_table} WHERE {' AND '.join(conditions)}) S  
                         INNER JOIN (SELECT * FROM {result_pred_table}) P ON S.uid=P.uid
                         ORDER BY S.uid

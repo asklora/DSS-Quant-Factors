@@ -218,7 +218,7 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
     # filter
     df = df.loc[df['trading_day'] < dt.date(2022, 4, 3)]
     df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
-    df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
+    df = df.loc[df['top_n'].isin([-10, -50, -100, 100, 50, 10])]
 
     df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_return "
                           f"FROM factor_processed_ratio "
@@ -287,5 +287,5 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
 if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
-    eval_sortino_ratio(name_sql='w8_d-7_20220419172420')
-    # eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420')
+    # eval_sortino_ratio(name_sql='w8_d-7_20220419172420')
+    eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420')

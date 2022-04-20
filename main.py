@@ -227,8 +227,8 @@ if __name__ == "__main__":
         "_n_splits": [.2],
         "_valid_method": [2010, 2012],
         "_qcut_q": [0, 10],
-        "_use_average": [None],                 # True, False
-        "_down_mkt_pct": [0.5, 0.7]
+        "_use_average": [False],                 # True, False
+        "_down_mkt_pct": [0.5]
     }
     load_configs = [dict(zip(load_options.keys(), e)) for e in product(*load_options.values())]
 
