@@ -20,7 +20,7 @@ class eval3_factor_selection:
     def __init__(self, df=None, name_sql="w4_d-7_20220310130330_debug"):
 
         # if type(df) == type(None):
-        #     tbl_name = global_vars.production_factor_rank_backtest_eval_table
+        #     tbl_name = global_vars.backtest_eval_table
         #     df = read_query(f"SELECT * FROM {tbl_name} WHERE name_sql='{name_sql}'")
         #     df.to_pickle('cache.pkl')
 
@@ -122,7 +122,7 @@ def eval_sortino_ratio(name_sql=None,
         -> result: if we use sortino ratio max_ret > net_ret
     """
 
-    tbl_name = global_vars.production_factor_rank_backtest_eval_table
+    tbl_name = global_vars.backtest_eval_table
     if type(name_sql) == type(None):
         query = f"SELECT * FROM {tbl_name}"
         pkl_name = f'cache_{tbl_name}.pkl'
@@ -212,13 +212,13 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    tbl_name = global_vars.production_factor_rank_backtest_top_table
+    tbl_name = global_vars.backtest_top_table
     df = read_query(f"SELECT * FROM {tbl_name}")
 
     # filter
     df = df.loc[df['trading_day'] < dt.date(2022, 4, 3)]
     df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
-    df = df.loc[df['top_n'].isin([-10, -50, -100, 100, 50, 10])]
+    df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
 
     df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_return "
                           f"FROM factor_processed_ratio "
@@ -281,7 +281,7 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
 
         xls[d] = final_df
 
-    to_excel(xls, f'sortino_ratio_top_12_sharpe')
+    to_excel(xls, f'sortino_ratio_top_12_sharpe_{name_sql}')
     print(df)
 
 if __name__ == '__main__':
@@ -289,3 +289,6 @@ if __name__ == '__main__':
     # eval3_factor_selection()
     # eval_sortino_ratio(name_sql='w8_d-7_20220419172420')
     eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420')
+
+    # eval_sortino_ratio(name_sql='w26_d-7_20220420143927')
+    eval_sortino_ratio_top(name_sql='w26_d-7_20220420143927')

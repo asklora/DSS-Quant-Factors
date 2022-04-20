@@ -183,7 +183,7 @@ def average_absolute_mean(df, col_list):
 def test_premiums(weeks_to_expire, average_days):
     df = read_query(f'SELECT * FROM {global_vars.factor_premium_table} WHERE weeks_to_expire={weeks_to_expire} '
                     f'AND average_days={average_days}')
-    formula = read_query(f'SELECT * FROM {global_vars.formula_factors_table_prod} WHERE is_active')
+    formula = read_query(f'SELECT * FROM {global_vars.factors_formula_table} WHERE is_active')
 
     df = df.loc[df['field'].isin(formula['name'].to_list())]
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
@@ -208,10 +208,10 @@ def test_premiums(weeks_to_expire, average_days):
     df['score'] = 1 - minmax_scale(df['corr']) + minmax_scale(df['mean'])
 
     with global_vars.engine_ali.connect() as conn:
-        formula = pd.read_sql(f'SELECT * FROM {global_vars.formula_factors_table_prod}', conn)
+        formula = pd.read_sql(f'SELECT * FROM {global_vars.factors_formula_table}', conn)
         formula['rank'] = formula['name'].map(df['score'].to_dict())
         extra = {'con': conn, 'index': False, 'if_exists': 'replace', 'method': 'multi', 'chunksize': 10000}
-        formula.to_sql(global_vars.formula_factors_table_prod, **extra)
+        formula.to_sql(global_vars.factors_formula_table, **extra)
     global_vars.engine_ali.dispose()
 
 

@@ -271,7 +271,7 @@ Before 4-week model start, we update ratio table with `--recalc_ratio`. And befo
 
 We use fix certain configurations based on our backtesting on 4-week model for each currency.
 
-Please refer to table: **factor_formula_config_train_prod**
+Please refer to table: **config_train_table**
 
 #### Development
 

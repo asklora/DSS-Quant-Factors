@@ -52,8 +52,8 @@ backtest_eval_dtypes = dict(_name_sql=TEXT, _group=TEXT, _group_code=TEXT, _pill
 # diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
 
 logging.info(f" ---> result_score_table: [{result_score_table}]")
-logging.info(f" ---> production_factor_rank_backtest_eval_table: [{production_factor_rank_backtest_eval_table}]")
-logging.info(f" ---> production_factor_rank_backtest_top_table: [{production_factor_rank_backtest_top_table}]")
+logging.info(f" ---> backtest_eval_table: [{backtest_eval_table}]")
+logging.info(f" ---> backtest_top_table: [{backtest_top_table}]")
 
 
 def apply_parallel(grouped, func):
@@ -68,7 +68,7 @@ def weight_qcut(x, q_):
 
 
 class calculate_rank_pred:
-    """ process raw prediction in result_pred_table -> production_factor_rank_table for AI Score calculation """
+    """ process raw prediction in result_pred_table -> production_rank_table for AI Score calculation """
 
     eval_col = ['max_ret', 'r2', 'mae', 'mse']
     # label_col = ["currency_code", "pillar", "testing_period"]
@@ -233,7 +233,7 @@ class calculate_rank_pred:
     def _download_pillar_cluster_subpillar(self, pred_start_testing_period):
         """ download pillar cluster table """
 
-        query = f"SELECT * FROM {factors_pillar_cluster_table} WHERE pillar like 'subpillar_%%' " \
+        query = f"SELECT * FROM {pillar_cluster_table} WHERE pillar like 'subpillar_%%' " \
                 f"AND testing_period>='{pred_start_testing_period}'"
         subpillar = read_query(query)
         subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
@@ -284,7 +284,7 @@ class calculate_rank_pred:
     def _download_eval(self, name_sql):
         """ download eval Table directly for top ticker evaluation """
 
-        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql='{name_sql}'"
+        query = f"SELECT * FROM {backtest_eval_table} WHERE name_sql='{name_sql}'"
         eval_df = read_query(query)
         return eval_df
 
@@ -292,10 +292,10 @@ class calculate_rank_pred:
 
     def __backtest_save_eval_metrics(self, df, **kwargs):
         """ evaluate & rank different configuration;
-            save backtest evaluation metrics -> production_factor_rank_backtest_eval_table """
+            save backtest evaluation metrics -> backtest_eval_table """
 
         # 2.4.1. calculate group statistic
-        logging.debug(f"=== Update [{production_factor_rank_backtest_eval_table}] ===")
+        logging.debug(f"=== Update [{backtest_eval_table}] ===")
         groupby_col = ["testing_period", "currency_code", "pillar"]
 
         # df = df.sort_values(by=groupby_col).head(200)       # TODO: remove after debug
@@ -385,7 +385,7 @@ class calculate_rank_pred:
     #         f"is_valid"
     #     ]
     #
-    #     query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE {' AND '.join(conditions)} "
+    #     query = f"SELECT * FROM {backtest_eval_table} WHERE {' AND '.join(conditions)} "
     #     df = read_query(query, global_vars.db_url_alibaba_prod)
     #
     #     if len(df) > 0:
@@ -426,7 +426,7 @@ class calculate_rank_pred:
         return all_history
 
     def write_current_rank_(self):
-        """write current use factors: current rank -> production_factor_rank_table / production_factor_rank_history"""
+        """write current use factors: current rank -> production_rank_table / production_factor_rank_history"""
 
         df_current = pd.concat([x["rank_df"] for x in self.all_current], axis=0)
         df_current = df_current.groupby(['group', 'group_code', 'testing_period', 'factor_name']).mean().reset_index()
@@ -436,13 +436,13 @@ class calculate_rank_pred:
         df_current["weeks_to_expire"] = self.weeks_to_expire
         df_current = df_current.drop(columns=['actual_z'])
 
-        # update [production_factor_rank_table]
-        upsert_data_to_database(df_current, production_factor_rank_table,
+        # update [production_rank_table]
+        upsert_data_to_database(df_current, production_rank_table,
                                 primary_key=["group", "factor_name", "weeks_to_expire"],
                                 db_url=db_url_write, how='update', dtype=rank_dtypes)
 
-        # update [production_factor_rank_history_table]
-        upsert_data_to_database(df_current, production_factor_rank_history_table,
+        # update [production_rank_history_table]
+        upsert_data_to_database(df_current, production_rank_history_table,
                                 primary_key=["group", "factor_name", "weeks_to_expire", "last_update"],
                                 db_url=db_url_write, how='update', dtype=rank_dtypes)
 

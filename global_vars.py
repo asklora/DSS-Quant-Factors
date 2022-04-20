@@ -10,27 +10,25 @@ db_url_read = db_url_alibaba_prod
 db_url_write = db_url_alibaba_prod
 
 # TABLE names - preprocess formula
-formula_factors_table_prod = "factor_formula_ratios_prod"
-factor_formula_config_train_prod = "factor_formula_config_train_prod_bk"
-factor_formula_config_eval_prod = "factor_formula_config_eval_prod_bk"
-factors_pillar_defined_table = "factor_formula_pillar_defined"
-factors_pillar_cluster_table = "factor_formula_pillar_cluster"
+factors_formula_table = "factor_formula_ratios_prod"
+config_train_table = "factor_formula_config_train_prod"
+config_eval_table = "factor_formula_config_eval_prod"
+pillar_defined_table = "factor_formula_pillar_defined"
+pillar_cluster_table = "factor_formula_pillar_cluster"
 
 # TABLE names - factor model results
-result_pred_table = "factor_model_stock_bk"     # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_model_bk"    # cluster pillar
-feature_importance_table = "factor_result_importance_bk"
-production_factor_rank_table = "factor_result_rank"
-# production_factor_rank_ratio_table = "factor_result_rank_ratio"
-# production_factor_rank_backtest_table = "factor_result_rank_backtest"
-production_factor_rank_backtest_eval_table = "factor_result_rank_backtest_eval_bk"
-production_factor_rank_backtest_top_table = "factor_result_rank_backtest_top_bk"  # updated version for non-peeking backtest
-production_factor_rank_history_table = "factor_result_rank_history"
+result_pred_table = "factor_model_stock"     # + "_lgbm"/"_rf" + "_reg/class"
+result_score_table = "factor_model"    # cluster pillar
+feature_importance_table = "factor_result_importance"
+production_rank_table = "factor_result_rank"
+production_rank_history_table = "factor_result_rank_history"
+backtest_eval_table = "factor_result_rank_backtest_eval"
+backtest_top_table = "factor_result_rank_backtest_top"  # updated version for non-peeking backtest
 
 # TABLE name - factor config optimization results
-factor_config_score_table = 'factor_config_model'
-factor_config_prediction_table = 'factor_config_model_stock'
-factor_config_importance_table = 'factor_config_importance'
+# factor_config_score_table = 'factor_config_model'
+# factor_config_prediction_table = 'factor_config_model_stock'
+# factor_config_importance_table = 'factor_config_importance'
 
 # TABLE names - raw data
 universe_table = "universe"
@@ -39,9 +37,9 @@ ibes_data_table = "data_ibes"
 macro_data_table = "data_macro_key"
 vix_data_table = "data_vix"
 fred_data_table = "data_fred"
-stock_data_table_ohlc = "data_ohlcv"
+stock_data_table_ohlcv = "data_ohlcv"
 stock_data_table_tri = "data_tri"
-anchor_table_mkt_cap = "data_dsws_addition"
+latest_mktcap_data_table = "data_latest_mktcap"
 
 eikon_fx_table = "data_factor_eikon_fx"
 currency_history_table = "currency_price_history"

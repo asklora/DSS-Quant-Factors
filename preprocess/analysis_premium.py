@@ -17,7 +17,7 @@ def avg_premium_pillar_(group='USD', weeks_to_expire=4):
     '''
 
     query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
-            f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+            f"INNER JOIN {factors_formula_table} f ON p.field=f.name " \
             f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire}"
     df = read_query(query, db_url_read)
 
@@ -52,7 +52,7 @@ def best_premium_pillar_(group='USD', weeks_to_expire=4, average_days=7):
     '''
 
     query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
-            f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+            f"INNER JOIN {factors_formula_table} f ON p.field=f.name " \
             f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire} AND average_days={average_days}"
     df = read_query(query, db_url_read)
 
@@ -94,7 +94,7 @@ class find_reverse:
         ''' find better way to reverse premium than past 10-year average '''
 
         query = f"SELECT p.*, f.pillar FROM {factor_premium_table} p " \
-                f"INNER JOIN {formula_factors_table_prod} f ON p.field=f.name " \
+                f"INNER JOIN {factors_formula_table} f ON p.field=f.name " \
                 f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire} AND average_days={average_days}"
         df = read_query(query, db_url_read).sort_values(by=['field', 'trading_day'])
         print(df.describe())

@@ -252,7 +252,7 @@ class top2_table_tickers_return:
         data = daily_trans_return()
 
         if type(df) == type(None):
-            tbl_name = global_vars.production_factor_rank_backtest_top_table
+            tbl_name = global_vars.backtest_top_table
             df_all = read_query(f"SELECT * FROM {tbl_name} WHERE trading_day > '2020-01-01' and name_sql='{name_sql}'"
                                 f"and xlsx_name={xlsx_name}")
 
@@ -346,7 +346,7 @@ class top2_table_tickers_return:
 #
 #         if type(df) == type(None):
 #
-#             tbl_name = global_vars.production_factor_rank_backtest_top_table
+#             tbl_name = global_vars.backtest_top_table
 #             name_sql = name_sql
 #             df = read_query(f"SELECT * FROM {tbl_name} "
 #                             f"WHERE n_top_config={n_top_config} and trading_day > '2021-09-01' "

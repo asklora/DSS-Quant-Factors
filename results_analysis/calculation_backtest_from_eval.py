@@ -61,7 +61,7 @@ def get_fundamental_scores(start_date='2016-01-10', sample_interval=1):
         fundamentals_score.to_csv(f'cached_fundamental_score_{start_date}.csv', index=False)
 
     # Download: DataFrame for [factor_formula]
-    factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
     factor_formula = factor_formula.set_index(['name'])
     calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
     calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     #     ]
     #     kwargs_df = pd.DataFrame(models_value, columns=models_key)
     #     kwargs_df["updated"] = dt.datetime.now()
-    #     upsert_data_to_database(kwargs_df, global_vars.production_factor_rank_backtest_top_table + '_kwargs', how='append')
+    #     upsert_data_to_database(kwargs_df, global_vars.backtest_top_table + '_kwargs', how='append')
 
     # 2.w Download: DataFrame for [factor_rank]
     # conditions = [f"is_valid",
@@ -318,7 +318,7 @@ if __name__ == "__main__":
     #               f"_is_removed_subpillar={is_removed_subpillar}"]
     # if pillar != "cluster":
     #     conditions.append(f"_pillar='{pillar}'")
-    # factor_eval_query = f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} " \
+    # factor_eval_query = f"SELECT * FROM {global_vars.backtest_eval_table} " \
     #                     f"WHERE {' AND '.join(conditions)} ORDER BY _testing_period"
     # factor_eval = read_query(factor_eval_query)
 

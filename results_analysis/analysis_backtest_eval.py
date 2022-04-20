@@ -10,9 +10,9 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     ''' evaluation runtime calculated metrics '''
 
     if name_sql:
-        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql like '{name_sql}%%'"
+        query = f"SELECT * FROM {backtest_eval_table} WHERE name_sql like '{name_sql}%%'"
     else:
-        query = f"SELECT * FROM {production_factor_rank_backtest_eval_table} WHERE name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"
+        query = f"SELECT * FROM {backtest_eval_table} WHERE name_sql like 'w{weeks_to_expire}_d{average_days}_%%'"
 
     df = read_query(query, db_url_read).fillna(0)
     df['net_ret'] = df['max_ret'] - df['min_ret']

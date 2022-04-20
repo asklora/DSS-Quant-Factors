@@ -9,16 +9,16 @@ import multiprocessing as mp
 
 from global_vars import (
     logging,
-    factor_formula_config_train_prod,
-    factor_formula_config_eval_prod,
-    factors_pillar_defined_table,
-    factors_pillar_cluster_table,
+    config_train_table,
+    config_eval_table,
+    pillar_defined_table,
+    pillar_cluster_table,
     factor_premium_table,
     result_score_table,
     result_pred_table,
     feature_importance_table,
-    production_factor_rank_backtest_eval_table,
-    production_factor_rank_backtest_top_table,
+    backtest_eval_table,
+    backtest_top_table,
     db_url_alibaba_prod
 )
 from general.send_slack import to_slack
@@ -148,69 +148,48 @@ if __name__ == "__main__":
     # --------------------------------- Parser ------------------------------------------
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weeks_to_expire', default=4, type=int)
-    parser.add_argument('--backtest_period', default=14, type=int)
-    parser.add_argument('--sample_interval', default=4, type=int)
-    parser.add_argument('--average_days', default=-7, type=int)
-    parser.add_argument('--train_currency', default='USD', type=str)    # TODO: rename group code
-    parser.add_argument('--pred_currency', default='USD,EUR', type=str)    # TODO: rename group code
-    parser.add_argument('--pillar', default='momentum', type=str)
-    parser.add_argument('--recalc_ratio', action='store_true', help='Recalculate ratios = True')
-    parser.add_argument('--recalc_premium', action='store_true', help='Recalculate premiums = True')
-    parser.add_argument('--recalc_subpillar', action='store_true', help='Recalculate cluster pillar / subpillar = True')
-    parser.add_argument('--trim', action='store_true', help='Trim Outlier = True')
-    parser.add_argument('--objective', default='squared_error')
-    parser.add_argument('--hpot_eval_metric', default='adj_mse_valid')
-    parser.add_argument('--processes', default=mp.cpu_count(), type=int)
-    parser.add_argument('--eval_q', default='0.33', type=str)
-    parser.add_argument('--eval_removed_subpillar', action='store_true', help='if removed subpillar in evaluation')
-    parser.add_argument('--eval_top_metric', default='max_ret,net_ret', type=str)
-    parser.add_argument('--eval_top_n_configs', default='10,20', type=str)      # TODO: update to ratio
-    parser.add_argument('--eval_top_backtest_period', default='12,36', type=str)
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--restart', default=None, type=str)
-    parser.add_argument('--pass_train', action='store_true', help='pass train & restart from evaluation')
-    parser.add_argument('--pass_eval', action='store_true', help='restart evaluation only & restart from top ticker evaluation')
-    args = parser.parse_args()
 
-    if args.restart:
-        local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
+    # define training periods
+    parser.add_argument('--weeks_to_expire', default=4, type=int, help='Prediction period length in weeks')
+    parser.add_argument('--backtest_period', default=14, type=int, help='Number of backtest period')
+    parser.add_argument('--sample_interval', default=4, type=int, help='Number of weeks between two backtest periods')
+    parser.add_argument('--average_days', default=-7, type=int, help='Number days averaging for return calculation')
+
+    # whether to recalculate factor preprocessed data table / results data table
+    parser.add_argument('--recalc_ratio', action='store_true', help='Start recalculate ratios')
+    parser.add_argument('--recalc_premium', action='store_true', help='Start recalculate premiums')
+    parser.add_argument('--recalc_subpillar', action='store_true', help='Start recalculate cluster pillar / subpillar')
+    parser.add_argument('--pass_train', action='store_true', help='Pass train & restart from evaluation')
+    parser.add_argument('--pass_eval', action='store_true', help='Restart evaluation only & restart from top ticker evaluation')
+
+    parser.add_argument('--restart', type=str, help='Restart training for which name_sql')
+    parser.add_argument('--debug', action='store_true', help='Whether for production / development')
+    parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
+    args = parser.parse_args()
 
     # --------------------------------------- Production / Development --------------------------------------------
 
     if args.debug:
-        train_currency_list = args.train_currency.split(',')
-        premium_currency_list = pred_currency_list = args.pred_currency.split(',')
-        pillar_list = args.pillar.split(',')
-
-        data_options = {
-            "train_currency": args.train_currency.split(','),
-            "pred_currency": args.pred_currency.split(','),
-            "pillar": args.pillar.split(','),
-            "hpot_eval_metric": [args.hpot_eval_metric],
-        }
-        data_configs = [dict(zip(data_options.keys(), e)) for e in product(*data_options.values())]
-    else:
         # Check 1: if monthly -> only first Sunday every month
-        # if dt.datetime.today().day > 7:
-        #     raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        if dt.datetime.today().day > 7:
+            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
         # Check 2(b): monthly update after weekly update
         start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
 
-        # for production: use defined configs
-        data_configs = read_query(f"SELECT train_currency, pred_currency, pillar, hpot_eval_metric "
-                                  f"FROM {factor_formula_config_train_prod} "
-                                  f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")
-        premium_currency_list = ["HKD", "CNY", "USD", "EUR"]
+    # for production: use defined configs
+    data_configs = read_query(f"SELECT train_currency, pred_currency, pillar, hpot_eval_metric "
+                              f"FROM {config_train_table} "
+                              f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")
+    premium_currency_list = ["HKD", "CNY", "USD", "EUR"]
 
-        logging.warning(f'Production will ignore args (train_currency, pred_currency, pillar, hpot_eval_metric) '
-                        f'and use combination in [{factor_formula_config_train_prod}')
+    logging.warning(f'Production will ignore args (train_currency, pred_currency, pillar, hpot_eval_metric) '
+                    f'and use combination in [{config_train_table}')
 
     # ---------------------------------------- Rerun Write Premium -----------------------------------------------
 
     if args.recalc_ratio:
-        calc_factor_variables_multi(ticker=None,
+        calc_factor_variables_multi(tickers=None,
                                     restart=False,
                                     tri_return_only=False,
                                     processes=args.processes)
@@ -218,7 +197,7 @@ if __name__ == "__main__":
         calc_premium_all(weeks_to_expire=args.weeks_to_expire,
                          average_days=args.average_days,
                          weeks_to_offset=min(4, args.weeks_to_expire),
-                         trim_outlier_=args.trim,
+                         trim_outlier_=False,
                          all_groups=premium_currency_list,
                          processes=args.processes)
 
@@ -264,18 +243,21 @@ if __name__ == "__main__":
         args.weeks_to_expire = int(sql_result['name_sql'].split('_')[0][1:])
 
     if not args.pass_train:
+
+        if args.restart:
+            local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
+
         data = load_data(args.weeks_to_expire, args.average_days, trim=args.trim)  # load_data (class) STEP 1
 
         # all_groups ignore [cluster_configs] -> fix subpillar for now (change if needed)
         all_groups = product([{**a, **l, **{"testing_period": p}}
                               for a in data_configs for l in load_configs for p in period_list])
         all_groups_df = pd.DataFrame([tuple(e)[0] for e in all_groups])
-        print()
 
         # Get factor list by merging pillar tables & configs
         cluster_pillar = read_query(f"SELECT currency_code as train_currency, testing_period, pillar, factor_list "
-                                    f"FROM {factors_pillar_cluster_table}")
-        defined_pillar = read_query(f"SELECT pillar, factor_list FROM {factors_pillar_defined_table}")
+                                    f"FROM {pillar_cluster_table}")
+        defined_pillar = read_query(f"SELECT pillar, factor_list FROM {pillar_defined_table}")
 
         all_groups_defined_df = all_groups_df.loc[all_groups_df["pillar"] != "cluster"]
         all_groups_cluster_df = all_groups_df.loc[all_groups_df["pillar"] == "cluster"].drop(columns=["pillar"])
@@ -328,12 +310,12 @@ if __name__ == "__main__":
         }
         eval_configs = [dict(zip(eval_configs.keys(), e)) for e in product(*eval_configs.values())]
     else:
-        eval_configs = read_query(f"SELECT * FROM {factor_formula_config_eval_prod} "
+        eval_configs = read_query(f"SELECT * FROM {config_eval_table} "
                                   f"WHERE weeks_to_expire = {args.weeks_to_expire}").to_dict("records")     # TODO: change currency_code
 
         logging.warning(f'[Warning] Production will ignore args (eval_top_metric, eval_top_n_configs, '
                         f'eval_top_backtest_period, eval_removed_subpillar, eval_q) '
-                        f'and use combination in [{factor_formula_config_eval_prod}')
+                        f'and use combination in [{config_eval_table}')
 
     all_eval_groups = [tuple([e]) for e in eval_configs]
     logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
@@ -353,11 +335,11 @@ if __name__ == "__main__":
 
     eval_df["name_sql"] = sql_result["name_sql"]
     eval_primary_key = eval_df.filter(regex="^_").columns.to_list() + ["name_sql"]
-    upsert_data_to_database(eval_df, production_factor_rank_backtest_eval_table,
+    upsert_data_to_database(eval_df, backtest_eval_table,
                             primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
     top_eval_df["name_sql"] = sql_result["name_sql"]
-    upsert_data_to_database(top_eval_df, production_factor_rank_backtest_top_table,
+    upsert_data_to_database(top_eval_df, backtest_top_table,
                             primary_key=["name_sql", "currency_code", "trading_day", "top_n"],
                             how='append', dtype=top_dtypes)
 

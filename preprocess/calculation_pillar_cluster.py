@@ -56,7 +56,7 @@ class calc_pillar_cluster:
         # df = pd.read_pickle('cache_factor_ratio1.pkl')
 
         # get active factor list
-        df_formula = read_query(f"SELECT name FROM {global_vars.formula_factors_table_prod} WHERE is_active")
+        df_formula = read_query(f"SELECT name FROM {global_vars.factors_formula_table} WHERE is_active")
         df_active_factor = df_formula['name'].to_list()
 
         # pivot ratio table & filter by active factor list
@@ -80,7 +80,7 @@ class calc_pillar_cluster:
             for k, v in config.items():
                 results[k] = v
             primary_key = list(config.keys()) + ['pillar', "testing_period"]
-            upsert_data_to_database(results, global_vars.factors_pillar_cluster_table, primary_key=primary_key,
+            upsert_data_to_database(results, global_vars.pillar_cluster_table, primary_key=primary_key,
                                     how="update", dtype=dtype_pillar)
 
     def _calc_cluster(self, *args, weeks_to_expire=4, subpillar_trh=5, pillar_trh=2, lookback=5):

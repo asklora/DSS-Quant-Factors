@@ -360,7 +360,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Load Data -----------------------------------------------
 
-    tbl_name = global_vars.production_factor_rank_backtest_eval_table
+    tbl_name = global_vars.backtest_eval_table
     if type(args.name_sql) == type(None):
         query = f"SELECT * FROM {tbl_name}"
         pkl_name = f'cache_{tbl_name}.pkl'

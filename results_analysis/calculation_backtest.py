@@ -342,7 +342,7 @@ class backtest_score_history:
         # print(sorted(list(factor_rank["trading_day"].unique())))
 
         # DataFrame for [factor_formula]
-        factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+        factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
         factor_formula = factor_formula.set_index(['name'])
         calculate_column = list(factor_formula.loc[factor_formula['scaler'].notnull()].index)
         calculate_column = sorted(set(calculate_column) & set(fundamentals_score.columns))
@@ -432,7 +432,7 @@ class backtest_score_history:
         df['xlsx_name'] = self.xlsx_name
 
         # write to DB
-        upsert_data_to_database(df, global_vars.production_factor_rank_backtest_top_table,
+        upsert_data_to_database(df, global_vars.backtest_top_table,
                                 primary_key=["name_sql", "currency_code", "trading_day",
                                              "n_backtest_period", "n_top_config", "n_top_ticker", "eval_metric", 'eval_q', 'xlsx_name'],
                                 how='update', db_url=global_vars.db_url_alibaba_prod,

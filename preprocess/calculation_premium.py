@@ -119,13 +119,13 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     all_groups (List[Str], Optional):
         currencies to calculate premiums (default=[USD])
     factor_list (List[Str], Optional):
-        factors to calculate premiums (default=[], i.e. calculate all active factors in Table [formula_factors_table_prod])
+        factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
     start_date (Date, Optional):
         start_date for premium calculation (default=None, i.e. calculate entire history)
     '''
 
-    logging.info(f'=== Get {formula_factors_table_prod} ===')
-    formula_query = f"SELECT * FROM {formula_factors_table_prod} WHERE is_active AND NOT(keep) "
+    logging.info(f'=== Get {factors_formula_table} ===')
+    formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
     if len(factor_list)==0:
         factor_list = formula['name'].to_list()  # default factor = all variabales

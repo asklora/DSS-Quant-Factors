@@ -113,7 +113,7 @@ def combine_data(weeks_to_expire, average_days, update_since=None, trim=False):
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
     # read formula table
-    formula = read_table(formula_factors_table_prod, db_url_read)
+    formula = read_table(factors_formula_table, db_url_read)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]  # filter existing columns from factors
 
     # Research stage using 10 selected factor only
@@ -283,7 +283,7 @@ class load_data:
             lasso training alpha lasso_alpha (default = 1e-5)
         '''
 
-        y_col = read_query(f'SELECT name FROM {formula_factors_table_prod} WHERE is_active')['name'].to_list()
+        y_col = read_query(f'SELECT name FROM {factors_formula_table} WHERE is_active')['name'].to_list()
 
         if type(use_average) == type(None):
             self.neg_factor = []

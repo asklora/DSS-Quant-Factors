@@ -288,7 +288,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
     print(sorted(list(factor_rank["trading_day"].unique())))
 
-    factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+    factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
     fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])
 
@@ -384,7 +384,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     eval_best_df20_agg = eval_best_df20.groupby(['currency_code'])[['positive_pct', 'return']].mean().reset_index()
 
     # 4. factor selection table
-    factor_selection = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_eval_table} "
+    factor_selection = read_query(f"SELECT * FROM {global_vars.backtest_eval_table} "
                                   f"WHERE name_sql = '{name_sql}'", global_vars.db_url_alibaba_prod)
 
     diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
@@ -414,7 +414,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     def write_topn_to_db(df, n):
         ''' for each backtest eval : write top 10 ticker to DB '''
 
-        tbl_name = global_vars.production_factor_rank_backtest_top_table
+        tbl_name = global_vars.backtest_top_table
         df = df.convert_dtypes()
         df = df.rename(columns={"mode count": "mode_count"})
         df["return"] = (df["return"] * 100).round(2).astype(float)
@@ -491,7 +491,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
             # fundamentals_score_ret["diff_1w"] = fundamentals_score_ret["stock_return_y_1week"] - fundamentals_score_ret["ret_week"]*4
             # fundamentals_score_ret["diff_1m"] = fundamentals_score_ret["stock_return_y_4week"] - fundamentals_score_ret["ret_month"]
 
-            factor_formula = read_table(global_vars.formula_factors_table_prod, global_vars.db_url_alibaba_prod)
+            factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
             factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
             fundamentals_score['trading_day'] = pd.to_datetime(fundamentals_score['trading_day'])
 
