@@ -136,7 +136,7 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     ratio_query = f"SELECT r.*, u.currency_code " \
                   f"FROM {processed_ratio_table} r " \
                   f"INNER JOIN universe u ON r.ticker=u.ticker " \
-                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+[y_col])}" \
+                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+[y_col])} " \
                   f"AND is_active"
     if start_date:
         ratio_query += f" AND trading_day>='{start_date}' "

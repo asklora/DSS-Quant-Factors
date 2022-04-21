@@ -254,7 +254,7 @@ if __name__ == "__main__":
                              average_days=e["average_days"],
                              weeks_to_offset=min(4, args.sample_interval),
                              trim_outlier_=False,
-                             all_groups=e["train_currency"],
+                             all_groups=[e["train_currency"]],
                              processes=args.processes)
 
     # ---------------------------------------- Different Configs ----------------------------------------------
