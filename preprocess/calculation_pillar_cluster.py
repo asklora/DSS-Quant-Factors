@@ -5,8 +5,7 @@ from dateutil.relativedelta import relativedelta
 from collections import Counter
 from sqlalchemy.dialects.postgresql import DATE, TEXT, INTEGER, JSON
 import multiprocessing as mp
-import global_vars
-from global_vars import logging
+from global_vars import logging, pillar_cluster_table, processed_ratio_table, factors_formula_table
 from general.sql_process import read_query, upsert_data_to_database
 
 from sklearn.preprocessing import scale
@@ -50,13 +49,13 @@ class calc_pillar_cluster:
         conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{currency_code}')",
                       f"trading_day <= '{end_date}'",
                       f"trading_day > '{start_date}'"]
-        query = f"SELECT * FROM {global_vars.processed_ratio_table} WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM {processed_ratio_table} WHERE {' AND '.join(conditions)}"
         df = read_query(query.replace(",)", ")"))
         # df.to_pickle('cache_factor_ratio1.pkl')
         # df = pd.read_pickle('cache_factor_ratio1.pkl')
 
         # get active factor list
-        df_formula = read_query(f"SELECT name FROM {global_vars.factors_formula_table} WHERE is_active")
+        df_formula = read_query(f"SELECT name FROM {factors_formula_table} WHERE is_active")
         df_active_factor = df_formula['name'].to_list()
 
         # pivot ratio table & filter by active factor list
@@ -80,8 +79,9 @@ class calc_pillar_cluster:
             for k, v in config.items():
                 results[k] = v
             primary_key = list(config.keys()) + ['pillar', "testing_period"]
-            upsert_data_to_database(results, global_vars.pillar_cluster_table, primary_key=primary_key,
+            upsert_data_to_database(results, pillar_cluster_table, primary_key=primary_key,
                                     how="update", dtype=dtype_pillar)
+            logging.info(f"=== Update Cluster Pillar to [{pillar_cluster_table}] ===")
 
     def _calc_cluster(self, *args, weeks_to_expire=4, subpillar_trh=5, pillar_trh=2, lookback=5):
         """ calculte pillar / subpillar """

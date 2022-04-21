@@ -117,7 +117,7 @@ def resample_to_weekly(df, date_col):
 
 
 def calc_stock_return(ticker, start_date, end_date, tri_return_only,
-                      stock_return_map={4: [-7], 8: [-7], 26: [-7], 52: [-7]}):
+                      stock_return_map={4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}):
     '''   Calcualte monthly stock return
 
     Parameters
@@ -649,4 +649,4 @@ def test_missing(df_org, formula, ingestion_cols):
 
 
 if __name__ == "__main__":
-    calc_factor_variables_multi(tickers=["AAPL.O"], tri_return_only=False, processes=10)
+    calc_factor_variables_multi(tickers=None, tri_return_only=True, processes=10, start_date=dt.date(1998, 1, 1))
