@@ -28,7 +28,11 @@ eval_top:
 		--processes 10 --debug  --restart w4_d-7_20220324031027_debug --restart_eval --restart_eval_top
 
 trial:
-	@#sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-#		--backtest_period 80 --weeks_to_expire 8 --sample_interval 4 --average_days -7 --processes 32 --recalc_subpillar
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--backtest_period 80 --weeks_to_expire 26 --sample_interval 4 --average_days -7 --processes 32
+		--backtest_period 80 --weeks_to_expire 8 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium --recalc_ratio
+	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
+		--backtest_period 80 --weeks_to_expire 26 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium
+	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
+		--backtest_period 80 --weeks_to_expire 52 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium
+	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
+		--backtest_period 80 --weeks_to_expire 4 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium

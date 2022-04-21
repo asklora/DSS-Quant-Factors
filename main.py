@@ -333,14 +333,14 @@ if __name__ == "__main__":
     top_eval_df = rank_cls.score_top_eval_(score_df)                # df for backtest score evalution
     select_df = pd.concat([e[2] for e in eval_results], axis=0)     # df for current selected factors
 
-    # update [backtest_eval_table]
+    # 1. update [backtest_eval_table]
     eval_df["_name_sql"] = sql_result["name_sql"]
     eval_df['updated'] = dt.datetime.now()
     eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
     upsert_data_to_database(eval_df, backtest_eval_table,
                             primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
-    # update [backtest_top_table]
+    # 2. update [backtest_top_table]
     top_eval_df["name_sql"] = sql_result["name_sql"]
     config_col = top_eval_df.filter(regex="^_").columns.to_list()
     primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
@@ -354,8 +354,8 @@ if __name__ == "__main__":
     upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
                             primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
 
+    # 3. update [production_rank_table]
     if not args.debug:
-        # update [production_rank_table]
         select_df["updated"] = dt.datetime.now()
         upsert_data_to_database(select_df, production_rank_table,
                                 primary_key=["weeks_to_expire", "currency_code", "pillar"],

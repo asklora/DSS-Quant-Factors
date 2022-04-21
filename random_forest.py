@@ -19,7 +19,6 @@ def adj_mse_score(actual, pred, multioutput=False):
     """ adjusted metrics:
         when rank(actual) (ranked by row) < rank(pred) (we overestimate premium) use mse
         when rank(actual) > rank(pred) (we underestimate premium) use mae
-        # TODO: customize training loss also adjusted like this
     """
 
     actual_sort = actual.argsort().argsort()

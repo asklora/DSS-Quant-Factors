@@ -65,8 +65,6 @@ def get_fundamental_scores(start_date='2016-01-10', sample_interval=1):
 def scale_fundamental_scores(fundamentals):
     """ calculate score for single currency / pillar """
 
-    # TODO: decide what to do with ESG (added in production)
-    # TODO: decide how to deal with extra_col
     fundamentals = fundamentals.set_index(['ticker', 'industry_name'])
     return_col = fundamentals.filter(regex='^stock_return_y_').columns.to_list()
 
