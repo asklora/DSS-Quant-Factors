@@ -387,7 +387,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     factor_selection = read_query(f"SELECT * FROM {global_vars.backtest_eval_table} "
                                   f"WHERE name_sql = '{name_sql}'", global_vars.db_url_alibaba_prod)
 
-    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
+    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', '_factor_reverse', 'down_mkt_pct']
     df = pd.concat([factor_selection, pd.DataFrame(factor_selection['config'].to_list())], axis=1)
     factor_selection_best = df.groupby(['group', 'pillar']).apply(lambda x: x.nsmallest(1, ['config_mean_mse'], keep='all'))
     factor_selection_best = factor_selection_best.drop(columns=diff_config_col)

@@ -6,6 +6,7 @@ import numpy as np
 from global_vars import *
 from general.sql_process import read_query
 
+
 def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     ''' evaluation runtime calculated metrics '''
 
@@ -33,6 +34,42 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     # df_best_avg_time_y: rank name_sql given best configuration -> to select name_sql for analysis_backtest
 
     return
+
+
+def save_plot_backtest_ret(result_all_comb, other_group_col, pillar):
+    """ Save Plot for backtest average ret """
+
+    logging.debug(f'=== Save Plot for backtest average ret ===')
+    result_all_comb = result_all_comb.copy()
+    result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
+    result_all_comb['group'] = result_all_comb[['group', 'group_code']].astype(str).agg('-'.join, axis=1)
+
+    num_group = len(result_all_comb['group'].unique())
+    num_other_group = len(result_all_comb['other_group'].unique())
+
+    # create figure for test & train boxplot
+    fig = plt.figure(figsize=(num_group * 8, num_other_group * 4), dpi=120, constrained_layout=True)
+    k = 1
+    for (other_group, group), g in result_all_comb.groupby(['other_group', 'group']):
+        ax = fig.add_subplot(num_other_group, num_group, k)
+        g[['max_ret', 'actual', 'min_ret']] = (g[['max_ret', 'actual', 'min_ret']] + 1).cumprod(axis=0)
+        plot_df = g.set_index(['testing_period'])[['max_ret', 'actual', 'min_ret']]
+        ax.plot(plot_df)
+        for i in range(3):
+            ax.annotate(plot_df.iloc[-1, i].round(2), (plot_df.index[-1], plot_df.iloc[-1, i]), fontsize=10)
+        if (k % num_group == 1) or (num_group == 1):
+            ax.set_ylabel(other_group, fontsize=20)
+        if k > (num_other_group - 1) * num_group:
+            ax.set_xlabel(group, fontsize=20)
+        if k == 1:
+            plt.legend(['best', 'average', 'worse'])
+        k += 1
+    fig_name = f'#pred_{rank_pred.name_sql}_{pillar}.png'
+    plt.suptitle(' - '.join(other_group_col), fontsize=20)
+    plt.savefig(fig_name)
+    plt.close()
+    logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
+
 
 if __name__ == "__main__":
     # download_model(weeks_to_expire=26, average_days=28)

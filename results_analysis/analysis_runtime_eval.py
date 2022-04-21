@@ -23,7 +23,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     df['uid_hpot'] = df['uid'].str[:20]
 
     iter_unique_col = ['name_sql', 'group_code', 'pillar', 'testing_period', 'cv_number']  # keep 'cv_number' in last one for averaging
-    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
+    diff_config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', '_factor_reverse', 'down_mkt_pct']
 
     # 1. remove duplicate samples from running twice when testing
     df = df.drop_duplicates(subset=iter_unique_col + diff_config_col, keep='last').fillna(0)
@@ -46,7 +46,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
     df_best_all = df.sort_values(by=['r2_valid'], ascending=False).groupby('uid_hpot').first()
 
     # 3. filter for not used config
-    # df_best_all = df_best_all.loc[~df_best_all['use_average']]
+    # df_best_all = df_best_all.loc[~df_best_all['_factor_reverse']]
     # df_best_all = df_best_all.loc[df_best_all['qcut_q']==10]
 
     df_pillar_all = []

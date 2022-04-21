@@ -8,7 +8,7 @@ import ast
 from dateutil.relativedelta import relativedelta
 import global_vars
 
-config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', 'use_average', 'down_mkt_pct']
+config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', '_factor_reverse', 'down_mkt_pct']
 
 
 class read_v2_top_excel:

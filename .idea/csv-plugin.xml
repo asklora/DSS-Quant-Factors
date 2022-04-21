@@ -1634,6 +1634,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/postgres_information_schema_columns.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/postgres_public_data_factor_eikon_fund_holdings.csv">
           <value>
             <Attribute>
