@@ -70,11 +70,11 @@ class calculate_rank_pred:
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.pass_eval = pass_eval
-        self.fix_config_col = fix_config_col
+        self.fix_config_col = fix_config_col + ["testing_period"]
 
         if not self.pass_eval:
             # 1. Download subpillar table (if removed)
-            self.subpillar_df = self._download_pillar_cluster_subpillar(pred_start_testing_period)
+            self.subpillar_df = self._download_pillar_cluster_subpillar(pred_start_testing_period, self.weeks_to_expire)
 
             # 2. Download & merge all prediction from iteration
             self.pred = self._download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
@@ -84,7 +84,7 @@ class calculate_rank_pred:
             if self.if_combine_pillar:
                 self.pred['pillar'] = "combine"
 
-        self.eval_df_history = self._download_eval(self.weeks_to_expire)
+        self.eval_df_history = self._download_eval(name_sql, self.weeks_to_expire)
 
         # if calculate backtest score & eval top selections
         if self.if_eval_top:
@@ -107,49 +107,48 @@ class calculate_rank_pred:
 
         kwargs, = args
         logging.debug(f"=== Evaluation for [{kwargs}]===")
+
         # if not pass_eval = read eval table from DB and calculate top ticker table directly
         if not self.pass_eval:
-            df = self.pred.copy(1)
 
-            # use [group] in pred_table as [pred_currency]
-            df = df.drop(columns=["pred_currency"]).rename(columns={"group": "pred_currency"})
+            # filter pred table
+            df = self.pred.copy(1)
             if kwargs["pillar"] != "cluster":
-                df = df.loc[(df["pred_currency"] == kwargs["pred_currency"]) & (df["pillar"] == kwargs["pillar"])]
+                df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"] == kwargs["pillar"])]
             else:
-                df = df.loc[(df["pred_currency"] == kwargs["pred_currency"]) & (df["pillar"].str.startswith("pillar"))]
+                df = df.loc[(df["currency_code"] == kwargs["pred_currency"]) & (df["pillar"].str.startswith("pillar"))]
 
             # 1. remove subpillar - same subpillar factors keep higher pred one
             if kwargs["eval_removed_subpillar"]:
-                df = df.merge(self.subpillar_df, on=self.fix_config_col + ["factor_name"], how="left")
+                subpillar_df_idx = ["testing_period", "currency_code"]      # weeks_to_expire defined when read table
+                df = df.merge(self.subpillar_df, on=subpillar_df_idx + ["factor_name"], how="left")
                 df["subpillar"] = df["subpillar"].fillna(df["factor_name"])
 
                 # for defined pillar to remove subpillar cross all pillar by keep top pred only
                 if "pillar" not in kwargs["pillar"]:
                     df = df.sort_values(by=["pred"]).drop_duplicates(
-                        subset=['subpillar'] + self.fix_config_col + self.select_config_col, keep="last")
+                        subset=['subpillar'] + subpillar_df_idx + self.select_config_col, keep="last")
 
             # 2. save backtest evaluation metrics to DB Table [backtest_eval]
+            # Change [currency_code] in pred_table to [pred_currency] because we define index based on data_configs
+            df = df.drop(columns=["pred_currency"]).rename(columns={"currency_code": "pred_currency"})
             eval_df_new = self.__backtest_save_eval_metrics(df, **kwargs)
+        else:
+            eval_df_new = pd.DataFrame()
 
-        if self.pass_eval:
-            eval_df = self.eval_df_all.loc[(self.eval_df_all["_currency_code"] == kwargs["pred_currency"]) &
-                                           (self.eval_df_all["_pillar"] == kwargs["pillar"])].copy(1)
+        eval_df = self.eval_df_history.loc[(self.eval_df_history["_pred_currency"] == kwargs["pred_currency"]) &
+                                           (self.eval_df_history["_pillar"] == kwargs["pillar"])].copy(1)
+        eval_df = eval_df.append(eval_df_new)
 
         # Based on evaluation df calculate DataFrame for list of selected factors (pillar & extra)
-        minmax_factor_df = self.__get_minmax_factors(eval_df, **kwargs)
-
-        # 3. save most recent period rank
-        select_df = minmax_factor_df.reset_index().nlargest(1, columns=["trading_day"])
-        select_df["currency_code"] = kwargs["pred_currency"]
-        select_df["weeks_to_expire"] = kwargs["weeks_to_expire"]
-        select_df["pillar"] = kwargs["pillar"]
+        select_history_df, select_df = self.__get_minmax_factors(eval_df, **kwargs)
 
         if self.if_eval_top:
-            score_df = self.score_(minmax_factors=minmax_factor_df, **kwargs)
+            score_df = self.score_(df=select_history_df, **kwargs)
         else:
             score_df = pd.DataFrame()
 
-        return eval_df, score_df, select_df
+        return eval_df_new, score_df, select_df
 
     def __get_neg_factor_all(self, pred):
         """ get all neg factors for all (testing_period, group) """
@@ -173,11 +172,11 @@ class calculate_rank_pred:
 
     # -------------------------------- Download tables for ranking (if restart) ------------------------------------
 
-    def _download_pillar_cluster_subpillar(self, pred_start_testing_period):
+    def _download_pillar_cluster_subpillar(self, pred_start_testing_period, weeks_to_expire):
         """ download pillar cluster table """
 
         query = f"SELECT * FROM {pillar_cluster_table} WHERE pillar like 'subpillar_%%' " \
-                f"AND testing_period>='{pred_start_testing_period}'"
+                f"AND testing_period>='{pred_start_testing_period}' AND weeks_to_expire={weeks_to_expire}"
         subpillar = read_query(query)
         subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
 
@@ -224,11 +223,24 @@ class calculate_rank_pred:
         pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
         return pred
 
-    def _download_eval(self, weeks_to_expire):
+    def _download_eval(self, name_sql, weeks_to_expire):
         """ download eval Table directly for top ticker evaluation """
 
+        # read config eval history
         query = f"SELECT * FROM {backtest_eval_table} WHERE _weeks_to_expire={weeks_to_expire}"
         eval_df = read_query(query)
+
+        # for production: only use history with same data_configs as production
+        if "debug" in name_sql:
+            query_conf = f"SELECT * FROM {config_train_table} WHERE is_active AND weeks_to_expire = {weeks_to_expire}"
+
+            # remove [pred_currency] columns because [config_train] table concatenate all available pred_currency
+            prod_train_config = read_query(query_conf).drop(columns=["is_active", "last_finish", "pred_currency"])
+            prod_train_config_col = [f"_{x}" for x in prod_train_config]
+            prod_train_config.columns = prod_train_config_col
+
+            eval_df = eval_df.merge(prod_train_config, on=prod_train_config_col, how="inner")
+
         return eval_df
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
@@ -295,7 +307,7 @@ class calculate_rank_pred:
             ret_dict['r2'] = np.nan
         return pd.Series(ret_dict)
 
-    # ------------------------------------ Calculate min/max factor -------------------------------------------
+    # ------------------------------------ Calculate good/bad factor -------------------------------------------
 
     def __get_minmax_factors(self, df, pillar, weeks_to_expire, eval_top_metric, eval_top_n_configs,
                              eval_top_backtest_period, **kwargs):
@@ -306,26 +318,30 @@ class calculate_rank_pred:
         # testing_period = start date of test sets (i.e. data cutoff should be 1 period later / last return = 2p later)
         factor_eval["trading_day"] = pd.to_datetime(factor_eval["_testing_period"]) + pd.tseries.offsets.DateOffset(
             weeks=weeks_to_expire)
+        factor_eval = factor_eval.drop(columns=["_testing_period"])
         factor_eval["_pillar"] = pillar  # for cluster pillar: change "_pillar" -> "cluster" i.e. combine all cluster
+
         factor_eval['net_ret'] = factor_eval['max_ret'] - factor_eval['min_ret']
         factor_eval['avg_ret'] = (factor_eval['max_ret'] + factor_eval['net_ret']) / 2
 
-        # get config cols
-        config_col = factor_eval.filter(regex='^__').columns.to_list()
-        n_config = factor_eval[config_col].drop_duplicates().shape[0]
+        # get config cols: group = select within each group; select = config to select top n
+        group_config_col = factor_eval.filter(regex='^_[a-z]').columns.to_list()
+        select_config_col = factor_eval.filter(regex='^__').columns.to_list()
+        n_config = factor_eval[select_config_col].drop_duplicates().shape[0]
         n_select_config = np.ceil(n_config * eval_top_n_configs)
 
         # in case of cluster pillar combine different cluster selection
         agg_func = {'max_factor': 'sum', 'min_factor': 'sum', 'max_ret': 'mean', 'net_ret': 'mean', 'avg_ret': 'mean'}
-        factor_eval_agg = factor_eval.groupby(config_col + ['trading_day']).agg(agg_func).reset_index()
+        factor_eval_agg = factor_eval.groupby(group_config_col + select_config_col + ["trading_day"]).agg(
+            agg_func).reset_index()
         n_select_factor = factor_eval_agg['max_factor'].apply(lambda x: len(x)).mean() * 0.5
 
         # calculate different config rolling average return
-        factor_eval_agg['rolling_ret'] = factor_eval_agg.groupby(config_col)[eval_top_metric].rolling(
-            eval_top_backtest_period, closed='left').mean().values
+        factor_eval_agg['rolling_ret'] = factor_eval_agg.groupby(group_config_col + select_config_col)[
+            eval_top_metric].rolling(eval_top_backtest_period, closed='left').mean().values
 
         # filter for configuration with rolling_ret (historical) > quantile
-        factor_eval_agg['trh'] = factor_eval_agg.groupby('trading_day')['rolling_ret'].transform(
+        factor_eval_agg['trh'] = factor_eval_agg.groupby(group_config_col + ["trading_day"])['rolling_ret'].transform(
             lambda x: np.quantile(x, 1 - eval_top_n_configs)).values
         factor_eval_agg_select = factor_eval_agg.loc[factor_eval_agg['rolling_ret'] >= factor_eval_agg['trh']]
 
@@ -334,21 +350,23 @@ class calculate_rank_pred:
             select_col = ['max_factor']
         else:
             select_col = ['max_factor', 'min_factor']  # i.e. net return
-        period_agg = factor_eval_agg_select.groupby('trading_day')[select_col].sum()
+        period_agg = factor_eval_agg_select.groupby(group_config_col + ["trading_day"])[select_col].sum()
+
         period_agg_filter_counter = period_agg[select_col].applymap(lambda x: dict(Counter(x)))
         logging.debug(period_agg_filter_counter)
 
+        # create final filter factor list table
         period_agg_filter = pd.DataFrame(index=period_agg.index,
                                          columns=select_col + [x + i for x in select_col for i in ["_trh", "_extra"]])
-
         for col in select_col:
             min_occur_pct = 0.8
             while any(period_agg_filter[col + "_trh"].isnull()) and min_occur_pct > 0:
+
                 # min/max factor for pillar (i.e. value / momentum / quality / cluster)
                 min_occur = n_select_config * min_occur_pct
                 temp = period_agg[col].apply(lambda x: [k for k, v in dict(Counter(x)).items() if v >= min_occur])
                 temp = pd.DataFrame(
-                    temp[temp.apply(lambda x: len(x) >= n_select_factor)])  # TODO: change minimum factor
+                    temp[temp.apply(lambda x: len(x) >= n_select_factor)])
                 temp[col + "_trh"] = round(min_occur_pct, 2)
                 period_agg_filter = period_agg_filter.fillna(temp)
 
@@ -363,9 +381,13 @@ class calculate_rank_pred:
         period_agg_count = period_agg_filter[select_col].applymap(lambda x: len(x))
         logging.debug(period_agg_count)
 
-        return period_agg_filter
+        period_agg_filter = period_agg_filter.reset_index()
+        period_agg_filter_current = period_agg_filter.sort_values(by=["trading_day"]).groupby(
+            group_config_col, as_index=False).last()
 
-        # TODO: rewrite add_factor_penalty -> [factor_rank] past period factor prediction
+        return period_agg_filter, period_agg_filter_current
+
+        # TODO (LATER): rewrite add_factor_penalty -> [factor_rank] past period factor prediction
         # if self.add_factor_penalty:
         #     factor_rank['z'] = factor_rank['actual_z'] / factor_rank['pred_z']
         #     factor_rank['z_1'] = factor_rank.sort_values(['testing_period']).groupby(['group', 'factor_name'])['z'].shift(
@@ -385,27 +407,31 @@ class calculate_rank_pred:
 
     # ---------------------------------- Calculate backtest scores --------------------------------------------
 
-    def score_(self, minmax_factors, pred_currency=None, weeks_to_expire=4, average_days=-7, pillar=None,
-                    eval_top_metric='max_ret', **kwargs):
+    def score_(self, df, pillar=None, pred_currency=None, eval_top_metric='max_ret', **kwargs):
         """ convert eval table to top table """
 
         score_df_list = []
 
-        for trading_day, f in minmax_factors.to_dict(orient='index').items():
-            g = self.adj_fundamentals.loc[(self.adj_fundamentals['trading_day'] == trading_day) &
+        for idx, r in df.iterrows():
+            g = self.adj_fundamentals.loc[(self.adj_fundamentals['trading_day'] == r["trading_day"]) &
                                           (self.adj_fundamentals['currency_code'] == pred_currency)].copy()
-            g['return'] = g[f'stock_return_y_w{weeks_to_expire}_d{average_days}']
+            g['return'] = g[f'stock_return_y_w{r["_weeks_to_expire"]}_d{r["_average_days"]}']
             for suffix in ["", "_extra"]:
                 if eval_top_metric == "max_ret":
-                    g[f'{pillar}_score{suffix}'] = self.base_score + g[f[f'max_factor{suffix}']].mean(axis=1)
+                    g[f'{pillar}_score{suffix}'] = self.base_score + g[r[f'max_factor{suffix}']].mean(axis=1)
                 elif eval_top_metric == "avg_ret":
-                    g[f'{pillar}_score{suffix}'] = self.base_score + g[f[f'max_factor{suffix}']].mean(axis=1) - \
-                                                   0.5*g[f[f'min_factor{suffix}']].mean(axis=1)
+                    g[f'{pillar}_score{suffix}'] = self.base_score + g[r[f'max_factor{suffix}']].mean(axis=1) - \
+                                                   0.5*g[r[f'min_factor{suffix}']].mean(axis=1)
                 else:
-                    g[f'{pillar}_score{suffix}'] = self.base_score + g[f[f'max_factor{suffix}']].mean(axis=1) - \
-                                                   g[f[f'min_factor{suffix}']].mean(axis=1)
-            score_df_list.append(g)
-            break
+                    g[f'{pillar}_score{suffix}'] = self.base_score + g[r[f'max_factor{suffix}']].mean(axis=1) - \
+                                                   g[r[f'min_factor{suffix}']].mean(axis=1)
+            g_score = g[["trading_day", "ticker", "industry_name", "return", f"{pillar}_score", f"{pillar}_score_extra"]]
+
+            # define config used for factors selected when calculating scores
+            for k, v in r.to_dict().items():
+                if k[0] == "_":
+                    g_score[k] = v
+            score_df_list.append(g_score)
 
         score_df = pd.concat(score_df_list, axis=0)
 
@@ -420,7 +446,8 @@ class calculate_rank_pred:
 
         """
 
-        score_df_comb = score_df.groupby(['currency_code', 'trading_day', 'ticker', 'industry_name']).mean().reset_index()
+        config_col = score_df.filter(regex="^_").columns.to_list()
+        score_df_comb = score_df.groupby(['trading_day', 'ticker', 'industry_name'] + config_col).mean().reset_index()
         score_df_comb["extra_score"] = score_df_comb.filter(regex='_score_extra$').mean(axis=1)
         score_df_comb['ai_score'] = score_df_comb.filter(regex='_score$').mean(axis=1)
 
@@ -428,14 +455,14 @@ class calculate_rank_pred:
         eval_best_all = {}  # calculate score
         n_top_ticker_list = [-10, -50, 50, 10]
         for i in n_top_ticker_list:
-            for (currency, trading_day), g_score in score_df_comb.groupby(['currency_code', 'trading_day']):
-                eval_best_all[(i, currency, trading_day)] = self.__eval_best(g_score, best_n=i).copy()
+            for idx, g_score in score_df_comb.groupby(['trading_day'] + config_col):
+                new_idx = tuple([i] + list(idx))
+                eval_best_all[new_idx] = self.__eval_best(g_score, best_n=i).copy()
 
         # concat different trading_day top n selection ticker results
-        df = pd.DataFrame(eval_best_all).transpose().reset_index()
-        df = df.rename(columns={"level_0": "top_n", "level_1": "currency_code", "level_2": "trading_day"})
-
-        # keep this because ERROR: (psycopg2.ProgrammingError) can't adapt type 'numpy.int64'
+        df = pd.DataFrame(eval_best_all).transpose()
+        df.index.names = tuple(["top_n", "trading_day"] + config_col)
+        df = df.reset_index().rename(columns={"_pred_currency": "currency_code", "_weeks_to_expire": "weeks_to_expire"})
         df['trading_day'] = pd.to_datetime(df['trading_day'])
 
         # change data presentation for DB reading

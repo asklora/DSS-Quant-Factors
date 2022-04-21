@@ -168,6 +168,7 @@ def load_train_configs(data_configs, load_configs, period_list, restart=False):
     all_groups_cluster_df = all_groups_cluster_df.merge(cluster_pillar_pillar,
                                                         on=["train_currency", "testing_period"], how="left")
     all_groups_df = all_groups_defined_df.append(all_groups_cluster_df)
+    all_groups_df["testing_period"] = pd.to_datetime(all_groups_df["testing_period"])
 
     # Check DB for score table for failed iteration
     if restart:
@@ -176,10 +177,11 @@ def load_train_configs(data_configs, load_configs, period_list, restart=False):
                             f"FROM {result_score_table} WHERE name_sql='{args.restart}' "
                             f"GROUP BY {', '.join(diff_config_col)}")
         all_groups_df = all_groups_df.merge(fin_df, how='left', on=diff_config_col).sort_values(by=diff_config_col)
-        all_groups_df = all_groups_df.loc[all_groups_df['uid'].isnull(), diff_config_col]
+        all_groups_df = all_groups_df.loc[all_groups_df['uid'].isnull(), diff_config_col + ["factor_list"]]
         to_slack("clair").message_to_slack(f"=== Restart [{args.restart}]: rest iterations (n={len(all_groups_df)}) ===")
 
     return all_groups_df
+
 
 if __name__ == "__main__":
 
@@ -212,6 +214,8 @@ if __name__ == "__main__":
     if args.debug:
         tbl_suffix = '_debug'
     else:
+        tbl_suffix = ''
+
         # Check 1: if monthly -> only first Sunday every month
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
@@ -234,6 +238,7 @@ if __name__ == "__main__":
     all_currency_list = list(set(list(data_configs["train_currency"].unique()) +
                                      [e for x in data_configs["pred_currency"] for e in x.split(',')]))
     data_configs = data_configs.drop(columns=["is_active", "last_finish"]).to_dict("records")
+    assert len(data_configs) > 0    # else no training will be done
 
     # ---------------------------------------- Rerun Write Premium -----------------------------------------------
 
@@ -311,6 +316,8 @@ if __name__ == "__main__":
     eval_configs = read_query(f"SELECT * FROM {config_eval_table}{tbl_suffix} "
                               f"WHERE is_active AND weeks_to_expire = {args.weeks_to_expire}")
     eval_configs = eval_configs.drop(columns=["is_active"]).to_dict("records")
+    assert len(eval_configs) > 0    # else no training will be done
+
     all_eval_groups = [tuple([e]) for e in eval_configs]
     logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
@@ -323,31 +330,31 @@ if __name__ == "__main__":
 
     eval_df = pd.concat([e[0] for e in eval_results], axis=0)       # df for each config evaluation results
     score_df = pd.concat([e[1] for e in eval_results], axis=0)      # df for all scores
-    score_df.to_pickle("cache_score_df.pkl")        # TODO: remove after debug
-    score_df = pd.read_pickle("cache_score_df.pkl") # TODO: remove after debug
     top_eval_df = rank_cls.score_top_eval_(score_df)                # df for backtest score evalution
     select_df = pd.concat([e[2] for e in eval_results], axis=0)     # df for current selected factors
 
     # update [backtest_eval_table]
     eval_df["_name_sql"] = sql_result["name_sql"]
-    df_eval['is_valid'] = True
-    df_eval['updated'] = dt.datetime.now()
-
-    print(dict(eval_df.dtypes))
-    eval_primary_key = eval_df.filter(regex="^_").columns.to_list() + ["_name_sql"]
+    eval_df['updated'] = dt.datetime.now()
+    eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
     upsert_data_to_database(eval_df, backtest_eval_table,
                             primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
     # update [backtest_top_table]
     top_eval_df["name_sql"] = sql_result["name_sql"]
-    print(dict(top_eval_df.dtypes))
-    print(top_eval_df.columns.to_list())
-    upsert_data_to_database(top_eval_df, backtest_top_table,
-                            primary_key=["name_sql", "currency_code", "trading_day", "top_n"],
-                            how='append', dtype=backtest_top_dtypes)     # TODO: change to update
+    config_col = top_eval_df.filter(regex="^_").columns.to_list()
+    primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
 
-    # if not args.debug:        # TODO: change after debug
-    if 1==1:
+    if args.debug:  # if debug: write top ticker evaluation to other table
+        backtest_top_dtypes = {**backtest_eval_dtypes, **backtest_top_dtypes}
+        primary_key += config_col
+    else:           # if production: remove fixed config columns
+        top_eval_df = top_eval_df.drop(columns=config_col)
+
+    upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
+                            primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
+
+    if not args.debug:
         # update [production_rank_table]
         select_df["updated"] = dt.datetime.now()
         upsert_data_to_database(select_df, production_rank_table,

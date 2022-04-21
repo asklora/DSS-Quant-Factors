@@ -66,8 +66,13 @@ logging.getLogger().setLevel(logging.DEBUG)
 # Define dtypes for tables
 backtest_eval_dtypes = dict(
     _name_sql=TEXT,
+    _weeks_to_expire=INTEGER,
+    _average_days=INTEGER,
     _testing_period=DATE,
-    _currency_code=TEXT,
+    _train_currency=TEXT,
+    _pred_currency=TEXT,
+    _hpot_eval_metric=TEXT,
+    _objective=TEXT,
     _pillar=TEXT,
     _eval_q=NUMERIC(2, 2),
     _eval_removed_subpillar=BOOLEAN,
