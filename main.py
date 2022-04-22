@@ -260,7 +260,7 @@ if __name__ == "__main__":
     # ---------------------------------------- Different Configs ----------------------------------------------
 
     load_options = {
-        "_factor_pca": [0.4, None],
+        "_factor_pca": [None],
         "_factor_reverse": [None, False],  # True, False
         "_y_qcut": [0, 10],
         "_valid_pct": [.2],
