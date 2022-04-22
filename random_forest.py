@@ -153,7 +153,7 @@ class rf_HPOT:
                                                             self.sample_set[i + '_pred'],
                                                             multioutput='uniform_average')
             except Exception as e:
-                logging.warning(e)
+                logging.warning(f"[warning] can't calculate eval metrics: {e}")
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())

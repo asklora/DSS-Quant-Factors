@@ -63,7 +63,6 @@ def mp_rf(*args):
     score_df_list = []
     feature_df_list = []
     try:
-        sql_result['testing_period'] = dt.datetime.combine(sql_result['testing_period'], dt.datetime.min.time())
         sample_set, cv = data.split_all(**sql_result)  # load_data (class) STEP 3
 
         cv_number = 1  # represent which cross-validation sets
@@ -93,7 +92,6 @@ def mp_rf(*args):
         score_df_list.append(score_df)
         feature_df_list.append(feature_df)
         cv_number += 1
-
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {sql_result}: {e.args}")
     return stock_df_list, score_df_list, feature_df_list
@@ -260,7 +258,7 @@ if __name__ == "__main__":
     # ---------------------------------------- Different Configs ----------------------------------------------
 
     load_options = {
-        "_factor_pca": [None],
+        "_factor_pca": [0.4, None],
         "_factor_reverse": [None, False],  # True, False
         "_y_qcut": [0, 10],
         "_valid_pct": [.2],

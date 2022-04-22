@@ -313,13 +313,13 @@ class load_data:
         self.test[self.neg_factor + ['y_' + x for x in self.neg_factor]] *= -1
 
     def split_train_test(self, testing_period,
-                         _factor_pca=None, mi_pca=0.6, train_len=20,
+                         _factor_pca=None, mi_pca=0.6, train_lookback_year=20,
                          ar_period=[], ma3_period=[], ma12_period=[],
                          **kwargs):
         """ split training / testing set based on testing period """
 
         current_group = self.group.copy(1)
-        start = testing_period - relativedelta(years=train_len)  # train df = 20*12 months
+        start = testing_period - relativedelta(years=train_lookback_year)  # train df = 20*12 months
 
         # factor with ARMA history as X (if using pca, all history first)
         arma_col = self.x_col_dict['factor'] + self.x_col_dict['index'] + self.x_col_dict['macro']
