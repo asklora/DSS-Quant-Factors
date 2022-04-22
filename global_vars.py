@@ -185,4 +185,5 @@ rank_dtypes = dict(
     min_factor_extra=JSON,
     max_factor_trh=NUMERIC(2, 2),
     min_factor_trh=NUMERIC(2, 2),
+    updated=TIMESTAMP,
 )
