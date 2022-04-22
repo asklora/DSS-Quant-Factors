@@ -277,7 +277,7 @@ if __name__ == "__main__":
     logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
-    cluster_configs = {"_subpillar_trh": 5, "_pillar_trh": 2, "lookback": 5}
+    cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5}
     if args.recalc_subpillar:
         for e in data_configs:
             if e["pillar"] == "cluster":
