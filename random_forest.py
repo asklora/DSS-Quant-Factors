@@ -83,11 +83,11 @@ class rf_HPOT:
         # update results
         try:
             upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, schema=schema, primary_key=["uid"],
-                                    db_url=db_url, how="append", verbose=-1)
+                                    db_url=db_url, how="append", verbose=-1, dtype=pred_dtypes)
             upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, schema=schema,
-                                    primary_key=["uid"], db_url=db_url, how="ignore", verbose=-1)
+                                    primary_key=["uid"], db_url=db_url, how="ignore", verbose=-1, dtype=score_dtypes)
             upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, schema=schema,
-                                    primary_key=["uid"], db_url=db_url, how="append", verbose=-1)
+                                    primary_key=["uid"], db_url=db_url, how="append", verbose=-1, dtype=feature_dtypes)
             return True
         except Exception as e:
             to_slack("clair").message_to_slack(f"*ERROR write to db within MP*: {e.args}")

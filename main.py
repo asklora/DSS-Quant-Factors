@@ -104,9 +104,9 @@ def write_db(stock_df_all, score_df_all, feature_df_all):
 
     # update results
     try:
-        upsert_data_to_database(stock_df_all, result_pred_table, how="append", verbose=-1)
-        upsert_data_to_database(score_df_all, result_score_table, how="update", verbose=-1)
-        upsert_data_to_database(feature_df_all, feature_importance_table, how="append", verbose=-1)
+        upsert_data_to_database(stock_df_all, result_pred_table, how="append", verbose=-1, dtype=pred_dtypes)
+        upsert_data_to_database(score_df_all, result_score_table, how="update", verbose=-1, dtype=score_dtypes)
+        upsert_data_to_database(feature_df_all, feature_importance_table, how="append", verbose=-1, dtype=feature_dtypes)
         return True
     except Exception as e:
         # save to pickle file in local for recovery

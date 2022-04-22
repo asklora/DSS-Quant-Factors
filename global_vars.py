@@ -64,6 +64,68 @@ logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:
 logging.getLogger().setLevel(logging.DEBUG)
 
 # Define dtypes for tables
+
+score_dtypes = dict(
+    name_sql=TEXT,
+    weeks_to_expire=INTEGER,
+    train_currency=TEXT,
+    pred_currency=TEXT, 
+    pillar=TEXT, 
+    hpot_eval_metric=TEXT, 
+    objective=TEXT,
+    average_days=INTEGER, 
+    _factor_pca=NUMERIC(2, 2),
+    _factor_reverse=BOOLEAN,
+    _y_qcut=INTEGER, 
+    _valid_pct=NUMERIC(2, 2),
+    _valid_method=TEXT,
+    _down_mkt_pct=NUMERIC(2, 2),
+    _tree_type=TEXT, 
+    testing_period=DATE,
+    factor_list=JSON,
+    train_len=INTEGER, 
+    valid_len=INTEGER, 
+    neg_factor=JSON,
+    uid=TEXT, 
+    __ccp_alpha=DOUBLE_PRECISION,
+    __max_depth=INTEGER,
+    __max_features=NUMERIC(2, 2),
+    __max_samples=NUMERIC(2, 2),
+    __min_impurity_decrease=INTEGER, 
+    __min_samples_leaf=INTEGER,
+    __min_samples_split=INTEGER, 
+    __min_weight_fraction_leaf=DOUBLE_PRECISION,
+    __n_estimators=INTEGER, 
+    train_pred_std=NUMERIC(5, 5), 
+    feature_importance=JSON,
+    mae_train=NUMERIC(10, 5),
+    r2_train=NUMERIC(10, 5),
+    mse_train=NUMERIC(10, 5),
+    adj_mse_train=NUMERIC(10, 5),
+    mae_valid=NUMERIC(10, 5),
+    r2_valid=NUMERIC(10, 5),
+    mse_valid=NUMERIC(10, 5),
+    adj_mse_valid=NUMERIC(10, 5),
+    mae_test=NUMERIC(10, 5),
+    r2_test=NUMERIC(10, 5),
+    mse_test=NUMERIC(10, 5),
+    adj_mse_test=NUMERIC(10, 5)
+)
+
+pred_dtypes = dict(
+    factor_name=TEXT,
+    currency_code=TEXT,
+    pred=DOUBLE_PRECISION,
+    actual=DOUBLE_PRECISION,
+    uid=TEXT,
+)
+
+feature_dtypes = dict(
+    name=TEXT,
+    split=NUMERIC(10, 5),
+    uid=TEXT
+)
+
 backtest_eval_dtypes = dict(
     _name_sql=TEXT,
     _weeks_to_expire=INTEGER,
