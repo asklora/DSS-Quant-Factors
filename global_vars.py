@@ -96,20 +96,20 @@ score_dtypes = dict(
     __min_samples_split=INTEGER, 
     __min_weight_fraction_leaf=DOUBLE_PRECISION,
     __n_estimators=INTEGER, 
-    train_pred_std=NUMERIC(5, 5), 
+    train_pred_std=DOUBLE_PRECISION, 
     feature_importance=JSON,
-    mae_train=NUMERIC(10, 5),
-    r2_train=NUMERIC(10, 5),
-    mse_train=NUMERIC(10, 5),
-    adj_mse_train=NUMERIC(10, 5),
-    mae_valid=NUMERIC(10, 5),
-    r2_valid=NUMERIC(10, 5),
-    mse_valid=NUMERIC(10, 5),
-    adj_mse_valid=NUMERIC(10, 5),
-    mae_test=NUMERIC(10, 5),
-    r2_test=NUMERIC(10, 5),
-    mse_test=NUMERIC(10, 5),
-    adj_mse_test=NUMERIC(10, 5)
+    mae_train=DOUBLE_PRECISION,
+    r2_train=DOUBLE_PRECISION,
+    mse_train=DOUBLE_PRECISION,
+    adj_mse_train=DOUBLE_PRECISION,
+    mae_valid=DOUBLE_PRECISION,
+    r2_valid=DOUBLE_PRECISION,
+    mse_valid=DOUBLE_PRECISION,
+    adj_mse_valid=DOUBLE_PRECISION,
+    mae_test=DOUBLE_PRECISION,
+    r2_test=DOUBLE_PRECISION,
+    mse_test=DOUBLE_PRECISION,
+    adj_mse_test=DOUBLE_PRECISION
 )
 
 pred_dtypes = dict(
@@ -122,7 +122,7 @@ pred_dtypes = dict(
 
 feature_dtypes = dict(
     name=TEXT,
-    split=NUMERIC(10, 5),
+    split=DOUBLE_PRECISION,
     uid=TEXT
 )
 
