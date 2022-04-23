@@ -356,9 +356,10 @@ if __name__ == "__main__":
     if not args.debug:
         select_df = select_df.rename(columns={"_pred_currency": "currency_code",
                                               "_weeks_to_expire": "weeks_to_expire",
-                                              "_pillar": "pillar"})
-        select_df = select_df[["weeks_to_expire", "currency_code", "pillar", "max_factor", "min_factor",
-                               "max_factor_extra", "min_factor_extra", "max_factor_trh", "min_factor_trh"]]
+                                              "_pillar": "pillar",
+                                              "eval_top_metric": "eval_metric"})
+        select_df = select_df[["weeks_to_expire", "currency_code", "trading_day", "pillar", "eval_metric", "max_factor",
+                               "min_factor", "max_factor_extra", "min_factor_extra", "max_factor_trh", "min_factor_trh"]]
         select_df["updated"] = dt.datetime.now()
         upsert_data_to_database(select_df, production_rank_table,
                                 primary_key=["weeks_to_expire", "currency_code", "pillar"],
