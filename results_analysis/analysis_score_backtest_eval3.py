@@ -191,7 +191,7 @@ def eval_sortino_ratio(name_sql=None,
         df_std = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].std()
         df_std.columns = ['std_' + x for x in df_std]
 
-        # calculate min period return
+        # calculate min period ret
         df_min = df_p.groupby(groupby_col)[['net_ret', 'max_ret']].min()
         df_min.columns = ['min_' + x for x in df_min]
 
@@ -212,33 +212,38 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
     """ calculate sortino / sharpe ratio for each of the factors
         -> result: if we use sortino ratio max_ret > net_ret
     """
-    tbl_name = global_vars.backtest_top_table
+    tbl_name = global_vars.backtest_top_table + '_debug'
     df = read_query(f"SELECT * FROM {tbl_name}")
 
     # filter
-    df = df.loc[df['trading_day'] < dt.date(2022, 4, 3)]
-    df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
-    df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
+    # df = df.loc[df['trading_day'] < dt.date(2022, 4, 3)]
+    # df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
+    # df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
 
-    df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_return "
+    w = int(name_sql.split('_')[0][1:])
+    df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_ret "
                           f"FROM factor_processed_ratio "
-                          f"WHERE ticker in ('.SPX', '.HSI') AND field='stock_return_y_w4_d-7'")
-    df_index["currency_code"] = df_index["currency_code"].replace({".SPX": "USD", ".HSI": "HKD"})
+                          f"WHERE ticker in ('.SPX', '.HSI', '.SXXGR', '.CSI300') AND field='stock_return_y_w{w}_d-7'",
+                          db_url=global_vars.db_url_alibaba_prod)
+    df_index["currency_code"] = df_index["currency_code"].replace({".SPX": "USD",
+                                                                   ".HSI": "HKD",
+                                                                   ".SXXGR": "EUR",
+                                                                   ".CSI300": "CNY"})
     # df['trading_day'] = pd.to_datetime(df['trading_day'])
     # df_index['trading_day'] = pd.to_datetime(df_index['trading_day'])
 
     df = df.merge(df_index, on=["currency_code", "trading_day"], how="left")
-    df[['return', 'bm_return']] /= 100
+    df[['ret', 'bm_ret']] /= 100
     # df.to_pickle('cache2.pkl')
     # df = pd.read_pickle('cache2.pkl')
 
-    # df['return2_d'] = np.square(np.clip(df['return'], np.inf, 0))
-    # df['bm_return2_d'] = np.square(np.clip(df['bm_return'], np.inf, 0))
-    # df['index_return2_d'] = np.square(np.clip(df['index_return'], np.inf, 0))
+    # df['ret2_d'] = np.square(np.clip(df['ret'], np.inf, 0))
+    # df['bm_ret2_d'] = np.square(np.clip(df['bm_ret'], np.inf, 0))
+    # df['index_ret2_d'] = np.square(np.clip(df['index_ret'], np.inf, 0))
 
-    df['return2_d'] = np.square(df['return'])
-    df['bm_return2_d'] = np.square(df['bm_return'])
-    df['index_return2_d'] = np.square(df['index_return'])
+    df['ret2_d'] = np.square(df['ret'])
+    df['bm_ret2_d'] = np.square(df['bm_ret'])
+    df['index_ret2_d'] = np.square(df['index_ret'])
 
     xls = {"raw": df}
     groupby_col = ['currency_code', 'top_n']
@@ -246,35 +251,35 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
         df_p = df.loc[df['trading_day'] > dt.datetime.strptime(d, '%Y-%m-%d').date()]
         d = f"{df_p['trading_day'].min()} ({len(df_p['trading_day'].unique())})"
 
-        # calculate avg return
+        # calculate avg ret
         df_agg = df_p.groupby(groupby_col)[
-            ['return', 'bm_return', 'index_return', 'return2_d', 'bm_return2_d', 'index_return2_d']].mean()
+            ['ret', 'bm_ret', 'index_ret', 'ret2_d', 'bm_ret2_d', 'index_ret2_d']].mean()
 
         # calculate sortino / sharpe ratio
-        # df_agg['sortino'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
-        # df_agg['sortino_bm'] = df_agg['bm_return'].div(np.sqrt(df_agg['bm_return2_d']))
-        # df_agg['sortino_index'] = df_agg['index_return'].div(np.sqrt(df_agg['index_return2_d']))
+        # df_agg['sortino'] = df_agg['ret'].div(np.sqrt(df_agg['ret2_d']))
+        # df_agg['sortino_bm'] = df_agg['bm_ret'].div(np.sqrt(df_agg['bm_ret2_d']))
+        # df_agg['sortino_index'] = df_agg['index_ret'].div(np.sqrt(df_agg['index_ret2_d']))
 
-        df_agg['sharpe'] = df_agg['return'].div(np.sqrt(df_agg['return2_d']))
-        df_agg['sharpe_bm'] = df_agg['bm_return'].div(np.sqrt(df_agg['bm_return2_d']))
-        df_agg['sharpe_index'] = df_agg['index_return'].div(np.sqrt(df_agg['index_return2_d']))
+        df_agg['sharpe'] = df_agg['ret'].div(np.sqrt(df_agg['ret2_d']))
+        df_agg['sharpe_bm'] = df_agg['bm_ret'].div(np.sqrt(df_agg['bm_ret2_d']))
+        df_agg['sharpe_index'] = df_agg['index_ret'].div(np.sqrt(df_agg['index_ret2_d']))
 
         # # calculate std
-        # df_std = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].std()
+        # df_std = df_p.groupby(groupby_col)[['ret', 'bm_ret', 'diff']].std()
         # df_std.columns = ['std_' + x for x in df_std]
 
-        # calculate min period return
-        df_min = df_p.groupby(groupby_col)[['return', 'bm_return', 'index_return']].min()
+        # calculate min period ret
+        df_min = df_p.groupby(groupby_col)[['ret', 'bm_ret', 'index_ret']].min()
         df_min.columns = ['min_' + x for x in df_min]
 
-        # df_quantile = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.1)
+        # df_quantile = df_p.groupby(groupby_col)[['ret', 'bm_ret', 'diff']].quantile(q=0.1)
         # df_quantile.columns = ['q10_' + x for x in df_quantile]
         #
-        # df_quantile2 = df_p.groupby(groupby_col)[['return', 'bm_return', 'diff']].quantile(q=0.05)
+        # df_quantile2 = df_p.groupby(groupby_col)[['ret', 'bm_ret', 'diff']].quantile(q=0.05)
         # df_quantile2.columns = ['q5_' + x for x in df_quantile2]
 
         final_df = pd.concat([df_agg, df_min], axis=1).reset_index().drop(
-            columns=['return2_d', 'bm_return2_d', 'index_return2_d'])
+            columns=['ret2_d', 'bm_ret2_d', 'index_ret2_d'])
 
         final_df['sort'] = final_df['top_n'].map({-10: 0, -50: 1, 50: 2, 10: 3})
         final_df = final_df.sort_values(by=["currency_code", "sort"]).drop(columns=["sort"])
@@ -288,7 +293,7 @@ if __name__ == '__main__':
     # actual_good_prem()
     # eval3_factor_selection()
     # eval_sortino_ratio(name_sql='w8_d-7_20220419172420')
-    eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420')
+    eval_sortino_ratio_top(name_sql='w26_20220425095800_debug')
 
     # eval_sortino_ratio(name_sql='w26_d-7_20220420143927')
-    eval_sortino_ratio_top(name_sql='w26_d-7_20220420143927')
+    eval_sortino_ratio_top(name_sql='w8_20220422100952_debug')

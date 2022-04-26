@@ -142,7 +142,7 @@ def read_query(query, db_url=db_url_read, mp=False):
             df = pd.read_sql(query, conn, chunksize=20000, )
         except Exception as e:
             # logger.debug(e)
-            query = query.replace("FROM ", "FROM factor.")
+            query = query.replace("FROM ", "FROM factor.").replace("FROM factor.(", "FROM (")
             df = pd.read_sql(query, conn, chunksize=20000, )
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()

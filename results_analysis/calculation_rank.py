@@ -137,9 +137,15 @@ class calculate_rank_pred:
         else:
             eval_df_new = pd.DataFrame()
 
-        eval_df = self.eval_df_history.loc[(self.eval_df_history["_pred_currency"] == kwargs["pred_currency"]) &
-                                           (self.eval_df_history["_pillar"] == kwargs["pillar"])].copy(1)
+        if kwargs["pillar"] == "cluster":
+            eval_df = self.eval_df_history.loc[(self.eval_df_history["_pred_currency"] == kwargs["pred_currency"]) &
+                                               (self.eval_df_history["_pillar"].str.startswith("pillar"))].copy(1)
+        else:
+            eval_df = self.eval_df_history.loc[(self.eval_df_history["_pred_currency"] == kwargs["pred_currency"]) &
+                                               (self.eval_df_history["_pillar"] == kwargs["pillar"])].copy(1)
+
         eval_df = eval_df.append(eval_df_new)
+        logger.info(f'eval_df shape: {eval_df.shape}')
 
         # Based on evaluation df calculate DataFrame for list of selected factors (pillar & extra)
         select_history_df, select_df = self.__get_minmax_factors(eval_df, **kwargs)
@@ -240,7 +246,16 @@ class calculate_rank_pred:
             prod_train_config_col = [f"_{x}" for x in prod_train_config]
             prod_train_config.columns = prod_train_config_col
 
-            eval_df = eval_df.merge(prod_train_config, on=prod_train_config_col, how="inner")
+            logger.debug(f'eval_df columns: {eval_df.columns.to_list()}')
+            logger.debug(f'prod_train_config columns: {prod_train_config.columns.to_list()}')
+
+            logger.debug(f'before eval_df shape: {eval_df.shape}')
+            eval_df_noncluster = eval_df.loc[eval_df["_pillar"] != "cluster"].merge(
+                prod_train_config, on=prod_train_config_col, how="left")
+            eval_df_cluster = eval_df.loc[eval_df["_pillar"] == "cluster"].merge(
+                prod_train_config.drop(columns=['_pillar']), on=[x for x in prod_train_config_col if x != "_pillar"], how="left")
+            eval_df = eval_df_noncluster.append(eval_df_cluster)
+            logger.debug(f'after eval_df shape: {eval_df.shape}')
 
         return eval_df
 
@@ -252,12 +267,12 @@ class calculate_rank_pred:
 
         # 2.4.1. calculate group statistic
         df_actual = df.groupby(self.fix_config_col)[['actual']].mean()      # actual factor premiums
-        # df_eval = df.groupby(self.fix_config_col + self.select_config_col).apply(
-        #     partial(self.__get_summary_stats_in_group, **kwargs)).reset_index()
-        # df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
+        df_eval = df.groupby(self.fix_config_col + self.select_config_col).apply(
+            partial(self.__get_summary_stats_in_group, **kwargs)).reset_index()
+        df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
 
-        # df_eval.to_pickle("cached_df_eval.pkl")   # TODO: remove after debug
-        df_eval = pd.read_pickle("cached_df_eval.pkl")
+        df_eval.to_pickle("cached_df_eval.pkl")   # TODO: remove after debug
+        # df_eval = pd.read_pickle("cached_df_eval.pkl")
 
         df_eval[self.eval_col] = df_eval[self.eval_col].astype(float)
         df_eval = df_eval.join(df_actual, on=self.fix_config_col, how='left')
@@ -463,7 +478,7 @@ class calculate_rank_pred:
 
         # Evaluate: calculate return for top 10 score / mode industry
         eval_best_all = {}  # calculate score
-        n_top_ticker_list = [-10, -50, 50, 10]
+        n_top_ticker_list = [-10, -50, 50, 10, 3]
         for i in n_top_ticker_list:
             for idx, g_score in score_df_comb.groupby(['trading_day'] + config_col):
                 new_idx = tuple([i] + list(idx))

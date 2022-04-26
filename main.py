@@ -337,6 +337,11 @@ if __name__ == "__main__":
     eval_df["_name_sql"] = sql_result["name_sql"]
     eval_df['updated'] = dt.datetime.now()
     eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
+    eval_df.to_pickle('eval_df.pkl')
+
+    # eval_df = pd.read_pickle('eval_df.pkl')
+    # eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
+
     upsert_data_to_database(eval_df, backtest_eval_table,
                             primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
@@ -351,6 +356,7 @@ if __name__ == "__main__":
     else:           # if production: remove fixed config columns
         top_eval_df = top_eval_df.drop(columns=config_col)
 
+    eval_df.to_pickle('top_eval_df.pkl')
     upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
                             primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
 
