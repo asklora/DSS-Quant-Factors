@@ -1,4 +1,4 @@
-import logger
+from global_vars import logger
 import datetime as dt
 import numpy as np
 import pandas as pd
@@ -28,6 +28,8 @@ ratio_dtypes = dict(
     field=TEXT,
     value=DOUBLE_PRECISION,
 )
+
+logger = logger(__name__, "DEBUG")
 
 
 # ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------

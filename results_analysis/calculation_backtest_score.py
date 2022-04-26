@@ -1,6 +1,6 @@
 from typing import Any
 
-import logger
+from global_vars import logger
 from scipy.stats import skew
 import pandas as pd
 import datetime as dt
@@ -17,6 +17,7 @@ from general.send_slack import to_slack
 from general.utils import to_excel
 from collections import Counter, OrderedDict
 
+logger = logger(__name__, "DEBUG")
 
 def get_fundamental_scores(start_date='2016-01-10', sample_interval=1):
     """ get fundamental scores from ratio table """

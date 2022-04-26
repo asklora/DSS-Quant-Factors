@@ -13,20 +13,20 @@ db_url_read = db_url_local_pc1
 db_url_write = db_url_local_pc1
 
 # TABLE names - preprocess formula
-factors_formula_table = "factor_formula_ratios"
-config_train_table = "factor_formula_config_train"
-config_eval_table = "factor_formula_config_eval"
-pillar_defined_table = "factor_formula_pillar_defined"
-pillar_cluster_table = "factor_formula_pillar_cluster"
+factors_formula_table = "factor.factor_formula_ratios"
+config_train_table = "factor.factor_formula_config_train"
+config_eval_table = "factor.factor_formula_config_eval"
+pillar_defined_table = "factor.factor_formula_pillar_defined"
+pillar_cluster_table = "factor.factor_formula_pillar_cluster"
 
 # TABLE names - factor model results
-result_pred_table = "factor_model_stock"  # + "_lgbm"/"_rf" + "_reg/class"
-result_score_table = "factor_model"  # cluster pillar
-feature_importance_table = "factor_result_importance"
-production_rank_table = "factor_result_select"
-production_rank_history_table = production_rank_table + "_history"
-backtest_eval_table = "factor_result_rank_backtest_eval"
-backtest_top_table = "factor_result_rank_backtest_top"  # updated version for non-peeking backtest
+result_pred_table = "factor.factor_model_stock"  # + "factor._lgbm"/"_rf" + "factor._reg/class"
+result_score_table = "factor.factor_model"  # cluster pillar
+feature_importance_table = "factor.factor_result_importance"
+production_rank_table = "factor.factor_result_select"
+production_rank_history_table = production_rank_table + "factor._history"
+backtest_eval_table = "factor.factor_result_rank_backtest_eval"
+backtest_top_table = "factor.factor_result_rank_backtest_top"  # updated version for non-peeking backtest
 
 # TABLE name - factor config optimization results
 # factor_config_score_table = 'factor_config_model'
@@ -57,9 +57,6 @@ factor_premium_table = "factor_processed_premium"
 # TABLE names - universe rating results
 production_score_current = "universe_rating"  # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
-
-for k, v in dir().items():
-    print(k, v)
 
 
 # Add Logging

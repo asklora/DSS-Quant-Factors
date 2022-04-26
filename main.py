@@ -41,6 +41,7 @@ from general.sql_process import (
 from results_analysis.calculation_rank import calculate_rank_pred
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
 
+logger = logger(__name__, "DEBUG")
 
 logger.info(f" ---> result_score_table: [{result_score_table}]")
 logger.info(f" ---> result_pred_table: [{result_pred_table}]")

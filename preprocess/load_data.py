@@ -15,6 +15,8 @@ import math
 from global_vars import *
 from general.sql_process import read_table, read_query
 
+logger = logger(__name__, "DEBUG")
+
 
 def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''

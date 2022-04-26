@@ -1,4 +1,4 @@
-import logger
+from global_vars import logger
 
 from scipy.stats import skew
 import pandas as pd

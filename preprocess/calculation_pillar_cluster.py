@@ -17,6 +17,9 @@ from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
 from functools import partial
 
+logger = logger(__name__, "DEBUG")
+
+
 dtype_pillar = dict(
     pillar=TEXT,
     factor_name=JSON,

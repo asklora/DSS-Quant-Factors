@@ -10,6 +10,8 @@ import global_vars
 from global_vars import *
 from general.send_slack import to_slack
 
+logger = logger(__name__, "DEBUG")
+
 
 # ============================================ EXECUTE QUERY ================================================
 

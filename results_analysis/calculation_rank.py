@@ -25,6 +25,7 @@ from general.sql_process import (
 from results_analysis.calculation_backtest_score import get_fundamental_scores
 from collections import Counter
 
+logger = logger(__name__, "DEBUG")
 
 def apply_parallel(grouped, func):
     """ (obsolete) parallel run groupby """
