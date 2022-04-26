@@ -407,6 +407,11 @@ class calculate_rank_pred:
         logging.debug(period_agg_count)
 
         period_agg_filter = period_agg_filter.reset_index()
+        logger.debug(f"period_agg_filter columns: {period_agg_filter.columns.to_list()}")
+        period_agg_filter['_eval_top_metric'] = eval_top_metric
+        period_agg_filter['_eval_top_n_configs'] = eval_top_n_configs
+        period_agg_filter['_eval_top_backtest_period'] = eval_top_backtest_period
+
         period_agg_filter_current = period_agg_filter.sort_values(by=["trading_day"]).groupby(
             group_config_col, as_index=False).last()
 
