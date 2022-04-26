@@ -1,5 +1,5 @@
 from slack_sdk import WebClient
-from global_vars import logger
+from global_vars import logger, LOGGER_LEVEL
 
 class to_slack:
     def __init__(self, channel="#dss-quant-factors-message"):

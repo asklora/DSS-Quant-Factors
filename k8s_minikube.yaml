@@ -1,0 +1,28 @@
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: quant-factor-monthly
+spec:
+  schedule: "00 00 * * 0"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: quant-ingestion-production
+            image: quant-ingestion
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - main.py--backtest_period 12 --weeks_to_expire 4 --sample_interval 4 --processes 1 --debug
+            resources:
+              # TODO: update requirements
+              requests:
+                memory: "8Mi"
+                cpu: "1000m"
+              limits:
+                memory: "32Mi"
+                cpu: "1000m"
+          restartPolicy: Never

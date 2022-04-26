@@ -1,6 +1,6 @@
 from typing import Any
 
-from global_vars import logger
+from global_vars import logger, LOGGER_LEVEL
 from scipy.stats import skew
 import pandas as pd
 import datetime as dt
@@ -16,7 +16,7 @@ from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
 # universe_currency_code = ['CNY']

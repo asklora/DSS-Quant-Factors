@@ -1,4 +1,4 @@
-from global_vars import logger
+from global_vars import logger, LOGGER_LEVEL
 
 import numpy as np
 import pandas as pd
@@ -25,7 +25,7 @@ prem_dtypes = dict(
     value=DOUBLE_PRECISION,
 )
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 def trim_outlier(df, prc=0):
     ''' assign a max value for the 99% percentile to replace inf'''

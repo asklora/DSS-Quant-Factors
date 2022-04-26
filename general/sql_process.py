@@ -10,7 +10,7 @@ import global_vars
 from global_vars import *
 from general.send_slack import to_slack
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 
 # ============================================ EXECUTE QUERY ================================================
@@ -138,7 +138,12 @@ def read_query(query, db_url=db_url_read, mp=False):
     logger.info(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn, chunksize=20000, )
+        try:
+            df = pd.read_sql(query, conn, chunksize=20000, )
+        except Exception as e:
+            # logger.debug(e)
+            query = query.replace("FROM ", "FROM factor.")
+            df = pd.read_sql(query, conn, chunksize=20000, )
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()
     return df
@@ -150,7 +155,11 @@ def read_table(table, db_url=db_url_read, mp=True):
     logger.info(f'Download Entire Table from [{table}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
-        df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
+        try:
+            df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
+        except Exception as e:
+            # logger.debug(e)
+            df = pd.read_sql(f"SELECT * FROM factor.{table}", conn, chunksize=10000)
         df = pd.concat(df, axis=0, ignore_index=True)
     engine.dispose()
     return df

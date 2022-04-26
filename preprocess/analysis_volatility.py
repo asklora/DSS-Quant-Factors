@@ -1,4 +1,4 @@
-from global_vars import logger
+from global_vars import logger, LOGGER_LEVEL
 
 import numpy as np
 import pandas as pd

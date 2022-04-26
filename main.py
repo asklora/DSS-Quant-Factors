@@ -9,6 +9,7 @@ import multiprocessing as mp
 
 from global_vars import (
     logger,
+    LOGGER_LEVEL,
     config_train_table,
     config_eval_table,
     pillar_defined_table,
@@ -41,7 +42,7 @@ from general.sql_process import (
 from results_analysis.calculation_rank import calculate_rank_pred
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 logger.info(f" ---> result_score_table: [{result_score_table}]")
 logger.info(f" ---> result_pred_table: [{result_pred_table}]")

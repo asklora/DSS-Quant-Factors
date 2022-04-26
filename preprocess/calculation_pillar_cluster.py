@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import DATE, TEXT, INTEGER, JSON
 import multiprocessing as mp
 from global_vars import (
     logger,
+    LOGGER_LEVEL,
     pillar_cluster_table,
     processed_ratio_table,
     factors_formula_table
@@ -17,7 +18,7 @@ from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
 from functools import partial
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 
 dtype_pillar = dict(

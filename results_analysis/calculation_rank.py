@@ -25,7 +25,7 @@ from general.sql_process import (
 from results_analysis.calculation_backtest_score import get_fundamental_scores
 from collections import Counter
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 def apply_parallel(grouped, func):
     """ (obsolete) parallel run groupby """
@@ -252,12 +252,12 @@ class calculate_rank_pred:
 
         # 2.4.1. calculate group statistic
         df_actual = df.groupby(self.fix_config_col)[['actual']].mean()      # actual factor premiums
-        df_eval = df.groupby(self.fix_config_col + self.select_config_col).apply(
-            partial(self.__get_summary_stats_in_group, **kwargs)).reset_index()
-        df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
+        # df_eval = df.groupby(self.fix_config_col + self.select_config_col).apply(
+        #     partial(self.__get_summary_stats_in_group, **kwargs)).reset_index()
+        # df_eval = df_eval.loc[df_eval['testing_period'] < df_eval['testing_period'].max()]
 
-        df_eval.to_pickle("cached_df_eval.pkl")   # TODO: remove after debug
-        # df_eval = pd.read_pickle("cached_df_eval.pkl")
+        # df_eval.to_pickle("cached_df_eval.pkl")   # TODO: remove after debug
+        df_eval = pd.read_pickle("cached_df_eval.pkl")
 
         df_eval[self.eval_col] = df_eval[self.eval_col].astype(float)
         df_eval = df_eval.join(df_actual, on=self.fix_config_col, how='left')
@@ -324,17 +324,25 @@ class calculate_rank_pred:
 
         factor_eval['net_ret'] = factor_eval['max_ret'] - factor_eval['min_ret']
         factor_eval['avg_ret'] = (factor_eval['max_ret'] + factor_eval['net_ret']) / 2
+        logger.debug(f"factor_eval shape: {factor_eval.shape}")
 
         # get config cols: group = select within each group; select = config to select top n
-        group_config_col = factor_eval.filter(regex='^_[a-z]').columns.to_list()
+        group_config_col = [x for x in factor_eval.filter(regex='^_[a-z]').columns.to_list() if x!='_name_sql']
+        logger.debug(f"group_config_col: {group_config_col}")
+
         select_config_col = factor_eval.filter(regex='^__').columns.to_list()
+        logger.debug(f"select_config_col: {select_config_col}")
+
         n_config = factor_eval[select_config_col].drop_duplicates().shape[0]
         n_select_config = np.ceil(n_config * eval_top_n_configs)
+        logger.debug(factor_eval.isnull())
 
         # in case of cluster pillar combine different cluster selection
         agg_func = {'max_factor': 'sum', 'min_factor': 'sum', 'max_ret': 'mean', 'net_ret': 'mean', 'avg_ret': 'mean'}
         factor_eval_agg = factor_eval.groupby(group_config_col + select_config_col + ["trading_day"]).agg(
             agg_func).reset_index()
+        logger.debug(f"factor_eval_agg shape: {factor_eval_agg.shape}")
+
         n_select_factor = factor_eval_agg['max_factor'].apply(lambda x: len(x)).mean() * 0.5
 
         # calculate different config rolling average return
@@ -345,6 +353,7 @@ class calculate_rank_pred:
         factor_eval_agg['trh'] = factor_eval_agg.groupby(group_config_col + ["trading_day"])['rolling_ret'].transform(
             lambda x: np.quantile(x, 1 - eval_top_n_configs)).values
         factor_eval_agg_select = factor_eval_agg.loc[factor_eval_agg['rolling_ret'] >= factor_eval_agg['trh']]
+        logger.debug(f"factor_eval_agg_select shape: {factor_eval_agg_select.shape}")
 
         # count occurrence of factors each testing_period & keep factor with (e.g. > .5 occurrence in selected configs)
         if eval_top_metric == "max_ret":
@@ -352,7 +361,7 @@ class calculate_rank_pred:
         else:
             select_col = ['max_factor', 'min_factor']  # i.e. net return
         period_agg = factor_eval_agg_select.groupby(group_config_col + ["trading_day"])[select_col].sum()
-
+        logger.debug(period_agg.columns.to_list())
         period_agg_filter_counter = period_agg[select_col].applymap(lambda x: dict(Counter(x)))
         logging.debug(period_agg_filter_counter)
 

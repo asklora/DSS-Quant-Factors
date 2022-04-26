@@ -9,7 +9,7 @@ from general.sql_process import upsert_data_to_database
 from global_vars import *
 from general.send_slack import to_slack
 
-logger = logger(__name__, "DEBUG")
+logger = logger(__name__, LOGGER_LEVEL)
 
 
 def get_timestamp_now_str():
