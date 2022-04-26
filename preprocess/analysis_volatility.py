@@ -1,4 +1,4 @@
-import logging
+import logger
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ class vol_analysis:
 
     def read_ratio(self, ticker, currency):
         ''' read vol / return ratios from factor_processed_ratio Table '''
-        logging.info(f"=== Get vol/ret ratios from {processed_ratio_table} ===")
+        logger.info(f"=== Get vol/ret ratios from {processed_ratio_table} ===")
 
         conditions = ["is_active", f"(field='{self.vol_col}' or field like 'stock_return_%%')"]
         if ticker:
@@ -61,7 +61,7 @@ class vol_analysis:
 
     def read_premium(self, currency):
         ''' read vol / return ratios from factor_processed_ratio Table '''
-        logging.info(f"=== Get vol/ret ratios from {factor_premium_table} ===")
+        logger.info(f"=== Get vol/ret ratios from {factor_premium_table} ===")
 
         conditions = [f"field='{self.vol_col}'"]
         if currency:

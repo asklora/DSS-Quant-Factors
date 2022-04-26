@@ -1,4 +1,5 @@
 from sqlalchemy.dialects.postgresql import DATE, DOUBLE_PRECISION, TEXT, INTEGER, BOOLEAN, TIMESTAMP, JSON, NUMERIC
+import logging, coloredlogs
 
 db_url_aws_read = "postgres://postgres:ml2021#LORA@droid-v2-production-cluster.cluster-ro-cy4dofwtnffp.ap-east-1.rds.amazonaws.com:5432/postgres"  # AWS Read url
 db_url_alibaba = "postgresql://asklora:AskLORAv2@pgm-3nse9b275d7vr3u18o.pg.rds.aliyuncs.com:1921/postgres"
@@ -8,8 +9,8 @@ db_url_alibaba_temp = "postgresql://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.
 db_url_local = "postgresql://postgres:AskLORAv2@localhost:5432/postgres"
 db_url_local_pc1 = "postgresql://postgres:AskLORAv2@localhost:15432/postgres"
 
-db_url_read = db_url_alibaba_prod
-db_url_write = db_url_alibaba_prod
+db_url_read = db_url_local_pc1
+db_url_write = db_url_local_pc1
 
 # TABLE names - preprocess formula
 factors_formula_table = "factor_formula_ratios"
@@ -57,14 +58,31 @@ factor_premium_table = "factor_processed_premium"
 production_score_current = "universe_rating"  # in DROID v2 DB
 production_score_current_history = "universe_rating_history"
 
-# Add Logging
-import logging
+for k, v in dir().items():
+    print(k, v)
 
-logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
-logging.getLogger().setLevel(logging.DEBUG)
+
+# Add Logging
+def logger(name: object, level: object) -> object:
+    """
+    Returns a custom logger.
+
+    Args:
+        name: (str): Name of the logger. Should always be '__name__'.
+        level (str): The level of the logger
+    Return:
+        logging.logger(): Custom logger obj.
+    """
+
+    coloredlogs.install()
+    logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+    logger = logging.getLogger(name)
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(level)
+    return logger
+
 
 # Define dtypes for tables
-
 score_dtypes = dict(
     name_sql=TEXT,
     weeks_to_expire=INTEGER,

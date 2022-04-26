@@ -1,5 +1,5 @@
 from slack_sdk import WebClient
-from global_vars import logging
+from global_vars import logger
 
 class to_slack:
     def __init__(self, channel="#dss-quant-factors-message"):
@@ -22,7 +22,7 @@ class to_slack:
     def message_to_slack(self, message, trim_msg=True):
         if trim_msg:
             message = str(message)
-        logging.info(message)
+        logger.info(message)
         try:
             client = WebClient(token=self.SLACK_API, timeout=30)
             client.chat_postMessage(
@@ -31,7 +31,7 @@ class to_slack:
             )
 
         except Exception as e:
-            logging.warning(e)
+            logger.warning(e)
 
     def series_to_slack(self, message=None, df=None):
 
@@ -42,7 +42,7 @@ class to_slack:
         for k, v in df.to_dict().items():
             message += f"{k.ljust(40)}{v}\n"
         message += "```"
-        logging.info(message)
+        logger.info(message)
         self.message_to_slack(message)
 
     def df_to_slack(self, message, df):
@@ -65,7 +65,7 @@ class to_slack:
             message += "\n"
 
         message += "```"
-        logging.info(message)
+        logger.info(message)
         self.message_to_slack(message)
 
     def file_to_slack(self, file, filetype, title):
@@ -79,7 +79,7 @@ class to_slack:
                 title=title)
 
         except Exception as e:
-            logging.warning(e)
+            logger.warning(e)
 
 if __name__ == "__main__":
     # file_to_slack_user('test')

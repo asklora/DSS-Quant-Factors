@@ -15,11 +15,7 @@
 
 eval_eval:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--processes 1 --debug --eval_metric max_ret --eval_n_configs 10 --eval_backtest_period 36 \
-		--eval_removed_subpillar  --restart w4_d-7_20220408122219_debug --restart_eval
-	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--processes 1 --debug --eval_metric max_ret --eval_n_configs 10 --eval_backtest_period 36 \
-		--restart w4_d-7_20220408122219_debug --restart_eval
+		--processes 1 --debug --restart w26_20220425095800_debug --pass_train
 
 eval_top:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \

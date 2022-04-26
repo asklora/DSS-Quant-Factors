@@ -39,7 +39,7 @@ def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
 def save_plot_backtest_ret(result_all_comb, other_group_col, pillar):
     """ Save Plot for backtest average ret """
 
-    logging.debug(f'=== Save Plot for backtest average ret ===')
+    logger.debug(f'=== Save Plot for backtest average ret ===')
     result_all_comb = result_all_comb.copy()
     result_all_comb['other_group'] = result_all_comb[other_group_col].astype(str).agg('-'.join, axis=1)
     result_all_comb['group'] = result_all_comb[['group', 'group_code']].astype(str).agg('-'.join, axis=1)
@@ -68,7 +68,7 @@ def save_plot_backtest_ret(result_all_comb, other_group_col, pillar):
     plt.suptitle(' - '.join(other_group_col), fontsize=20)
     plt.savefig(fig_name)
     plt.close()
-    logging.debug(f'=== Saved [{fig_name}] for evaluation ===')
+    logger.debug(f'=== Saved [{fig_name}] for evaluation ===')
 
 
 if __name__ == "__main__":

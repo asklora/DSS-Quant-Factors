@@ -91,7 +91,7 @@ class calculate_rank_pred:
             try:
                 self.adj_fundamentals = pd.read_pickle('cache_adj_fundamentals.pkl')  # TODO: remove after debug
             except Exception as e:
-                logging.warning(e)
+                logger.warning(e)
                 fundamentals, factor_formula = get_fundamental_scores(start_date='2016-01-10', sample_interval=1)
                 # fundamentals = fundamentals.loc[fundamentals['currency_code'] == 'HKD']     # TODO: remove after debug
 
@@ -106,7 +106,7 @@ class calculate_rank_pred:
         """ rank based on config defined by each row in pred_config table  """
 
         kwargs, = args
-        logging.debug(f"=== Evaluation for [{kwargs}]===")
+        logger.debug(f"=== Evaluation for [{kwargs}]===")
 
         # if not pass_eval = read eval table from DB and calculate top ticker table directly
         if not self.pass_eval:
@@ -193,11 +193,11 @@ class calculate_rank_pred:
 
         try:
             pred = pd.read_pickle(f"pred_{name_sql}.pkl")       # TODO: remove
-            logging.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
+            logger.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
             # pred = pred.rename(columns={"trading_day": "testing_period"})
         except Exception as e:
-            logging.info(e)
-            logging.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
+            logger.info(e)
+            logger.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
             conditions = [f"name_sql='{name_sql}'",
                           f"testing_period>='{pred_start_testing_period}'",
                           f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
@@ -274,7 +274,7 @@ class calculate_rank_pred:
 
         ret_dict = {}
         g = g.dropna(how='any').copy()
-        logging.debug(g)
+        logger.debug(g)
 
         if len(g) > 1:
             max_g = g.loc[g['pred'] > np.quantile(g['pred'], 1 - eval_q)].sort_values(by=["pred"], ascending=False)

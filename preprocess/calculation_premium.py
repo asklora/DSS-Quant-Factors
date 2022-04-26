@@ -1,4 +1,4 @@
-import logging
+import logger
 
 import numpy as np
 import pandas as pd
@@ -63,14 +63,14 @@ def insert_prem_for_group(*args):
             q[series_fillinf == -np.inf] = 0
             return q
         except ValueError as e:
-            logging.debug(f'Premium not calculated: {e}')
+            logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
     df, group, factor, trim_outlier_, y_col = args
     weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
 
     df = df.loc[df['currency_code']==group]     # Select all ticker for certain currency
-    logging.info(f'=== Calculate premium for ({group}, {factor}) ===')
+    logger.info(f'=== Calculate premium for ({group}, {factor}) ===')
 
     try:
         df = df[['ticker', 'trading_day', y_col, factor]].dropna(how='any')
@@ -124,15 +124,15 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
         start_date for premium calculation (default=None, i.e. calculate entire history)
     '''
 
-    logging.info(f'=== Get {factors_formula_table} ===')
+    logger.info(f'=== Get {factors_formula_table} ===')
     formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
     if len(factor_list)==0:
         factor_list = formula['name'].to_list()  # default factor = all variabales
     y_col = f'stock_return_y_w{weeks_to_expire}_d{average_days}'
-    logging.info(f"=== Calculate Premiums with [{y_col}] ===")
+    logger.info(f"=== Calculate Premiums with [{y_col}] ===")
 
-    logging.info(f"=== Get ratios from {processed_ratio_table} ===")
+    logger.info(f"=== Get ratios from {processed_ratio_table} ===")
     ratio_query = f"SELECT r.*, u.currency_code " \
                   f"FROM {processed_ratio_table} r " \
                   f"INNER JOIN universe u ON r.ticker=u.ticker " \
@@ -145,14 +145,14 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     df = df.pivot(index=["ticker","trading_day", "currency_code"], columns=["field"], values='value').reset_index()
     df = df.dropna(subset=[y_col, 'ticker'])
 
-    logging.info(f"=== resample df to offset [{weeks_to_offset}] week(s) between samples ===")
+    logger.info(f"=== resample df to offset [{weeks_to_offset}] week(s) between samples ===")
     date_list = reversed(df["trading_day"].unique())
     date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_offset == 0)]
     df = df.loc[df["trading_day"].isin(date_list)]
 
-    logging.info(f'Groups: {" -> ".join(all_groups)}')
-    logging.info(f'trim_outlier: {trim_outlier_}')
-    logging.info(f'Will save to DB Table [{factor_premium_table}]')
+    logger.info(f'Groups: {" -> ".join(all_groups)}')
+    logger.info(f'trim_outlier: {trim_outlier_}')
+    logger.info(f'Will save to DB Table [{factor_premium_table}]')
     all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col])
     all_groups = [tuple(e) for e in all_groups]
 
@@ -186,5 +186,5 @@ if __name__ == "__main__":
     #                          all_groups=['CNY'], processes=10)
     # end = datetime.now()
     #
-    # logging.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
+    # logger.debug(f'Time elapsed: {(end - start).total_seconds():.2f} s')
     # write_local_csv_to_db()

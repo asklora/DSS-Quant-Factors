@@ -1,4 +1,4 @@
-import logging
+import logger
 import datetime as dt
 import numpy as np
 import pandas as pd
@@ -144,25 +144,25 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
     tri = tri.sort_values(['ticker', 'trading_day'])
 
     if not tri_return_only:
-        logging.info(f'Calculate skewness')
+        logger.info(f'Calculate skewness')
         tri = get_skew(tri)  # Calculate past 1 year skewness
 
         # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-        logging.info(f'Calculate RS volatility')
+        logger.info(f'Calculate RS volatility')
         list_of_start_end = [[0, 30]]  # , [30, 90], [90, 182]
         tri = get_rogers_satchell(tri, list_of_start_end)
         tri = tri.drop(['open', 'high', 'low'], axis=1)
         ffill_col += [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
 
         # resample tri using last week average as the proxy for monthly tri
-        logging.info(f'Stock volume using last 7 days average / 91 days average ')
+        logger.info(f'Stock volume using last 7 days average / 91 days average ')
         tri[['volume']] = tri.groupby("ticker")[['volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
         tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
         tri['volume'] = tri['volume'] / tri['volume_3m']
         drop_col += ['volume_3m']
 
     # calculuate rolling average tri (before forward fill tri)
-    logging.info(f'Stock tri rolling average ')
+    logger.info(f'Stock tri rolling average ')
     avg_day_options = set([i for x in stock_return_map.values() for i in x if i != 1] + [7])
     for i in avg_day_options:
         if i > 0:
@@ -176,7 +176,7 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
     cols = ['tri', 'close', 'volume'] + ffill_col
     tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
 
-    logging.info(f'Sample weekly interval ')
+    logger.info(f'Sample weekly interval ')
     tri[['currency_code', 'market_cap']] = tri.groupby("ticker")[['currency_code', 'market_cap']].ffill().bfill()
     tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
 
@@ -190,7 +190,7 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
         drop_col += ['anchor_tri']
 
     # Calculate future stock return (Y)
-    logging.info(f'Calculate future stock returns')
+    logger.info(f'Calculate future stock returns')
     tri['tri_avg_1d'] = tri['tri']
     for fwd_week, avg_days in stock_return_map.items():
         for d in avg_days:
@@ -200,7 +200,7 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
 
     if not tri_return_only:
         # Calculate past stock returns
-        logging.info(f'Calculate past stock returns')
+        logger.info(f'Calculate past stock returns')
         tri["tri_1wb"] = tri.groupby('ticker')['tri_avg_1d'].shift(1)
         tri["tri_2wb"] = tri.groupby('ticker')['tri_avg_7d'].shift(2)
         tri["tri_1mb"] = tri.groupby('ticker')['tri_avg_7d'].shift(4)
@@ -225,7 +225,7 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
         ret_col = tri.filter(regex="^stock_return_y_").columns.to_list()
         tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=ret_col, var_name="field",
                       value_name="value").dropna(subset=["value"])
-        logging.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
+        logger.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
 
     return tri, stock_col
 
@@ -254,7 +254,7 @@ def download_clean_worldscope_ibes(ticker, start_date, end_date):
     def fill_missing_ws(ws):
         ''' fill in missing values by calculating with existing data '''
 
-        logging.info(f'Fill missing in {worldscope_data_table} ')
+        logger.info(f'Fill missing in {worldscope_data_table} ')
         with suppress(Exception):
             ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])
         with suppress(Exception):
@@ -284,7 +284,7 @@ def check_duplicates(df, name=''):
 def update_trading_day(ws=None):
     ''' map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m '''
 
-    logging.info(f'Update trading_day in {worldscope_data_table} ')
+    logger.info(f'Update trading_day in {worldscope_data_table} ')
 
     query_universe = f"SELECT ticker, fiscal_year_end FROM {universe_table}"
     universe = read_query(query_universe, db_url_read)
@@ -324,7 +324,7 @@ def fill_all_given_date(result, ref):
     ticker_list = ref['ticker'].unique()
     indexes = pd.MultiIndex.from_product([ticker_list, date_list], names=['ticker', 'trading_day']).to_frame(
         index=False, name=['ticker', 'trading_day'])
-    logging.info(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
+    logger.info(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
 
     # Insert weekend/before first trading date to df
     indexes['trading_day'] = pd.to_datetime(indexes['trading_day'])
@@ -341,7 +341,7 @@ def fill_all_given_date(result, ref):
 def drop_dup(df, col='trading_day'):
     ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-    logging.info(f'Drop duplicates in {worldscope_data_table} ')
+    logger.info(f'Drop duplicates in {worldscope_data_table} ')
 
     df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
     df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
@@ -361,7 +361,7 @@ def combine_stock_factor_data(ticker, start_date, end_date, tri_return_only):
     if tri_return_only:
         return tri, stocks_col
     elif (len(ticker) == 1) and (ticker[0][0] == '.'):
-        logging.warning(f"index [{ticker}] calculate stock_return ratios only")
+        logger.warning(f"index [{ticker}] calculate stock_return ratios only")
         tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stocks_col, var_name="field",
                       value_name="value").dropna(subset=["value"])
         return tri, stocks_col
@@ -385,7 +385,7 @@ def combine_stock_factor_data(ticker, start_date, end_date, tri_return_only):
         universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
 
         # Combine all data for table (1) - (6) above
-        logging.info(f'Merge all dataframes ')
+        logger.info(f'Merge all dataframes ')
         df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
         df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
         df = df.sort_values(by=['ticker', 'trading_day'])
@@ -394,7 +394,7 @@ def combine_stock_factor_data(ticker, start_date, end_date, tri_return_only):
         def adjust_close(df):
             """ using market cap to adjust close price for stock split, ..."""
 
-            logging.info(f'Adjust closing price with market cap ')
+            logger.info(f'Adjust closing price with market cap ')
 
             df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
             df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')

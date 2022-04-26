@@ -120,7 +120,7 @@ class rf_HPOT:
 
         Y_valid_pred = regr.predict(self.sample_set['valid_x'])
         Y_test_pred = regr.predict(self.sample_set['test_x'])
-        logging.debug(f'Y_train_pred: \n{Y_train_pred[:5]}')
+        logger.debug(f'Y_train_pred: \n{Y_train_pred[:5]}')
 
         self.sql_result['feature_importance'], feature_importance_df = self.to_list_importance(regr)
 
@@ -153,7 +153,7 @@ class rf_HPOT:
                                                             self.sample_set[i + '_pred'],
                                                             multioutput='uniform_average')
             except Exception as e:
-                logging.warning(f"[warning] can't calculate eval metrics: {e}")
+                logger.warning(f"[warning] can't calculate eval metrics: {e}")
 
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
@@ -165,9 +165,9 @@ class rf_HPOT:
             eval_metric = 'mse_valid'       # if only 1 factor in pillar
 
         # try:    # print runtime evaluation
-        #     logging.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
+        #     logger.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
         # except Exception as e:
-        #     logging.warning(e)
+        #     logger.warning(e)
 
         if result[eval_metric] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
             self.hpot['best_score'] = result[eval_metric]

@@ -8,7 +8,7 @@ from itertools import product
 import multiprocessing as mp
 
 from global_vars import (
-    logging,
+    logger,
     config_train_table,
     config_eval_table,
     pillar_defined_table,
@@ -42,11 +42,11 @@ from results_analysis.calculation_rank import calculate_rank_pred
 from results_analysis.analysis_score_backtest_eval2 import top2_table_tickers_return
 
 
-logging.info(f" ---> result_score_table: [{result_score_table}]")
-logging.info(f" ---> result_pred_table: [{result_pred_table}]")
-logging.info(f" ---> production_rank_table: [{production_rank_table}]")
-logging.info(f" ---> backtest_eval_table: [{backtest_eval_table}]")
-logging.info(f" ---> backtest_top_table: [{backtest_top_table}]")
+logger.info(f" ---> result_score_table: [{result_score_table}]")
+logger.info(f" ---> result_pred_table: [{result_pred_table}]")
+logger.info(f" ---> production_rank_table: [{production_rank_table}]")
+logger.info(f" ---> backtest_eval_table: [{backtest_eval_table}]")
+logger.info(f" ---> backtest_top_table: [{backtest_top_table}]")
 
 
 def mp_rf(*args):
@@ -55,7 +55,7 @@ def mp_rf(*args):
     data, sql_result, kwargs = args
     sql_result.update(kwargs)
 
-    logging.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
+    logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
     data.split_group(**sql_result)
     # start_lasso(sql_result['testing_period'], sql_result['pillar'], sql_result['group_code'])
 
@@ -138,7 +138,7 @@ def start_on_update(check_interval=60, table_names=None, report_only=True):
                 update_time['last_update'] > (dt.datetime.today() - relativedelta(days=3))):
             waiting = False
         else:
-            logging.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
+            logger.debug(f'Keep waiting...Check again in {check_interval}s ({dt.datetime.now()})')
             time.sleep(check_interval)
 
     to_slack("clair").message_to_slack(f" === Start Factor Model for weeks_to_expire=[{args.weeks_to_expire}] === ")
@@ -272,7 +272,7 @@ if __name__ == "__main__":
     query = f"SELECT max(trading_day) trading_day FROM {factor_premium_table} WHERE weeks_to_expire={args.weeks_to_expire}"
     period_list_last = read_query(query)['trading_day'].to_list()[0]
     period_list = [period_list_last - relativedelta(weeks=args.sample_interval*i) for i in range(args.backtest_period+1)]
-    logging.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
+    logger.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
     cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5}
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     assert len(eval_configs) > 0    # else no training will be done
 
     all_eval_groups = [tuple([e]) for e in eval_configs]
-    logging.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
+    logger.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
 
     rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
                                    pass_eval=args.pass_eval,

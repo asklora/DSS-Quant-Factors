@@ -5,7 +5,12 @@ from dateutil.relativedelta import relativedelta
 from collections import Counter
 from sqlalchemy.dialects.postgresql import DATE, TEXT, INTEGER, JSON
 import multiprocessing as mp
-from global_vars import logging, pillar_cluster_table, processed_ratio_table, factors_formula_table
+from global_vars import (
+    logger,
+    pillar_cluster_table,
+    processed_ratio_table,
+    factors_formula_table
+)
 from general.sql_process import read_query, upsert_data_to_database
 
 from sklearn.preprocessing import scale
@@ -81,7 +86,7 @@ class calc_pillar_cluster:
             primary_key = list(config.keys()) + ['pillar', "testing_period"]
             upsert_data_to_database(results, pillar_cluster_table, primary_key=primary_key,
                                     how="update", dtype=dtype_pillar)
-            logging.info(f"=== Update Cluster Pillar to [{pillar_cluster_table}] ===")
+            logger.info(f"=== Update Cluster Pillar to [{pillar_cluster_table}] ===")
 
     def _calc_cluster(self, *args, weeks_to_expire=4, subpillar_trh=5, pillar_trh=2, lookback=5):
         """ calculte pillar / subpillar """
@@ -103,7 +108,7 @@ class calc_pillar_cluster:
             subpillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=subpillar_dist, linkage='average')
             subpillar_cluster.fit(X)
             subpillar_label = subpillar_cluster.labels_
-            logging.info(Counter(subpillar_label))
+            logger.info(Counter(subpillar_label))
             subpillar = {f"subpillar_{k}": list(self.feature_names[subpillar_label == k]) for k, v in
                          dict(Counter(subpillar_label)).items()
                          if (v < len(self.feature_names) * subpillar_trh) and (v > 1)}
@@ -113,14 +118,14 @@ class calc_pillar_cluster:
             pillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=pillar_dist, linkage='average')
             pillar_cluster.fit(X)
             pillar_label = pillar_cluster.labels_
-            logging.info(Counter(pillar_label))
+            logger.info(Counter(pillar_label))
             pillar = {f"pillar_{k}": list(self.feature_names[pillar_label == k]) for k, v in dict(Counter(pillar_label)).items()}
 
             df_pillar = pd.DataFrame({"factor_list": {**pillar, **subpillar}})
             df_pillar["testing_period"] = testing_period
             return df_pillar
         except Exception as e:
-            logging.info(e)
+            logger.info(e)
             return pd.DataFrame()
 
 if __name__ == '__main__':

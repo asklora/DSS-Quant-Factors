@@ -19,7 +19,7 @@ def trucncate_table_in_database(table, db_url=db_url_write):
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             conn.execute(f"TRUNCATE TABLE {table}")
-        logging.info(f"TRUNCATE TABLE: [{table}]")
+        logger.info(f"TRUNCATE TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN TRUNCATE DB [{table}] === Error : {e}")
@@ -31,7 +31,7 @@ def drop_table_in_database(table, db_url=db_url_write):
         engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             conn.execute(f"DROP TABLE {table}")
-        logging.info(f"DROP TABLE: [{table}]")
+        logger.info(f"DROP TABLE: [{table}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DROP DB [{table}] === Error : {e}")
@@ -45,7 +45,7 @@ def delete_data_on_database(table, db_url=db_url_write, query=None):
             query = "True"
         with engine.connect() as conn:
             conn.execute(f"DELETE FROM {table} WHERE {query}")
-        logging.info(f"DELETE TABLE: [{table}] WHERE [{query}]")
+        logger.info(f"DELETE TABLE: [{table}] WHERE [{query}]")
         engine.dispose()
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN DELETE DB [{table}] === Error : {e}")
@@ -56,8 +56,8 @@ def delete_data_on_database(table, db_url=db_url_write, query=None):
 # ============================================== WRITE TABLE ==================================================
 
 @retry(tries=3, delay=1)
-def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], db_url=db_url_write, how="update",
-                            verbose=1, dtype=None, chunksize=20000):
+def upsert_data_to_database(data, table, schema='factor', primary_key=["uid"], db_url=db_url_write, how="update",
+                            verbose=1, dtype=None, chunksize=20000, mp=False):
     """ upsert Table to DB
 
     Parameters
@@ -79,10 +79,10 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
     """
 
     try:
-        logging.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
-        logging.info(f"=== URL: {db_url} ===")
+        logger.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
+        logger.info(f"=== URL: {db_url} ===")
 
-        engine = create_engine(db_url, pool_size=cpu_count(), max_overflow=-1, isolation_level="AUTOCOMMIT")
+        engine = create_engine(db_url, pool_size=cpu_count() if mp else 1, max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
             with engine.connect() as conn:
                 extra = {'con': conn, 'index': False, 'if_exists': how, 'method': 'multi', 'chunksize': chunksize,
@@ -117,7 +117,7 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
                     schema=schema
                 )
             upsert(engine, **upsert_params)
-            logging.debug(f"DATA [{how}] TO {table}")
+            logger.debug(f"DATA [{how}] TO {table}")
         engine.dispose()
         if verbose >= 0:
             to_slack("clair").message_to_slack(f"===  FINISH [{how}] DB [{table}] ===")
@@ -130,10 +130,10 @@ def upsert_data_to_database(data, table, schema='public', primary_key=["uid"], d
 
 # =============================================== READ TABLE ==================================================
 
-def read_query(query, db_url=db_url_read, mp=True):
+def read_query(query, db_url=db_url_read, mp=False):
     ''' Read specific query from SQL '''
 
-    logging.info(f'Download Table with query: [{query}]')
+    logger.info(f'Download Table with query: [{query}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, chunksize=20000, )
@@ -145,7 +145,7 @@ def read_query(query, db_url=db_url_read, mp=True):
 def read_table(table, db_url=db_url_read, mp=True):
     ''' Read entire table from SQL '''
 
-    logging.info(f'Download Entire Table from [{table}]')
+    logger.info(f'Download Entire Table from [{table}]')
     engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
     with engine.connect() as conn:
         df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
@@ -192,7 +192,7 @@ def migrate_local_save_to_prod():
         status = upsert_data_to_database(data, t, how=how)
         if status:
             delete_data_on_database('factor.' + t, db_url=global_vars.db_url_local)
-        logging.info(f"-----> local DB save migrate to cloud: {t}")
+        logger.info(f"-----> local DB save migrate to cloud: {t}")
     return True
 
 

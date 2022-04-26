@@ -19,7 +19,7 @@ from general.sql_process import read_table, read_query
 def download_clean_macros():
     ''' download macros data from DB and preprocess: convert some to yoy format '''
 
-    logging.info(f'Download macro data from {macro_data_table}')
+    logger.info(f'Download macro data from {macro_data_table}')
 
     # combine macros & vix data
     query = f"SELECT * FROM {macro_data_table} "
@@ -58,7 +58,7 @@ def download_clean_macros():
 def download_index_return():
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
-    logging.info(f'Download index return data from [{processed_ratio_table}]')
+    logger.info(f'Download index return data from [{processed_ratio_table}]')
 
     # read stock return from ratio calculation table
     index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
@@ -84,7 +84,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
     # Read premium sql from different tables
     factor_table_name = factor_premium_table
 
-    logging.info(f'Use [{weeks_to_expire}] week premium')
+    logger.info(f'Use [{weeks_to_expire}] week premium')
     conditions = ['"group" IS NOT NULL',
                   f"weeks_to_expire={weeks_to_expire}"]
 
@@ -145,7 +145,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
     indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()],
                                          names=['group', 'trading_day']).to_frame().reset_index(drop=True)
     df = pd.merge(df, indexes, on=['group', 'trading_day'], how='right')
-    logging.info(f"Factors: {x_col['factor']}")
+    logger.info(f"Factors: {x_col['factor']}")
 
     return df.sort_values(by=['group', 'trading_day']), x_col['factor'], x_col
 
@@ -369,7 +369,7 @@ class load_data:
         self.x_col_dict['arma_pca'] = ['arma_' + str(x) for x in factor_feature_name]
         self.train[self.x_col_dict['arma_pca']] = factor_pca_train
         self.test[self.x_col_dict['arma_pca']] = factor_pca_test
-        logging.info(f"After {_factor_pca} PCA [Factors]: {len(factor_feature_name)}")
+        logger.info(f"After {_factor_pca} PCA [Factors]: {len(factor_feature_name)}")
 
         # 6. [Prep X] use PCA on all index/macro inputs
         group_index = {"USD": ".SPX", "HKD": ".HSI", "EUR": ".SXXGR", "CNY": ".CSI300"}
@@ -381,7 +381,7 @@ class load_data:
         self.x_col_dict['mi_pca'] = ['mi_' + str(x) for x in mi_feature_name]
         self.train[self.x_col_dict['mi_pca']] = mi_pca_train
         self.test[self.x_col_dict['mi_pca']] = mi_pca_test
-        logging.info(f"After {mi_pca} PCA [Macro+Index]: {len(mi_feature_name)}")
+        logger.info(f"After {mi_pca} PCA [Macro+Index]: {len(mi_feature_name)}")
 
         def divide_set(df):
             """ split x, y from main """
