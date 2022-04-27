@@ -66,6 +66,7 @@ def download_index_return():
     index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
     index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%' AND field in {tuple(index_col)}"
     index_ret = read_query(index_query, db_url_read)
+
     index_ret = index_ret.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
     # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker

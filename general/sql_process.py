@@ -136,16 +136,28 @@ def read_query(query, db_url=db_url_read, mp=False):
     ''' Read specific query from SQL '''
 
     logger.info(f'Download Table with query: [{query}]')
-    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
-    with engine.connect() as conn:
-        try:
-            df = pd.read_sql(query, conn, chunksize=20000, )
-        except Exception as e:
-            # logger.debug(e)
-            query = query.replace("FROM ", "FROM factor.").replace("FROM factor.(", "FROM (")
-            df = pd.read_sql(query, conn, chunksize=20000, )
-        df = pd.concat(df, axis=0, ignore_index=True)
-    engine.dispose()
+    try:
+        engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
+        with engine.connect() as conn:
+            try:
+                df = pd.read_sql(query, conn, chunksize=20000, )
+            except Exception as e:
+                # logger.debug(e)
+                new_query = query.replace("FROM ", "FROM factor.").replace("FROM factor.(", "FROM (")
+                df = pd.read_sql(new_query, conn, chunksize=20000, )
+            df = pd.concat(df, axis=0, ignore_index=True)
+        engine.dispose()
+    except Exception as e:
+        engine = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
+        with engine.connect() as conn:
+            try:
+                df = pd.read_sql(query, conn, chunksize=20000, )
+            except Exception as e:
+                # logger.debug(e)
+                new_query = query.replace("FROM ", "FROM factor.").replace("FROM factor.(", "FROM (")
+                df = pd.read_sql(new_query, conn, chunksize=20000, )
+            df = pd.concat(df, axis=0, ignore_index=True)
+        engine.dispose()
     return df
 
 
@@ -153,15 +165,26 @@ def read_table(table, db_url=db_url_read, mp=True):
     ''' Read entire table from SQL '''
 
     logger.info(f'Download Entire Table from [{table}]')
-    engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
-    with engine.connect() as conn:
-        try:
-            df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
-        except Exception as e:
-            # logger.debug(e)
-            df = pd.read_sql(f"SELECT * FROM factor.{table}", conn, chunksize=10000)
-        df = pd.concat(df, axis=0, ignore_index=True)
-    engine.dispose()
+    try:
+        engine = create_engine(db_url, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
+        with engine.connect() as conn:
+            try:
+                df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
+            except Exception as e:
+                # logger.debug(e)
+                df = pd.read_sql(f"SELECT * FROM factor.{table}", conn, chunksize=10000)
+            df = pd.concat(df, axis=0, ignore_index=True)
+        engine.dispose()
+    except Exception as e:
+        engine = create_engine(db_url_alibaba_prod, max_overflow=-1, isolation_level="AUTOCOMMIT", pool_size=cpu_count() if mp else 1)
+        with engine.connect() as conn:
+            try:
+                df = pd.read_sql(f"SELECT * FROM {table}", conn, chunksize=10000)
+            except Exception as e:
+                # logger.debug(e)
+                df = pd.read_sql(f"SELECT * FROM factor.{table}", conn, chunksize=10000)
+            df = pd.concat(df, axis=0, ignore_index=True)
+        engine.dispose()
     return df
 
 

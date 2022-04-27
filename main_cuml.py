@@ -1,3 +1,5 @@
+# Obsolete due to not support multi-output
+
 import datetime as dt
 import pandas as pd
 import numpy as np
@@ -32,7 +34,7 @@ from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
 from preprocess.calculation_pillar_cluster import calc_pillar_cluster
-from random_forest import rf_HPOT
+from random_forest_cuml import rf_HPOT
 from general.sql_process import (
     read_query,
     read_table,
@@ -51,10 +53,9 @@ logger.info(f" ---> backtest_eval_table: [{backtest_eval_table}]")
 logger.info(f" ---> backtest_top_table: [{backtest_top_table}]")
 
 
-def mp_rf(*args):
+def mp_rf(data, sql_result, kwargs):
     """ run random forest on multi-processor """
 
-    data, sql_result, kwargs = args
     sql_result.update(kwargs)
 
     logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
@@ -265,7 +266,7 @@ if __name__ == "__main__":
         "_y_qcut": [0, 10],
         "_valid_pct": [.2],
         "_valid_method": [2010, 2012, 2014],
-        "_down_mkt_pct": [0.5, 0.7],
+        "_down_mkt_pct": [0.5],
         "_tree_type": ['rf'],
     }
     load_configs = [dict(zip(load_options.keys(), e)) for e in product(*load_options.values())]
@@ -295,17 +296,19 @@ if __name__ == "__main__":
 
         all_groups_df = load_train_configs(data_configs, load_configs, period_list, args.restart)
         all_groups = all_groups_df.to_dict("records")
-        all_groups = [tuple([data, sql_result, e]) for e in all_groups]
 
         # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
-        with mp.Pool(processes=args.processes) as pool:
-            result_dfs = pool.starmap(mp_rf, all_groups)
+        stock_df_all = []
+        score_df_all = []
+        feature_df_all = []
+        for e in all_groups:
+            stock_df, score_df, feature_df = mp_rf(data=data, sql_result=sql_result, kwargs=e)
+            stock_df_all.append(stock_df)
+            score_df_all.append(score_df)
+            feature_df_all.append(feature_df)
 
-        stock_df_all = [e for x in result_dfs for e in x[0]]
         stock_df_all_df = pd.concat(stock_df_all, axis=0)
-        score_df_all = [e for x in result_dfs for e in x[1]]
         score_df_all_df = pd.concat(score_df_all, axis=0)
-        feature_df_all = [e for x in result_dfs for e in x[2]]
         feature_df_all_df = pd.concat(feature_df_all, axis=0)
 
         # write combined results to DB
