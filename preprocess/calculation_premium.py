@@ -30,7 +30,7 @@ logger = logger(__name__, LOGGER_LEVEL)
 
 class calc_premium_all:
 
-    def __int__(self, weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
+    def __init__(self, weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
                 all_groups=None, factor_list=[], start_date=None):
         """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
