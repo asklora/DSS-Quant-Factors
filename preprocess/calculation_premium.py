@@ -6,7 +6,6 @@ from datetime import datetime
 import multiprocessing as mp
 import itertools
 from general.send_slack import to_slack
-
 from global_vars import *
 from general.sql_process import read_query, upsert_data_to_database, delete_data_on_database
 
@@ -64,17 +63,19 @@ class calc_premium_all:
         if len(factor_list) == 0:
             factor_list = formula['name'].to_list()  # default factor = all variabales
         y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
-        logger.info(f"=== Calculate Premiums with [{y_col}] ===")
 
         logger.info(f"=== Get ratios from {processed_ratio_table} ===")
-        ratio_query = f"SELECT r.*, u.currency_code " \
-                      f"FROM {processed_ratio_table} r " \
-                      f"INNER JOIN universe u ON r.ticker=u.ticker " \
-                      f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+y_col)} " \
-                      f"AND is_active"
+        ratio_query = f'''
+            SELECT r.*, u.currency_code FROM {processed_ratio_table} r
+            INNER JOIN (
+                SELECT ticker, currency_code FROM universe
+                WHERE is_active AND currency_code in {tuple(all_groups)}) u ON r.ticker=u.ticker
+            WHERE field in {tuple(factor_list+y_col)}
+        '''
         if start_date:
             ratio_query += f" AND trading_day>='{start_date}' "
         df = read_query(ratio_query.replace(",)",")"), db_url_read)
+
         df = df.loc[~df['ticker'].str.startswith('.')].copy()
         self.df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
 
@@ -84,7 +85,7 @@ class calc_premium_all:
         all_groups = itertools.product(all_groups, factor_list, y_col)
         all_groups = [tuple(e) for e in all_groups]
 
-        with mp.Pool(processes=processes) as pool:
+        with mp.Pool(processes=processes, maxtasksperchild=1000) as pool:
             prem = pool.starmap(self._insert_prem_for_group, all_groups)
         prem = pd.concat(prem, axis=0)
 
@@ -186,10 +187,10 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=8, average_days=[-7, -28], weeks_to_offset=4, processes=12,
-                     all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
-    calc_premium_all(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
-                     all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
+    calc_premium_all(weeks_to_expire=8, average_days=[-7], weeks_to_offset=4, processes=10,
+                     all_groups=["HKD", "CNY", "USD", "EUR"])
+    # calc_premium_all(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
+    #                  all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
     # stock_return_map = {4: [-7]}
     # start = datetime.now()
     # for fwd_weeks, avg_days in stock_return_map.items():
