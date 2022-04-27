@@ -237,6 +237,8 @@ if __name__ == "__main__":
     # for production: use defined configs
     data_configs = read_query(f"SELECT * FROM {config_train_table}{tbl_suffix} "
                               f"WHERE is_active AND weeks_to_expire = {args.weeks_to_expire}")
+    all_train_currency = list(data_configs["train_currency"].unique())
+    all_average_days = list(data_configs["average_days"].unique())
     all_currency_list = list(set(list(data_configs["train_currency"].unique()) +
                                      [e for x in data_configs["pred_currency"] for e in x.split(',')]))
     data_configs = data_configs.drop(columns=["is_active", "last_finish"]).to_dict("records")
@@ -246,18 +248,19 @@ if __name__ == "__main__":
 
     if args.recalc_ratio:
         # default = update ratios for past 3 months
+        logger.info("=== Calculate ratio ===")
         calc_factor_variables_multi(tickers=None,
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes)
     if args.recalc_premium:
-        for e in data_configs:
-            calc_premium_all(weeks_to_expire=args.weeks_to_expire,
-                             average_days=e["average_days"],
-                             weeks_to_offset=min(4, args.sample_interval),
-                             trim_outlier_=False,
-                             all_groups=[e["train_currency"]],
-                             processes=1)
+        logger.info("=== Calculate ratio ===")
+        calc_premium_all(weeks_to_expire=args.weeks_to_expire,
+                         average_days=all_average_days,
+                         weeks_to_offset=min(4, args.sample_interval),
+                         trim_outlier_=False,
+                         all_groups=all_train_currency,
+                         processes=1)
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 

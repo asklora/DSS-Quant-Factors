@@ -70,16 +70,24 @@ def insert_prem_for_group(*args):
             logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
-    df, group, factor, trim_outlier_, y_col = args
+    df, trim_outlier_, (group, factor, y_col) = args
     weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
 
-    df = df.loc[df['currency_code'] == group]     # Select all ticker for certain currency
-    logger.info(f'=== Calculate premium for ({group}, {factor}) ===')
-
+    logger.info(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
     try:
-        df = df[['ticker', 'trading_day', y_col, factor]].dropna(how='any')
+        df = df.loc[df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]]
+        df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
         if len(df) == 0:
-            raise Exception(f"Either stock_return_y or ticker in group '{group}' is all missing")
+            raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
+
+        logger.info(f"---> resample df to offset [{weeks_to_offset}] week(s) between samples for [{y_col}]")
+        date_list = reversed(df["trading_day"].unique())
+        date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_offset == 0)]
+        df = df.loc[df["trading_day"].isin(date_list)]
+
+        df = df.dropna(subset=[factor], how='any')
+        if len(df) == 0:
+            raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
 
         if trim_outlier_:
             df[y_col] = trim_outlier(df[y_col], prc=.05)
@@ -103,7 +111,7 @@ def insert_prem_for_group(*args):
         return pd.DataFrame()
 
 
-def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_outlier_=False, processes=12,
+def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
                      all_groups=None, factor_list=[], start_date=None):
     """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
@@ -133,32 +141,26 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
     formula = read_query(formula_query, db_url_read)
     if len(factor_list) == 0:
         factor_list = formula['name'].to_list()  # default factor = all variabales
-    y_col = f'stock_return_y_w{weeks_to_expire}_d{average_days}'
+    y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
     logger.info(f"=== Calculate Premiums with [{y_col}] ===")
 
     logger.info(f"=== Get ratios from {processed_ratio_table} ===")
     ratio_query = f"SELECT r.*, u.currency_code " \
                   f"FROM {processed_ratio_table} r " \
                   f"INNER JOIN universe u ON r.ticker=u.ticker " \
-                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+[y_col])} " \
+                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+y_col)} " \
                   f"AND is_active"
     if start_date:
         ratio_query += f" AND trading_day>='{start_date}' "
     df = read_query(ratio_query.replace(",)",")"), db_url_read)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
     df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
-    df = df.dropna(subset=[y_col, 'ticker'])
-
-    logger.info(f"=== resample df to offset [{weeks_to_offset}] week(s) between samples ===")
-    date_list = reversed(df["trading_day"].unique())
-    date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_offset == 0)]
-    df = df.loc[df["trading_day"].isin(date_list)]
 
     logger.info(f'Groups: {" -> ".join(all_groups)}')
     logger.info(f'trim_outlier: {trim_outlier_}')
     logger.info(f'Will save to DB Table [{factor_premium_table}]')
-    all_groups = itertools.product([df], all_groups, factor_list, [trim_outlier_], [y_col])
-    all_groups = [tuple(e) for e in all_groups]
+    all_groups = itertools.product(all_groups, factor_list, y_col)
+    all_groups = [tuple([df, trim_outlier_, e]) for e in all_groups]
 
     with mp.Pool(processes=processes) as pool:
         prem = pool.starmap(insert_prem_for_group, all_groups)
@@ -178,7 +180,7 @@ if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=8, average_days=-7, weeks_to_offset=4, processes=12,
+    calc_premium_all(weeks_to_expire=8, average_days=[-7, -28], weeks_to_offset=4, processes=12,
                      all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
     calc_premium_all(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
                      all_groups=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
