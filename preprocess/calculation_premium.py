@@ -27,6 +27,7 @@ prem_dtypes = dict(
 
 logger = logger(__name__, LOGGER_LEVEL)
 
+
 def trim_outlier(df, prc=0):
     ''' assign a max value for the 99% percentile to replace inf'''
 
@@ -37,6 +38,7 @@ def trim_outlier(df, prc=0):
     df = df.mask(df < pmin, pmin)
 
     return df
+
 
 def insert_prem_for_group(*args):
     ''' calculate premium for each group / factor and insert to Table [factor_processed_premium] '''
@@ -71,7 +73,7 @@ def insert_prem_for_group(*args):
     df, group, factor, trim_outlier_, y_col = args
     weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
 
-    df = df.loc[df['currency_code']==group]     # Select all ticker for certain currency
+    df = df.loc[df['currency_code'] == group]     # Select all ticker for certain currency
     logger.info(f'=== Calculate premium for ({group}, {factor}) ===')
 
     try:
@@ -103,7 +105,7 @@ def insert_prem_for_group(*args):
 
 def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_outlier_=False, processes=12,
                      all_groups=None, factor_list=[], start_date=None):
-    '''  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
+    """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
     Parameters
     ----------
@@ -124,12 +126,12 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
         factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
     start_date (Date, Optional):
         start_date for premium calculation (default=None, i.e. calculate entire history)
-    '''
+    """
 
     logger.info(f'=== Get {factors_formula_table} ===')
     formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
     formula = read_query(formula_query, db_url_read)
-    if len(factor_list)==0:
+    if len(factor_list) == 0:
         factor_list = formula['name'].to_list()  # default factor = all variabales
     y_col = f'stock_return_y_w{weeks_to_expire}_d{average_days}'
     logger.info(f"=== Calculate Premiums with [{y_col}] ===")
@@ -144,7 +146,7 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=1, trim_ou
         ratio_query += f" AND trading_day>='{start_date}' "
     df = read_query(ratio_query.replace(",)",")"), db_url_read)
     df = df.loc[~df['ticker'].str.startswith('.')].copy()
-    df = df.pivot(index=["ticker","trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+    df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
     df = df.dropna(subset=[y_col, 'ticker'])
 
     logger.info(f"=== resample df to offset [{weeks_to_offset}] week(s) between samples ===")

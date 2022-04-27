@@ -257,7 +257,7 @@ if __name__ == "__main__":
                              weeks_to_offset=min(4, args.sample_interval),
                              trim_outlier_=False,
                              all_groups=[e["train_currency"]],
-                             processes=args.processes)
+                             processes=int(round(args.processes/2)))
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
