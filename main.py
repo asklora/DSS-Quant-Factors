@@ -6,6 +6,7 @@ import time
 from dateutil.relativedelta import relativedelta
 from itertools import product
 import multiprocessing as mp
+import gc
 
 from global_vars import (
     logger,
@@ -253,6 +254,7 @@ if __name__ == "__main__":
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes)
+        gc.collect()
     if args.recalc_premium:
         logger.info("=== Calculate ratio ===")
         calc_premium_all(weeks_to_expire=args.weeks_to_expire,
@@ -261,6 +263,7 @@ if __name__ == "__main__":
                          trim_outlier_=False,
                          all_groups=all_train_currency,
                          processes=args.processes)
+        gc.collect()
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
@@ -287,6 +290,7 @@ if __name__ == "__main__":
         for e in data_configs:
             if e["pillar"] == "cluster":
                 calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"], **cluster_configs)
+        gc.collect()
 
     # --------------------------------- Model Training ------------------------------------------
 
@@ -315,6 +319,7 @@ if __name__ == "__main__":
 
         # write combined results to DB
         # write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)       # TODO: check
+    gc.collect()
 
     # --------------------------------- Results Analysis ------------------------------------------
 
