@@ -256,7 +256,7 @@ if __name__ == "__main__":
                                     processes=args.processes)
         gc.collect()
     if args.recalc_premium:
-        logger.info("=== Calculate ratio ===")
+        logger.info("=== Calculate premium ===")
         calc_premium_all(weeks_to_expire=args.weeks_to_expire,
                          average_days=all_average_days,
                          weeks_to_offset=min(4, args.sample_interval),
