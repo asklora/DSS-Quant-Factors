@@ -42,13 +42,11 @@ class calculate_rank_pred:
     """ process raw prediction in result_pred_table -> production_rank_table for AI Score calculation """
 
     eval_col = ['max_ret', 'r2', 'mae', 'mse']
-    if_plot = False
     if_combine_pillar = False       # combine cluster pillars
-    if_eval_top = True
     base_score = 5
 
     def __init__(self, name_sql, pred_pillar=None, pred_start_testing_period='2000-01-01',
-                 pred_start_uid='200000000000000000', pass_eval=False, fix_config_col=None):
+                 pred_start_uid='200000000000000000', pass_eval=False, pass_eval_top=False, fix_config_col=None):
         """
         Parameters
         ----------
@@ -71,6 +69,7 @@ class calculate_rank_pred:
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.pass_eval = pass_eval
+        self.pass_eval_top = pass_eval_top
         self.fix_config_col = fix_config_col + ["testing_period"]
 
         if not self.pass_eval:
@@ -88,20 +87,11 @@ class calculate_rank_pred:
         self.eval_df_history = self._download_eval(name_sql, self.weeks_to_expire)
 
         # if calculate backtest score & eval top selections
-        if self.if_eval_top:
-            try:
-                self.adj_fundamentals = pd.read_pickle('cache_adj_fundamentals.pkl')  # TODO: remove after debug
-            except Exception as e:
-                logger.warning(e)
-                fundamentals, factor_formula = get_fundamental_scores(start_date='2016-01-10', sample_interval=1)
-                # fundamentals = fundamentals.loc[fundamentals['currency_code'] == 'HKD']     # TODO: remove after debug
-
-                adj_fundamentals = fundamentals.groupby(['currency_code', 'trading_day']).apply(
-                    scale_fundamental_scores)
-                self.adj_fundamentals = adj_fundamentals.reset_index()
-                self.adj_fundamentals.to_pickle('cache_adj_fundamentals.pkl')  # TODO: remove for production
-
-                print(fundamentals["trading_day"].min(), fundamentals["trading_day"].max())
+        if not self.pass_eval_top:
+            fundamentals, factor_formula = get_fundamental_scores(start_date=pred_start_testing_period, sample_interval=1)
+            adj_fundamentals = fundamentals.groupby(['currency_code', 'trading_day']).apply(scale_fundamental_scores)
+            self.adj_fundamentals = adj_fundamentals.reset_index()
+            logger.debug(fundamentals["trading_day"].min(), fundamentals["trading_day"].max())
 
     def rank_(self, *args):
         """ rank based on config defined by each row in pred_config table  """
@@ -150,7 +140,7 @@ class calculate_rank_pred:
         # Based on evaluation df calculate DataFrame for list of selected factors (pillar & extra)
         select_history_df, select_df = self.__get_minmax_factors(eval_df, **kwargs)
 
-        if self.if_eval_top:
+        if not self.pass_eval_top:
             score_df = self.score_(df=select_history_df, **kwargs)
         else:
             score_df = pd.DataFrame()

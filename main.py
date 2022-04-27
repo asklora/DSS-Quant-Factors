@@ -203,7 +203,8 @@ if __name__ == "__main__":
     parser.add_argument('--restart', type=str, help='Restart training for which name_sql')
     parser.add_argument('--transfer_local', action='store_true', help='Transfer records saved locally to cloud DB')
     parser.add_argument('--pass_train', action='store_true', help='Pass train & restart from evaluation')
-    parser.add_argument('--pass_eval', action='store_true', help='Restart evaluation only & restart from top ticker evaluation')
+    parser.add_argument('--pass_eval', action='store_true', help='Pass factor evaluation & restart from top ticker evaluation')
+    parser.add_argument('--pass_eval_top', action='store_true', help='Pass top factor evaluation & restart from write to select df')
 
     parser.add_argument('--debug', action='store_true', help='Whether check for period')
     parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
@@ -323,42 +324,38 @@ if __name__ == "__main__":
 
     rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
                                    pass_eval=args.pass_eval,
+                                   pass_eval_top=args.pass_eval_top,
                                    fix_config_col=list(data_configs[0].keys()))
 
     with mp.Pool(processes=args.processes) as pool:
         eval_results = pool.starmap(rank_cls.rank_, all_eval_groups)
 
-    eval_df = pd.concat([e[0] for e in eval_results], axis=0)       # df for each config evaluation results
     score_df = pd.concat([e[1] for e in eval_results], axis=0)      # df for all scores
     top_eval_df = rank_cls.score_top_eval_(score_df)                # df for backtest score evalution
     select_df = pd.concat([e[2] for e in eval_results], axis=0)     # df for current selected factors
 
     # 1. update [backtest_eval_table]
-    eval_df["_name_sql"] = sql_result["name_sql"]
-    eval_df['updated'] = dt.datetime.now()
-    eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
-    eval_df.to_pickle('eval_df.pkl')
-
-    # eval_df = pd.read_pickle('eval_df.pkl')
-    # eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
-
-    upsert_data_to_database(eval_df, backtest_eval_table,
-                            primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
+    if not args.pass_eval:
+        eval_df = pd.concat([e[0] for e in eval_results], axis=0)  # df for each config evaluation results
+        eval_df["_name_sql"] = sql_result["name_sql"]
+        eval_df['updated'] = dt.datetime.now()
+        eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
+        upsert_data_to_database(eval_df, backtest_eval_table,
+                                primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
     # 2. update [backtest_top_table]
-    top_eval_df["name_sql"] = sql_result["name_sql"]
-    config_col = top_eval_df.filter(regex="^_").columns.to_list()
-    primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
+    if not args.pass_eval_top:
+        top_eval_df["name_sql"] = sql_result["name_sql"]
+        config_col = top_eval_df.filter(regex="^_").columns.to_list()
+        primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
 
-    if args.debug:  # if debug: write top ticker evaluation to other table
-        backtest_top_dtypes = {**backtest_eval_dtypes, **backtest_top_dtypes}
-        primary_key += config_col
-    else:           # if production: remove fixed config columns
-        top_eval_df = top_eval_df.drop(columns=config_col)
-
-    eval_df.to_pickle('top_eval_df.pkl')
-    upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
-                            primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
+        if args.debug:  # if debug: write top ticker evaluation to other table
+            backtest_top_dtypes = {**backtest_eval_dtypes, **backtest_top_dtypes}
+            primary_key += config_col
+        else:           # if production: remove fixed config columns
+            top_eval_df = top_eval_df.drop(columns=config_col)
+        upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
+                                primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
 
     # 3. update [production_rank_table]
     if not args.debug:

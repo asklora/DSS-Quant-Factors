@@ -126,6 +126,7 @@ def upsert_data_to_database(data, table, schema='factor', primary_key=["uid"], d
         record_table_update_time(table)
     except Exception as e:
         to_slack("clair").message_to_slack(f"===  ERROR IN [{how}] DB [{table}] === Error : {e.args}")
+        data.to_pickle(f"{schema}_{table}_{dt.datetime.now().strftime('%Y%m%d%H%M%S%f')}.pkl")
         return False
     return True
 
