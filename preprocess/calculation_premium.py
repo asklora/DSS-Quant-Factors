@@ -85,7 +85,7 @@ class calc_premium_all:
         all_groups = itertools.product(all_groups, factor_list, y_col)
         all_groups = [tuple(e) for e in all_groups]
 
-        with mp.Pool(processes=processes, maxtasksperchild=1000) as pool:
+        with mp.Pool(processes=processes, maxtasksperchild=100) as pool:
             prem = pool.starmap(self._insert_prem_for_group, all_groups)
         prem = pd.concat(prem, axis=0)
 
