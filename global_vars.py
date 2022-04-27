@@ -9,8 +9,8 @@ db_url_alibaba_temp = "postgresql://loratech:loraTECH123@pgm-3ns7dw6lqemk36rgpo.
 db_url_local = "postgresql://postgres:AskLORAv2@localhost:5432/postgres"
 db_url_local_pc1 = "postgresql://postgres:AskLORAv2@localhost:15432/postgres"
 
-db_url_read = db_url_local_pc1
-db_url_write = db_url_local_pc1
+db_url_read = db_url_local
+db_url_write = db_url_local
 
 # TABLE names - preprocess formula
 factors_formula_table = "factor_formula_ratios"
