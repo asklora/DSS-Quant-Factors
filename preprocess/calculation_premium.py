@@ -174,7 +174,7 @@ class calc_premium_all:
             prem['field'] = factor
             prem['weeks_to_expire'] = weeks_to_expire
             prem['average_days'] = average_days
-            if trim_outlier_:
+            if self.trim_outlier_:
                 prem['field'] = 'trim_'+prem['field']
             return prem
         except Exception as e:
