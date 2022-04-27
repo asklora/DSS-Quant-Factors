@@ -260,7 +260,7 @@ if __name__ == "__main__":
                          weeks_to_offset=min(4, args.sample_interval),
                          trim_outlier_=False,
                          all_groups=all_train_currency,
-                         processes=1)
+                         processes=args.processes)
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
