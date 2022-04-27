@@ -220,6 +220,7 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
     # df = df.loc[df['currency_code'].isin(['HKD', 'USD'])]
     # df = df.loc[df['top_n'].isin([-10, -50, 50, 10])]
     df = df.loc[df['_eval_top_backtest_period'] == 12]
+    df = df.loc[df["name_sql"] == name_sql]
 
     w = int(name_sql.split('_')[0][1:])
     df_index = read_query(f"SELECT trading_day, ticker as currency_code, value as index_ret "

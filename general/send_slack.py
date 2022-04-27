@@ -4,6 +4,7 @@ from global_vars import logger, LOGGER_LEVEL
 
 logger = logger(__name__, LOGGER_LEVEL)
 
+
 class to_slack:
     def __init__(self, channel="#dss-quant-factors-message"):
         self.SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"

@@ -476,7 +476,7 @@ class calculate_rank_pred:
 
         """
 
-        config_col = score_df.filter(regex="^_").columns.to_list()
+        config_col = [x for x in score_df.filter(regex="^_").columns.to_list() if x not in ['_pillar', '_eval_top_metric']]
         score_df_comb = score_df.groupby(['trading_day', 'ticker', 'industry_name'] + config_col).mean().reset_index()
         score_df_comb["extra_score"] = score_df_comb.filter(regex='_score_extra$').mean(axis=1)
         score_df_comb['ai_score'] = score_df_comb.filter(regex='_score$').mean(axis=1)

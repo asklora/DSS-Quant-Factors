@@ -19,9 +19,9 @@ eval_eval:
 
 eval_top:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--processes 1 --debug --restart w26_20220425095800_debug --pass_train --pass_eval
+		--processes 12 --debug --restart w26_20220425095800_debug --pass_train --pass_eval
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--processes 1 --debug --restart w8_20220422100952_debug --pass_train --pass_eval
+		--processes 12 --debug --restart w8_20220422100952_debug --pass_train --pass_eval
 
 trial:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
