@@ -262,7 +262,7 @@ if __name__ == "__main__":
                          weeks_to_offset=min(4, args.sample_interval),
                          trim_outlier_=False,
                          all_groups=all_train_currency,
-                         processes=args.processes)
+                         processes=min(12, args.processes))
         gc.collect()
 
     # ---------------------------------------- Different Configs ----------------------------------------------

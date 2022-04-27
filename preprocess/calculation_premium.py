@@ -11,6 +11,7 @@ from general.sql_process import read_query, upsert_data_to_database, delete_data
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 from sqlalchemy.sql.sqltypes import BOOLEAN
+import gc
 
 icb_num = 6
 
@@ -168,6 +169,8 @@ class calc_premium_all:
             df = df.dropna(subset=['quantile_group']).copy()
             df['quantile_group'] = df['quantile_group'].astype(int)
             prem = df.groupby(['trading_day', 'quantile_group'])[y_col].mean().unstack()
+            del df
+            gc.collect()
 
             # Calculate small minus big
             prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
