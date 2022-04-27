@@ -70,7 +70,7 @@ def insert_prem_for_group(*args):
             logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
-    df, trim_outlier_, (group, factor, y_col) = args
+    df, trim_outlier_, weeks_to_offset, (group, factor, y_col) = args
     weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
 
     logger.info(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
@@ -160,7 +160,7 @@ def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim
     logger.info(f'trim_outlier: {trim_outlier_}')
     logger.info(f'Will save to DB Table [{factor_premium_table}]')
     all_groups = itertools.product(all_groups, factor_list, y_col)
-    all_groups = [tuple([df, trim_outlier_, e]) for e in all_groups]
+    all_groups = [tuple([df, trim_outlier_, weeks_to_offset, e]) for e in all_groups]
 
     with mp.Pool(processes=processes) as pool:
         prem = pool.starmap(insert_prem_for_group, all_groups)
