@@ -218,11 +218,12 @@ if __name__ == "__main__":
         tbl_suffix = ''
 
         # Check 1: if monthly -> only first Sunday every month
-        if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        if not args.pass_train:
+            if dt.datetime.today().day > 7:
+                raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
-        # Check 2(b): monthly update after weekly update
-        start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
+            # Check 2(b): monthly update after weekly update
+            start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
@@ -330,10 +331,6 @@ if __name__ == "__main__":
     with mp.Pool(processes=args.processes) as pool:
         eval_results = pool.starmap(rank_cls.rank_, all_eval_groups)
 
-    score_df = pd.concat([e[1] for e in eval_results], axis=0)      # df for all scores
-    top_eval_df = rank_cls.score_top_eval_(score_df)                # df for backtest score evalution
-    select_df = pd.concat([e[2] for e in eval_results], axis=0)     # df for current selected factors
-
     # 1. update [backtest_eval_table]
     if not args.pass_eval:
         eval_df = pd.concat([e[0] for e in eval_results], axis=0)  # df for each config evaluation results
@@ -345,6 +342,8 @@ if __name__ == "__main__":
 
     # 2. update [backtest_top_table]
     if not args.pass_eval_top:
+        score_df = pd.concat([e[1] for e in eval_results], axis=0)  # df for all scores
+        top_eval_df = rank_cls.score_top_eval_(score_df)  # df for backtest score evalution
         top_eval_df["name_sql"] = sql_result["name_sql"]
         config_col = top_eval_df.filter(regex="^_").columns.to_list()
         primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
@@ -359,18 +358,21 @@ if __name__ == "__main__":
 
     # 3. update [production_rank_table]
     if not args.debug:
+        select_df = pd.concat([e[2] for e in eval_results], axis=0)  # df for current selected factors
+        logger.debug(select_df)
+        logger.debug(select_df.columns.to_list())
         select_df = select_df.rename(columns={"_pred_currency": "currency_code",
                                               "_weeks_to_expire": "weeks_to_expire",
                                               "_pillar": "pillar",
-                                              "eval_top_metric": "eval_metric"})
+                                              "_eval_top_metric": "eval_metric"})
         select_df = select_df[["weeks_to_expire", "currency_code", "trading_day", "pillar", "eval_metric", "max_factor",
                                "min_factor", "max_factor_extra", "min_factor_extra", "max_factor_trh", "min_factor_trh"]]
         select_df["updated"] = dt.datetime.now()
         upsert_data_to_database(select_df, production_rank_table,
-                                primary_key=["weeks_to_expire", "currency_code", "pillar"],
-                                db_url=db_url_write, how='update', dtype=rank_dtypes)
+                                primary_key=["weeks_to_expire", "currency_code", "pillar"], schema="public",
+                                db_url=db_url_alibaba_prod, how='update', dtype=rank_dtypes)    # TODO: always to ali?
 
         # update [production_rank_history_table]
         upsert_data_to_database(select_df, production_rank_history_table,
-                                primary_key=["weeks_to_expire", "currency_code", "pillar", "updated"],
-                                db_url=db_url_write, how='update', dtype=rank_dtypes)
+                                primary_key=["weeks_to_expire", "currency_code", "pillar", "updated"], schema="public",
+                                db_url=db_url_alibaba_prod, how='update', dtype=rank_dtypes)    # TODO: always to ali?
