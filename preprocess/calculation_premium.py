@@ -28,22 +28,90 @@ prem_dtypes = dict(
 logger = logger(__name__, LOGGER_LEVEL)
 
 
-def trim_outlier(df, prc=0):
-    ''' assign a max value for the 99% percentile to replace inf'''
+class calc_premium_all:
 
-    df_nan = df.replace([np.inf, -np.inf], np.nan)
-    pmax = df_nan.quantile(q=(1 - prc))
-    pmin = df_nan.quantile(q=prc)
-    df = df.mask(df > pmax, pmax)
-    df = df.mask(df < pmin, pmin)
+    def __int__(self, weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
+                all_groups=None, factor_list=[], start_date=None):
+        """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
-    return df
+        Parameters
+        ----------
+        weeks_to_expire (Int):
+            forward period for premium calculation
+        weeks_to_offset (Int, Optional):
+            weeks offset between samples (default=1 week),
+            i.e. if calculating non-duplicated premiums, should set "weeks_to_offset"="weeks_to_expire"
+        average_days (Int, Optional):
+            number of average days for the stock returns used to calculate premiums
+        trim_outlier_ (Bool, Optional):
+            if True, use trimmed returns for top/bottom stocks
+        processes (Int, Optional):
+            multiprocess threads (default=12)
+        all_groups (List[Str], Optional):
+            currencies to calculate premiums (default=[USD])
+        factor_list (List[Str], Optional):
+            factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
+        start_date (Date, Optional):
+            start_date for premium calculation (default=None, i.e. calculate entire history)
+        """
 
+        self.trim_outlier_ = trim_outlier_
+        self.weeks_to_offset = weeks_to_offset
 
-def insert_prem_for_group(*args):
-    ''' calculate premium for each group / factor and insert to Table [factor_processed_premium] '''
+        logger.info(f'=== Get {factors_formula_table} ===')
+        formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
+        formula = read_query(formula_query, db_url_read)
+        if len(factor_list) == 0:
+            factor_list = formula['name'].to_list()  # default factor = all variabales
+        y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
+        logger.info(f"=== Calculate Premiums with [{y_col}] ===")
 
-    def qcut(series):
+        logger.info(f"=== Get ratios from {processed_ratio_table} ===")
+        ratio_query = f"SELECT r.*, u.currency_code " \
+                      f"FROM {processed_ratio_table} r " \
+                      f"INNER JOIN universe u ON r.ticker=u.ticker " \
+                      f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+y_col)} " \
+                      f"AND is_active"
+        if start_date:
+            ratio_query += f" AND trading_day>='{start_date}' "
+        df = read_query(ratio_query.replace(",)",")"), db_url_read)
+        df = df.loc[~df['ticker'].str.startswith('.')].copy()
+        self.df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+
+        logger.info(f'Groups: {" -> ".join(all_groups)}')
+        logger.info(f'trim_outlier: {trim_outlier_}')
+        logger.info(f'Will save to DB Table [{factor_premium_table}]')
+        all_groups = itertools.product(all_groups, factor_list, y_col)
+        all_groups = [tuple(e) for e in all_groups]
+
+        with mp.Pool(processes=processes) as pool:
+            prem = pool.starmap(self._insert_prem_for_group, all_groups)
+        prem = pd.concat(prem, axis=0)
+
+        upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
+                                table=factor_premium_table,
+                                primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
+                                db_url=db_url_write,
+                                how="update",
+                                verbose=-1,
+                                dtype=prem_dtypes)
+
+        to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
+
+    def __trim_outlier(self, df, prc=0):
+        """ assign a max value for the 99% percentile to replace  """
+
+        df_nan = df.replace([np.inf, -np.inf], np.nan)
+        pmax = df_nan.quantile(q=(1 - prc))
+        pmin = df_nan.quantile(q=prc)
+        df = df.mask(df > pmax, pmax)
+        df = df.mask(df < pmin, pmin)
+
+        return df
+
+    def __qcut(self, series):
+        """ assign a max value for the 99% percentile to replace  """
+
         try:
             series_fillinf = series.replace([-np.inf, np.inf], np.nan)
             nonnull_count = series_fillinf.notnull().sum()
@@ -53,7 +121,7 @@ def insert_prem_for_group(*args):
                 prc = [0, 0.2, 0.8, 1]
             else:
                 prc = [0, 0.3, 0.7, 1]
-            
+
             q = pd.qcut(series_fillinf, prc, duplicates='drop')
 
             n_cat = len(q.cat.categories)
@@ -70,111 +138,49 @@ def insert_prem_for_group(*args):
             logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
-    df, trim_outlier_, weeks_to_offset, (group, factor, y_col) = args
-    weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
+    def _insert_prem_for_group(self, *args):
+        """ calculate premium for each group / factor and insert to Table [factor_processed_premium] """
 
-    logger.info(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
-    try:
-        df = df.loc[df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]]
-        df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
-        if len(df) == 0:
-            raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
+        group, factor, y_col = args
+        weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
 
-        logger.info(f"---> resample df to offset [{weeks_to_offset}] week(s) between samples for [{y_col}]")
-        date_list = reversed(df["trading_day"].unique())
-        date_list = [x for i, x in enumerate(date_list) if (i % weeks_to_offset == 0)]
-        df = df.loc[df["trading_day"].isin(date_list)]
+        logger.info(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
+        try:
+            df = self.df.loc[self.df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
+            df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
+            if len(df) == 0:
+                raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
 
-        df = df.dropna(subset=[factor], how='any')
-        if len(df) == 0:
-            raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
+            logger.info(f"---> resample df to offset [{self.weeks_to_offset}] week(s) between samples for [{y_col}]")
+            date_list = reversed(df["trading_day"].unique())
+            date_list = [x for i, x in enumerate(date_list) if (i % self.weeks_to_offset == 0)]
+            df = df.loc[df["trading_day"].isin(date_list)]
 
-        if trim_outlier_:
-            df[y_col] = trim_outlier(df[y_col], prc=.05)
+            df = df.dropna(subset=[factor], how='any')
+            if len(df) == 0:
+                raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
 
-        df['quantile_group'] = df.groupby(['trading_day'])[factor].transform(qcut)
-        df = df.dropna(subset=['quantile_group']).copy()
-        df['quantile_group'] = df['quantile_group'].astype(int)
-        prem = df.groupby(['trading_day', 'quantile_group'])[y_col].mean().unstack()
+            if self.trim_outlier_:
+                df[y_col] = self.__trim_outlier(df[y_col], prc=.05)
 
-        # Calculate small minus big
-        prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
-        prem['group'] = group
-        prem['field'] = factor
-        prem['weeks_to_expire'] = weeks_to_expire
-        prem['average_days'] = average_days
-        if trim_outlier_:
-            prem['field'] = 'trim_'+prem['field']
-        return prem
-    except Exception as e:
-        to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
-        return pd.DataFrame()
+            df['quantile_group'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
+            df = df.dropna(subset=['quantile_group']).copy()
+            df['quantile_group'] = df['quantile_group'].astype(int)
+            prem = df.groupby(['trading_day', 'quantile_group'])[y_col].mean().unstack()
 
+            # Calculate small minus big
+            prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
+            prem['group'] = group
+            prem['field'] = factor
+            prem['weeks_to_expire'] = weeks_to_expire
+            prem['average_days'] = average_days
+            if trim_outlier_:
+                prem['field'] = 'trim_'+prem['field']
+            return prem
+        except Exception as e:
+            to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
+            return pd.DataFrame()
 
-def calc_premium_all(weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
-                     all_groups=None, factor_list=[], start_date=None):
-    """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
-
-    Parameters
-    ----------
-    weeks_to_expire (Int):
-        forward period for premium calculation
-    weeks_to_offset (Int, Optional):
-        weeks offset between samples (default=1 week),
-        i.e. if calculating non-duplicated premiums, should set "weeks_to_offset"="weeks_to_expire"
-    average_days (Int, Optional):
-        number of average days for the stock returns used to calculate premiums
-    trim_outlier_ (Bool, Optional):
-        if True, use trimmed returns for top/bottom stocks
-    processes (Int, Optional):
-        multiprocess threads (default=12)
-    all_groups (List[Str], Optional):
-        currencies to calculate premiums (default=[USD])
-    factor_list (List[Str], Optional):
-        factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
-    start_date (Date, Optional):
-        start_date for premium calculation (default=None, i.e. calculate entire history)
-    """
-
-    logger.info(f'=== Get {factors_formula_table} ===')
-    formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
-    formula = read_query(formula_query, db_url_read)
-    if len(factor_list) == 0:
-        factor_list = formula['name'].to_list()  # default factor = all variabales
-    y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
-    logger.info(f"=== Calculate Premiums with [{y_col}] ===")
-
-    logger.info(f"=== Get ratios from {processed_ratio_table} ===")
-    ratio_query = f"SELECT r.*, u.currency_code " \
-                  f"FROM {processed_ratio_table} r " \
-                  f"INNER JOIN universe u ON r.ticker=u.ticker " \
-                  f"WHERE currency_code in {tuple(all_groups)} AND field in {tuple(factor_list+y_col)} " \
-                  f"AND is_active"
-    if start_date:
-        ratio_query += f" AND trading_day>='{start_date}' "
-    df = read_query(ratio_query.replace(",)",")"), db_url_read)
-    df = df.loc[~df['ticker'].str.startswith('.')].copy()
-    df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
-
-    logger.info(f'Groups: {" -> ".join(all_groups)}')
-    logger.info(f'trim_outlier: {trim_outlier_}')
-    logger.info(f'Will save to DB Table [{factor_premium_table}]')
-    all_groups = itertools.product(all_groups, factor_list, y_col)
-    all_groups = [tuple([df, trim_outlier_, weeks_to_offset, e]) for e in all_groups]
-
-    with mp.Pool(processes=processes) as pool:
-        prem = pool.starmap(insert_prem_for_group, all_groups)
-    prem = pd.concat(prem, axis=0)
-
-    upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
-                            table=factor_premium_table,
-                            primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
-                            db_url=db_url_write,
-                            how="update",
-                            verbose=-1,
-                            dtype=prem_dtypes)
-
-    to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
 if __name__ == "__main__":
 
