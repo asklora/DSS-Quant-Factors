@@ -254,6 +254,7 @@ if __name__ == "__main__":
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes)
+        del calc_factor_variables_multi
         gc.collect()
     if args.recalc_premium:
         logger.info("=== Calculate premium ===")
@@ -263,6 +264,7 @@ if __name__ == "__main__":
                          trim_outlier_=False,
                          all_groups=all_train_currency,
                          processes=min(12, args.processes))
+        del calc_premium_all
         gc.collect()
 
     # ---------------------------------------- Different Configs ----------------------------------------------
@@ -290,6 +292,7 @@ if __name__ == "__main__":
         for e in data_configs:
             if e["pillar"] == "cluster":
                 calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"], **cluster_configs)
+        del calc_pillar_cluster
         gc.collect()
 
     # --------------------------------- Model Training ------------------------------------------

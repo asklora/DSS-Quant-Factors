@@ -8,6 +8,7 @@ import itertools
 from general.send_slack import to_slack
 from global_vars import *
 from general.sql_process import read_query, upsert_data_to_database, delete_data_on_database
+from contextlib import closing
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -65,29 +66,30 @@ class calc_premium_all:
             factor_list = formula['name'].to_list()  # default factor = all variabales
         y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
 
-        logger.info(f"=== Get ratios from {processed_ratio_table} ===")
-        ratio_query = f'''
-            SELECT r.*, u.currency_code FROM {processed_ratio_table} r
-            INNER JOIN (
-                SELECT ticker, currency_code FROM universe
-                WHERE is_active AND currency_code in {tuple(all_groups)}) u ON r.ticker=u.ticker
-            WHERE field in {tuple(factor_list+y_col)}
-        '''
-        if start_date:
-            ratio_query += f" AND trading_day>='{start_date}' "
-        df = read_query(ratio_query.replace(",)",")"), db_url_read)
+        with closing(mp.Pool(processes=processes)) as pool:
 
-        df = df.loc[~df['ticker'].str.startswith('.')].copy()
-        self.df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+            logger.info(f"=== Get ratios from {processed_ratio_table} ===")
+            ratio_query = f'''
+                SELECT r.*, u.currency_code FROM {processed_ratio_table} r
+                INNER JOIN (
+                    SELECT ticker, currency_code FROM universe
+                    WHERE is_active AND currency_code in {tuple(all_groups)}) u ON r.ticker=u.ticker
+                WHERE field in {tuple(factor_list+y_col)}
+            '''
+            if start_date:
+                ratio_query += f" AND trading_day>='{start_date}' "
+            df = read_query(ratio_query.replace(",)",")"), db_url_read)
 
-        logger.info(f'Groups: {" -> ".join(all_groups)}')
-        logger.info(f'trim_outlier: {trim_outlier_}')
-        logger.info(f'Will save to DB Table [{factor_premium_table}]')
-        all_groups = itertools.product(all_groups, factor_list, y_col)
-        all_groups = [tuple(e) for e in all_groups]
+            df = df.loc[~df['ticker'].str.startswith('.')].copy()
+            self.df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
 
-        with mp.Pool(processes=processes, maxtasksperchild=2) as pool:
+            logger.info(f'Groups: {" -> ".join(all_groups)}')
+            logger.info(f'trim_outlier: {trim_outlier_}')
+            logger.info(f'Will save to DB Table [{factor_premium_table}]')
+            all_groups = itertools.product(all_groups, factor_list, y_col)
+            all_groups = [tuple(e) for e in all_groups]
             prem = pool.starmap(self._insert_prem_for_group, all_groups)
+
         prem = pd.concat(prem, axis=0)
 
         upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
@@ -153,7 +155,7 @@ class calc_premium_all:
             if len(df) == 0:
                 raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
 
-            logger.info(f"---> resample df to offset [{self.weeks_to_offset}] week(s) between samples for [{y_col}]")
+            # logger.info(f"---> resample df to offset [{self.weeks_to_offset}] week(s) between samples for [{y_col}]")
             date_list = reversed(df["trading_day"].unique())
             date_list = [x for i, x in enumerate(date_list) if (i % self.weeks_to_offset == 0)]
             df = df.loc[df["trading_day"].isin(date_list)]
