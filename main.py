@@ -263,7 +263,7 @@ if __name__ == "__main__":
                          weeks_to_offset=min(4, args.sample_interval),
                          trim_outlier_=False,
                          all_groups=all_train_currency,
-                         processes=min(12, args.processes))
+                         processes=args.processes)
         del calc_premium_all
         gc.collect()
 
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     logger.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
-    cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5}
+    cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5, "processes": args.processes}
     if args.recalc_subpillar:
         for e in data_configs:
             if e["pillar"] == "cluster":
@@ -302,15 +302,17 @@ if __name__ == "__main__":
         if args.transfer_local:
             local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
 
+    # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
     if not args.pass_train:
-        data = load_data(args.weeks_to_expire)  # load_data (class) STEP 1
 
-        all_groups_df = load_train_configs(data_configs, load_configs, period_list, args.restart)
-        all_groups = all_groups_df.to_dict("records")
-        all_groups = [tuple([data, sql_result, e]) for e in all_groups]
-
-        # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
         with mp.Pool(processes=args.processes) as pool:
+
+            data = load_data(args.weeks_to_expire)  # load_data (class) STEP 1
+
+            all_groups_df = load_train_configs(data_configs, load_configs, period_list, args.restart)
+            all_groups = all_groups_df.to_dict("records")
+            all_groups = [tuple([data, sql_result, e]) for e in all_groups]
+
             result_dfs = pool.starmap(mp_rf, all_groups)
 
         stock_df_all = [e for x in result_dfs for e in x[0]]
@@ -332,14 +334,15 @@ if __name__ == "__main__":
     assert len(eval_configs) > 0    # else no training will be done
 
     all_eval_groups = [tuple([e]) for e in eval_configs]
-    logger.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
-
-    rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
-                                   pass_eval=args.pass_eval,
-                                   pass_eval_top=args.pass_eval_top,
-                                   fix_config_col=list(data_configs[0].keys()))
 
     with mp.Pool(processes=args.processes) as pool:
+
+        logger.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
+        rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
+                                       pass_eval=args.pass_eval,
+                                       pass_eval_top=args.pass_eval_top,
+                                       fix_config_col=list(data_configs[0].keys()))
+
         eval_results = pool.starmap(rank_cls.rank_, all_eval_groups)
 
     # 1. update [backtest_eval_table]

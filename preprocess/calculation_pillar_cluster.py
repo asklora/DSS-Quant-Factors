@@ -36,7 +36,7 @@ dtype_pillar = dict(
 class calc_pillar_cluster:
 
     def __init__(self, period_list, weeks_to_expire, currency_code='USD', subpillar_trh=5, pillar_trh=2, lookback=5,
-                 save_to_db=True):
+                 save_to_db=True, processes=1):
         """
         Parameters
         ----------
@@ -55,29 +55,29 @@ class calc_pillar_cluster:
         end_date = np.max(period_list) + relativedelta(weeks=weeks_to_expire)
         start_date = np.min(period_list) - relativedelta(years=lookback)
 
-        conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{currency_code}')",
-                      f"trading_day <= '{end_date}'",
-                      f"trading_day > '{start_date}'"]
-        query = f"SELECT * FROM {processed_ratio_table} WHERE {' AND '.join(conditions)}"
-        df = read_query(query.replace(",)", ")"))
-        # df.to_pickle('cache_factor_ratio1.pkl')
-        # df = pd.read_pickle('cache_factor_ratio1.pkl')
+        with mp.Pool(processes=processes) as pool:
 
-        # get active factor list
-        df_formula = read_query(f"SELECT name FROM {factors_formula_table} WHERE is_active")
-        df_active_factor = df_formula['name'].to_list()
+            conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{currency_code}')",
+                          f"trading_day <= '{end_date}'",
+                          f"trading_day > '{start_date}'"]
+            query = f"SELECT * FROM {processed_ratio_table} WHERE {' AND '.join(conditions)}"
+            df = read_query(query.replace(",)", ")"))
 
-        # pivot ratio table & filter by active factor list
-        df['trading_day'] = pd.to_datetime(df['trading_day'])
-        df = df.set_index(['trading_day', 'ticker', 'field'])['value'].unstack()
-        df = df.filter(df_active_factor)
-        self.df = df.fillna(0)
-        self.feature_names = np.array(df.columns.to_list())
+            # get active factor list
+            df_formula = read_query(f"SELECT name FROM {factors_formula_table} WHERE is_active")
+            df_active_factor = df_formula['name'].to_list()
 
-        all_groups = [tuple([p]) for p in period_list]
-        with mp.Pool(processes=1) as pool:
+            # pivot ratio table & filter by active factor list
+            df['trading_day'] = pd.to_datetime(df['trading_day'])
+            df = df.set_index(['trading_day', 'ticker', 'field'])['value'].unstack()
+            df = df.filter(df_active_factor)
+            self.df = df.fillna(0)
+            self.feature_names = np.array(df.columns.to_list())
+
+            all_groups = [tuple([p]) for p in period_list]
             results = pool.starmap(partial(self._calc_cluster, weeks_to_expire=weeks_to_expire, subpillar_trh=5,
                                            pillar_trh=2, lookback=5), all_groups)
+
         results = pd.concat(results, axis=0)
 
         if save_to_db:

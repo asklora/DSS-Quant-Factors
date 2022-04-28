@@ -31,7 +31,7 @@ write_select:
 
 trial:
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
-		--backtest_period 80 --weeks_to_expire 8 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium
+		--backtest_period 80 --weeks_to_expire 8 --sample_interval 4 --processes 10 --recalc_subpillar --debug
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
 		--backtest_period 80 --weeks_to_expire 26 --sample_interval 4 --processes 30 --recalc_subpillar --debug --recalc_premium
 	@sudo /home/loratech/PycharmProjects/factors/venv/bin/python3 /home/loratech/PycharmProjects/factors/main.py \
