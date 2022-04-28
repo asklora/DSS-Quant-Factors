@@ -84,6 +84,9 @@ def upsert_data_to_database(data, table, schema='factor', primary_key=["uid"], d
         logger.info(f"=== [{how}] Data (n={len(data)}) to Database on Table [{table}] ===")
         logger.info(f"=== URL: {db_url} ===")
 
+        if 'formula' in table:
+            db_url = db_url_alibaba_prod   # for formula table force write to Alibaba Prod DB
+
         engine = create_engine(db_url, pool_size=cpu_count() if mp else 1, max_overflow=-1, isolation_level="AUTOCOMMIT")
         if how in ["replace", "append"]:
             with engine.connect() as conn:
