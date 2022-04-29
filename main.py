@@ -62,9 +62,9 @@ def mp_rf(*args):
     data.split_group(**sql_result)
     # start_lasso(sql_result['testing_period'], sql_result['pillar'], sql_result['group_code'])
 
-    stock_df_list = []
-    score_df_list = []
-    feature_df_list = []
+    # stock_df_list = []
+    # score_df_list = []
+    # feature_df_list = []
     try:
         sample_set, cv = data.split_all(**sql_result)  # load_data (class) STEP 3
 
@@ -91,13 +91,13 @@ def mp_rf(*args):
         stock_df, score_df, feature_df = rf_HPOT(max_evals=10, sql_result=sql_result,
                                                  sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
                                                  group_index=data.test['group'].to_list()).hpot_dfs
-        stock_df_list.append(stock_df)
-        score_df_list.append(score_df)
-        feature_df_list.append(feature_df)
+        # stock_df_list.append(stock_df)
+        # score_df_list.append(score_df)
+        # feature_df_list.append(feature_df)
         cv_number += 1
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {sql_result}: {e.args}")
-    return stock_df_list, score_df_list, feature_df_list
+    # return stock_df_list, score_df_list, feature_df_list
 
 
 def write_db(stock_df_all, score_df_all, feature_df_all):
@@ -313,14 +313,14 @@ if __name__ == "__main__":
             all_groups = all_groups_df.to_dict("records")
             all_groups = [tuple([data, sql_result, e]) for e in all_groups]
 
-            result_dfs = pool.starmap(mp_rf, all_groups)
+            pool.starmap(mp_rf, all_groups)
 
-        stock_df_all = [e for x in result_dfs for e in x[0]]
-        stock_df_all_df = pd.concat(stock_df_all, axis=0)
-        score_df_all = [e for x in result_dfs for e in x[1]]
-        score_df_all_df = pd.concat(score_df_all, axis=0)
-        feature_df_all = [e for x in result_dfs for e in x[2]]
-        feature_df_all_df = pd.concat(feature_df_all, axis=0)
+        # stock_df_all = [e for x in result_dfs for e in x[0]]
+        # stock_df_all_df = pd.concat(stock_df_all, axis=0)
+        # score_df_all = [e for x in result_dfs for e in x[1]]
+        # score_df_all_df = pd.concat(score_df_all, axis=0)
+        # feature_df_all = [e for x in result_dfs for e in x[2]]
+        # feature_df_all_df = pd.concat(feature_df_all, axis=0)
 
         # write combined results to DB
         # write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)       # TODO: check
