@@ -22,7 +22,7 @@ from general.sql_process import (
     trucncate_table_in_database,
     delete_data_on_database,
 )
-from results_analysis.calculation_backtest_score import get_fundamental_scores
+from results_analysis.calculation_backtest_score import get_fundamental_scores, scale_fundamental_scores
 from collections import Counter
 
 logger = logger(__name__, LOGGER_LEVEL)
