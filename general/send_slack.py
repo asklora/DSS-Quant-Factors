@@ -1,10 +1,15 @@
 from slack_sdk import WebClient
+from global_vars import logger, LOGGER_LEVEL
+
+
+logger = logger(__name__, LOGGER_LEVEL)
+
 
 class to_slack:
-    def __init__(self, channel="#factor_message"):
+    def __init__(self, channel="#dss-quant-factors-message"):
         self.SLACK_API = "xoxb-305855338628-1139022048576-2KsNu5mJCbgRGh8z8S8NOdGI"
         self.slack_name_to_id = {
-            "#factor_message": "#factor_message",
+            "#dss-quant-factors-message": "#dss-quant-factors-message",
             "clair": "U026B04RB3J",
             "stephen": "U8ZV41XS9",
             "nick": "U01JKNY3D0U"
@@ -18,8 +23,10 @@ class to_slack:
                                  f"currently user_id includes: {list(self.slack_name_to_id.keys())})")
             raise Exception(e)
 
-    def message_to_slack(self, message):
-
+    def message_to_slack(self, message, trim_msg=True):
+        if trim_msg:
+            message = str(message)
+        logger.info(message)
         try:
             client = WebClient(token=self.SLACK_API, timeout=30)
             client.chat_postMessage(
@@ -28,7 +35,7 @@ class to_slack:
             )
 
         except Exception as e:
-            print(e)
+            logger.warning(e)
 
     def series_to_slack(self, message=None, df=None):
 
@@ -39,7 +46,7 @@ class to_slack:
         for k, v in df.to_dict().items():
             message += f"{k.ljust(40)}{v}\n"
         message += "```"
-        print(message)
+        logger.info(message)
         self.message_to_slack(message)
 
     def df_to_slack(self, message, df):
@@ -62,7 +69,7 @@ class to_slack:
             message += "\n"
 
         message += "```"
-        print(message)
+        logger.info(message)
         self.message_to_slack(message)
 
     def file_to_slack(self, file, filetype, title):
@@ -76,7 +83,7 @@ class to_slack:
                 title=title)
 
         except Exception as e:
-            print(e)
+            logger.warning(e)
 
 if __name__ == "__main__":
     # file_to_slack_user('test')

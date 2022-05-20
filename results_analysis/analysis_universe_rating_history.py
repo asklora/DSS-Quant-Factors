@@ -6,9 +6,9 @@ import re
 import argparse
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-from general.utils_report_to_slack import to_slack
-from general.utils_send_email import send_mail
-from general.sql_output import sql_read_query
+from general.send_slack import to_slack
+from general.send_email import send_mail
+from general.sql_process import read_query
 
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
@@ -22,7 +22,7 @@ def get_weekly_return(tickers):
 
     query = "SELECT ticker, trading_day, total_return_index as tri FROM master_ohlcvtr "
     query += f"WHERE trading_day > '{backdate_by_week_day(5,1)}' AND ticker in {tuple(tickers)} "
-    price = sql_read_query(query, global_vars.db_url_aws_read)
+    price = read_query(query, global_vars.db_url_aws_read)
 
     from preprocess.calculation_ratio import fill_all_day
     price = fill_all_day(price).sort_values(by=["ticker", "trading_day"])
@@ -41,7 +41,7 @@ def topn_ticker(n=20, DEBUG=False):
     query += f"INNER JOIN (SELECT ticker, ticker_name, currency_code, company_description FROM universe) u ON r.ticker=u.ticker "
     query += f"WHERE trading_day in ('{backdate_by_week_day(0,1)}', '{backdate_by_week_day(1,1)}', '{backdate_by_week_day(2,1)}', '{backdate_by_week_day(3,1)}', '{backdate_by_week_day(4,1)}') "
     query += f"AND currency_code in ('HKD', 'USD') "
-    df = sql_read_query(query, global_vars.db_url_aws_read)
+    df = read_query(query, global_vars.db_url_aws_read)
 
     df = df.sort_values(by="ai_score", ascending=False).groupby(by=["currency_code", "trading_day"]).head(20)
     price = get_weekly_return(df["ticker"].to_list())

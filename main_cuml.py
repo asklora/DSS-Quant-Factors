@@ -1,3 +1,5 @@
+# Obsolete due to not support multi-output
+
 import datetime as dt
 import pandas as pd
 import numpy as np
@@ -6,7 +8,6 @@ import time
 from dateutil.relativedelta import relativedelta
 from itertools import product
 import multiprocessing as mp
-import gc
 
 from global_vars import (
     logger,
@@ -33,7 +34,7 @@ from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
 from preprocess.calculation_premium import calc_premium_all
 from preprocess.calculation_pillar_cluster import calc_pillar_cluster
-from random_forest import rf_HPOT
+from random_forest_cuml import rf_HPOT
 from general.sql_process import (
     read_query,
     read_table,
@@ -52,19 +53,18 @@ logger.info(f" ---> backtest_eval_table: [{backtest_eval_table}]")
 logger.info(f" ---> backtest_top_table: [{backtest_top_table}]")
 
 
-def mp_rf(*args):
+def mp_rf(data, sql_result, kwargs):
     """ run random forest on multi-processor """
 
-    data, sql_result, kwargs = args
     sql_result.update(kwargs)
 
     logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
     data.split_group(**sql_result)
     # start_lasso(sql_result['testing_period'], sql_result['pillar'], sql_result['group_code'])
 
-    # stock_df_list = []
-    # score_df_list = []
-    # feature_df_list = []
+    stock_df_list = []
+    score_df_list = []
+    feature_df_list = []
     try:
         sample_set, cv = data.split_all(**sql_result)  # load_data (class) STEP 3
 
@@ -91,13 +91,13 @@ def mp_rf(*args):
         stock_df, score_df, feature_df = rf_HPOT(max_evals=10, sql_result=sql_result,
                                                  sample_set=sample_set, x_col=data.x_col, y_col=data.y_col,
                                                  group_index=data.test['group'].to_list()).hpot_dfs
-        # stock_df_list.append(stock_df)
-        # score_df_list.append(score_df)
-        # feature_df_list.append(feature_df)
+        stock_df_list.append(stock_df)
+        score_df_list.append(score_df)
+        feature_df_list.append(feature_df)
         cv_number += 1
     except Exception as e:
         to_slack("clair").message_to_slack(f"*[factor train] ERROR* on config {sql_result}: {e.args}")
-    # return stock_df_list, score_df_list, feature_df_list
+    return stock_df_list, score_df_list, feature_df_list
 
 
 def write_db(stock_df_all, score_df_all, feature_df_all):
@@ -204,8 +204,7 @@ if __name__ == "__main__":
     parser.add_argument('--restart', type=str, help='Restart training for which name_sql')
     parser.add_argument('--transfer_local', action='store_true', help='Transfer records saved locally to cloud DB')
     parser.add_argument('--pass_train', action='store_true', help='Pass train & restart from evaluation')
-    parser.add_argument('--pass_eval', action='store_true', help='Pass factor evaluation & restart from top ticker evaluation')
-    parser.add_argument('--pass_eval_top', action='store_true', help='Pass top factor evaluation & restart from write to select df')
+    parser.add_argument('--pass_eval', action='store_true', help='Restart evaluation only & restart from top ticker evaluation')
 
     parser.add_argument('--debug', action='store_true', help='Whether check for period')
     parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
@@ -219,12 +218,11 @@ if __name__ == "__main__":
         tbl_suffix = ''
 
         # Check 1: if monthly -> only first Sunday every month
-        if not args.pass_train:
-            if dt.datetime.today().day > 7:
-                raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+        if dt.datetime.today().day > 7:
+            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
-            # Check 2(b): monthly update after weekly update
-            start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
+        # Check 2(b): monthly update after weekly update
+        start_on_update(table_names=['data_ibes', 'data_macro', 'data_worldscope'], report_only=True)
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
@@ -238,8 +236,6 @@ if __name__ == "__main__":
     # for production: use defined configs
     data_configs = read_query(f"SELECT * FROM {config_train_table}{tbl_suffix} "
                               f"WHERE is_active AND weeks_to_expire = {args.weeks_to_expire}")
-    all_train_currency = list(data_configs["train_currency"].unique())
-    all_average_days = list(data_configs["average_days"].unique())
     all_currency_list = list(set(list(data_configs["train_currency"].unique()) +
                                      [e for x in data_configs["pred_currency"] for e in x.split(',')]))
     data_configs = data_configs.drop(columns=["is_active", "last_finish"]).to_dict("records")
@@ -249,23 +245,18 @@ if __name__ == "__main__":
 
     if args.recalc_ratio:
         # default = update ratios for past 3 months
-        logger.info("=== Calculate ratio ===")
         calc_factor_variables_multi(tickers=None,
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes)
-        del calc_factor_variables_multi
-        gc.collect()
     if args.recalc_premium:
-        logger.info("=== Calculate premium ===")
-        calc_premium_all(weeks_to_expire=args.weeks_to_expire,
-                         average_days=all_average_days,
-                         weeks_to_offset=min(4, args.sample_interval),
-                         trim_outlier_=False,
-                         all_groups=all_train_currency,
-                         processes=args.processes)
-        del calc_premium_all
-        gc.collect()
+        for e in data_configs:
+            calc_premium_all(weeks_to_expire=args.weeks_to_expire,
+                             average_days=e["average_days"],
+                             weeks_to_offset=min(4, args.sample_interval),
+                             trim_outlier_=False,
+                             all_groups=[e["train_currency"]],
+                             processes=args.processes)
 
     # ---------------------------------------- Different Configs ----------------------------------------------
 
@@ -275,7 +266,7 @@ if __name__ == "__main__":
         "_y_qcut": [0, 10],
         "_valid_pct": [.2],
         "_valid_method": [2010, 2012, 2014],
-        "_down_mkt_pct": [0.5, 0.7],
+        "_down_mkt_pct": [0.5],
         "_tree_type": ['rf'],
     }
     load_configs = [dict(zip(load_options.keys(), e)) for e in product(*load_options.values())]
@@ -287,13 +278,11 @@ if __name__ == "__main__":
     logger.info(f"Testing period: [{period_list[0]}] --> [{period_list[-1]}] (n=[{len(period_list)}])")
 
     # update cluster separation table for any currency with 'cluster' pillar
-    cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5, "processes": args.processes}
+    cluster_configs = {"subpillar_trh": 5, "pillar_trh": 2, "lookback": 5}
     if args.recalc_subpillar:
         for e in data_configs:
             if e["pillar"] == "cluster":
                 calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"], **cluster_configs)
-        del calc_pillar_cluster
-        gc.collect()
 
     # --------------------------------- Model Training ------------------------------------------
 
@@ -302,29 +291,28 @@ if __name__ == "__main__":
         if args.transfer_local:
             local_migrate_status = migrate_local_save_to_prod()  # save local db to cloud
 
-    # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
     if not args.pass_train:
+        data = load_data(args.weeks_to_expire)  # load_data (class) STEP 1
 
-        with mp.Pool(processes=args.processes) as pool:
+        all_groups_df = load_train_configs(data_configs, load_configs, period_list, args.restart)
+        all_groups = all_groups_df.to_dict("records")
 
-            data = load_data(args.weeks_to_expire)  # load_data (class) STEP 1
+        # multiprocess return result dfs = (stock_df_all, score_df_all, feature_df_all)
+        stock_df_all = []
+        score_df_all = []
+        feature_df_all = []
+        for e in all_groups:
+            stock_df, score_df, feature_df = mp_rf(data=data, sql_result=sql_result, kwargs=e)
+            stock_df_all.append(stock_df)
+            score_df_all.append(score_df)
+            feature_df_all.append(feature_df)
 
-            all_groups_df = load_train_configs(data_configs, load_configs, period_list, args.restart)
-            all_groups = all_groups_df.to_dict("records")
-            all_groups = [tuple([data, sql_result, e]) for e in all_groups]
-
-            pool.starmap(mp_rf, all_groups)
-
-        # stock_df_all = [e for x in result_dfs for e in x[0]]
-        # stock_df_all_df = pd.concat(stock_df_all, axis=0)
-        # score_df_all = [e for x in result_dfs for e in x[1]]
-        # score_df_all_df = pd.concat(score_df_all, axis=0)
-        # feature_df_all = [e for x in result_dfs for e in x[2]]
-        # feature_df_all_df = pd.concat(feature_df_all, axis=0)
+        stock_df_all_df = pd.concat(stock_df_all, axis=0)
+        score_df_all_df = pd.concat(score_df_all, axis=0)
+        feature_df_all_df = pd.concat(feature_df_all, axis=0)
 
         # write combined results to DB
         # write_db_status = write_db(stock_df_all_df, score_df_all_df, feature_df_all_df)       # TODO: check
-    gc.collect()
 
     # --------------------------------- Results Analysis ------------------------------------------
 
@@ -334,59 +322,61 @@ if __name__ == "__main__":
     assert len(eval_configs) > 0    # else no training will be done
 
     all_eval_groups = [tuple([e]) for e in eval_configs]
+    logger.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
+
+    rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
+                                   pass_eval=args.pass_eval,
+                                   fix_config_col=list(data_configs[0].keys()))
 
     with mp.Pool(processes=args.processes) as pool:
-
-        logger.info(f"=== evaluation iteration: n={len(all_eval_groups)} ===")
-        rank_cls = calculate_rank_pred(name_sql=sql_result["name_sql"], pred_start_testing_period='2015-09-01',
-                                       pass_eval=args.pass_eval,
-                                       pass_eval_top=args.pass_eval_top,
-                                       fix_config_col=list(data_configs[0].keys()))
-
         eval_results = pool.starmap(rank_cls.rank_, all_eval_groups)
 
+    eval_df = pd.concat([e[0] for e in eval_results], axis=0)       # df for each config evaluation results
+    score_df = pd.concat([e[1] for e in eval_results], axis=0)      # df for all scores
+    top_eval_df = rank_cls.score_top_eval_(score_df)                # df for backtest score evalution
+    select_df = pd.concat([e[2] for e in eval_results], axis=0)     # df for current selected factors
+
     # 1. update [backtest_eval_table]
-    if not args.pass_eval:
-        eval_df = pd.concat([e[0] for e in eval_results], axis=0)  # df for each config evaluation results
-        eval_df["_name_sql"] = sql_result["name_sql"]
-        eval_df['updated'] = dt.datetime.now()
-        eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
-        upsert_data_to_database(eval_df, backtest_eval_table,
-                                primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
+    eval_df["_name_sql"] = sql_result["name_sql"]
+    eval_df['updated'] = dt.datetime.now()
+    eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
+    eval_df.to_pickle('eval_df.pkl')
+
+    # eval_df = pd.read_pickle('eval_df.pkl')
+    # eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
+
+    upsert_data_to_database(eval_df, backtest_eval_table,
+                            primary_key=eval_primary_key, how="update", dtype=backtest_eval_dtypes)
 
     # 2. update [backtest_top_table]
-    if not args.pass_eval_top:
-        score_df = pd.concat([e[1] for e in eval_results], axis=0)  # df for all scores
-        top_eval_df = rank_cls.score_top_eval_(score_df)  # df for backtest score evalution
-        top_eval_df["name_sql"] = sql_result["name_sql"]
-        config_col = top_eval_df.filter(regex="^_").columns.to_list()
-        primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
+    top_eval_df["name_sql"] = sql_result["name_sql"]
+    config_col = top_eval_df.filter(regex="^_").columns.to_list()
+    primary_key = ["name_sql", "weeks_to_expire", "currency_code", "trading_day", "top_n"]
 
-        if args.debug:  # if debug: write top ticker evaluation to other table
-            backtest_top_dtypes = {**backtest_eval_dtypes, **backtest_top_dtypes}
-            primary_key += config_col
-        else:           # if production: remove fixed config columns
-            top_eval_df = top_eval_df.drop(columns=config_col)
-        upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
-                                primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
+    if args.debug:  # if debug: write top ticker evaluation to other table
+        backtest_top_dtypes = {**backtest_eval_dtypes, **backtest_top_dtypes}
+        primary_key += config_col
+    else:           # if production: remove fixed config columns
+        top_eval_df = top_eval_df.drop(columns=config_col)
+
+    eval_df.to_pickle('top_eval_df.pkl')
+    upsert_data_to_database(top_eval_df, backtest_top_table + tbl_suffix,
+                            primary_key=primary_key, how='update', dtype=backtest_top_dtypes)
 
     # 3. update [production_rank_table]
     if not args.debug:
-        select_df = pd.concat([e[2] for e in eval_results], axis=0)  # df for current selected factors
-        logger.debug(select_df)
-        logger.debug(select_df.columns.to_list())
         select_df = select_df.rename(columns={"_pred_currency": "currency_code",
                                               "_weeks_to_expire": "weeks_to_expire",
                                               "_pillar": "pillar",
-                                              "_eval_top_metric": "eval_metric"})
+                                              "eval_top_metric": "eval_metric"})
         select_df = select_df[["weeks_to_expire", "currency_code", "trading_day", "pillar", "eval_metric", "max_factor",
                                "min_factor", "max_factor_extra", "min_factor_extra", "max_factor_trh", "min_factor_trh"]]
         select_df["updated"] = dt.datetime.now()
         upsert_data_to_database(select_df, production_rank_table,
-                                primary_key=["weeks_to_expire", "currency_code", "pillar"], schema="public",
-                                db_url=db_url_alibaba_prod, how='update', dtype=rank_dtypes)    # TODO: always to ali?
+                                primary_key=["weeks_to_expire", "currency_code", "pillar"],
+                                db_url=db_url_write, how='update', dtype=rank_dtypes)
 
         # update [production_rank_history_table]
         upsert_data_to_database(select_df, production_rank_history_table,
-                                primary_key=["weeks_to_expire", "currency_code", "pillar", "updated"], schema="public",
-                                db_url=db_url_alibaba_prod, how='update', dtype=rank_dtypes)    # TODO: always to ali?
+                                primary_key=["weeks_to_expire", "currency_code", "pillar", "updated"],
+                                db_url=db_url_write, how='update', dtype=rank_dtypes)

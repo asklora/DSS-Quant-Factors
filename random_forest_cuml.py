@@ -1,5 +1,7 @@
+# Obsolete due to not support multi-output
+
 import datetime as dt
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
+from cuml.ensemble import RandomForestRegressor
 import numpy as np
 import pandas as pd
 import gc
@@ -55,11 +57,11 @@ class rf_HPOT:
             'max_depth': hp.choice('max_depth', [8, 32, 64]),
             'min_samples_split': hp.choice('min_samples_split', [5, 10, 50]),
             'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 20]),
-            'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
+            # 'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
             'max_features': hp.choice('max_features', [0.5, 0.7, 0.9]),
-            'min_impurity_decrease': 0,
+            # 'min_impurity_decrease': 0,
             'max_samples': hp.choice('max_samples', [0.7, 0.9]),
-            'ccp_alpha': hp.choice('ccp_alpha', [0]),
+            # 'ccp_alpha': hp.choice('ccp_alpha', [0]),
         }
 
         trials = Trials()
@@ -103,18 +105,12 @@ class rf_HPOT:
             params[k] = int(params[k])
         self.sql_result.update({f"__{k}": v for k, v in params.items()})
 
-        params['bootstrap'] = True
-        params['n_jobs'] = 1
+        # params['bootstrap'] = True
+        # params['n_jobs'] = 1
 
-        if 'extra' in self.sql_result['_tree_type']:
-            regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
-        elif 'rf' in self.sql_result['_tree_type']:
-            regr = RandomForestRegressor(criterion=self.sql_result['objective'], **params)
-        else:
-            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['_tree_type']}]")
-
-        regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'],
-                 sample_weight=self.sample_set['train_yy_weight'])
+        objective_map = {"squared_error": "mse"}
+        regr = RandomForestRegressor(split_criterion=objective_map[self.sql_result['objective']], **params)
+        regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'])
 
         # prediction on all sets
         Y_train_pred = regr.predict(self.sample_set['train_xx'])
