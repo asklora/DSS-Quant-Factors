@@ -1,10 +1,11 @@
-# Model Training
-This steps read from preprocessed data Table and train models.
+# Performance Monitor
+This steps evaluate prediction results based on prediction.
 
-Results should be writen to DB.
+This component differ from [model_evaluation](components/model/model_evaluation) based on:
+1. performance_monitor will perform evaluation everytime after prediction, while model_evaluation is only ran after retraining.
+E.g. AI Score actual returns.
 
-Trained model should be save in [/saved_model].
-
+In case where we only do prediction once right after retraining (e.g. DSS-Quant-AIvalue). This component is not applicable.
 
 ## Overview
 

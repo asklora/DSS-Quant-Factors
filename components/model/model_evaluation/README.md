@@ -1,10 +1,8 @@
-# Data Validation
-Read preprocessed data and perform pre-training test on data.
+# Model Evaluation
+Evaluate model prediction results on re-training.
 
-This steps should make sure there is no skews in:
-- data schema
-- data value
-
+This component differ from [model_analysis](components/model/model_analysis) based on:
+1. model_evaluation will perform standard results evaluation everytime after training and generate more meaningful result comparison metrics on top of the prediction results.
 
 ## Overview
 

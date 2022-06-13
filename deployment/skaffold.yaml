@@ -1,10 +1,12 @@
+# TODO: if we should seprate skaffold.yaml for components?
+
 apiVersion: skaffold/v2beta26
 kind: Config
 metadata:
-  name: quant-factor
+  name: quant-[Repo Short Name]
 build:
   artifacts:
-    - image: quant-factor
+    - image: quant-[Image Name]
       context: .
       docker:
         dockerfile: ./Dockerfile
@@ -15,7 +17,7 @@ deploy:
 
 profiles:
 
-  - name: quant-factor-minikube
+  - name: quant-[Repo Short Name]-minikube
     activation:
       - kubeContext: minikube
     deploy:
@@ -28,10 +30,10 @@ profiles:
                 command:
                   [
                     "echo",
-                    "Skaffold Profile: quant-factor-minikube"
+                    "Skaffold Profile: quant-[Repo Short Name]-minikube"
                   ]
 
-  - name: quant-factor-microk8s
+  - name: quant-[Repo Short Name]-microk8s
     activation:
       - kubeContext: microk8s
     deploy:
@@ -44,5 +46,5 @@ profiles:
                 command:
                   [
                     "echo",
-                    "Skaffold Profile: quant-ingestion-microk8s"
+                    "Skaffold Profile: quant-[Repo Short Name]-microk8s"
                   ]
