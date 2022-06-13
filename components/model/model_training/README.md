@@ -6,3 +6,6 @@ In case where we do prediction more frequently than training (e.g. backtest rank
 ## Overview
 
 ## ChangeLog
+
+## Research Documentation
+This component should be supplemented with research documentation on why we eventually decide to use current model.

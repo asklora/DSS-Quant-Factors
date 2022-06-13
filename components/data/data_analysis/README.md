@@ -9,3 +9,6 @@ This component will **only exist in research/deployment** stage. Therefore, no D
 
 
 ## Overview
+
+## Research Documentation
+This component should be supplemented with research documentation on why we eventually decide the current format of data preprocessing.
