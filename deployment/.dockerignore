@@ -1,0 +1,12 @@
+**/venv
+*.csv
+*.pyc
+nb/
+*.json
+*.ipynb
+Pipfile*
+outputs/
+*ipynb_checkpoints*
+*.xlsx
+*.pkl
+**.pytest_cache/
