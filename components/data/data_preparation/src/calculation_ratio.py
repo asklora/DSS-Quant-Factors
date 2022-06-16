@@ -1,68 +1,160 @@
 import datetime as dt
 import numpy as np
 import pandas as pd
-from sqlalchemy import text
-from global_vars import *
+from sqlalchemy import select, text
 import multiprocessing as mp
 from contextlib import suppress
-
+from functools import partial
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
-from general.sql.sql_process import (
+from typing import List
+
+from utils import (
+    models,
     upsert_data_to_database,
     read_table,
-    read_query
-)
-from general.report.send_slack import to_slack
-from functools import partial
-
-# define dtypes for ratio table when writing to DB
-ratio_dtypes = dict(
-    ticker=TEXT,
-    trading_day=DATE,
-    field=TEXT,
-    value=DOUBLE_PRECISION,
+    read_query,
+    to_slack,
+    err2slack,
+    sys_logger
 )
 
-logger = logger(__name__, LOGGER_LEVEL)
+logger = sys_logger(__name__, "DEBUG")
+
+stock_data_table_tri = models.DataTri.__table__.schema + '.' + models.DataTri.__table__.name
+stock_data_table_ohlcv = models.DataOhlcv.__table__.schema + '.' + models.DataOhlcv.__table__.name
+universe_table = models.Universe.__table__.schema + '.' + models.Universe.__table__.name
+latest_mktcap_data_table = models.LatestMktcap.__table__.schema + '.' + models.LatestMktcap.__table__.name
+
+worldscope_data_table = models.DataWorldscope.__table__.schema + '.' + models.DataWorldscope.__table__.name
+ibes_data_table = models.DataIbes.__table__.schema + '.' + models.DataIbes.__table__.name
+currency_history_table = "currency_price_history"       # TODO: change to ORM
+
+factors_formula_table = models.FormulaRatio.__table__.schema + '.' + models.FormulaRatio.__table__.name
+ingestion_name_table = "ingestion_name"     # TODO: change to ORM
 
 
-# ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
+# ----------------------------------------- FX Conversion --------------------------------------------
 
-def get_tri(ticker=None, start_date=None):
-    """ get stock price data from data_dss & data_dsws """
+def get_universe_map(col):
+    """
+    use Universe data to map static to tickers
+    """
 
-    tri_start_date = (start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
-    query = text(
-        f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume, M.value as market_cap "
-        f"FROM {stock_data_table_tri} T "
-        f"INNER JOIN {stock_data_table_ohlcv} C ON T.uid = C.uid "
-        f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
-        f"INNER JOIN {latest_mktcap_data_table} M ON T.ticker = M.ticker "
-        f"WHERE T.ticker in {tuple(ticker)} AND T.trading_day>='{tri_start_date}' "
-        f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
-    tri = read_query(query, db_url_read)
-
-    return tri
+    df = read_query(f"SELECT ticker, {col} FROM {universe_table}")
+    mapping = df.set_index("ticker")[col].to_dict()
+    return mapping
 
 
-def fill_all_day(df, date_col="trading_day"):
-    ''' Fill all the weekends between first / last day and fill NaN'''
+def fill_all_day(df, id_col="ticker", date_col="trading_day"):
+    """
+    Fill all the weekends between first / last day and fill NaN
+    """
 
     daily = pd.date_range(df[date_col].min(), df[date_col].max(), freq='D')
-    indexes = pd.MultiIndex.from_product([df['ticker'].unique(), daily], names=['ticker', date_col])
+    indexes = pd.MultiIndex.from_product([df[id_col].unique(), daily], names=[id_col, date_col])
 
     # Insert weekend/before first trading date to df
-    result = df.set_index(['ticker', date_col]).reindex(indexes).reset_index()
+    result = df.set_index([id_col, date_col]).reindex(indexes).reset_index()
 
     return result
 
 
+def get_daily_fx_rate_df():
+    """ Get daily FX -> USD rate and RENAME for easier merge """
+
+    fx = read_table(currency_history_table)
+    fx['last_date'] = pd.to_datetime(fx['last_date'])
+
+    fx = fill_all_day(fx, id_col="currency_code", date_col='last_date')
+    fx.loc[fx["currency_code"] == "USD", "last_price"] = 1
+    fx['last_price'] = fx.sort_values(by=["currency_code", "last_date"]).groupby('currency_code')['last_price'].ffill()
+
+    fx = fx.rename(columns={"currency_code": "_currency", "last_date": "trading_day", "last_price": "fx_rate"})
+
+    return fx
+
+
+def get_ingest_non_ratio_col():
+    """
+    no fx conversion for ratio items
+    """
+
+    ingestion_source = read_table(ingestion_name_table)
+    ingest_non_ratio_col = ingestion_source.loc[ingestion_source['non_ratio'], "our_name"].to_list()
+
+    return ingest_non_ratio_col
+
+
+class convertFxData:
+    """
+    Convert all columns to USD for factor calculation (DSWS, WORLDSCOPE, IBES using different currency)
+    """
+
+    currency_code_ws_map = get_universe_map("currency_code_ws")
+    currency_code_ibes_map = get_universe_map("currency_code_ibes")
+    fx = get_daily_fx_rate_df()
+    ingest_non_ratio_col = get_ingest_non_ratio_col()
+
+    def convert_close(self, df):
+        df["_currency"] = df["currency_code"]
+        df = df.merge(self.fx, on=['_currency', 'trading_day'], how='inner')
+        convert_cols = ["close"]
+        df[convert_cols] = df[convert_cols].div(df['fx_rate'], axis="index")
+
+        return df.drop(columns=["_currency", "fx_rate"])
+
+    def convert_worldscope(self, df):
+        """
+        worldscope conversion based on FX rate as at reporting period_end
+        """
+
+        df["_currency"] = df["ticker"].map(self.currency_code_ws_map)
+        df = df.merge(self.fx, left_on=['_currency', '_period_end'], right_on=['_currency', 'trading_day'], how='inner')
+        convert_cols = df.filter(self.ingest_non_ratio_col).columns.to_list()
+        df[convert_cols] = df[convert_cols].div(df['fx_rate'], axis="index")
+
+        return df.drop(columns=["_currency", "fx_rate"])
+
+    def convert_ibes(self, df):
+        df["_currency"] = df["ticker"].map(self.currency_code_ibes_map)
+        df = df.merge(self.fx, on=['_currency', 'trading_day'], how='inner')
+        convert_cols = df.filter(self.ingest_non_ratio_col).columns.to_list()
+        df[convert_cols] = df[convert_cols].div(df['fx_rate'], axis="index")
+
+        return df.drop(columns=["_currency", "fx_rate"])
+
+
+# ----------------------------------------- Calculate Stock Ralated Factors --------------------------------------------
+
+
+def get_tri(ticker=None, start_date=None):
+    """
+    get stock price data from data_dss & data_dsws
+    """
+
+    tri_start_date = (start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
+
+    query = text(
+        f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume, M.value as market_cap "
+        f"FROM {stock_data_table_tri} T "
+        f"INNER JOIN {stock_data_table_ohlcv} C ON (T.ticker = C.ticker) AND (T.trading_day = C.trading_day) "
+        f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
+        f"INNER JOIN {latest_mktcap_data_table} M ON T.ticker = M.ticker "
+        f"WHERE T.ticker in {tuple(ticker)} AND T.trading_day>='{tri_start_date}' "
+        f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
+    tri = read_query(query)
+
+    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    return tri
+
+
 def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
-    ''' Calculate roger satchell volatility:
-        daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
-        annualized = sqrt(daily*256)
-    '''
+    """
+    Calculate roger satchell volatility:
+    daily = average over period from start to end: Log(High/Open)*Log(High/Close)+Log(Low/Open)*Log(Open/Close)
+    annualized = sqrt(daily*256)
+    """
 
     open_data, high_data, low_data, close_data = tri['open'].values, tri['high'].values, tri['low'].values, tri[
         'close'].values
@@ -95,7 +187,7 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
 
 
 def get_skew(tri):
-    ''' Calculate past 1yr daily return skewness '''
+    """ Calculate past 1yr daily return skewness """
 
     tri["skew"] = tri['tri'] / tri.groupby('ticker')['tri'].shift(
         1) - 1  # update tri to 1d before (i.e. all stock ret up to 1d before)
@@ -107,15 +199,15 @@ def get_skew(tri):
 
 
 def resample_to_weekly(df, date_col):
-    ''' Resample to weekly stock tri '''
+    """ Resample to weekly stock tri """
     monthly = pd.date_range(min(df[date_col].to_list()), max(df[date_col].to_list()), freq='W-SUN')
     df = df.loc[df[date_col].isin(monthly)]
     return df
 
 
-def calc_stock_return(ticker, start_date, end_date, tri_return_only,
-                      stock_return_map={4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}):
-    '''   Calcualte monthly stock return
+class cleanStockReturn:
+    """
+    Calcualte monthly stock return
 
     Parameters
     ----------
@@ -128,76 +220,132 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
     Returns
     -------
     DataFrame for price related returns / variables
-    '''
+    """
 
-    drop_col = ['tri']
-    ffill_col = []
-    tri = get_tri(ticker, start_date)
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'])
+    stock_return_map = {4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}
+    rs_vol_start_end = [[0, 30]]  # , [30, 90], [90, 182]
+    drop_col = set()
+    ffill_col = set()
 
-    # merge stock return from DSS & from EIKON (i.e. longer history)
-    tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
-    tri = fill_all_day(tri)  # Add NaN record of tri for weekends
-    tri = tri.sort_values(['ticker', 'trading_day'])
+    def __init__(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
 
-    if not tri_return_only:
-        logger.info(f'Calculate skewness')
-        tri = get_skew(tri)  # Calculate past 1 year skewness
+    def get_tri_return(self, ticker):
+        self.drop_col = {'tri', 'open', 'high', 'low', 'close', 'volume', 'market_cap'}
+        self.ffill_col = {'currency_code'}
 
-        # Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
-        logger.info(f'Calculate RS volatility')
-        list_of_start_end = [[0, 30]]  # , [30, 90], [90, 182]
-        tri = get_rogers_satchell(tri, list_of_start_end)
-        tri = tri.drop(['open', 'high', 'low'], axis=1)
-        ffill_col += [f'vol_{l[0]}_{l[1]}' for l in list_of_start_end]
+        tri = self._get_consecutive_tri(ticker)
+        tri = self._calc_avg_day_tri(tri)
+        tri = self._ffill_set_columns(tri)
+        tri = resample_to_weekly(tri, date_col='trading_day')   # Resample to weekly stock tri
+        tri = self._calc_future_stock_returns(tri)              # as Y
 
-        # resample tri using last week average as the proxy for monthly tri
-        logger.info(f'Stock volume using last 7 days average / 91 days average ')
+        return self._clean_tri(tri)
+
+    def get_tri_all(self, ticker):
+        self.drop_col = {'tri', 'open', 'high', 'low'}
+        self.ffill_col = {'currency_code', 'market_cap', 'tri', 'close', 'volume'}
+
+        tri = self._get_consecutive_tri(ticker)
+        tri = get_skew(tri)
+        tri = self._calc_rs_vol(tri)
+        tri = self._calc_avg_day_volume(tri)
+        tri = self._calc_avg_day_tri(tri)
+        tri = self._ffill_set_columns(tri)
+        tri = resample_to_weekly(tri, date_col='trading_day')   # Resample to weekly stock tri
+        tri = self._convert_market_cap_close(tri)
+        tri = self._calc_future_stock_returns(tri)              # as Y
+        tri = self._calc_historic_stock_returns(tri)
+
+        tri = convertFxData().convert_close(tri)
+
+        return self._clean_tri(tri)
+
+    def _get_consecutive_tri(self, ticker):
+        tri = get_tri(ticker, self.start_date)
+        tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
+        tri = fill_all_day(tri)  # Add NaN record of tri for weekends
+        tri = tri.sort_values(['ticker', 'trading_day'])
+        return tri
+
+    def _calc_rs_vol(self, tri):
+        """
+        Calculate RS volatility for 3-month & 6-month~2-month (before ffill)
+        """
+
+        logger.debug(f'Calculate RS volatility')
+        tri = get_rogers_satchell(tri, self.rs_vol_start_end)
+        self.ffill_col.update([f'vol_{l[0]}_{l[1]}' for l in self.rs_vol_start_end])
+
+        return tri
+
+    def _calc_avg_day_volume(self, tri):
+        """
+        resample tri using last week average as the proxy for monthly tri
+        """
+
+        logger.debug(f'Stock volume using last 7 days average / 91 days average ')
         tri[['volume']] = tri.groupby("ticker")[['volume']].rolling(7, min_periods=1).mean().reset_index(drop=1)
         tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91, min_periods=1).mean().values
         tri['volume'] = tri['volume'] / tri['volume_3m']
-        drop_col += ['volume_3m']
+        self.drop_col.add('volume_3m')
 
-    # calculuate rolling average tri (before forward fill tri)
-    logger.info(f'Stock tri rolling average ')
-    avg_day_options = set([i for x in stock_return_map.values() for i in x if i != 1] + [7])
-    for i in avg_day_options:
-        if i > 0:
-            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)
-        else:
-            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(-i, min_periods=1).mean().reset_index(drop=1)
-            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")[f'tri_avg_{i}d'].shift(i)
-        drop_col += [f'tri_avg_{i}d']
+        return tri
 
-    # Fill forward (-> holidays/weekends) + backward (<- first trading price)
-    cols = ['tri', 'close', 'volume'] + ffill_col
-    tri.update(tri.groupby('ticker')[cols].fillna(method='ffill'))
+    def _calc_avg_day_tri(self, tri):
+        """
+        calculate rolling average tri (before forward fill tri)
+        """
 
-    logger.info(f'Sample weekly interval ')
-    tri[['currency_code', 'market_cap']] = tri.groupby("ticker")[['currency_code', 'market_cap']].ffill().bfill()
-    tri = resample_to_weekly(tri, date_col='trading_day')  # Resample to weekly stock tri
+        logger.info(f'Stock tri rolling average ')
+        avg_day_options = set([i for x in self.stock_return_map.values() for i in x if i != 1] + [7])
+        for i in avg_day_options:
+            if i > 0:
+                tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(i, min_periods=1).mean().reset_index(drop=1)
+            else:
+                tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(-i, min_periods=1).mean().reset_index(drop=1)
+                tri[f'tri_avg_{i}d'] = tri.groupby("ticker")[f'tri_avg_{i}d'].shift(i)
+            self.drop_col.add(f'tri_avg_{i}d')
 
-    if not tri_return_only:
-        # update market_cap/market_cap_usd refer to tri for each period
+        return tri
+
+    def _ffill_set_columns(self, tri):
+        """
+        Fill forward (-> holidays/weekends) + backward (<- first trading price)
+        """
+
+        tri.update(tri.groupby('ticker')[list(self.ffill_col)].fillna(method='ffill'))
+        return tri
+
+    def _convert_market_cap_close(self, tri):
+        """
+        update market_cap & close refer to tri for each period
+        """
+
         tri['trading_day'] = pd.to_datetime(tri['trading_day'])
         anchor_idx = tri.dropna(subset=['tri']).groupby('ticker').trading_day.idxmax()
         tri.loc[anchor_idx, 'anchor_tri'] = tri['tri']
         tri['anchor_tri'] = tri.groupby("ticker")['anchor_tri'].ffill().bfill()
         tri['market_cap'] = tri['market_cap'] / tri['anchor_tri'] * tri['tri']
-        drop_col += ['anchor_tri']
+        tri['close'] = tri['close'] / tri['anchor_tri'] * tri['tri']
+        self.drop_col.add('anchor_tri')
 
-    # Calculate future stock return (Y)
-    logger.info(f'Calculate future stock returns')
-    tri['tri_avg_1d'] = tri['tri']
-    for fwd_week, avg_days in stock_return_map.items():
-        for d in avg_days:
-            tri["tri_y"] = tri.groupby('ticker')[f'tri_avg_{d}d'].shift(-fwd_week)
-            tri[f"stock_return_y_w{fwd_week}_d{d}"] = (tri["tri_y"] / tri[f'tri_avg_{d}d']) ** (4 / fwd_week) - 1
-    drop_col += ['tri_y', 'tri_avg_1d']
+        return tri
 
-    if not tri_return_only:
-        # Calculate past stock returns
-        logger.info(f'Calculate past stock returns')
+    def _calc_future_stock_returns(self, tri):
+        logger.debug(f'Calculate future stock returns')
+        tri['tri_avg_1d'] = tri['tri']
+        for fwd_week, avg_days in self.stock_return_map.items():
+            for d in avg_days:
+                tri["tri_y"] = tri.groupby('ticker')[f'tri_avg_{d}d'].shift(-fwd_week)
+                tri[f"stock_return_y_w{fwd_week}_d{d}"] = (tri["tri_y"] / tri[f'tri_avg_{d}d']) ** (4 / fwd_week) - 1
+        self.drop_col.update(['tri_y', 'tri_avg_1d'])
+        return tri
+
+    def _calc_historic_stock_returns(self, tri):
+
+        logger.debug(f'Calculate past stock returns')
         tri["tri_1wb"] = tri.groupby('ticker')['tri_avg_1d'].shift(1)
         tri["tri_2wb"] = tri.groupby('ticker')['tri_avg_7d'].shift(2)
         tri["tri_1mb"] = tri.groupby('ticker')['tri_avg_7d'].shift(4)
@@ -205,7 +353,7 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
         tri['tri_6mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(26)
         tri['tri_7mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(30)
         tri['tri_12mb'] = tri.groupby('ticker')['tri_avg_7d'].shift(52)
-        drop_col += ['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb']
+        self.drop_col.update(['tri_1wb', 'tri_2wb', 'tri_1mb', 'tri_2mb', 'tri_6mb', 'tri_7mb', 'tri_12mb'])
 
         tri["stock_return_ww1_0"] = (tri["tri"] / tri["tri_1wb"]) - 1
         tri["stock_return_ww2_1"] = (tri["tri_1wb"] / tri["tri_2wb"]) - 1
@@ -215,41 +363,67 @@ def calc_stock_return(ticker, start_date, end_date, tri_return_only,
         tri["stock_return_r6_2"] = (tri["tri_2mb"] / tri["tri_6mb"]) - 1
         tri["stock_return_r12_7"] = (tri["tri_7mb"] / tri["tri_12mb"]) - 1
 
-    tri = tri.drop(drop_col, axis=1)
-    stock_col = tri.select_dtypes('float').columns  # all numeric columns
+        return tri
 
-    if tri_return_only:
-        ret_col = tri.filter(regex="^stock_return_y_").columns.to_list()
-        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=ret_col, var_name="field",
-                      value_name="value").dropna(subset=["value"])
-        logger.info("=== Finish write [stock_return_y_%] columns (tri_return_only=True) ===")
-
-    return tri, stock_col
+    def _clean_tri(self, tri):
+        tri = tri.drop(columns=list(self.drop_col))
+        tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+        check_duplicates(tri)
+        return tri
 
 
 # -------------------------------------------- Calculate Fundamental Ratios --------------------------------------------
 
-def download_clean_worldscope_ibes(ticker, start_date, end_date):
-    ''' download all data for factor calculate & LGBM input (except for stock return) '''
+def drop_dup(df, col='trading_day'):
+    ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
 
-    ws_start_date = (start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
+    logger.debug(f'Drop duplicates in {worldscope_data_table} ')
 
-    query_ws = f"select * from {worldscope_data_table} " \
-               f"WHERE ticker in {tuple(ticker)} AND trading_day>='{ws_start_date}' ".replace(",)", ")")
-    ws = read_query(query_ws, db_url_read)
-    ws = ws.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
+    df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
+    df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
+    return df.drop('count', axis=1)
 
-    query_ibes = f"SELECT * FROM {ibes_data_table} " \
-                 f"WHERE ticker in {tuple(ticker)} AND trading_day>='{ws_start_date}' ".replace(",)", ")")
-    ibes = read_query(query_ibes, db_url_read)
-    ibes = ibes.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
-    query_universe = f"SELECT ticker, currency_code, industry_code FROM {universe_table} WHERE ticker in {tuple(ticker)}".replace(
-        ",)", ")")
-    universe = read_query(query_universe, db_url_read)
+def check_duplicates(df):
+    """
+    check if dataframe has duplicated records on (ticker + trading_day)
+    """
 
-    def fill_missing_ws(ws):
-        ''' fill in missing values by calculating with existing data '''
+    df_duplicated = df.loc[df.duplicated(subset=['trading_day', 'ticker'], keep=False)]
+    if len(df_duplicated) > 0:
+        raise ValueError(f'Duplicate records founded: {df_duplicated}')
+
+
+class cleanWorldscope:
+
+    fiscal_year_end_map = get_universe_map("fiscal_year_end")
+
+    def __init__(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def get_worldscope(self, ticker):
+        ws = self._download_worldscope(ticker)
+        ws = self._fill_missing_ws(ws)
+        ws = self._convert_trading_day(ws)
+        ws = drop_dup(ws)                       # drop duplicate and retain the most complete record
+        check_duplicates(ws)
+        return ws
+
+    def _download_worldscope(self, ticker):
+        ws_start_date = (self.start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
+        query_ws = f"SELECT * FROM {worldscope_data_table} " \
+                   f"WHERE ticker in {tuple(ticker)} AND trading_day>='{ws_start_date}' ".replace(",)", ")")
+        ws = read_query(query_ws)
+        ws = ws.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
+
+        ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+        return ws
+
+    def _fill_missing_ws(self, ws):
+        """
+        fill in missing values by calculating with existing data
+        """
 
         logger.info(f'Fill missing in {worldscope_data_table} ')
         with suppress(Exception):
@@ -260,60 +434,99 @@ def download_clean_worldscope_ibes(ticker, start_date, end_date):
             ws['ttm_ebitda'] = ws['ttm_ebitda'].fillna(ws['ttm_ebit'] + ws['ttm_dda'])
         with suppress(Exception):
             ws['current_asset'] = ws['current_asset'].fillna(ws['total_asset'] - ws['ppe_net'])
+
         return ws
 
-    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
-    ws = fill_missing_ws(ws)  # selectively fill some missing fields
-    ws = update_trading_day(ws)  # correct timestamp for worldscope data (i.e. trading_day)
+    def _convert_trading_day(self, ws):
+        """
+        map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m
+        """
 
-    # label trading_day with month end of trading_day (update_date)
-    ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+        logger.debug(f'Update trading_day as actual/estimate reporting date ')
+        ws = self.__get_quarter_year_from_org_trading_day(ws)
+        ws = self.__get_clean_fiscal_year_end(ws)
+        ws = self.__get_actual_period_end(ws)
+        ws = convertFxData().convert_worldscope(ws)
+        ws = self.__get_estimated_report_date(ws)
 
-    return ws, ibes, universe
+        drop_col = ws.filter(regex="^_").columns.to_list()
+        ws = ws.drop(columns=drop_col)
+
+        return ws
+
+    def __get_quarter_year_from_org_trading_day(self, ws):
+        ws["trading_day"] = pd.to_datetime(ws["trading_day"], format='%Y-%m-%d')
+        ws["_year"] = pd.DatetimeIndex(ws["trading_day"]).year
+        ws["_frequency_number"] = np.ceil(pd.DatetimeIndex(ws["trading_day"]).month / 3)
+        ws = ws.drop(columns=["trading_day"])
+        return ws
+
+    def __get_clean_fiscal_year_end(self, ws):
+        ws['_fiscal_year_end'] = ws["ticker"].map(self.fiscal_year_end_map)
+        ws['_fiscal_year_end'] = ws['_fiscal_year_end'].replace("NA", np.nan)
+        ws['_fiscal_year_end'] = (pd.to_datetime(ws['_fiscal_year_end'], format='%b') + MonthEnd(0)).dt.strftime('%m%d')
+        return ws
+
+    def __get_actual_period_end(self, ws):
+        """
+        find last fiscal year end for each company (ticker) and actual period_end (in terms of quarter end)
+        """
+
+        ws['_last_year_end'] = (ws['_year'].astype(int) - 1).astype(str) + ws['_fiscal_year_end']
+        ws['_last_year_end'] = pd.to_datetime(ws['_last_year_end'], format='%Y%m%d')
+        ws["_period_end"] = ws[['_last_year_end', "_frequency_number"]].apply(lambda x: x[0] + MonthEnd(x[1] * 3), axis=1)
+
+        return ws
+
+    def __get_estimated_report_date(self, ws):
+        """
+        report_date if not exist -> use period_end + 1Q
+        """
+
+        ws = ws.rename(columns={"report_date": "_report_date"})
+        ws["_estimated_report_date"] = ws['_period_end'] + QuarterEnd(1)
+        ws['_report_date'] = pd.to_datetime(ws['_report_date'], format='%Y%m%d')
+        ws['_report_date'] = ws['_report_date'].fillna(ws["_estimated_report_date"])
+        ws['trading_day'] = ws['_report_date'].mask(ws['_report_date'] < ws['_period_end'],
+                                                    ws['_report_date'] + QuarterEnd(-1))
+        return ws
 
 
-def check_duplicates(df, name=''):
-    df1 = df.drop_duplicates(subset=['trading_day', 'ticker'])
-    if df.shape != df1.shape:
-        raise ValueError(f'{name} duplicate records: {df.shape[0] - df1.shape[0]}')
+class cleanIBES:
+
+    def __init__(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def get_ibes(self, ticker):
+        ibes = self._download_ibes(ticker)
+        ibes = convertFxData().convert_ibes(ibes)
+        check_duplicates(ibes)
+
+        return ibes
+
+    def _download_ibes(self, ticker):
+        ws_start_date = (self.start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
+        query_ibes = f"SELECT * FROM {ibes_data_table} " \
+                     f"WHERE ticker in {tuple(ticker)} AND trading_day>='{ws_start_date}' ".replace(",)", ")")
+        ibes = read_query(query_ibes)
+        ibes = ibes.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
+
+        ibes['trading_day'] = pd.to_datetime(ibes['trading_day'], format='%Y-%m-%d')
+        return ibes
 
 
-def update_trading_day(ws=None):
-    ''' map icb_sector, member_ric, trading_day -> last_year_end for each identifier + frequency_number * 3m '''
-
-    logger.info(f'Update trading_day in {worldscope_data_table} ')
-
-    query_universe = f"SELECT ticker, fiscal_year_end FROM {universe_table}"
-    universe = read_query(query_universe, db_url_read)
-
-    ws = pd.merge(ws, universe, on='ticker', how='left')  # map static information for each company
-
-    ws["trading_day"] = pd.to_datetime(ws["trading_day"], format='%Y-%m-%d')
-    ws['report_date'] = pd.to_datetime(ws['report_date'], format='%Y%m%d')
-    ws['fiscal_year_end'] = ws['fiscal_year_end'].replace("NA", np.nan)
-    ws['fiscal_year_end'] = (pd.to_datetime(ws['fiscal_year_end'], format='%b') + MonthEnd(0)).dt.strftime('%m%d')
-    ws["year"] = pd.DatetimeIndex(ws["trading_day"]).year
-    ws["frequency_number"] = np.ceil(pd.DatetimeIndex(ws["trading_day"]).month / 3)
-
-    # find last fiscal year end for each company (ticker)
-    ws['last_year_end'] = (ws['year'].astype(int) - 1).astype(str) + ws['fiscal_year_end']
-    ws['last_year_end'] = pd.to_datetime(ws['last_year_end'], format='%Y%m%d')
-
-    # find actual period_end (in terms of quarter end)
-    ws["trading_day"] = ws[['last_year_end', "frequency_number"]].apply(lambda x: x[0] + MonthEnd(x[1] * 3), axis=1)
-
-    # trading_day = report_date (if not exist -> use trading_day(i.e. period_end) + 1Q)
-    ws['trading_day'] = ws['trading_day'].mask(ws['report_date'] < ws['trading_day'],
-                                               ws['report_date'] + QuarterEnd(-1))
-    ws['report_date'] = ws['report_date'].fillna(ws['trading_day'] + QuarterEnd(1))
-    ws['trading_day'] = ws['report_date']
-    ws = drop_dup(ws)  # drop duplicate and retain the most complete record
-
-    return ws.drop(['last_year_end', 'fiscal_year_end', 'year', 'frequency_number', 'report_date'], axis=1)
+class cleanData(cleanStockReturn, cleanWorldscope, cleanIBES):
+    """
+    get clean data from different sources / tables
+    """
+    pass
 
 
 def fill_all_given_date(result, ref):
-    ''' Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling '''
+    """
+    Fill all the date based on given date_df (e.g. tri) to align for biweekly / monthly sampling
+    """
 
     # Construct indexes for all date / ticker used in ref (reference dataframe)
     result['trading_day'] = pd.to_datetime(result['trading_day'], format='%Y-%m-%d')
@@ -335,159 +548,183 @@ def fill_all_given_date(result, ref):
     return result
 
 
-def drop_dup(df, col='trading_day'):
-    ''' drop duplicate records for same identifier & fiscal period, keep the most complete records '''
+# def combine_stock_factor_data(ticker, start_date, end_date, tri_return_only):
+    # """ This part do the following:
+    #     1. import all data from DB refer to other functions
+    #     2. combined stock_return, worldscope, ibes, macroeconomic tables """
+    #
+    # # 1. Stock return/volatility/volume
+    # tri, stocks_col = calc_stock_return(ticker, start_date, end_date, tri_return_only)
+    # tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
+    # # check_duplicates(tri, 'tri')
+    #
+    # if tri_return_only:
+    #     return tri, stocks_col
+    # elif (len(ticker) == 1) and (ticker[0][0] == '.'):
+    #     logger.warning(f"index [{ticker}] calculate stock_return ratios only")
+    #     tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stocks_col, var_name="field",
+    #                   value_name="value").dropna(subset=["value"])
+    #     return tri, stocks_col
+    # else:
+    #     # 2. Fundamental financial data - from Worldscope
+    #     # 3. Consensus forecasts - from I/B/E/S
+    #     # 4. Universe
+    #     ws, ibes, universe = download_clean_worldscope_ibes(ticker, start_date, end_date)
+    #
+    #     # align worldscope / ibes data with stock return date (monthly/biweekly)
+    #     ws = fill_all_given_date(ws, tri)
+    #     ibes = fill_all_given_date(ibes, tri)
+    #
+    #     check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + trading_day
+    #     check_duplicates(ibes, 'ibes')
+    #
+    #     # Use 6-digit ICB code in industry groups
+    #     universe['industry_code'] = universe['industry_code'].replace('NA', np.nan).dropna().astype(int).astype(str). \
+    #         replace({'10102010': '101021', '10102015': '101022', '10102020': '101023', '10102030': '101024',
+    #                  '10102035': '101024'})  # split industry 101020 - software (100+ samples)
+    #     universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
+    #
+    #     # Combine all data for table (1) - (6) above
+    #     logger.info(f'Merge all dataframes ')
+    #     df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
+    #     df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
+    #     df = df.sort_values(by=['ticker', 'trading_day'])
+    #
+    #     # Update close price to adjusted value
+    #     def adjust_close(df):
+    #         """ using market cap to adjust close price for stock split, ..."""
+    #
+    #         logger.info(f'Adjust closing price with market cap ')
+    #
+    #         df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
+    #         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
+    #         df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
+    #         df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
+    #
+    #         return df[['ticker', 'trading_day', 'close']]
+    #
+    #     df.update(adjust_close(df))
+    #
+    #     # Forward fill for fundamental data
+    #     cols = df.select_dtypes('float').columns.to_list()
+    #     cols = [x for x in cols if not x.startswith("stock_return_y")]  # for stock_return_y -> no ffill
+    #     df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
+    #     df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
+    #     df = df.merge(universe, on=['ticker'], how='left',
+    #                   suffixes=('_old', ''))  # label industry_code, currency_code for each ticker
+    #     check_duplicates(df, 'final')
+    #
+    #     return df, stocks_col
 
-    logger.info(f'Drop duplicates in {worldscope_data_table} ')
+def get_industry_code_map():
+    """ Use 6-digit ICB code in industry groups """
 
-    df['count'] = pd.isnull(df).sum(1)  # count the missing in each records (row)
-    df = df.sort_values(['count']).drop_duplicates(subset=['ticker', col], keep='first')
-    return df.drop('count', axis=1)
+    df = read_query(f"SELECT ticker, industry_code FROM {universe_table}")
+
+    df['industry_code'] = df['industry_code'].replace('NA', np.nan).dropna().astype(int).astype(str)
+    df = df.replace({'10102010': '101021', '10102015': '101022', '10102020': '101023', '10102030': '101024',
+                     '10102035': '101024'})             # split industry 101020 - software (100+ samples)
+    df['industry_code'] = df['industry_code'].astype(str).str[:6]
+
+    return df.set_index("ticker")["industry_code"].to_dict()
 
 
-def combine_stock_factor_data(ticker, start_date, end_date, tri_return_only):
-    """ This part do the following:
-        1. import all data from DB refer to other functions
-        2. combined stock_return, worldscope, ibes, macroeconomic tables """
+class combineData:
 
-    # 1. Stock return/volatility/volume
-    tri, stocks_col = calc_stock_return(ticker, start_date, end_date, tri_return_only)
-    tri['trading_day'] = pd.to_datetime(tri['trading_day'], format='%Y-%m-%d')
-    # check_duplicates(tri, 'tri')
+    industry_code_map = get_industry_code_map()
 
-    if tri_return_only:
-        return tri, stocks_col
-    elif (len(ticker) == 1) and (ticker[0][0] == '.'):
-        logger.warning(f"index [{ticker}] calculate stock_return ratios only")
-        tri = pd.melt(tri, id_vars=['ticker', "trading_day"], value_vars=stocks_col, var_name="field",
-                      value_name="value").dropna(subset=["value"])
-        return tri, stocks_col
-    else:
-        # 2. Fundamental financial data - from Worldscope
-        # 3. Consensus forecasts - from I/B/E/S
-        # 4. Universe
-        ws, ibes, universe = download_clean_worldscope_ibes(ticker, start_date, end_date)
+    def __init__(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
+        pass
 
-        # align worldscope / ibes data with stock return date (monthly/biweekly)
-        ws = fill_all_given_date(ws, tri)
-        ibes = fill_all_given_date(ibes, tri)
+    def get_tri(self, ticker):
+        """
+        Get tri_return only
+        """
 
-        check_duplicates(ws, 'worldscope')  # check if worldscope/ibes has duplicated records on ticker + trading_day
-        check_duplicates(ibes, 'ibes')
+        tri = cleanData(self.start_date, self.end_date).get_tri_return(ticker)
+        return tri
 
-        # Use 6-digit ICB code in industry groups
-        universe['industry_code'] = universe['industry_code'].replace('NA', np.nan).dropna().astype(int).astype(str). \
-            replace({'10102010': '101021', '10102015': '101022', '10102020': '101023', '10102030': '101024',
-                     '10102035': '101024'})  # split industry 101020 - software (100+ samples)
-        universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
+    def get_all(self, ticker):
 
-        # Combine all data for table (1) - (6) above
-        logger.info(f'Merge all dataframes ')
-        df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
-        df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
+        data_cls = cleanData(self.start_date, self.end_date)
+
+        tri = data_cls.get_tri_all(ticker).set_index(["ticker", "trading_day"])
+        ws = data_cls.get_worldscope(ticker).set_index(["ticker", "trading_day"])
+        ibes = data_cls.get_ibes(ticker).set_index(["ticker", "trading_day"])
+
+        df = self._merge_data(tri, ws, ibes)
+        df = self._ffill_fundamental(df)
+        df = df.reindex(tri.index)
+
+        return df.reset_index()
+
+    def _merge_data(self, tri, ws, ibes):
+        logger.debug(f'Merge all dataframes')
+        df = tri.merge(ws, left_index=True, right_index=True, how='outer', suffixes=('', '_ws'))
+        df = df.merge(ibes, left_index=True, right_index=True, how='outer', suffixes=('', '_ibes'))
         df = df.sort_values(by=['ticker', 'trading_day'])
 
-        # Update close price to adjusted value
-        def adjust_close(df):
-            """ using market cap to adjust close price for stock split, ..."""
+        return df
 
-            logger.info(f'Adjust closing price with market cap ')
+    def _ffill_fundamental(self, df):
+        """
+        TRI is weekly, but IBES / Worldscope is monthly / quarter. Forward fill to make up for missing dates.
+        """
 
-            df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
-            df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
-            df['close_latest'] = df.groupby(['ticker'])['close'].transform('last')
-            df['close'] = df['market_cap'] / df['market_cap_latest'] * df['close_latest']
-
-            return df[['ticker', 'trading_day', 'close']]
-
-        df.update(adjust_close(df))
-
-        # Forward fill for fundamental data
         cols = df.select_dtypes('float').columns.to_list()
         cols = [x for x in cols if not x.startswith("stock_return_y")]  # for stock_return_y -> no ffill
-        df.update(df.groupby(['ticker'])[cols].fillna(method='ffill'))
-        df = resample_to_weekly(df, date_col='trading_day')  # Resample to monthly stock tri
-        df = df.merge(universe, on=['ticker'], how='left',
-                      suffixes=('_old', ''))  # label industry_code, currency_code for each ticker
-        check_duplicates(df, 'final')
+        df[cols] = df.groupby(['ticker'])[cols].ffill()
 
-        return df, stocks_col
+        return df
 
 
-def calc_fx_conversion(df):
-    """ Convert all columns to USD for factor calculation (DSS, WORLDSCOPE, IBES using different currency) """
-
-    org_cols = df.columns.to_list()  # record original columns for columns to return
-
-    curr_code_query = f"SELECT ticker, currency_code_ibes, currency_code_ws FROM {universe_table}"
-    curr_code = read_query(curr_code_query, db_url_read)
-
-    # combine download fx data from eikon & daily currency price ingestion
-    fx = read_table(eikon_fx_table, db_url_read)
-    fx2_query = f"SELECT currency_code as ticker, last_price as fx_rate, last_date as trading_day FROM {currency_history_table}"
-    fx2 = read_query(fx2_query, db_url_read)
-    fx['trading_day'] = pd.to_datetime(fx['trading_day']).dt.tz_localize(None)
-    fx2['trading_day'] = pd.to_datetime(fx2['trading_day'])
-    fx = fx.append(fx2).drop_duplicates(subset=['ticker', 'trading_day'], keep='last')
-
-    ingestion_source = read_table(ingestion_name_table, db_url_read)
-
-    # find currency_code for each currency
-    df = df.merge(curr_code, on='ticker', how='inner')
-    df = df.dropna(subset=['currency_code_ibes', 'currency_code_ws', 'currency_code'], how='all')
-
-    # map fx rate for conversion for each ticker
-    fx = fx.drop_duplicates(subset=['ticker', 'trading_day'])
-    fx = fill_all_day(fx, date_col='trading_day')
-    fx['fx_rate'] = fx.groupby('ticker')['fx_rate'].ffill().bfill()
-    fx['trading_day'] = fx['trading_day'].dt.strftime("%Y-%m-%d")
-    fx = fx.set_index(['ticker', 'trading_day'])['fx_rate'].to_dict()
-
-    currency_code_cols = ['currency_code', 'currency_code_ibes', 'currency_code_ws']
-    fx_cols = ['fx_dss', 'fx_ibes', 'fx_ws']
-    df['trading_day'] = pd.to_datetime(df['trading_day']).dt.strftime("%Y-%m-%d")
-    for cur_col, fx_col in zip(currency_code_cols, fx_cols):
-        df = df.set_index([cur_col, 'trading_day'])
-        df['index'] = df.index.to_numpy()
-        df[fx_col] = df['index'].map(fx)
-        df = df.reset_index()
-
-    df['trading_day'] = pd.to_datetime(df['trading_day'])
-    ingestion_source = ingestion_source.loc[ingestion_source['non_ratio']]  # no fx conversion for ratio items
-
-    for name, g in ingestion_source.groupby(['source']):  # convert for ibes / ws
-        cols = list(set(g['our_name'].to_list()) & set(df.columns.to_list()))
-        logging.info(f'[{name}] source data with fx conversion: {cols}')
-        df[cols] = df[cols].div(df[f'fx_{name}'], axis="index")
-
-    # no need to adj market_cap -> read from data_latest_mktcap -> done conversion before writen to table
-    df['close'] = df['close'].div(df['fx_dss'], axis="index")  # convert close price
-    return df[org_cols]
-
-
-def calc_factor_variables(*args, start_date, end_date, tri_return_only):
+class calcRatio:
     """ Calculate all factor used referring to DB ratio table """
 
-    ticker, = args
-    status_df = pd.DataFrame({"trading_day": dt.datetime.now(), "field": "status", "value": 1, "ticker": ticker}, index=[0])
+    formula = read_query(select(models.FormulaRatio).where(models.FormulaRatio.is_active == True))
 
-    logging.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
-    try:
-        df, stocks_col = combine_stock_factor_data(ticker, start_date, end_date, tri_return_only)
-        if (tri_return_only) or ((len(ticker) == 1) and (ticker[0][0] == '.')):
-            df = df.append(status_df)
-            return df
+    def __init__(self, start_date: dt.datetime = None, end_date: dt.datetime = None, tri_return_only: bool = False):
+        self.start_date = start_date
+        self.end_date = end_date
+        self.tri_return_only = tri_return_only
+        self.raw_data = combineData(self.start_date, self.end_date)
 
-        formula = read_table(factors_formula_table, db_url_read)
-        formula = formula.loc[formula['is_active']]
+    def _error_state(self, ticker):
+        status_df = pd.DataFrame({"trading_day": dt.datetime.now(), "field": "status", "value": 0, "ticker": ticker},
+                                 index=[0])
+        return status_df
 
-        logging.info(f'Calculate all factors in {factors_formula_table}')
+    # @err2slack("clair")
+    def get(self, *args):
+        ticker, = args
 
-        # Foreign exchange conversion on absolute value items
-        df = calc_fx_conversion(df)
+        logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
 
-        # Prepare for field requires add/minus
-        add_minus_fields = formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
+        if self.tri_return_only:
+            df = self.raw_data.get_tri(ticker)
+        elif all([x[0] == '.' for x in ticker]):
+            df = self.raw_data.get_tri(ticker)
+        else:
+            df = self.raw_data.get_all(ticker)
+            df = self._calc_add_minus_fields(df)
+            df = self._calculate_keep_ratios(df)
+            df = self._calculate_ts_ratios(df)
+            df = self._calculate_divide_ratios(df)
+            df = self._clean_missing_ratio_records(df)
+
+        df = self._clean_missing_y_records(df)
+        df = self._reformat_df(df)
+
+        return df
+
+    def _calc_add_minus_fields(self, df):
+        """
+        Prepare for field requires add/minus
+        """
+
+        add_minus_fields = self.formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
         add_minus_fields = [i for i in list(set(add_minus_fields)) if any(['-' in i, '+' in i, '*' in i])]
 
         for i in add_minus_fields:
@@ -509,26 +746,35 @@ def calc_factor_variables(*args, start_date, end_date, tri_return_only):
                     else:
                         raise Exception(f"Unexpected operand/operator: {x[n]}")
                 except Exception as e:
-                    logging.warning(f"[Warning] add_minus_fields not calculate: {add_minus_fields}: {e}")
+                    logger.warning(f"[Warning] add_minus_fields not calculate: {add_minus_fields}: {e}")
                 n += 2
             df[i] = temp
 
-        # a) Keep original values
-        keep_original_mask = formula['field_denom'].isnull() & formula['field_num'].notnull()
-        for new_name, old_name in formula.loc[keep_original_mask, ['name', 'field_num']].to_numpy():
-            logging.info(f'Calculating: {new_name}')
+        return df
+
+    def _calculate_keep_ratios(self, df):
+        """
+        Ratios Keep original values = just rename
+        """
+
+        keep_original_mask = self.formula['field_denom'].isnull() & self.formula['field_num'].notnull()
+        for new_name, old_name in self.formula.loc[keep_original_mask, ['name', 'field_num']].to_numpy():
+            logger.info(f'Calculating: {new_name}')
             try:
                 df[new_name] = df[old_name]
             except Exception as e:
-                logging.warning(f"[Warning] Factor ratio [{new_name}] not calculate: {e}")
+                logger.warning(f"[Warning] Factor ratio [{new_name}] not calculate: {e}")
+        return df
 
-        # b) Time series ratios (Calculate 1m change first)
-        logging.info(f'Calculate time-series ratio ')
-        period_yr = 52
-        period_q = 12
-        for r in formula.loc[formula['field_num'] == formula['field_denom'], ['name', 'field_denom']].to_dict(
+    def _calculate_ts_ratios(self, df, period_yr = 52, period_q = 12):
+        """
+        Time series ratios (Calculate 1m change first)
+        """
+
+        # logger.info(f'Calculate time-series ratio')
+        for r in self.formula.loc[self.formula['field_num'] == self.formula['field_denom'], ['name', 'field_denom']].to_dict(
                 orient='records'):  # minus calculation for ratios
-            logging.info(f"Calculating: {r['name']}")
+            logger.info(f"Calculating: {r['name']}")
             try:
                 if r['name'][-2:] == 'yr':
                     df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
@@ -537,47 +783,61 @@ def calc_factor_variables(*args, start_date, end_date, tri_return_only):
                     df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_q) - 1
                     df.loc[df.groupby('ticker').head(period_q).index, r['name']] = np.nan
             except Exception as e:
-                logging.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
+                logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
+        return df
 
-        # c) Divide ratios
-        logging.info(f'Calculate dividing ratios ')
-        for r in formula.dropna(how='any', axis=0).loc[(formula['field_num'] != formula['field_denom'])].to_dict(
+    def _calculate_divide_ratios(self, df):
+        """ Divide ratios = field A / field B """
+
+        # logger.info(f'Calculate dividing ratios ')
+        for r in self.formula.dropna(how='any', axis=0).loc[(self.formula['field_num'] != self.formula['field_denom'])].to_dict(
                 orient='records'):  # minus calculation for ratios
             try:
-                logging.info(f"Calculating: {r['name']}")
+                logger.info(f"Calculating: {r['name']}")
                 df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
             except Exception as e:
-                logging.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
+                logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
+        return df
 
-        # drop records with no stock_return_y & any ratios
-        dropna_col = set(df.columns.to_list()) & set(formula['name'].to_list())
+    def _clean_missing_ratio_records(self, df):
+        """
+        drop records without any ratios
+        """
+
+        dropna_col = set(df.columns.to_list()) & set(self.formula['name'].to_list())
         df = df.dropna(subset=list(dropna_col), how='all')
         df = df.replace([np.inf, -np.inf], np.nan)
+        return df
 
-        # tests ratio calculation missing rate
-        # test_missing(df, formula[['name','field_num','field_denom']], ingestion_cols)
+    def _clean_missing_y_records(self, df):
+        """
+        drop records before stock price return is first available;
+        latest records will also have missing stock_return, but we will keep the records.
+        """
 
         y_col = [x for x in df.columns.to_list() if x.startswith("stock_return_y")]
         df[[x + '_ffill' for x in y_col]] = df.groupby('ticker')[y_col].ffill()
         df = df.dropna(subset=[x + '_ffill' for x in y_col], how='any')
-        df = df.filter(['ticker', 'trading_day'] + y_col + formula['name'].to_list())
-        df = pd.melt(df, id_vars=['ticker', "trading_day"], var_name="field", value_name="value").dropna(
-            subset=["value"])
-        df = df.loc[(df["trading_day"] >= start_date) & (df["trading_day"] <= end_date)]\
+        df = df.filter(['ticker', 'trading_day'] + y_col + self.formula['name'].to_list())
 
-        df = df.append(status_df)
         return df
 
-    except Exception as e:
-        error_msg = f"===  ERROR IN Getting Data {ticker} == {e}"
-        to_slack("clair").message_to_slack(error_msg)
-        status_df["value"] = 0
-        return status_df
+    def _reformat_df(self, df):
+        """
+        filter for time period needed & melt table into (ticker, trading_day, field, value) format
+        """
+
+        df = df.loc[(df["trading_day"] >= self.start_date) & (df["trading_day"] <= self.end_date)]
+        df = pd.melt(df, id_vars=['ticker', "trading_day"], var_name="field", value_name="value").dropna(
+            subset=["value"])
+        return df
 
 
-def calc_factor_variables_multi(tickers=None, currency_codes=None, start_date=None, end_date=None,
-                                tri_return_only=False, processes=1):
-    ''' Calculate weekly ratios for all factors
+def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[str] = None,
+                                start_date: dt.datetime = None, end_date: dt.datetime = None,
+                                tri_return_only: bool = False, processes: int = 1):
+    """
+    Calculate weekly ratios for all factors
 
     Parameters
     ----------
@@ -591,7 +851,7 @@ def calc_factor_variables_multi(tickers=None, currency_codes=None, start_date=No
         if True, only write for 'stock_return_y_%' columns; this will also force restart=True.
     processes (Int, Optional, default=1):
         number of processes in multiprocessing.
-    '''
+    """
 
     # get list of active tickers to calculate ratios
     conditions = ["is_active"]
@@ -611,15 +871,16 @@ def calc_factor_variables_multi(tickers=None, currency_codes=None, start_date=No
     # multiprocessing
     tickers = [tuple([[e]]) for e in tickers]
     with mp.Pool(processes=processes) as pool:
-        df = pool.starmap(partial(calc_factor_variables, start_date=start_date, end_date=end_date,
-                                  tri_return_only=tri_return_only), tickers)
+        calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
+        df = pool.starmap(calc_ratio_cls.get, tickers)
     df = pd.concat(df, axis=0)
     # df = calc_factor_variables(tickers, restart=restart, tri_return_only=tri_return_only)
 
     # save calculated ratios to DB (remove truncate -> everything update)
-    db_table_name = processed_ratio_table
-    upsert_data_to_database(df, db_table_name, primary_key=['ticker', "trading_day", "field"],
-                            db_url=db_url_write, how="update", dtype=ratio_dtypes)
+    db_table_name = models.PreprocessRatio.__tablename__
+    upsert_data_to_database(df, db_table_name, how="update")
+
+    return df, db_table_name
 
 
 # def test_missing(df_org, formula, ingestion_cols):

@@ -5,6 +5,8 @@ from dateutil.relativedelta import relativedelta
 from global_vars import *
 from general.sql.sql_process import read_query
 
+# TODO: convert to using new utils module
+
 def avg_premium_pillar_(group='USD', weeks_to_expire=4):
     ''' calculate (absolute) average factor premiums for each pillar
 
