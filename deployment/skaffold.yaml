@@ -1,50 +1,27 @@
-# TODO: if we should seprate skaffold.yaml for components?
-
 apiVersion: skaffold/v2beta26
 kind: Config
 metadata:
-  name: quant-[Repo Short Name]
-build:
-  artifacts:
-    - image: quant-[Image Name]
-      context: .
-      docker:
-        dockerfile: ./Dockerfile
-deploy:
-  kubectl:
-    manifests:
-      - k8s.yaml
+  name: quant-factors
 
 profiles:
-
-  - name: quant-[Repo Short Name]-minikube
-    activation:
-      - kubeContext: minikube
-    deploy:
-      kubectl:
-        manifests:
-          - k8s_minikube.yaml
-        hooks:
-          after:
-            - host:
-                command:
-                  [
-                    "echo",
-                    "Skaffold Profile: quant-[Repo Short Name]-minikube"
-                  ]
-
-  - name: quant-[Repo Short Name]-microk8s
-    activation:
-      - kubeContext: microk8s
-    deploy:
-      kubectl:
-        manifests:
-          - k8s.yaml
-        hooks:
-          after:
-            - host:
-                command:
-                  [
-                    "echo",
-                    "Skaffold Profile: quant-[Repo Short Name]-microk8s"
-                  ]
+- name: quant-factors-microk8s
+  activation:
+  - kubeContext: microk8s-factors
+  - kubeContext: minikube           # LATER MOVE
+  build:
+    artifacts:
+      - image: factor-base
+        context: ../
+        docker:
+          dockerfile: components/base.Dockerfile
+      - image: factor-data-preparation
+        context: ../
+        requires:
+          - image: factor-base
+            alias: BASE
+        docker:
+          dockerfile: components/base.Dockerfile
+#  deploy:
+#    kubectl:
+#      manifests:
+#        - k8s.yaml

@@ -1,0 +1,2 @@
+hyperopt==0.2.3
+lightgbm==3.2.1

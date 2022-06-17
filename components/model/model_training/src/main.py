@@ -31,8 +31,8 @@ from global_vars import (
 from general.report.send_slack import to_slack
 from preprocess.load_data import load_data
 from preprocess.calculation_ratio import calc_factor_variables_multi
-from preprocess.calculation_premium import calc_premium_all
-from preprocess.calculation_pillar_cluster import calc_pillar_cluster
+from preprocess.calculation_premium import calcPremium
+from preprocess.calculation_pillar_cluster import calcPillarCluster
 from random_forest import rf_HPOT
 from general.sql.sql_process import (
     read_query,
@@ -257,13 +257,12 @@ if __name__ == "__main__":
         gc.collect()
     if args.recalc_premium:
         logger.info("=== Calculate premium ===")
-        calc_premium_all(weeks_to_expire=args.weeks_to_expire,
+        calcPremium(weeks_to_expire=args.weeks_to_expire,
                          average_days=all_average_days,
                          weeks_to_offset=min(4, args.sample_interval),
-                         trim_outlier_=False,
                          all_train_currencys=all_train_currency,
                          processes=args.processes)
-        del calc_premium_all
+        del calcPremium
         gc.collect()
 
     # ---------------------------------------- Different Configs ----------------------------------------------
@@ -290,8 +289,8 @@ if __name__ == "__main__":
     if args.recalc_subpillar:
         for e in data_configs:
             if e["pillar"] == "cluster":
-                calc_pillar_cluster(period_list, args.weeks_to_expire, e["train_currency"], **cluster_configs)
-        del calc_pillar_cluster
+                calcPillarCluster(period_list, args.weeks_to_expire, e["train_currency"], **cluster_configs)
+        del calcPillarCluster
         gc.collect()
 
     # --------------------------------- Model Training ------------------------------------------

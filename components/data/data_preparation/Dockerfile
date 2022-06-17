@@ -1,6 +1,6 @@
-# TODO: Build this image on top of baseDocker
+ARG BASE
+FROM $BASE as base
 
-ARG Base
-
+COPY components/data/data_preparation components/data/data_preparation
 
 
