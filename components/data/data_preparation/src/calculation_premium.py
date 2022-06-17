@@ -23,7 +23,7 @@ import gc
 
 icb_num = 6
 
-logger = sys_logger(__name__, "DEBUG")
+logger = sys_logger(__name__, "INFO")
 
 factors_formula_table = models.FormulaRatio.__table__.schema + '.' + models.FormulaRatio.__table__.name
 processed_ratio_table = models.PreprocessRatio.__table__.schema + '.' + models.PreprocessRatio.__table__.name
@@ -69,7 +69,7 @@ class calcPremium:
         self.y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
         self.df = None
 
-    def get_all(self):
+    def write_all(self):
 
         with closing(mp.Pool(processes=self.processes)) as pool:
             ratio_df = self._download_pivot_ratios()
@@ -134,7 +134,8 @@ class calcPremium:
 
         # Calculate small minus big
         prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
-        prem = prem.assign({"group": group, "field": factor, "weeks_to_expire": weeks_to_expire, "average_days": average_days})
+        static_info = {"group": group, "field": factor, "weeks_to_expire": weeks_to_expire, "average_days": average_days}
+        prem = prem.assign(**static_info)
         if self.trim_outlier_:
             prem['field'] = 'trim_'+prem['field']
 

@@ -699,7 +699,7 @@ class calcRatio:
                                  index=[0])
         return status_df
 
-    # @err2slack("clair")
+    @err2slack("clair")
     def get(self, *args):
         ticker = args[0]
 

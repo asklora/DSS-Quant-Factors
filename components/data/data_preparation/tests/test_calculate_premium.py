@@ -8,6 +8,6 @@ def test_download_pivot_ratios():
 
 def test_calcPremium():
     from components.data.data_preparation.src.calculation_premium import calcPremium
-    df = calcPremium(weeks_to_expire=8, average_days=[-7], weeks_to_offset=4, processes=1, all_train_currencys=["USD"]).get_all()
+    df = calcPremium(weeks_to_expire=8, average_days=[-7], weeks_to_offset=4, processes=1, all_train_currencys=["USD"]).write_all()
 
     assert len(df) > 0
