@@ -8,18 +8,20 @@ from functools import partial
 from dateutil.relativedelta import relativedelta
 from pandas.tseries.offsets import MonthEnd, QuarterEnd
 from typing import List
+from contextlib import closing
 
 from utils import (
     models,
     upsert_data_to_database,
     read_table,
     read_query,
+    recreate_engine,
     to_slack,
     err2slack,
     sys_logger
 )
 
-logger = sys_logger(__name__, "DEBUG")
+logger = sys_logger(__name__, "INFO")
 
 stock_data_table_tri = models.DataTri.__table__.schema + '.' + models.DataTri.__table__.name
 stock_data_table_ohlcv = models.DataOhlcv.__table__.schema + '.' + models.DataOhlcv.__table__.name
@@ -298,7 +300,7 @@ class cleanStockReturn:
         calculate rolling average tri (before forward fill tri)
         """
 
-        logger.info(f'Stock tri rolling average ')
+        logger.debug(f'Stock tri rolling average ')
         avg_day_options = set([i for x in self.stock_return_map.values() for i in x if i != 1] + [7])
         for i in avg_day_options:
             if i > 0:
@@ -425,7 +427,7 @@ class cleanWorldscope:
         fill in missing values by calculating with existing data
         """
 
-        logger.info(f'Fill missing in {worldscope_data_table} ')
+        logger.debug(f'Fill missing in {worldscope_data_table} ')
         with suppress(Exception):
             ws['net_debt'] = ws['net_debt'].fillna(ws['debt'] - ws['cash'])
         with suppress(Exception):
@@ -534,7 +536,7 @@ def fill_all_given_date(result, ref):
     ticker_list = ref['ticker'].unique()
     indexes = pd.MultiIndex.from_product([ticker_list, date_list], names=['ticker', 'trading_day']).to_frame(
         index=False, name=['ticker', 'trading_day'])
-    logger.info(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
+    logger.debug(f"Fill for {len(ref['ticker'].unique())} ticker, {len(date_list)} date")
 
     # Insert weekend/before first trading date to df
     indexes['trading_day'] = pd.to_datetime(indexes['trading_day'])
@@ -585,7 +587,7 @@ def fill_all_given_date(result, ref):
     #     universe['industry_code'] = universe['industry_code'].astype(str).str[:6]
     #
     #     # Combine all data for table (1) - (6) above
-    #     logger.info(f'Merge all dataframes ')
+    #     logger.debug(f'Merge all dataframes ')
     #     df = pd.merge(tri, ws, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ws'))
     #     df = df.merge(ibes, on=['ticker', 'trading_day'], how='left', suffixes=('', '_ibes'))
     #     df = df.sort_values(by=['ticker', 'trading_day'])
@@ -594,7 +596,7 @@ def fill_all_given_date(result, ref):
     #     def adjust_close(df):
     #         """ using market cap to adjust close price for stock split, ..."""
     #
-    #         logger.info(f'Adjust closing price with market cap ')
+    #         logger.debug(f'Adjust closing price with market cap ')
     #
     #         df = df[['ticker', 'trading_day', 'market_cap', 'close']].dropna(how='any')
     #         df['market_cap_latest'] = df.groupby(['ticker'])['market_cap'].transform('last')
@@ -684,6 +686,7 @@ class calcRatio:
     """ Calculate all factor used referring to DB ratio table """
 
     formula = read_query(select(models.FormulaRatio).where(models.FormulaRatio.is_active == True))
+    etf_list = read_query(select(models.Universe.ticker).where(models.Universe.is_etf == True))["ticker"].to_list()
 
     def __init__(self, start_date: dt.datetime = None, end_date: dt.datetime = None, tri_return_only: bool = False):
         self.start_date = start_date
@@ -698,13 +701,15 @@ class calcRatio:
 
     # @err2slack("clair")
     def get(self, *args):
-        ticker, = args
+        ticker = args[0]
 
-        logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
+        logger.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
 
         if self.tri_return_only:
             df = self.raw_data.get_tri(ticker)
-        elif all([x[0] == '.' for x in ticker]):
+        elif all([x[0] == '.' for x in ticker]):        # index
+            df = self.raw_data.get_tri(ticker)
+        elif all([x in self.etf_list for x in ticker]):
             df = self.raw_data.get_tri(ticker)
         else:
             df = self.raw_data.get_all(ticker)
@@ -758,8 +763,8 @@ class calcRatio:
         """
 
         keep_original_mask = self.formula['field_denom'].isnull() & self.formula['field_num'].notnull()
+        logger.debug(f'Calculate keep ratio')
         for new_name, old_name in self.formula.loc[keep_original_mask, ['name', 'field_num']].to_numpy():
-            logger.info(f'Calculating: {new_name}')
             try:
                 df[new_name] = df[old_name]
             except Exception as e:
@@ -771,10 +776,9 @@ class calcRatio:
         Time series ratios (Calculate 1m change first)
         """
 
-        # logger.info(f'Calculate time-series ratio')
+        logger.debug(f'Calculate time-series ratio')
         for r in self.formula.loc[self.formula['field_num'] == self.formula['field_denom'], ['name', 'field_denom']].to_dict(
                 orient='records'):  # minus calculation for ratios
-            logger.info(f"Calculating: {r['name']}")
             try:
                 if r['name'][-2:] == 'yr':
                     df[r['name']] = df[r['field_denom']] / df[r['field_denom']].shift(period_yr) - 1
@@ -789,11 +793,10 @@ class calcRatio:
     def _calculate_divide_ratios(self, df):
         """ Divide ratios = field A / field B """
 
-        # logger.info(f'Calculate dividing ratios ')
+        logger.debug(f'Calculate dividing ratios ')
         for r in self.formula.dropna(how='any', axis=0).loc[(self.formula['field_num'] != self.formula['field_denom'])].to_dict(
                 orient='records'):  # minus calculation for ratios
             try:
-                logger.info(f"Calculating: {r['name']}")
                 df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
             except Exception as e:
                 logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
@@ -870,10 +873,10 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
 
     # multiprocessing
     tickers = [tuple([[e]]) for e in tickers]
-    with mp.Pool(processes=processes) as pool:
+    with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
         df = pool.starmap(calc_ratio_cls.get, tickers)
-    df = pd.concat(df, axis=0)
+    df = pd.concat([x for x in df if type(x) != type(None)], axis=0)
     # df = calc_factor_variables(tickers, restart=restart, tri_return_only=tri_return_only)
 
     # save calculated ratios to DB (remove truncate -> everything update)
@@ -881,30 +884,3 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
     upsert_data_to_database(df, db_table_name, how="update")
 
     return df, db_table_name
-
-
-# def test_missing(df_org, formula, ingestion_cols):
-#     for group in ['USD']:
-#         df = df_org.loc[df_org['currency_code'] == group]
-#         writer = pd.ExcelWriter(f'missing_by_ticker_{group}.xlsx')
-#
-#         df = df.groupby('ticker').apply(lambda x: x.notnull().sum())
-#         df.to_excel(writer, sheet_name='by ticker')
-#
-#         df_miss = df[ingestion_cols].unstack()
-#         df_miss = df_miss.loc[df_miss == 0].reset_index()
-#         df_miss.to_excel(writer, sheet_name='all_missing', index=False)
-#         df_miss.to_csv(f'dsws_missing_ingestion_{group}.csv')
-#
-#         df_sum = pd.DataFrame(df.sum(0))
-#         df_sum_df = df_sum.merge(formula, left_index=True, right_on=['name'], how='left')
-#         for i in ['field_num', 'field_denom']:
-#             df_sum_df = df_sum_df.merge(df_sum, left_on=[i], how='left', right_index=True)
-#         df_sum_df.to_excel(writer, sheet_name='count', index=False)
-#         df_sum.to_excel(writer, sheet_name='count_lst')
-#
-#         writer.save()
-
-
-if __name__ == "__main__":
-    calc_factor_variables_multi(tickers=None, tri_return_only=True, processes=10, start_date=dt.date(1998, 1, 1))

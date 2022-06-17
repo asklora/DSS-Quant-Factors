@@ -3,9 +3,19 @@ import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
-from general.report.send_slack import to_slack
-from global_vars import *
-from general.sql.sql_process import read_query, upsert_data_to_database
+from functools import partial
+
+from typing import List
+from sqlalchemy import select, join, and_, not_
+
+from utils import (
+    to_slack,
+    err2slack,
+    read_query,
+    upsert_data_to_database,
+    models,
+    sys_logger
+)
 from contextlib import closing
 
 from sqlalchemy.dialects.postgresql import DATE, TEXT, DOUBLE_PRECISION, INTEGER
@@ -13,23 +23,22 @@ import gc
 
 icb_num = 6
 
-# define dtypes for premium table when writing to DB
-prem_dtypes = dict(
-    group=TEXT,
-    trading_day=DATE,
-    field=TEXT,
-    weeks_to_expire=INTEGER,
-    average_days=INTEGER,
-    value=DOUBLE_PRECISION,
-)
+logger = sys_logger(__name__, "DEBUG")
 
-logger = logger(__name__, LOGGER_LEVEL)
+factors_formula_table = models.FormulaRatio.__table__.schema + '.' + models.FormulaRatio.__table__.name
+processed_ratio_table = models.PreprocessRatio.__table__.schema + '.' + models.PreprocessRatio.__table__.name
+factor_premium_table = models.PreprocessPremium.__table__.name
 
 
-class calc_premium_all:
+class calcPremium:
 
-    def __init__(self, weeks_to_expire, weeks_to_offset=1, average_days=[-7], trim_outlier_=False, processes=12,
-                all_train_currencys=None, factor_list=[], start_date=None):
+    trim_outlier_ = False
+    start_date = '1998-01-01'
+
+    def __init__(self,
+                 weeks_to_expire: int, weeks_to_offset: int = 1,
+                 average_days: List[int] = (-7,), processes: int = 12,
+                 all_train_currencys: List[str] = None, factor_list: List[str] = ()):
         """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
 
         Parameters
@@ -49,55 +58,108 @@ class calc_premium_all:
             currencies to calculate premiums (default=[USD])
         factor_list (List[Str], Optional):
             factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
-        start_date (Date, Optional):
-            start_date for premium calculation (default=None, i.e. calculate entire history)
         """
+        logger.info(f'Groups: {" -> ".join(all_train_currencys)}')
+        logger.info(f'Will save to DB Table [{factor_premium_table}]')
 
-        self.trim_outlier_ = trim_outlier_
         self.weeks_to_offset = weeks_to_offset
+        self.processes = processes
+        self.all_train_currencys = all_train_currencys
+        self.factor_list = factor_list if len(factor_list) > 0 else self._factor_list_from_formula
+        self.y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
+        self.df = None
 
-        logger.info(f'=== Get {factors_formula_table} ===')
-        formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
-        formula = read_query(formula_query, db_url_read)
-        if len(factor_list) == 0:
-            factor_list = formula['name'].to_list()  # default factor = all variabales
-        y_col = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days]
+    def get_all(self):
 
-        with closing(mp.Pool(processes=processes)) as pool:
+        with closing(mp.Pool(processes=self.processes)) as pool:
+            ratio_df = self._download_pivot_ratios()
+            all_groups = itertools.product(self.all_train_currencys, self.factor_list, self.y_col)
+            all_groups = [tuple(e) for e in all_groups]
+            prem = pool.starmap(partial(self._insert_prem_for_train_currency, ratio_df=ratio_df), all_groups)
 
-            logger.info(f"=== Get ratios from {processed_ratio_table} ===")
-            ratio_query = f'''
-                SELECT r.*, u.currency_code FROM {processed_ratio_table} r
-                INNER JOIN (
-                    SELECT ticker, currency_code FROM universe
-                    WHERE is_active AND currency_code in {tuple(all_train_currencys)}) u ON r.ticker=u.ticker
-                WHERE field in {tuple(factor_list+y_col)}
-            '''
-            if start_date:
-                ratio_query += f" AND trading_day>='{start_date}' "
-            df = read_query(ratio_query.replace(",)",")"), db_url_read)
-
-            df = df.loc[~df['ticker'].str.startswith('.')].copy()
-            self.df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
-
-            logger.info(f'Groups: {" -> ".join(all_train_currencys)}')
-            logger.info(f'trim_outlier: {trim_outlier_}')
-            logger.info(f'Will save to DB Table [{factor_premium_table}]')
-            all_train_currencys = itertools.product(all_train_currencys, factor_list, y_col)
-            all_train_currencys = [tuple(e) for e in all_train_currencys]
-            prem = pool.starmap(self._insert_prem_for_train_currency, all_train_currencys)
-
-        prem = pd.concat(prem, axis=0)
-
-        upsert_data_to_database(data=prem.sort_values(by=['group', 'trading_day']),
-                                table=factor_premium_table,
-                                primary_key=['group', 'trading_day', 'field', 'weeks_to_expire', 'average_days'],
-                                db_url=db_url_write,
-                                how="update",
-                                verbose=-1,
-                                dtype=prem_dtypes)
-
+        prem = pd.concat(prem, axis=0).sort_values(by=['group', 'trading_day'])
+        upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
         to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
+
+        return prem
+
+    @property
+    def _factor_list_from_formula(self):
+        logger.debug(f'=== Get {factors_formula_table} ===')
+        formula_query = f"SELECT * FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
+        formula = read_query(formula_query)
+        factor_list = formula['name'].to_list()  # default factor = all variabales
+        return factor_list
+
+    def _download_pivot_ratios(self):
+        logger.debug(f"=== Get ratios from {processed_ratio_table} ===")
+
+        ratio_query = f'''
+            SELECT r.*, u.currency_code FROM {processed_ratio_table} r
+            INNER JOIN (
+                SELECT ticker, currency_code FROM universe
+                WHERE is_active 
+                    AND currency_code in {tuple(self.all_train_currencys)}
+                    AND ticker not like '.%%'
+            ) u ON r.ticker=u.ticker
+            WHERE field in {tuple(self.factor_list + self.y_col)} 
+                AND trading_day>='{self.start_date}'
+        '''.replace(",)", ")")
+
+        df = read_query(ratio_query)
+        df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+
+        return df
+
+    @err2slack("clair")
+    def _insert_prem_for_train_currency(self, *args, ratio_df=None):
+        """ calculate premium for each group / factor and insert to Table [factor_processed_premium] """
+
+        group, factor, y_col = args
+        weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
+
+        logger.debug(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
+        df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
+        df = self.__clean_missing_y_row(df, y_col, group)
+        df = self.__resample_df_by_interval(df)
+        df = self.__clean_missing_factor_row(df, factor, group)
+
+        if self.trim_outlier_:
+            df[y_col] = self.__trim_outlier(df[y_col], prc=.05)
+
+        df['quantile_train_currency'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
+        df = df.dropna(subset=['quantile_train_currency']).copy()
+        df['quantile_train_currency'] = df['quantile_train_currency'].astype(int)
+        prem = df.groupby(['trading_day', 'quantile_train_currency'])[y_col].mean().unstack()
+
+        # Calculate small minus big
+        prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
+        prem = prem.assign({"group": group, "field": factor, "weeks_to_expire": weeks_to_expire, "average_days": average_days})
+        if self.trim_outlier_:
+            prem['field'] = 'trim_'+prem['field']
+
+        return prem
+
+    def __clean_missing_y_row(self, df, y_col, group):
+        df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
+        if len(df) == 0:
+            raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
+        return df
+
+    def __resample_df_by_interval(self, df):
+        """
+        resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
+        """
+        date_list = reversed(df["trading_day"].unique())
+        date_list = [x for i, x in enumerate(date_list) if (i % self.weeks_to_offset == 0)]
+        df = df.loc[df["trading_day"].isin(date_list)]
+        return df
+
+    def __clean_missing_factor_row(self, df, factor, group):
+        df = df.dropna(subset=[factor], how='any')
+        if len(df) == 0:
+            raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
+        return df
 
     def __trim_outlier(self, df, prc=0):
         """ assign a max value for the 99% percentile to replace  """
@@ -139,65 +201,20 @@ class calc_premium_all:
             logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
 
-    def _insert_prem_for_train_currency(self, *args):
-        """ calculate premium for each group / factor and insert to Table [factor_processed_premium] """
-
-        group, factor, y_col = args
-        weeks_to_expire, average_days = int(y_col.split('_')[-2][1:]), int(y_col.split('_')[-1][1:])
-
-        logger.info(f'=== Calculate premium for ({group}, {factor}, {y_col}) ===')
-        try:
-            df = self.df.loc[self.df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
-            df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
-            if len(df) == 0:
-                raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
-
-            # logger.info(f"---> resample df to offset [{self.weeks_to_offset}] week(s) between samples for [{y_col}]")
-            date_list = reversed(df["trading_day"].unique())
-            date_list = [x for i, x in enumerate(date_list) if (i % self.weeks_to_offset == 0)]
-            df = df.loc[df["trading_day"].isin(date_list)]
-
-            df = df.dropna(subset=[factor], how='any')
-            if len(df) == 0:
-                raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
-
-            if self.trim_outlier_:
-                df[y_col] = self.__trim_outlier(df[y_col], prc=.05)
-
-            df['quantile_train_currency'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
-            df = df.dropna(subset=['quantile_train_currency']).copy()
-            df['quantile_train_currency'] = df['quantile_train_currency'].astype(int)
-            prem = df.groupby(['trading_day', 'quantile_train_currency'])[y_col].mean().unstack()
-            del df
-            gc.collect()
-
-            # Calculate small minus big
-            prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
-            prem['group'] = group
-            prem['field'] = factor
-            prem['weeks_to_expire'] = weeks_to_expire
-            prem['average_days'] = average_days
-            if self.trim_outlier_:
-                prem['field'] = 'trim_'+prem['field']
-            return prem
-        except Exception as e:
-            to_slack("clair").message_to_slack(f"*[ERROR] in Calculate Premium*: {e}")
-            return pd.DataFrame()
-
 
 if __name__ == "__main__":
 
     last_update = datetime.now()
 
-    calc_premium_all(weeks_to_expire=8, average_days=[-7], weeks_to_offset=4, processes=10,
+    calcPremium(weeks_to_expire=8, average_days=[-7], weeks_to_offset=4, processes=10,
                      all_train_currencys=["HKD", "CNY", "USD", "EUR"])
-    # calc_premium_all(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
+    # calcPremium(weeks_to_expire=26, average_days=-7, weeks_to_offset=4, processes=12,
     #                  all_train_currencys=["HKD", "CNY", "USD", "EUR"], start_date='2020-02-02')
     # stock_return_map = {4: [-7]}
     # start = datetime.now()
     # for fwd_weeks, avg_days in stock_return_map.items():
     #     for d in avg_days:
-    #         calc_premium_all(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
+    #         calcPremium(weeks_to_expire=fwd_weeks, average_days=d, weeks_to_offset=1,
     #                          all_train_currencys=['CNY'], processes=10)
     # end = datetime.now()
     #
