@@ -1,9 +1,13 @@
+import pandas as pd
+from utils import dateNow, backdate_by_day, str_to_date, dateNow
+
+
 def test_get_tri():
     from components.data.data_preparation.src.calculation_ratio import get_tri
-    from utils import backdate_by_day, str_to_date
     df = get_tri(ticker=["AAPL.O"], start_date=str_to_date(backdate_by_day(5)))
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Fri')[0]
 
 
 def test_get_daily_fx_rate_df():
@@ -13,6 +17,30 @@ def test_get_daily_fx_rate_df():
     assert len(df) > 0
 
 
+def test_cleanStockReturn__get_consecutive_tri():
+    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from utils import backdate_by_day, str_to_date
+
+    calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
+    df = calc._get_consecutive_tri(ticker=["AAPL.O"])
+
+    assert len(df) > 0
+    assert df["trading_day"].max() > pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+
+
+def test_cleanStockReturn__calc_avg_day_tri():
+    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from utils import backdate_by_day, str_to_date
+
+    calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
+    df = calc._get_consecutive_tri(ticker=["AAPL.O"])
+    df = calc._calc_avg_day_tri(df)
+
+    df_exist = df.loc[df[f'tri_avg_-7d'].notnull()]
+    assert len(df_exist) > 0
+    assert df["trading_day"].max() > pd.date_range(end=dateNow(), periods=2, freq='W-Sun')[0]
+
+
 def test_cleanStockReturn_get_tri():
     from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
     from utils import backdate_by_day, str_to_date
@@ -20,22 +48,24 @@ def test_cleanStockReturn_get_tri():
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_tri_return(ticker=["AAPL.O"])
 
-    assert len(df) > 0
+    df_y_exist = df.loc[df["stock_return_y_w4_d-7"].notnull()]
+    assert len(df_y_exist) > 0
+    assert df_y_exist["trading_day"].max() == pd.date_range(end=dateNow(), periods=5, freq='W-Sun')[0]
 
 
 def test_calcStockReturn_get_all():
     from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
-    from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_tri_all(ticker=["0005.HK"])
 
-    assert len(df) > 0
+    df_y_exist = df.loc[df["stock_return_y_w4_d-7"].notnull()]
+    assert len(df_y_exist) > 0
+    assert df_y_exist["trading_day"].max() == pd.date_range(end=dateNow(), periods=5, freq='W-Sun')[0]
 
 
 def test_cleanWorldscope_get_worldscope():
     from components.data.data_preparation.src.calculation_ratio import cleanWorldscope
-    from utils import backdate_by_day, str_to_date
 
     calc = cleanWorldscope(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_worldscope(ticker=["0700.HK"])
@@ -45,7 +75,6 @@ def test_cleanWorldscope_get_worldscope():
 
 def test_cleanIBES_get_ibes():
     from components.data.data_preparation.src.calculation_ratio import cleanIBES
-    from utils import backdate_by_day, str_to_date
 
     calc = cleanIBES(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_ibes(ticker=["0700.HK"])
@@ -55,12 +84,13 @@ def test_cleanIBES_get_ibes():
 
 def test_combineData():
     from components.data.data_preparation.src.calculation_ratio import combineData
-    from utils import backdate_by_day, str_to_date
 
     calc = combineData(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_all(ticker=["0700.HK"])
 
-    assert len(df) > 0
+    df_y_exist = df.loc[df["stock_return_y_w4_d-7"].notnull()]
+    assert len(df_y_exist) > 0
+    assert df_y_exist["trading_day"].max() == pd.date_range(end=dateNow(), periods=5, freq='W-Sun')[0]
 
 
 def test_calc_factor_variables_get_all():
@@ -68,11 +98,12 @@ def test_calc_factor_variables_get_all():
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
-                               end_date=datetime(2022, 1, 1, 0, 0, 0),
+                               end_date=datetime.now(),
                                tri_return_only=False)
     df = calc_ratio_cls.get(('0700.HK', ))
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
 
 
 def test_calc_factor_variables_tri_return_only():
@@ -80,11 +111,13 @@ def test_calc_factor_variables_tri_return_only():
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
-                               end_date=datetime(2022, 1, 1, 0, 0, 0),
+                               end_date=datetime.now(),
                                tri_return_only=True)
     df = calc_ratio_cls.get(('0700.HK',))
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=5, freq='W-Sun')[0]
+    assert all(['stock_return_y' in x for x in df["field"].unique()])
 
 
 def test_calc_factor_variables_index():
@@ -92,11 +125,13 @@ def test_calc_factor_variables_index():
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
-                               end_date=datetime(2022, 1, 1, 0, 0, 0),
+                               end_date=datetime.now(),
                                tri_return_only=False)
     df = calc_ratio_cls.get(('.SPX',))
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+    assert all(['stock_return' in x for x in df["field"].unique()])
 
 
 def test_calc_factor_variables_etf():
@@ -104,19 +139,22 @@ def test_calc_factor_variables_etf():
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
-                               end_date=datetime(2022, 1, 1, 0, 0, 0),
+                               end_date=datetime.now(),
                                tri_return_only=False)
     df = calc_ratio_cls.get(('RODM.K',))
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+    assert all(['stock_return' in x for x in df["field"].unique()])
 
 
 def test_calc_factor_variables_multi():
     from components.data.data_preparation.src.calculation_ratio import calc_factor_variables_multi
-    # df, db_table_name = calc_factor_variables_multi(tickers=["AAPL.O"], processes=1)
-    df, db_table_name = calc_factor_variables_multi(tickers=["LIVN.O"], processes=1)
+    df = calc_factor_variables_multi(tickers=["AAPL.O"], processes=1)
+    # df = calc_factor_variables_multi(tickers=["LIVN.O"], processes=1)
 
     assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
 
 
 # tests ratio calculation missing rate

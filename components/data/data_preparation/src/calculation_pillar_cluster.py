@@ -3,18 +3,20 @@ import datetime as dt
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from collections import Counter
-from sqlalchemy.dialects.postgresql import DATE, TEXT, INTEGER, JSON
 import multiprocessing as mp
-
+from sqlalchemy import select, and_
 from typing import List
 
 from utils import (
     sys_logger,
     models,
     read_query,
+    read_query_list,
     upsert_data_to_database,
     err2slack,
-    timestampNow
+    timestampNow,
+    dateNow,
+    backdate_by_month,
 )
 from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
@@ -22,9 +24,9 @@ from functools import partial
 
 logger = sys_logger(__name__, "DEBUG")
 
-processed_ratio_table = models.PreprocessRatio.__table__.schema + '.' + models.PreprocessRatio.__table__.name
-factors_formula_table = models.FormulaRatio.__table__.schema + '.' + models.FormulaRatio.__table__.name
-pillar_cluster_table = models.FormulaPillarCluster.__table__.name
+processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + models.FactorPreprocessRatio.__table__.name
+factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
+pillar_cluster_table = models.FactorFormulaPillarCluster.__tablename__
 
 
 class clusterFeature:
@@ -64,9 +66,10 @@ class clusterFeature:
 
 class calcPillarCluster:
 
-    active_factor = read_query(f"SELECT name FROM {factors_formula_table} WHERE is_active")['name'].to_list()
+    active_factor = read_query_list(f"SELECT name FROM {factors_formula_table} WHERE is_active")
 
-    def __init__(self, period_list: List[dt.datetime], weeks_to_expire: int, currency_code: str = 'USD',
+    def __init__(self, weeks_to_expire: int, currency_code: str = 'USD',
+                 start_date: dt.datetime = None, end_date: dt.datetime = None,
                  subpillar_trh: int = 5, pillar_trh: int = 2, lookback: int = 5, processes: int = 1):
         """
         Parameters
@@ -79,7 +82,20 @@ class calcPillarCluster:
             number of years for sample lookback periods prior to testing_period for clustering
         """
 
-        self.period_list = period_list
+        # define start_date / end_date for AI score
+        if type(end_date) == type(None):
+            end_date = dateNow()
+        if type(start_date) == type(None):
+            start_date = backdate_by_month(3)
+
+        weekly_period_list = pd.date_range(start_date, end_date, freq='W-SUN')
+        period_list_query = select(models.FactorPreprocessPremium.trading_day).where(
+            and_(
+
+            )
+        )
+        self.period_list = read_query_list("SELECT DISTINCT trading_day")
+
         self.weeks_to_expire = weeks_to_expire
         self.currency_code = currency_code
         self.subpillar_trh = subpillar_trh
