@@ -15,7 +15,8 @@ from utils import (
     read_query_list,
     upsert_data_to_database,
     models,
-    sys_logger
+    sys_logger,
+    timestampNow
 )
 from contextlib import closing
 
@@ -72,8 +73,14 @@ class calcPremium:
             all_groups = [tuple(e) for e in all_groups]
             prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), all_groups)
 
-        prem = pd.concat(prem, axis=0).sort_values(by=['group', 'trading_day'])
-        upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
+        prem = pd.concat([x for x in prem if type(x) != type(None)], axis=0).sort_values(by=['group', 'trading_day'])
+        prem = prem.rename(columns={"trading_day": "testing_period"})
+
+        prem["updated"] = timestampNow()
+        try:
+            upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
+        except Exception as e:
+            print(e)
         to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
         return prem
@@ -166,7 +173,7 @@ class calcPremium:
         periods = (df["trading_day"].max() - df["trading_day"].min()).days // (7**self.weeks_to_offset) + 1
         date_list = pd.date_range(end=df["trading_day"].max(), freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
         date_list = list(date_list)
-        df = df.loc[df["trading_day"].isin(date_list)]
+        df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]
 
         return df
 

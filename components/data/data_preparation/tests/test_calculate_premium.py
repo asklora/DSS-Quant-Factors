@@ -9,7 +9,7 @@ def test_download_pivot_ratios():
                      )._download_pivot_ratios()
 
     assert len(df) > 0
-    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+    assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
 
 
 def test_clean_download_pivot_table():
@@ -20,7 +20,7 @@ def test_clean_download_pivot_table():
     factor_df = cls._filter_factor_df("USD", "fwd_ey", "stock_return_y_w8_d-7", ratio_df=df)
 
     assert len(factor_df) > 0
-    assert factor_df["trading_day"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
+    assert factor_df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
 
 
 def test_filter_factor_df():
@@ -31,9 +31,9 @@ def test_filter_factor_df():
     factor_df = cls._filter_factor_df("USD", "stock_return_r1_0", "stock_return_y_w8_d-7", ratio_df=df)
 
     assert len(factor_df) > 0
-    assert factor_df["trading_day"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
+    assert factor_df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
 
-    recent_df = factor_df.loc[factor_df["trading_day"] == factor_df["trading_day"].max()]
+    recent_df = factor_df.loc[factor_df["testing_period"] == factor_df["testing_period"].max()]
     assert len(recent_df) >= cls.min_group_size
 
 
@@ -42,5 +42,5 @@ def test_calcPremium():
     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"]).write_all()
 
     assert len(df) > 0
-    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
+    assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
 

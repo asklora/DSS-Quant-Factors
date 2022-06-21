@@ -64,11 +64,9 @@ if __name__ == "__main__":
                                    currency_code_list=all_currency_list,
                                    processes=args.processes).write_all()
 
-    if args.recalc_subpillar
-
+    if args.recalc_subpillar:
         # default = update ratios for past 3 months
         logger.info("=== Calculate cluster premium ===")
-        for cur in all_currency_list:
-            calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
-                              currency_code=cur,
-                              sample_interval=args.sample_interval)
+        calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
+                          currency_code_list=all_currency_list,
+                          sample_interval=args.sample_interval)

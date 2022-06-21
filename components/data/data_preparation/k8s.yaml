@@ -13,7 +13,7 @@ spec:
         command:
         - /bin/sh
         - -c
-        - ...   # Need to customize according to each repo (separate data / training / prediction)
+        - python3 main.py
         resources:
           requests:
             memory: "12Gi"

@@ -19,6 +19,7 @@ from utils import (
     to_slack,
     err2slack,
     sys_logger,
+    timestampNow
 )
 
 logger = sys_logger(__name__, "INFO")
@@ -831,6 +832,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
     # df = calc_factor_variables(tickers, restart=restart, tri_return_only=tri_return_only)
 
     # save calculated ratios to DB (remove truncate -> everything update)
-    upsert_data_to_database(df, factor_ratio_table, how="update")
+    df["updated"] = timestampNow()
+    upsert_data_to_database(df, factor_ratio_table, how="ignore")
 
     return df
