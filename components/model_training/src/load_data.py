@@ -12,23 +12,35 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import Lasso
 import math
 
-from global_vars import *
-from general.sql.sql_process import read_table, read_query
+from utils import (
+    sys_logger,
+    read_query,
+    read_table,
+    upsert_data_to_database,
+    models
+)
 
-logger = logger(__name__, LOGGER_LEVEL)
+logger = sys_logger(__name__, "DEBUG")
+
+macro_data_table = models.DataMacro.__table__.schema + '.' + models.DataMacro.__table__.name
+vix_data_table = models.DataVix.__table__.schema + '.' + models.DataVix.__table__.name
+fred_data_table = models.DataFred.__table__.schema + '.' + models.DataFred.__table__.name
+processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + models.FactorPreprocessRatio.__table__.name
+factor_premium_table = models.FactorPreprocessPremium.__table__.schema + '.' + models.FactorPreprocessPremium.__table__.name
+factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
 
 
 def download_clean_macros():
-    ''' download macros data from DB and preprocess: convert some to yoy format '''
+    """ download macros data from DB and preprocess: convert some to yoy format """
 
-    logger.info(f'Download macro data from {macro_data_table}')
+    logger.debug(f'Download macro data from {macro_data_table}')
 
     # combine macros & vix data
     query = f"SELECT * FROM {macro_data_table} "
     # query += f"WHERE field in (SELECT our_name FROM {ingestion_name_macro_table} WHERE is_active)"
     macros = read_query(query)
 
-    vix = read_table(vix_data_table, db_url_read)
+    vix = read_table(vix_data_table)
     vix = vix.rename(columns={"vix_id": "field", "vix_value": "value"})
     macros = macros.append(vix)
 
@@ -60,12 +72,12 @@ def download_clean_macros():
 def download_index_return():
     ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
 
-    logger.info(f'Download index return data from [{processed_ratio_table}]')
+    logger.debug(f'Download index return data from [{processed_ratio_table}]')
 
     # read stock return from ratio calculation table
     index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
     index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%' AND field in {tuple(index_col)}"
-    index_ret = read_query(index_query, db_url_read)
+    index_ret = read_query(index_query)
 
     index_ret = index_ret.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
@@ -96,7 +108,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
         conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
 
     prem_query = f"SELECT * FROM {factor_table_name} WHERE {' AND '.join(conditions)};"
-    df = read_query(prem_query, db_url_read)
+    df = read_query(prem_query)
     df = df.pivot(index=['trading_day', 'group', 'average_days'], columns=['field'], values="value")
 
     trim_cols = df.filter(regex='^trim_').columns.to_list()
@@ -113,7 +125,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
     # read formula table
-    formula = read_table(factors_formula_table, db_url_read)
+    formula = read_table(factors_formula_table)
     formula = formula.loc[formula['name'].isin(df.columns.to_list())]  # filter existing columns from factors
 
     # Research stage using 10 selected factor only
@@ -473,6 +485,3 @@ class load_data:
         gkf = self.split_valid(**kwargs)  # split for cross validation in groups
         return self.sample_set, gkf
 
-
-if __name__ == '__main__':
-    pass

@@ -1,0 +1,26 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quant-factors-data-preparation
+spec:
+  template:
+    spec:
+      containers:
+      - name: quant-factors
+        image: factor-data-preparation
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -c
+        - python3 components/data_preparation/main.py --weeks_to_expire 4 --recalc_ratio --recalc_premium --recalc_subpillar --processes 12
+        - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_premium --recalc_subpillar --processes 12
+        - python3 components/data_preparation/main.py --weeks_to_expire 26 --recalc_premium --recalc_subpillar --processes 12
+        resources:
+          requests:
+            memory: "12Gi"
+            cpu: "12000m"
+          limits:
+            memory: "24Gi"
+            cpu: "24000m"
+      restartPolicy: Never

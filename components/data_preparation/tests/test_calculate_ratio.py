@@ -1,9 +1,9 @@
 import pandas as pd
-from utils import dateNow, backdate_by_day, str_to_date, dateNow
+from utils import backdate_by_day, str_to_date, dateNow
 
 
 def test_get_tri():
-    from components.data.data_preparation.src.calculation_ratio import get_tri
+    from components.data_preparation.src.calculation_ratio import get_tri
     df = get_tri(ticker=["AAPL.O"], start_date=str_to_date(backdate_by_day(5)))
 
     assert len(df) > 0
@@ -11,14 +11,14 @@ def test_get_tri():
 
 
 def test_get_daily_fx_rate_df():
-    from components.data.data_preparation.src.calculation_ratio import get_daily_fx_rate_df
+    from components.data_preparation.src.calculation_ratio import get_daily_fx_rate_df
     df = get_daily_fx_rate_df()
 
     assert len(df) > 0
 
 
 def test_cleanStockReturn__get_consecutive_tri():
-    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from components.data_preparation.src.calculation_ratio import cleanStockReturn
     from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
@@ -29,7 +29,7 @@ def test_cleanStockReturn__get_consecutive_tri():
 
 
 def test_cleanStockReturn__calc_avg_day_tri():
-    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from components.data_preparation.src.calculation_ratio import cleanStockReturn
     from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
@@ -42,7 +42,7 @@ def test_cleanStockReturn__calc_avg_day_tri():
 
 
 def test_cleanStockReturn_get_tri():
-    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from components.data_preparation.src.calculation_ratio import cleanStockReturn
     from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
@@ -54,7 +54,7 @@ def test_cleanStockReturn_get_tri():
 
 
 def test_calcStockReturn_get_all():
-    from components.data.data_preparation.src.calculation_ratio import cleanStockReturn
+    from components.data_preparation.src.calculation_ratio import cleanStockReturn
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_tri_all(ticker=["0005.HK"])
@@ -65,7 +65,7 @@ def test_calcStockReturn_get_all():
 
 
 def test_cleanWorldscope_get_worldscope():
-    from components.data.data_preparation.src.calculation_ratio import cleanWorldscope
+    from components.data_preparation.src.calculation_ratio import cleanWorldscope
 
     calc = cleanWorldscope(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_worldscope(ticker=["0700.HK"])
@@ -74,7 +74,7 @@ def test_cleanWorldscope_get_worldscope():
 
 
 def test_cleanIBES_get_ibes():
-    from components.data.data_preparation.src.calculation_ratio import cleanIBES
+    from components.data_preparation.src.calculation_ratio import cleanIBES
 
     calc = cleanIBES(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_ibes(ticker=["0700.HK"])
@@ -83,7 +83,7 @@ def test_cleanIBES_get_ibes():
 
 
 def test_combineData():
-    from components.data.data_preparation.src.calculation_ratio import combineData
+    from components.data_preparation.src.calculation_ratio import combineData
 
     calc = combineData(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
     df = calc.get_all(ticker=["0700.HK"])
@@ -94,7 +94,7 @@ def test_combineData():
 
 
 def test_calc_factor_variables_get_all():
-    from components.data.data_preparation.src.calculation_ratio import calcRatio
+    from components.data_preparation.src.calculation_ratio import calcRatio
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
@@ -107,7 +107,7 @@ def test_calc_factor_variables_get_all():
 
 
 def test_calc_factor_variables_tri_return_only():
-    from components.data.data_preparation.src.calculation_ratio import calcRatio
+    from components.data_preparation.src.calculation_ratio import calcRatio
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
@@ -121,7 +121,7 @@ def test_calc_factor_variables_tri_return_only():
 
 
 def test_calc_factor_variables_index():
-    from components.data.data_preparation.src.calculation_ratio import calcRatio
+    from components.data_preparation.src.calculation_ratio import calcRatio
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
@@ -135,7 +135,7 @@ def test_calc_factor_variables_index():
 
 
 def test_calc_factor_variables_etf():
-    from components.data.data_preparation.src.calculation_ratio import calcRatio
+    from components.data_preparation.src.calculation_ratio import calcRatio
     from datetime import datetime
 
     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
@@ -149,7 +149,7 @@ def test_calc_factor_variables_etf():
 
 
 def test_calc_factor_variables_multi():
-    from components.data.data_preparation.src.calculation_ratio import calc_factor_variables_multi
+    from components.data_preparation.src.calculation_ratio import calc_factor_variables_multi
     df = calc_factor_variables_multi(tickers=["AAPL.O"], processes=1)
     # df = calc_factor_variables_multi(tickers=["LIVN.O"], processes=1)
 

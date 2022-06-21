@@ -1,29 +1,28 @@
 import datetime as dt
-import pandas as pd
-import numpy as np
 import argparse
-import time
-from dateutil.relativedelta import relativedelta
-from itertools import product
-import multiprocessing as mp
-import gc
+import os
+from pathlib import Path
 
-from .src.calculation_ratio import calc_factor_variables_multi
-from .src.calculation_premium import calcPremium
-from .src.calculation_pillar_cluster import calcPillarCluster
+import sys
+import os
+
+path = Path(os.path.abspath(__file__))
+sys.path.append(str(path.parent.parent.parent.absolute()))
+
+from src.calculation_ratio import calc_factor_variables_multi
+from src.calculation_premium import calcPremium
+from src.calculation_pillar_cluster import calcPillarCluster
 from utils import (
     sys_logger,
     read_query,
     models,
-
 )
 
 logger = sys_logger(__name__, "DEBUG")
 
-config_train_table = models.FactorFormulaTrainConfig.__tablename__
 
 all_currency_list = ["HKD", "USD", "CNY", "EUR"]
-all_average_days = [7]
+all_average_days = [-7]
 
 
 if __name__ == "__main__":
@@ -37,12 +36,12 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_ratio', action='store_true', help='Start recalculate ratios')
     parser.add_argument('--recalc_premium', action='store_true', help='Start recalculate premiums')
     parser.add_argument('--recalc_subpillar', action='store_true', help='Start recalculate cluster pillar / subpillar')
-    parser.add_argument('--processes', default=4, type=int, help='Multiprocessing')
-
+    parser.add_argument('--process', default=1, type=int, help='Multiprocessing')
+    parser.add_argument('--history', default=False, type=bool, help='Rewrite entire history')
     args = parser.parse_args()
 
     # Check 1: if monthly -> only first Sunday every month
-    if not args.pass_train:
+    if os.getenv("DEBUG").lower() != "true":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
@@ -54,7 +53,8 @@ if __name__ == "__main__":
         calc_factor_variables_multi(tickers=None,
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
-                                    processes=args.processes)
+                                    processes=args.process,
+                                    start_date=dt.datetime(1998, 1, 1) if args.history else None)
 
     if args.recalc_premium:
         logger.info("=== Calculate premium ===")
@@ -62,11 +62,13 @@ if __name__ == "__main__":
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
-                                   processes=args.processes).write_all()
+                                   processes=args.process).write_all()
 
     if args.recalc_subpillar:
         # default = update ratios for past 3 months
         logger.info("=== Calculate cluster premium ===")
         calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
                           currency_code_list=all_currency_list,
-                          sample_interval=args.sample_interval)
+                          sample_interval=args.sample_interval,
+                          processes=args.process,
+                          start_date=dt.datetime(1998, 1, 1) if args.history else None)

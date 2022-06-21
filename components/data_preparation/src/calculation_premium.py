@@ -77,10 +77,8 @@ class calcPremium:
         prem = prem.rename(columns={"trading_day": "testing_period"})
 
         prem["updated"] = timestampNow()
-        try:
-            upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
-        except Exception as e:
-            print(e)
+        upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
+
         to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
         return prem

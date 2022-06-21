@@ -1,10 +1,9 @@
 import pandas as pd
 from utils import dateNow
-import datetime as dt
 
 
 def test_calcPillarCluster_download_pivot_ratio():
-    from components.data.data_preparation.src.calculation_pillar_cluster import calcPillarCluster
+    from components.data_preparation.src.calculation_pillar_cluster import calcPillarCluster
 
     df = calcPillarCluster(4, 4, ["USD"])._download_pivot_ratio()
 
@@ -14,7 +13,7 @@ def test_calcPillarCluster_download_pivot_ratio():
 
 
 def test_calcPillarCluster():
-    from components.data.data_preparation.src.calculation_pillar_cluster import calcPillarCluster
+    from components.data_preparation.src.calculation_pillar_cluster import calcPillarCluster
 
     df = calcPillarCluster(4, 4, ["USD"]).write_all()
 

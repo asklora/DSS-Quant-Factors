@@ -1,10 +1,9 @@
 import pandas as pd
-import datetime as dt
 from utils import dateNow
 
 
 def test_download_pivot_ratios():
-    from components.data.data_preparation.src.calculation_premium import calcPremium
+    from components.data_preparation.src.calculation_premium import calcPremium
     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, processes=1, currency_code_list=["USD"]
                      )._download_pivot_ratios()
 
@@ -13,7 +12,7 @@ def test_download_pivot_ratios():
 
 
 def test_clean_download_pivot_table():
-    from components.data.data_preparation.src.calculation_premium import calcPremium
+    from components.data_preparation.src.calculation_premium import calcPremium
 
     cls = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
     df = cls._download_pivot_ratios()
@@ -24,7 +23,7 @@ def test_clean_download_pivot_table():
 
 
 def test_filter_factor_df():
-    from components.data.data_preparation.src.calculation_premium import calcPremium
+    from components.data_preparation.src.calculation_premium import calcPremium
 
     cls = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
     df = cls._download_pivot_ratios()
@@ -38,7 +37,7 @@ def test_filter_factor_df():
 
 
 def test_calcPremium():
-    from components.data.data_preparation.src.calculation_premium import calcPremium
+    from components.data_preparation.src.calculation_premium import calcPremium
     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"]).write_all()
 
     assert len(df) > 0

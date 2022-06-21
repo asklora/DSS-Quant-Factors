@@ -5,11 +5,19 @@ import pandas as pd
 import gc
 from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
-from general.sql.sql_process import upsert_data_to_database
-from global_vars import *
-from general.report.send_slack import to_slack
+from utils import (
+    upsert_data_to_database,
+    to_slack,
+    err2slack,
+    sys_logger,
+    models
+)
 
-logger = logger(__name__, LOGGER_LEVEL)
+logger = sys_logger(__name__, "DEBUG")
+
+result_pred_table = models.FactorResultPrediction.__tablename__
+result_score_table = models.FactorResultScore.__tablename__
+feature_importance_table = models.FactorResultImportance.__tablename__
 
 
 def get_timestamp_now_str():
@@ -38,6 +46,18 @@ class rf_HPOT:
     """ use hyperopt on each set """
 
     if_write_feature_imp = True
+    rf_space = {
+        # 'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
+        'n_estimators'            : hp.choice('n_estimators', [15, 50, 100]),
+        'max_depth'               : hp.choice('max_depth', [8, 32, 64]),
+        'min_samples_split'       : hp.choice('min_samples_split', [5, 10, 50]),
+        'min_samples_leaf'        : hp.choice('min_samples_leaf', [1, 5, 20]),
+        'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
+        'max_features'            : hp.choice('max_features', [0.5, 0.7, 0.9]),
+        'min_impurity_decrease'   : 0,
+        'max_samples'             : hp.choice('max_samples', [0.7, 0.9]),
+        'ccp_alpha'               : hp.choice('ccp_alpha', [0]),
+    }
 
     def __init__(self, max_evals, sql_result, sample_set, x_col, y_col, group_index):
 
@@ -49,62 +69,33 @@ class rf_HPOT:
         self.group_index = group_index
         self.hpot_start = get_timestamp_now_str()
 
-        rf_space = {
-            # 'n_estimators': hp.choice('n_estimators', [100, 200, 300]),
-            'n_estimators': hp.choice('n_estimators', [15, 50, 100]),
-            'max_depth': hp.choice('max_depth', [8, 32, 64]),
-            'min_samples_split': hp.choice('min_samples_split', [5, 10, 50]),
-            'min_samples_leaf': hp.choice('min_samples_leaf', [1, 5, 20]),
-            'min_weight_fraction_leaf': hp.choice('min_weight_fraction_leaf', [0, 1e-2, 1e-1]),
-            'max_features': hp.choice('max_features', [0.5, 0.7, 0.9]),
-            'min_impurity_decrease': 0,
-            'max_samples': hp.choice('max_samples', [0.7, 0.9]),
-            'ccp_alpha': hp.choice('ccp_alpha', [0]),
-        }
-
         trials = Trials()
-        best = fmin(fn=self.eval_regressor, space=rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+        best = fmin(fn=self.eval_regressor, space=self.rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
         print(best)
 
-    @property
-    def hpot_dfs(self):
-        self.write_db()
-        return self.hpot['best_stock_df'], pd.DataFrame(self.hpot['all_results']), \
-               self.hpot['best_stock_feature']
-
-    def write_db(self, local=True):
+    @err2slack("clair")
+    def write_db(self):
         """ write score/prediction/feature to DB """
 
-        if local:
-            db_url = db_url_local
-            schema = 'factor'
-        else:
-            db_url = db_url_write
-            schema = 'public'
+        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, how="append")
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, how="ignore")
+        upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, how="append")
+        return True
 
-        # update results
-        try:
-            upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, schema=schema, primary_key=["uid"],
-                                    db_url=db_url, how="append", verbose=-1, dtype=pred_dtypes)
-            upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, schema=schema,
-                                    primary_key=["uid"], db_url=db_url, how="ignore", verbose=-1, dtype=score_dtypes)
-            upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, schema=schema,
-                                    primary_key=["uid"], db_url=db_url, how="append", verbose=-1, dtype=feature_dtypes)
-            return True
-        except Exception as e:
-            to_slack("clair").message_to_slack(f"*ERROR write to db within MP*: {e.args}")
-            return False
+    def _clean_rf_params(self, params):
+        for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
+            params[k] = int(params[k])
+        self.sql_result.update({f"{k}": v for k, v in params.items()})
+
+        params['bootstrap'] = True
+        params['n_jobs'] = 1
+        return params
 
     def rf_train(self, space):
         """ train lightgbm booster based on training / validaton set -> give predictions of Y """
 
         params = space.copy()
-        for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
-            params[k] = int(params[k])
-        self.sql_result.update({f"__{k}": v for k, v in params.items()})
-
-        params['bootstrap'] = True
-        params['n_jobs'] = 1
+        params = self._clean_rf_params(params)
 
         if 'extra' in self.sql_result['_tree_type']:
             regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
