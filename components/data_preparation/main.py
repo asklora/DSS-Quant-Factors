@@ -37,13 +37,18 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_premium', action='store_true', help='Start recalculate premiums')
     parser.add_argument('--recalc_subpillar', action='store_true', help='Start recalculate cluster pillar / subpillar')
     parser.add_argument('--process', default=1, type=int, help='Multiprocessing')
+
     parser.add_argument('--history', default=False, type=bool, help='Rewrite entire history')
+    parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
     args = parser.parse_args()
 
     # Check 1: if monthly -> only first Sunday every month
     if os.getenv("DEBUG").lower() != "true":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+
+    if args.currency_code:
+        all_currency_list = [args.currency_code]
 
     # ---------------------------------------- Rerun Write Premium -----------------------------------------------
 

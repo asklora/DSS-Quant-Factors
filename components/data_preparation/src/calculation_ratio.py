@@ -230,7 +230,7 @@ class cleanStockReturn:
     stock_return_map = {4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}
     rs_vol_start_end = [[0, 30]]  # , [30, 90], [90, 182]
     drop_col = set()
-    ffill_col = set()
+    ffill_col = {'currency_code', 'market_cap', 'tri', 'close', 'volume'}
 
     def __init__(self, start_date, end_date):
         self.start_date = start_date
@@ -238,7 +238,6 @@ class cleanStockReturn:
 
     def get_tri_future_return(self, ticker, return_clean=True):
         self.drop_col = {'tri', 'open', 'high', 'low', 'close', 'volume', 'market_cap'}
-        self.ffill_col = {'currency_code'}
 
         tri = self._get_consecutive_tri(ticker)
         tri = self._calc_avg_day_tri(tri)
@@ -259,7 +258,6 @@ class cleanStockReturn:
 
     def get_tri_all(self, ticker):
         self.drop_col = {'tri', 'open', 'high', 'low'}
-        self.ffill_col = {'currency_code', 'market_cap', 'tri', 'close', 'volume'}
 
         tri = self._get_consecutive_tri(ticker)
         tri = get_skew(tri)
@@ -592,12 +590,12 @@ class combineData:
         tri = cleanData(self.start_date, self.end_date).get_tri_future_return(ticker)
         return tri
 
-    def get_all_return(self, ticker):
+    def get_all_tri_related(self, ticker):
         """
         Get tri_return only
         """
 
-        tri = cleanData(self.start_date, self.end_date).get_tri_all_return(ticker)
+        tri = cleanData(self.start_date, self.end_date).get_tri_all(ticker)
         return tri
 
     def get_all(self, ticker):
@@ -651,7 +649,7 @@ class calcRatio:
                                  index=[0])
         return status_df
 
-    @err2slack("clair")
+    # @err2slack("clair")
     def get(self, *args):
         ticker = args[0]
 
@@ -660,9 +658,9 @@ class calcRatio:
         if self.tri_return_only:
             df = self.raw_data.get_future_return(ticker)
         elif all([x[0] == '.' for x in ticker]):        # index
-            df = self.raw_data.get_all_return(ticker)
+            df = self.raw_data.get_all_tri_related(ticker)
         elif all([x in self.etf_list for x in ticker]):
-            df = self.raw_data.get_all_return(ticker)
+            df = self.raw_data.get_all_tri_related(ticker)
         else:
             df = self.raw_data.get_all(ticker)
             df = self._calc_add_minus_fields(df)

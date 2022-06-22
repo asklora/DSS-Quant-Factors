@@ -22,9 +22,22 @@ def test_cleanStockReturn__get_consecutive_tri():
     from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
-    df = calc._get_consecutive_tri(ticker=["AAPL.O"])
+    df = calc._get_consecutive_tri(ticker=["ICF"])
 
     assert len(df) > 0
+    assert df["trading_day"].max() > pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+
+
+def test_cleanStockReturn__calc_rs_vol():
+    from components.data_preparation.src.calculation_ratio import cleanStockReturn
+    from utils import backdate_by_day, str_to_date
+
+    calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
+    df = calc._get_consecutive_tri(ticker=["ICF"])
+    df_vol = calc._calc_rs_vol(df)
+
+    assert len(df_vol) > 0
+    assert "vol_0_30" in df_vol.columns.to_list()
     assert df["trading_day"].max() > pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
 
 
@@ -46,7 +59,7 @@ def test_cleanStockReturn_get_tri():
     from utils import backdate_by_day, str_to_date
 
     calc = cleanStockReturn(start_date=str_to_date(backdate_by_day(0)), end_date=str_to_date(backdate_by_day(0)))
-    df = calc.get_tri_return(ticker=["AAPL.O"])
+    df = calc.get_tri_all_return(ticker=["AAPL.O"])
 
     df_y_exist = df.loc[df["stock_return_y_w4_d-7"].notnull()]
     assert len(df_y_exist) > 0
@@ -131,7 +144,8 @@ def test_calc_factor_variables_index():
 
     assert len(df) > 0
     assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
-    assert all(['stock_return' in x for x in df["field"].unique()])
+    assert "stock_return_r1_0" in df["field"].unique()
+    assert "vol_0_30" in df["field"].unique()
 
 
 def test_calc_factor_variables_etf():
@@ -145,12 +159,13 @@ def test_calc_factor_variables_etf():
 
     assert len(df) > 0
     assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
-    assert all(['stock_return' in x for x in df["field"].unique()])
+    assert "stock_return_r1_0" in df["field"].unique()
+    assert "vol_0_30" in df["field"].unique()
 
 
 def test_calc_factor_variables_multi():
     from components.data_preparation.src.calculation_ratio import calc_factor_variables_multi
-    df = calc_factor_variables_multi(tickers=["AAPL.O"], processes=1)
+    df = calc_factor_variables_multi(tickers=[".SXXGR"], processes=1)
     # df = calc_factor_variables_multi(tickers=["LIVN.O"], processes=1)
 
     assert len(df) > 0
