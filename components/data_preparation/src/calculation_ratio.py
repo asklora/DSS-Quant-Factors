@@ -651,7 +651,7 @@ class calcRatio:
 
     # @err2slack("clair")
     def get(self, *args):
-        ticker = args[0]
+        ticker = args
 
         logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
 
@@ -822,7 +822,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
         start_date = end_date - relativedelta(months=3)
 
     # multiprocessing
-    tickers = [tuple([[e]]) for e in tickers]
+    tickers = [{e} for e in tickers]
     with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
         df = pool.starmap(calc_ratio_cls.get, tickers)

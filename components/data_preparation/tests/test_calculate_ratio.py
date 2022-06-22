@@ -1,4 +1,5 @@
 import pandas as pd
+import datetime as dt
 from utils import backdate_by_day, str_to_date, dateNow
 
 
@@ -165,7 +166,7 @@ def test_calc_factor_variables_etf():
 
 def test_calc_factor_variables_multi():
     from components.data_preparation.src.calculation_ratio import calc_factor_variables_multi
-    df = calc_factor_variables_multi(tickers=[".SXXGR"], processes=1)
+    df = calc_factor_variables_multi(tickers=["AAPL.O"], processes=1, start_date=dt.datetime(2022, 1, 1))
     # df = calc_factor_variables_multi(tickers=["LIVN.O"], processes=1)
 
     assert len(df) > 0
