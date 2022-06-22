@@ -109,7 +109,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
 
     prem_query = f"SELECT * FROM {factor_table_name} WHERE {' AND '.join(conditions)};"
     df = read_query(prem_query)
-    df = df.pivot(index=['trading_day', 'group', 'average_days'], columns=['field'], values="value")
+    df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value")
 
     trim_cols = df.filter(regex='^trim_').columns.to_list()
     if trim:
@@ -121,7 +121,7 @@ def combine_data(weeks_to_expire, update_since=None, trim=False):
     df = df.loc[df.isnull().sum(axis=1) < df.shape[1]/2]
     df = df.T.fillna(df.T.mean()).T
     df.columns.name = None
-    df = df.reset_index()
+    df = df.reset_index().rename(columns={"testing_period": "trading_day"})
     df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
 
     # read formula table

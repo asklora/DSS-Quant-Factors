@@ -1,14 +1,15 @@
 import datetime as dt
-import pandas as pd
 import numpy as np
 import argparse
-import time
-from dateutil.relativedelta import relativedelta
-from itertools import product
 from functools import partial
 import multiprocessing as mp
-import gc
+
+import sys
 import os
+from pathlib import Path
+
+path = Path(os.path.abspath(__file__))
+sys.path.append(str(path.parent.parent.parent.absolute()))
 
 from src.load_data import load_data
 from src.load_configs import loadTrainConfig
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
 
     parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
+    parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
     args = parser.parse_args()
 
     # --------------------------------------- Production / Development --------------------------------------------
@@ -116,7 +118,8 @@ if __name__ == "__main__":
         all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
                                      sample_interval=args.sample_interval,
                                      backtest_period=args.backtest_period,
-                                     restart=args.restart).get_all_groups()
+                                     restart=args.restart,
+                                     currency_code=args.currency_code).get_all_groups()
 
         model_run_cls = modelRun(sql_result=sql_result)
         pool.starmap(partial(model_run_cls.start, data=data), all_groups)           # training will write to DB right after training

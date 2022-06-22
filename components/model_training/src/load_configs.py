@@ -37,22 +37,26 @@ class loadTrainConfig:
         "tree_type": ['rf'],
     }
 
-    def __init__(self, weeks_to_expire: int, sample_interval: int = 4, backtest_period: int = 1, restart: str = None):
+    def __init__(self, weeks_to_expire: int, sample_interval: int = 4, backtest_period: int = 1, restart: str = None,
+                 currency_code: str = None):
         self.weeks_to_expire = weeks_to_expire
         self.restart = restart
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period
+        self.currency_code = currency_code
 
     @property
     def _defined_configs(self):
         """ for production: use defined configs """
 
-        query = select(models.FactorFormulaTrainConfig).where(
-            and_(
-                models.FactorFormulaTrainConfig.is_active == True,
-                models.FactorFormulaTrainConfig.weeks_to_expire == self.weeks_to_expire,
-            )
-        )
+        conditions = [
+            models.FactorFormulaTrainConfig.is_active == True,
+            models.FactorFormulaTrainConfig.weeks_to_expire == self.weeks_to_expire,
+        ]
+        if self.currency_code:
+            conditions.append(models.FactorFormulaTrainConfig.pred_currency.like(f"%{self.currency_code}%"))
+
+        query = select(models.FactorFormulaTrainConfig).where(and_(*conditions))
         df = read_query(query)
         defined_configs = df.drop(columns=["is_active", "last_finish"]).to_dict("records")
 
