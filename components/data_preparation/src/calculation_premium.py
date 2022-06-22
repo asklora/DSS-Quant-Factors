@@ -168,7 +168,7 @@ class calcPremium:
         resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
         """
 
-        periods = (df["trading_day"].max() - df["trading_day"].min()).days // (7**self.weeks_to_offset) + 1
+        periods = (df["trading_day"].max() - df["trading_day"].min()).days // (7*self.weeks_to_offset) + 1
         date_list = pd.date_range(end=df["trading_day"].max(), freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
         date_list = list(date_list)
         df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]

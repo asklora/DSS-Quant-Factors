@@ -22,7 +22,7 @@ from utils import (
     timestampNow
 )
 
-logger = sys_logger(__name__, "INFO")
+logger = sys_logger(__name__, "ERROR")
 
 stock_data_table_tri = models.DataTri.__table__.schema + '.' + models.DataTri.__table__.name
 stock_data_table_ohlcv = models.DataOhlcv.__table__.schema + '.' + models.DataOhlcv.__table__.name
@@ -655,7 +655,7 @@ class calcRatio:
     def get(self, *args):
         ticker = args[0]
 
-        logger.info(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
+        logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
 
         if self.tri_return_only:
             df = self.raw_data.get_future_return(ticker)
