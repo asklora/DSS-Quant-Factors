@@ -4,6 +4,8 @@ import datetime as dt
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import select, and_, not_, func
+from typing import List, Union
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -15,6 +17,8 @@ import math
 from utils import (
     sys_logger,
     read_query,
+    read_query_list,
+    dateNow,
     read_table,
     upsert_data_to_database,
     models
@@ -30,458 +34,585 @@ factor_premium_table = models.FactorPreprocessPremium.__table__.schema + '.' + m
 factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
 
 
-def download_clean_macros():
-    """ download macros data from DB and preprocess: convert some to yoy format """
+class cleanMacros:
+    """ load clean macro as independent variables for training """
 
-    logger.debug(f'Download macro data from {macro_data_table}')
+    def __init__(self, period_list: pd.DatetimeIndex, weeks_to_expire: int):
+        self.period_list = period_list
+        self.weeks_to_expire = weeks_to_expire
 
-    # combine macros & vix data
-    query = f"SELECT * FROM {macro_data_table} "
-    # query += f"WHERE field in (SELECT our_name FROM {ingestion_name_macro_table} WHERE is_active)"
-    macros = read_query(query)
+    def _download_clean_macro(self):
+        macros = read_query(select(models.DataMacro))[["field", "trading_day", "value"]]
+        macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
+        macros = self.__calc_yoy(macros)
 
-    vix = read_table(vix_data_table)
-    vix = vix.rename(columns={"vix_id": "field", "vix_value": "value"})
-    macros = macros.append(vix)
+        return macros
 
-    fred = read_table(fred_data_table)
-    fred['field'] = "fred_data"
-    macros = macros.append(fred)
+    def __calc_yoy(self, macros: pd.DataFrame, yoy_trh: int = 80):
+        """
+        Use YoY instead of original value for Macro Index for fields (e.g. GDP)
+        """
 
-    macros = macros.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
-    macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
-    macros = macros.set_index("trading_day")
-    macros = macros.resample('D').ffill()
-    macros = macros.reset_index()
+        yoy_field = macros.groupby(["field"])["value"].mean()
+        yoy_field = list(yoy_field[yoy_field > yoy_trh].index)
 
-    yoy_col = macros.select_dtypes('float').columns[macros.select_dtypes('float').mean(axis=0) > 80]  # convert YoY
-    num_col = macros.select_dtypes('float').columns.to_list()  # all numeric columns
+        macros_1yb = macros.loc[macros["field"].isin(yoy_field)].copy()
+        macros_1yb["trading_day"] = macros_1yb["trading_day"].apply(lambda x: x + relativedelta(years = 1))
+        macros = macros.merge(macros_1yb, on = ["field", "trading_day"], how="left", suffixes=("", "_1yb"))
+        macros["value_1yb"] = macros.sort_values(by="trading_day").groupby("field")["value_1yb"].fillna(method='ffill')
+        macros.loc[macros["field"].isin(yoy_field), "value"] = macros["value"]/macros["value_1yb"] - 1
 
-    # update yoy ratios
-    macros_yoy = macros[["trading_day"] + list(yoy_col)]
-    macros_yoy["trading_day"] = macros_yoy["trading_day"].apply(lambda x: x + relativedelta(years=1))
-    macros = macros.merge(macros_yoy, on=["trading_day"], how="left", suffixes=("", "_1yb"))
-    macros = macros.sort_values(by="trading_day").fillna(method='ffill')
-    for i in yoy_col:
-        macros[i] = macros[i] / macros[i + "_1yb"] - 1
-    macros = macros.dropna(subset=num_col, how="all")
+        return macros.drop(columns=["value_1yb"])
 
-    return macros[["trading_day"] + list(num_col)].drop_duplicates("trading_day")
+    def _download_vix(self):
+        vix = read_query(select(models.DataVix))
+        vix = vix.rename(columns = {"vix_id": "field", "vix_value": "value"})
+        vix['trading_day'] = pd.to_datetime(vix['trading_day'], format = '%Y-%m-%d')
+        return vix[["field", "trading_day", "value"]]
 
+    def _download_fred(self):
+        fred = read_query(select(models.DataFred))
+        fred['field'] = "fred_data"
+        fred['trading_day'] = pd.to_datetime(fred['trading_day'], format = '%Y-%m-%d')
+        return fred[["field", "trading_day", "value"]]
 
-def download_index_return():
-    ''' download index return data from DB and preprocess: convert to YoY and pivot table '''
+    def _download_index_return(self):
+        index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
+        index_ticker = ['.SPX', '.CSI300', '.SXXGR', '.HSI']
+        conditions = [
+            models.FactorPreprocessRatio.ticker.in_(tuple(index_ticker)),
+            models.FactorPreprocessRatio.field.in_(tuple(index_col)),
+        ]
+        index_query = select(models.FactorPreprocessRatio).where(and_(*conditions))
+        index_ret = read_query(index_query)
 
-    logger.debug(f'Download index return data from [{processed_ratio_table}]')
+        index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'])
+        index_ret['field'] += "_" + index_ret["ticker"]
+        index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'], format='%Y-%m-%d')
+        return index_ret[["field", "trading_day", "value"]]
 
-    # read stock return from ratio calculation table
-    index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
-    index_query = f"SELECT * FROM {processed_ratio_table} WHERE ticker like '.%%' AND field in {tuple(index_col)}"
-    index_ret = read_query(index_query)
+    def get_all_macros(self):
+        logger.debug(f'=== Download macro data ===')
 
-    index_ret = index_ret.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
+        macros = self._download_clean_macro()
+        vix = self._download_vix()
+        fred = self._download_fred()
+        index = self._download_index_return()
 
-    # Index using all index return12_7, return6_2 & vol_30_90 for 6 market based on num of ticker
-    major_index = ['trading_day', '.SPX', '.CSI300', '.SXXGR', '.HSI']  # try include 3 major market index first
-    index_ret = index_ret.loc[index_ret['ticker'].isin(major_index)]
+        df = pd.concat([macros, vix, fred, index], axis=0).dropna(how="any")
+        df = df.pivot(index=["trading_day"], columns=["field"], values="value").reset_index()
+        df = self._resample_macros_to_testing_period(df)
 
-    index_ret = index_ret.set_index(['trading_day', 'ticker'])[index_col].unstack()
-    index_ret.columns = [f'{x[1]}_{x[0]}' for x in index_ret.columns.to_list()]
-    index_ret = index_ret.reset_index()
-    index_ret['trading_day'] = pd.to_datetime(index_ret['trading_day'])
+        return df
 
-    return index_ret
+    def _resample_macros_to_testing_period(self, df):
+        """
+        Use last available macro data for each testing_period
+        """
 
+        df["testing_period"] = df["trading_day"] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
 
-def combine_data(weeks_to_expire, update_since=None, trim=False):
-    """ combine factor premiums with ratios """
+        df = df.set_index("testing_period")
+        combine_index = df.index
+        combine_index = combine_index.append(self.period_list).drop_duplicates()
 
-    # Read premium sql from different tables
-    factor_table_name = factor_premium_table
+        df = df.reindex(combine_index)
+        df = df.sort_index().ffill()
+        reindex_df = df.reindex(self.period_list).reset_index().rename(columns={"index": "testing_period"})
 
-    logger.info(f'Use [{weeks_to_expire}] week premium')
-    conditions = ['"group" IS NOT NULL',
-                  f"weeks_to_expire={weeks_to_expire}"]
-
-    if isinstance(update_since, datetime):
-        update_since_str = update_since.strftime(r'%Y-%m-%d %H:%M:%S')
-        conditions.append(f"trading_day >= TO_TIMESTAMP('{update_since_str}', 'YYYY-MM-DD HH:MI:SS')")
-
-    prem_query = f"SELECT * FROM {factor_table_name} WHERE {' AND '.join(conditions)};"
-    df = read_query(prem_query)
-    df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value")
-
-    trim_cols = df.filter(regex='^trim_').columns.to_list()
-    if trim:
-        df = df[trim_cols]
-    else:
-        df = df.drop(trim_cols)
-
-    # remove null > 50% sample
-    df = df.loc[df.isnull().sum(axis=1) < df.shape[1]/2]
-    df = df.T.fillna(df.T.mean()).T
-    df.columns.name = None
-    df = df.reset_index().rename(columns={"testing_period": "trading_day"})
-    df['trading_day'] = pd.to_datetime(df['trading_day'], format='%Y-%m-%d')  # convert to datetime
-
-    # read formula table
-    formula = read_table(factors_formula_table)
-    formula = formula.loc[formula['name'].isin(df.columns.to_list())]  # filter existing columns from factors
-
-    # Research stage using 10 selected factor only
-    x_col = {'factor': formula['name'].to_list()}
-
-    for p in formula['pillar'].unique():
-        x_col[p] = formula.loc[formula['pillar'] == p, 'name'].to_list()  # factor for each pillar
-
-    # df = df.loc[df['trading_day'] < dt.datetime.today() + MonthEnd(-2)]  # remove records within 2 month prior to today
-
-    # 1. Add Macroeconomic variables - from Datastream
-    macros = download_clean_macros()
-    x_col['macro'] = macros.columns.to_list()[1:]  # add macros variables name to x_col
-
-    # 2. Add index return variables
-    index_ret = download_index_return()
-    x_col['index'] = index_ret.columns.to_list()[1:]  # add index variables name to x_col
-
-    # Combine non_factor_inputs and move it 1-month later -> factor premium T0 assumes we knows price as at T1
-    # Therefore, we should also know other data (macro/index/group fundamental) as at T1
-    index_ret["trading_day"] = pd.to_datetime(index_ret["trading_day"])
-    macros["trading_day"] = pd.to_datetime(macros["trading_day"])
-    non_factor_inputs = macros.merge(index_ret, on=['trading_day'], how='outer')
-    non_factor_inputs['trading_day'] = non_factor_inputs['trading_day'].apply(
-        lambda x: x - relativedelta(weeks=weeks_to_expire))
-    df = df.merge(non_factor_inputs, on=['trading_day'], how='outer').sort_values(['group', 'trading_day'])
-    df[x_col['macro'] + x_col['index']] = df.sort_values(["trading_day", "group"]).groupby(["group"])[
-        x_col['macro'] + x_col['index']].ffill()
-    df = df.dropna(subset=["group"])
-
-    # use only period_end date
-    indexes = pd.MultiIndex.from_product([df['group'].unique(), df['trading_day'].unique()],
-                                         names=['group', 'trading_day']).to_frame().reset_index(drop=True)
-    df = pd.merge(df, indexes, on=['group', 'trading_day'], how='right')
-    logger.info(f"Factors: {x_col['factor']}")
-
-    return df.sort_values(by=['group', 'trading_day']), x_col['factor'], x_col
+        return reindex_df.drop(columns=["trading_day"])
 
 
-class load_data:
+class combineData:
+
+    currency_code_list = ["HKD", "CNY", "USD", "EUR"]
+    trim = False
+
+    def __init__(self, weeks_to_expire: int, sample_interval: int, backtest_period: int,
+                 currency_code: str = None, restart: bool = None):
+        self.weeks_to_expire = weeks_to_expire
+        self.sample_interval = sample_interval
+        self.backtest_period = backtest_period
+        self.restart = restart
+        if currency_code:
+            self.currency_code_list = [currency_code]
+
+    def get_raw_data(self):
+        """
+        Returns
+        -------
+        pd.DataFrame(columns=["group", "testing_period", "average_days"] + factor_premium_columns + macro_input_columns)
+
+        1. "testing_period" with equal interval as any other consecutive rows
+        2. sort by ["group", "testing_period"]
+
+        """
+        df = self._download_premium()
+        df = self._remove_high_missing_samples(df)
+        df = self._add_macros_inputs(df)
+
+        return df.sort_values(by=["group", "testing_period"])
+
+    @property
+    def _testing_period_list(self) -> pd.DatetimeIndex:
+        if self.restart:
+            end_date = self._restart_iteration_first_running_date
+        else:
+            end_date = dateNow()
+
+        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500 // self.sample_interval)
+        return period_list
+
+    @property
+    def _restart_iteration_first_running_date(self) -> dt.date:
+        query = select(func.min(models.FactorResultScore.uid)).where(models.FactorResultScore.name_sql == self.restart)
+        restart_iter_running_date = read_query_list(query)[0]
+        restart_iter_running_date = pd.to_datetime(restart_iter_running_date[:8], format="YYYYMMDD").date()
+        return restart_iter_running_date
+
+    def _add_macros_inputs(self, premium):
+        """
+        Combine macros and premium inputs
+        """
+
+        macros = cleanMacros(period_list=self._testing_period_list,
+                             weeks_to_expire=self.weeks_to_expire).get_all_macros()
+        macros_premium = premium.merge(macros, on=["testing_period"])
+
+        assert len(macros_premium) == len(premium)
+
+        return macros_premium
+
+    def _download_premium(self):
+        conditions = [
+            models.FactorPreprocessPremium.weeks_to_expire == self.weeks_to_expire,
+            models.FactorPreprocessPremium.group.in_(tuple(self.currency_code_list)),
+            models.FactorPreprocessPremium.testing_period.in_(tuple(self._testing_period_list))
+        ]
+        if self.trim:
+            conditions.append(models.FactorPreprocessPremium.field.like("trim_%%"))
+        else:
+            conditions.append(not_(models.FactorPreprocessPremium.field.like("trim_%%")))
+
+        query = select(models.FactorPreprocessPremium).where(and_(*conditions))
+        df = read_query(query)
+        df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
+        df['testing_period'] = pd.to_datetime(df['testing_period'], format = '%Y-%m-%d')
+
+        return df
+
+    def _remove_high_missing_samples(self, df: pd.DataFrame, trh: float = 0.5) -> pd.DataFrame:
+        """
+        remove first few samples with high missing
+        """
+        max_missing_cols = (df.shape[1] - 3) * trh
+        low_missing_samples = df.loc[df.isnull().sum(axis = 1) < max_missing_cols]
+        low_missing_first_period = low_missing_samples["testing_period"].min()
+        df = df.loc[df["testing_period"] >= low_missing_first_period]
+
+        return df
+
+
+class loadData:
     """ main function:
         1. split train + valid + tests -> sample set
         2. convert x with standardization, y with qcut """
 
-    def __init__(self, weeks_to_expire, update_since=None, trim=False):
-        """ combine all possible data to be used
+    train_lookback_year = 21                # 1-year buffer for Y calculation
+    lasso_reverse_lookback_window = 13      # period (time-span varied depending on sample_interval at combineData)
+    lasso_reverse_alpha = 1e-5
+    convert_y_use_median = True
+    convert_y_cut_bins = None               # [List] instead of qcut -> use defined bins (e.g. [-inf, 0, 1, inf])
+    convert_x_ar_period = []
+    convert_x_ma_period = {3: [], 12: []}
+    convert_x_macro_pca = 0.6
+    all_factor_list = read_query_list(select(models.FactorFormulaRatio.name).where(models.FactorFormulaRatio.is_active))
 
-        Parameters
-        ----------
-        weeks_to_expire : text
-        update_since : bool, optional
-
+    def __init__(self,
+                 weeks_to_expire: int,
+                 train_currency: str,
+                 pred_currency: str,
+                 testing_period: dt.datetime,
+                 average_days: int,
+                 factor_list: List[str],
+                 factor_reverse: bool,
+                 y_qcut: int,
+                 factor_pca: float,
+                 valid_pct: float,
+                 valid_method: Union[str, int],
+                 **kwargs):
         """
-
-        # define self objects
-        self.pred_currency = None
-        self.train_currency = None
-        self.sample_set = {}
-        self.group = pd.DataFrame()
-        self.weeks_to_expire = weeks_to_expire
-        self.main, self.factor_list, self.x_col_dict = combine_data(weeks_to_expire,
-                                                                    update_since=update_since,
-                                                                    trim=trim)  # combine all data
-        # print(self.main)
-
-    def split_train_currency(self, train_currency, pred_currency, average_days, **kwargs):
-        """ split main sample sets in to industry_parition or country_partition """
-
-        if train_currency == 'currency':
-            self.train_currency = ['CNY', 'HKD', 'EUR', 'USD']
-        else:
-            self.train_currency = train_currency.split(',')
-        self.pred_currency = pred_currency.split(',')
-
-        all_currency = list(set(self.pred_currency + self.train_currency))
-
-        # train on currency partition factors
-        self.group = self.main.loc[(self.main['group'].isin(all_currency)) &
-                                   (self.main['average_days'] == average_days)]
-
-        # calculate y for all factors
-        df_y = self.group[['group', 'trading_day'] + self.x_col_dict['factor']].rename(
-            columns={x: 'y_' + x for x in self.x_col_dict['factor']})
-        df_y["trading_day"] = df_y['trading_day'].apply(lambda x: x - relativedelta(weeks=self.weeks_to_expire))
-        self.group = self.group.merge(df_y, on=["group", "trading_day"], how="outer")
-
-    @staticmethod
-    def y_replace_median(_y_qcut, arr, arr_cut, arr_test, arr_test_cut):
-        ''' convert qcut results (e.g. 012) to the median of each group for regression '''
-
-        df = pd.DataFrame(np.vstack((arr, arr_cut))).T  # concat original & qcut
-        median = df.groupby([1]).median().sort_index()[0].to_list()  # find median of each group
-        arr_cut_median = pd.DataFrame(arr_cut).replace(range(_y_qcut), median)[0].values
-        arr_test_cut_median = pd.DataFrame(arr_test_cut).replace(range(_y_qcut), median)[0].values
-        return arr_cut_median, arr_test_cut_median
-
-    # def neg_factor_best_period(self, df, x_col):
-    #
-    #     best_best = {}
-    #     for name in x_col:
-    #         best = {}
-    #         g = df[name]
-    #         for i in np.arange(12, 120, 12):
-    #             g['ma'] = g.rolling(i, min_periods=1, closed='left')['premium'].mean()
-    #             g['new_premium'] = np.where(g['ma'] >= 0, g['premium'], -g['premium'])
-    #             best[i] = g['new_premium'].mean()
-    #
-    #         best_best[name] = [k for k, v in best.items() if v == np.max(list(best.values()))][0]
-    #
-    #     return best_best
-
-    def y_qcut_all(self, _y_qcut, _factor_reverse, factor_list, defined_cut_bins=[], use_median=True, **kwargs):
-        """ convert continuous Y to discrete (0, 1, 2) for all factors during the training / testing period """
-
-        null_col = self.train.isnull().sum()
-        null_col = list(null_col.loc[(null_col == len(self.train))].index)  # remove null col from y col
-        y_col = ['y_' + x for x in factor_list if x not in null_col]
-        cut_col = [x + "_cut" for x in y_col]
-
-        # convert consistently negative premium factor to positive
-        self.__y_convert_neg_factors(_factor_reverse=_factor_reverse)
-
-        # use n-split qcut median as Y
-        if _y_qcut > 0:
-            arr = self.train[y_col].values.flatten()  # Flatten all training factors to qcut all together
-            # arr[(arr>np.quantile(np.nan_to_num(arr), 0.99))|(arr<np.quantile(np.nan_to_num(arr), 0.01))] = np.nan
-
-            if defined_cut_bins == []:
-                # cut original series into bins
-                arr_cut, cut_bins = pd.qcut(arr, q=_y_qcut, retbins=True, labels=False)
-                cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
-            else:
-                # use pre-defined cut_bins for cut (since all factor should use same cut_bins)
-                cut_bins = defined_cut_bins
-                arr_cut = pd.cut(arr, bins=cut_bins, labels=False)
-
-            arr_test = self.test[y_col].values.flatten()  # Flatten all testing factors to qcut all together
-            arr_test_cut = pd.cut(arr_test, bins=cut_bins, labels=False)
-
-            if use_median:  # for regression -> remove noise by regression on median of each bins
-                arr_cut, arr_test_cut = load_data.y_replace_median(_y_qcut, arr, arr_cut, arr_test, arr_test_cut)
-
-            self.train[cut_col] = np.reshape(arr_cut, (len(self.train), len(y_col)), order='C')
-            self.test[cut_col] = np.reshape(arr_test_cut, (len(self.test), len(y_col)), order='C')
-
-            # write cut_bins to DB
-            self.cut_bins_df = self.train[cut_col].apply(pd.value_counts).transpose()
-            self.cut_bins_df = self.cut_bins_df.divide(self.cut_bins_df.sum(axis=1).values, axis=0).reset_index()
-            self.cut_bins_df['negative'] = False
-            # self.cut_bins_df.loc[self.cut_bins_df['index'].isin([x+'_cut' for x in neg_factor]), 'negative'] = True
-            self.cut_bins_df['pillar'] = [x[2:-4] for x in self.cut_bins_df['index']]
-            self.cut_bins_df['cut_bins_low'] = cut_bins[1]
-            self.cut_bins_df['cut_bins_high'] = cut_bins[-2]
-        else:
-            self.train[cut_col] = self.train[y_col]
-            self.test[cut_col] = self.test[y_col]
-
-        return y_col
-
-    def __y_convert_neg_factors(self, _factor_reverse=False, n_years=7, lasso_alpha=1e-5):
-        '''  convert consistently negative premium factor to positive
-        refer to: https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/994803719/AI+Score+Brainstorms+2022-01-28
-
         Parameters
         ----------
-        _factor_reverse (Bool, Optional):
-            if True, use training period average; else (default) use lasso
-        n_years (Int, Optional):
-            lasso training period length (default = 7) years
-        lasso_alpha (Float, Optional):
-            lasso training alpha lasso_alpha (default = 1e-5)
-        '''
-
-        y_col = read_query(f'SELECT name FROM {factors_formula_table} WHERE is_active')['name'].to_list()
-
-        if type(_factor_reverse) == type(None):
-            self.neg_factor = []
-        elif _factor_reverse:  # using average of training period -> next period +/-
-            m = self.train.filter(y_col).mean(axis=0)
-            self.neg_factor = list(m[m < 0].index)
-        else:
-            start_date = dt.datetime.today() - relativedelta(years=n_years)
-            n_x = len(self.train.loc[self.train['trading_day'] >= start_date, 'trading_day'].unique())
-
-            train_X = self.train.set_index('trading_day').filter(y_col).stack().reset_index()
-            train_X.columns = ['trading_day', 'field', 'y']
-
-            for i in range(1, n_x + 1):
-                train_X[f'x_{i}'] = train_X.groupby(['field'])['y'].shift(i)
-            train_X = train_X.dropna(how='any')
-            clf = Lasso(alpha=lasso_alpha)
-            clf.fit(train_X.filter(regex='^x_').values, train_X['y'].values)
-
-            test_X = train_X.groupby('field').last().reset_index()
-            test_X['pred'] = clf.predict(test_X.filter(regex='^x_|^y$').values[:, :-1])
-            self.neg_factor = test_X.loc[test_X['pred'] < 0, 'field'].to_list()
-
-        # self.neg_factor = []
-        self.train[self.neg_factor + ['y_' + x for x in self.neg_factor]] *= -1
-        self.test[self.neg_factor + ['y_' + x for x in self.neg_factor]] *= -1
-
-    def split_train_test(self, testing_period,
-                         _factor_pca=None, mi_pca=0.6, train_lookback_year=20,
-                         ar_period=[], ma3_period=[], ma12_period=[],
-                         **kwargs):
-        """ split training / testing set based on testing period """
-
-        current_train_currency = self.group.copy(1)
-        start = testing_period - relativedelta(years=train_lookback_year)  # train df = 20*12 months
-
-        # factor with ARMA history as X (if using pca, all history first)
-        arma_col = self.x_col_dict['factor'] + self.x_col_dict['index'] + self.x_col_dict['macro']
-
-        # 1. [Prep X] Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
-        self.x_col_dict['ar'] = []
-        for i in ar_period:
-            ar_col = [f"ar_{x}_{i}m" for x in arma_col]
-            current_train_currency[ar_col] = current_train_currency.groupby(['group'])[arma_col].shift(i)
-            self.x_col_dict['ar'].extend(ar_col)  # add AR variables name to x_col
-
-        # 2. [Prep X] Calculate the moving average for predicted Y
-        self.x_col_dict['ma'] = []
-        for i in ma3_period:  # include moving average of 3-5, 6-8, 9-11
-            ma_q = current_train_currency.groupby(['group'])[arma_col].rolling(3, min_periods=1).mean().reset_index(level=0,
-                                                                                                           drop=True)
-            ma_q_col = ma_q.columns = [f"ma_{x}_q" for x in arma_col]
-            current_train_currency = pd.concat([current_train_currency, ma_q], axis=1)
-            current_train_currency[[f'{x}{i}' for x in ma_q_col]] = current_train_currency.groupby(['group'])[ma_q_col].shift(i)
-            self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_q_col])  # add MA variables name to x_col
-        for i in ma12_period:  # include moving average of 12 - 23
-            ma_y = current_train_currency.groupby(['group'])[arma_col].rolling(12, min_periods=1).mean().reset_index(level=0,
-                                                                                                            drop=True)
-            ma_y_col = ma_y.columns = [f"ma_{x}_y" for x in arma_col]
-            current_train_currency = pd.concat([current_train_currency, ma_y], axis=1)
-            current_train_currency[[f'{x}{i}' for x in ma_y_col]] = current_train_currency.groupby(['group'])[ma_y_col].shift(i)
-            self.x_col_dict['ma'].extend([f'{x}{i}' for x in ma_y_col])  # add MA variables name to x_col
-
-        # 3. [Split training/testing] sets based on testing_period
-        train_end_date = testing_period - relativedelta(weeks=self.weeks_to_expire)     # avoid data snooping
-        self.train = current_train_currency.loc[(start <= current_train_currency['trading_day']) &
-                                       (current_train_currency['trading_day'] <= train_end_date) &
-                                       (current_train_currency['group'].isin(self.train_currency))].reset_index(drop=True).copy()
-        self.test = current_train_currency.loc[(current_train_currency['trading_day'] == testing_period) &
-                                      (current_train_currency['group'].isin(self.pred_currency))].reset_index(drop=True).copy()
-
-        # 4. [Prep Y]: qcut/cut for all factors to be predicted (according to factor_formula table in DB) at the same time
-        self.y_col = self.y_qcut_all(**kwargs)
-        self.train = self.train.dropna(subset=self.y_col, how='any').reset_index(drop=True)  # remove training sample with NaN Y
-
-        # if using feature selection with PCA
-        arma_factor = [x for x in self.x_col_dict['ar'] + self.x_col_dict['ma'] for f in self.x_col_dict['factor'] if f in x]
-
-        # 5. [Prep X] use PCA on all Factor + ARMA inputs
-        factor_pca_col = self.x_col_dict['factor'] + arma_factor
-        factor_pca_train, factor_pca_test, factor_feature_name = load_data.standardize_pca_x(self.train[factor_pca_col], self.test[factor_pca_col], _factor_pca)
-        self.x_col_dict['arma_pca'] = ['arma_' + str(x) for x in factor_feature_name]
-        self.train[self.x_col_dict['arma_pca']] = factor_pca_train
-        self.test[self.x_col_dict['arma_pca']] = factor_pca_test
-        logger.info(f"After {_factor_pca} PCA [Factors]: {len(factor_feature_name)}")
-
-        # 6. [Prep X] use PCA on all index/macro inputs
-        group_index = {"USD": ".SPX", "HKD": ".HSI", "EUR": ".SXXGR", "CNY": ".CSI300"}
-        mi_pca_col = []
-        for train_cur in self.train_currency:
-            mi_pca_col += [x for x in self.x_col_dict['index'] if re.match(f'^{group_index[train_cur]}', x)]
-        mi_pca_col += self.x_col_dict['macro']
-        mi_pca_train, mi_pca_test, mi_feature_name = load_data.standardize_pca_x(self.train[mi_pca_col], self.test[mi_pca_col], mi_pca)
-        self.x_col_dict['mi_pca'] = ['mi_' + str(x) for x in mi_feature_name]
-        self.train[self.x_col_dict['mi_pca']] = mi_pca_train
-        self.test[self.x_col_dict['mi_pca']] = mi_pca_test
-        logger.info(f"After {mi_pca} PCA [Macro+Index]: {len(mi_feature_name)}")
-
-        def divide_set(df):
-            """ split x, y from main """
-            x_col = self.x_col_dict['arma_pca'] + self.x_col_dict['mi_pca']
-            y_col_cut = [x + '_cut' for x in self.y_col]
-            return df.filter(x_col).values, df[self.y_col].values, df[y_col_cut].values, \
-                   df.filter(x_col).columns.to_list()
-
-        self.sample_set['train_x'], self.sample_set['train_y'], self.sample_set['train_y_final'], _ = divide_set(self.train)
-        self.sample_set['test_x'], self.sample_set['test_y'], self.sample_set['test_y_final'], self.x_col = divide_set(self.test)
-
-    @staticmethod
-    def standardize_pca_x(X_train, X_test, n_components=None):
-        ''' standardize x + PCA applied to x with train_x fit '''
-
-        org_feature = X_train.columns.to_list()
-        X_train, X_test = X_train.values, X_test.values
-        if (type(n_components) == type(None)) or (math.isnan(n_components)):
-            scaler = StandardScaler()
-        else:
-            scaler = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=n_components))])
-            X_train = np.nan_to_num(X_train, nan=0)
-            X_test = np.nan_to_num(X_test, nan=0)
-
-        scaler.fit(X_train)
-        x_train = scaler.transform(X_train)
-        x_test = scaler.transform(X_test)
-        if n_components:
-            feature_name = range(1, x_train.shape[1] + 1)
-        else:
-            feature_name = org_feature
-        return x_train, x_test, feature_name
-
-    def split_valid(self, _valid_pct, _valid_method, **kwargs):
-        """ split 5-Fold cross validation testing set -> 5 tuple contain lists for Training / Validation set
-
-        Parameters
-        ----------
-        testing_period :
-            testing set starting date.
-        _valid_pct (Float):
+        valid_pct (Float):
             must be < 1, use _valid_pct% of training as validation.
-        _valid_method (Str / Int):
+        valid_method (Str / Int):
             if "cv", cross validation between groups;
             if "chron", use last 2 years / % of training as validation;
             if Int (must be year after 2008), use valid_pct% sample from year indicated by valid_method.
         """
 
-        assert _valid_pct < 1
+        self.weeks_to_expire = weeks_to_expire
+        self.testing_period = testing_period
+        self.average_days = average_days
+        self.factor_list = factor_list
+        self.factor_reverse = factor_reverse
+        self.y_qcut = y_qcut
+        self.factor_pca = factor_pca
+        self.valid_pct = valid_pct
+        self.valid_method = valid_method
 
-        # split validation set by cross-validation 5 split
-        if _valid_method == "cv":
-            gkf = GroupShuffleSplit(n_splits=int(round(1/_valid_pct)), random_state=666).split(
-                self.sample_set['train_x'], self.sample_set['train_y_final'], groups=self.train['group'])
-
-        # split validation set by chronological order
-        elif _valid_method == "chron":
-            gkf = []
-            valid_len = (self.train['trading_day'].max() - self.train['trading_day'].min()) * _valid_pct
-            valid_period = self.train['trading_day'].max() - valid_len
-            valid_index = self.train.loc[self.train['trading_day'] >= valid_period].index.to_list()
-            train_index = self.train.loc[self.train['trading_day'] < valid_period].index.to_list()
-            gkf.append((train_index, valid_index))
-
-        # valid_method can be year name (e.g. 2010) -> use _valid_pct% amount of data since 2010-01-01 as valid sets
-        elif isinstance(_valid_method, int):
-            valid_len = (self.train['trading_day'].max() - self.train['trading_day'].min()) * _valid_pct
-            valid_start = dt.datetime(_valid_method, 1, 1, 0, 0, 0)
-            valid_end = valid_start + valid_len
-            valid_index = self.train.loc[(self.train['trading_day'] >= valid_start) &
-                                         (self.train['trading_day'] < valid_end)].index.to_list()
-
-            # half of valid sample have data leak from training sets
-            train_index = self.train.loc[(self.train['trading_day'] < (valid_start - valid_len / 2)) |
-                                         (self.train['trading_day'] >= valid_end)].index.to_list()
-            gkf = [(train_index, valid_index)]
+        if train_currency == 'currency':
+            self.train_currency = ['CNY', 'HKD', 'EUR', 'USD']
         else:
-            raise ValueError(f"Invalid '_valid_method'. "
-                             f"Expecting 'cv' or 'chron' or Int of year (e.g. 2010) got {_valid_method}")
-        return gkf
+            self.train_currency = train_currency.split(',')
 
-    def split_all(self, testing_period, **kwargs):
+        self.pred_currency = pred_currency.split(',')
+
+    def split_all(self, main_df):
         """ work through cleansing process """
 
-        self.split_train_test(testing_period, **kwargs)  # split x, y for tests / train samples
-        gkf = self.split_valid(**kwargs)  # split for cross validation in groups
-        return self.sample_set, gkf
+        sample_df = self._filter_sample(main_df=main_df)
+        sample_df, neg_factor = self._convert_sample_neg_factor(sample_df=sample_df)
+
+        df_train_cut, df_test_cut, df_train, df_test, cut_bins = self._get_y(sample_df=sample_df)
+        df_train_pca, df_test_pca = self._get_x(sample_df=sample_df)
+        gkf = self._split_valid(df_train_pca)
+
+        sample_set = {
+            "train_x":       df_train_pca,
+            "train_y":       df_train,
+            "train_y_final": df_train_cut,
+            "test_x":        df_test_pca,
+            "test_y":        df_test,
+            "test_y_final":  df_test_cut,
+        }                                                  
+
+        return sample_set, gkf, neg_factor, cut_bins
+
+    def _filter_sample(self, main_df) -> pd.DataFrame:
+        """
+        filter main premium_df for data frame with sample needed
+        """
+
+        conditions = \
+            (main_df["group"].isin(self.train_currency + self.pred_currency)) & \
+            (main_df["average_days"] == self.average_days) & \
+            (main_df["testing_period"] >= (self.testing_period - relativedelta(years=self.train_lookback_year))) & \
+            (main_df["testing_period"] <= (self.testing_period + relativedelta(weeks=self.weeks_to_expire)))
+
+        sample_df = main_df.loc[conditions].copy()
+        return sample_df.drop(columns=["average_days"]).set_index(["group", "testing_period"])
+
+    def __train_sample(self, df: pd.DataFrame) -> pd.DataFrame:
+        start_date = self.testing_period - relativedelta(years=self.train_lookback_year)
+        end_date = self.testing_period - relativedelta(weeks=self.weeks_to_expire)\
+
+        if not set(self.train_currency).issubset(set(df.index.get_level_values("group").unique())):
+            raise Exception("train_currency not in raw_df. Please check combineData().")
+
+        train_df = df.loc[(start_date <= df.index.get_level_values("testing_period")) &
+                          (df.index.get_level_values("testing_period") <= end_date) &
+                          (df.index.get_level_values("group").isin(self.train_currency))]
+
+        assert len(train_df) > 0
+        return train_df
+
+    def __test_sample(self, df: pd.DataFrame) -> pd.DataFrame:
+        test_df = df.loc[(df.index.get_level_values("testing_period") == self.testing_period) &
+                         (df.index.get_level_values("group").isin(self.pred_currency))]
+        assert len(test_df) > 0
+        return test_df
+
+    def _convert_sample_neg_factor(self, sample_df) -> (pd.DataFrame, list):
+        """
+        convert consistently negative premium factor to positive
+        refer to: https://loratechai.atlassian.net/wiki/spaces/SEAR/pages/994803719/AI+Score+Brainstorms+2022-01-28
+
+        Parameters
+        ----------
+        _factor_reverse (Bool, Optional):
+            if True, use training period average;
+            if False, use lasso;
+            if None, no conversion.
+        n_years (Int, Optional):
+            lasso training period length (default = 7) years.
+        lasso_alpha (Float, Optional):
+            lasso training alpha lasso_alpha (default = 1e-5).
+        """
+
+        if type(self.factor_reverse) == type(None):
+            neg_factor = []
+        elif self.factor_reverse:  # using average of training period -> next period +/-
+            neg_factor = self._factor_reverse_on_average(sample_df)
+        else:
+            neg_factor = self._factor_reverse_on_lasso(sample_df)
+
+        sample_df[neg_factor] *= -1
+        return sample_df, neg_factor
+
+    def _factor_reverse_on_average(self, sample_df):
+        """ reverse if factor premium on training sets on average < 0 """
+        sample_df_mean = self.__train_sample(sample_df).mean(axis=0)
+        neg_factor = list(sample_df_mean[sample_df_mean < 0].index)
+
+        return neg_factor
+
+    def __lasso_get_window_total(self, sample_df):
+        """
+        total sample window for lasso = lookback period + forward prediction period
+        """
+
+        testing_period_list = sample_df.index.get_level_values("testing_period").values
+        sample_interval = (testing_period_list[-1] - testing_period_list[-2])/np.timedelta64(1, 'D')
+        window_forward = int(self.weeks_to_expire*7 // sample_interval)
+        window_total = int(self.lasso_reverse_lookback_window + window_forward)
+
+        return window_total
+
+    def _factor_reverse_on_lasso(self, sample_df) -> list:
+        """
+        reverse if lasso predicted next period (i.e. Y) factor premium < 0
+        """
+
+        neg_factor = []
+        lasso_train = self.__train_sample(sample_df).groupby(level="testing_period")[self.factor_list].mean().fillna(0)
+        window_total = self.__lasso_get_window_total(sample_df)
+
+        for col in self.factor_list:
+            X_windows = lasso_train[col].rolling(window=window_total)
+            window_arr = np.array([window.to_list() for window in X_windows if len(window) == window_total])
+
+            clf = Lasso(alpha=self.lasso_reverse_alpha)
+            clf.fit(X=window_arr[:, :self.lasso_reverse_lookback_window],
+                    y=window_arr[:, -1])
+            pred = clf.predict(window_arr[[-1], -self.lasso_reverse_lookback_window:])
+
+            if pred < 0:
+                neg_factor.append(col)
+
+        return neg_factor
+
+    def _get_y(self, sample_df) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, list):
+        df_y = self.__y_convert_testing_period(sample_df=sample_df)
+        df_train = self.__train_sample(df_y).copy()
+        df_test = self.__test_sample(df_y).copy()
+
+        if type(self.convert_y_cut_bins) != type(None):
+            df_train_cut, df_test_cut, cut_bins = self.__y_cut_with_defined_cut_bins(df_train, df_test)
+        elif self.y_qcut > 0:
+            df_train_cut, df_test_cut, cut_bins = self.__y_qcut_with_flatten_train(df_train, df_test)
+        elif self.y_qcut == 0:
+            df_train_cut, df_test_cut, cut_bins = df_train, df_test, []
+        else:
+            raise Exception("Wrong [y_qcut] config!")
+
+        return df_train_cut.dropna(how='any'), \
+               df_test_cut.dropna(how='any'), \
+               df_train.dropna(how='any'), \
+               df_test.dropna(how='any'), \
+               cut_bins
+
+    def __y_convert_testing_period(self, sample_df):
+        """
+        testing_period of y = testing_period of X + weeks_to_expire to avoid data snooping
+        """
+
+        df_y = sample_df[self.factor_list].copy()
+
+        df_y = df_y.reset_index()
+        df_y["testing_period"] = df_y['testing_period'] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
+        df_y = df_y.set_index(["group", "testing_period"])
+
+        return df_y
+
+    def __y_replace_median(self, train_org, train_cut, test_cut) -> (pd.DataFrame, pd.DataFrame):
+        """
+        convert qcut results (e.g. 012) to the median of each group to remove noise for regression problem
+        """
+
+        df = pd.DataFrame(np.vstack((train_org.values.flatten(), train_cut.values.flatten()))).T
+        median_map = df.groupby([1])[0].median().to_dict()
+
+        train_cut = train_cut.replace(median_map)
+        test_cut = test_cut.replace(median_map)
+
+        return train_cut, test_cut
+
+    def __y_cut_with_defined_cut_bins(self, train, test) -> (pd.DataFrame, pd.DataFrame, list):
+        """ qcut all factors predict together with defined cut_bins """
+
+        train_cut = train.apply(pd.cut, bins=self.convert_y_cut_bins, labels=False)
+        test_cut = test.apply(pd.cut, bins=self.convert_y_cut_bins, labels=False)
+
+        if self.convert_y_use_median:
+            train_cut, test_cut = self.__y_replace_median(train_org=train, train_cut=train_cut, test_cut=test_cut)
+
+        return train_cut, test_cut, self.convert_y_cut_bins
+
+    def __y_qcut_with_flatten_train(self, train, test) -> (pd.DataFrame, pd.DataFrame, list):
+        """
+        Flatten all training factors to qcut all together
+        """
+
+        arr = train.values.flatten()
+        assert len(arr) > 0
+
+        arr_cut, cut_bins = pd.qcut(arr, q=self.y_qcut, retbins=True, labels=False)
+        cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]
+
+        arr_cut_reshape = np.reshape(arr_cut, train.shape, order='C')
+        train_cut = pd.DataFrame(arr_cut_reshape, index=train.index, columns=train.columns)
+
+        test_cut = self.__test_sample(test).apply(pd.cut, bins=cut_bins, labels=False)
+
+        if self.convert_y_use_median:
+            train_cut, test_cut = self.__y_replace_median(train_org=train, train_cut=train_cut, test_cut=test_cut)
+
+        return train_cut, test_cut, cut_bins
+
+    def _get_x(self, sample_df):
+        input_cols = sample_df.columns.to_list()
+        input_factor_cols = list(set(self.all_factor_list) & set(input_cols))
+        input_macro_cols = list(set(input_cols) - set(self.all_factor_list))
+
+        # sample_df = self._x_convert_ar(sample_df, arma_col=input_cols)
+        # sample_df = self._x_convert_ma(sample_df, arma_col=input_cols, ma_avg_period=3)
+        # sample_df = self._x_convert_ma(sample_df, arma_col=input_cols, ma_avg_period=12)
+
+        df_train = self.__train_sample(sample_df).copy().fillna(0)
+        df_test = self.__test_sample(sample_df).copy().fillna(0)
+
+        df_train_factor, df_test_factor = self.__x_standardize_pca(df_train, df_test,
+                                                                   pca_cols=input_factor_cols,
+                                                                   n_components=self.factor_pca,
+                                                                   prefix="factor")
+        df_train_macro, df_test_macro = self.__x_standardize_pca(df_train, df_test,
+                                                                 pca_cols=input_macro_cols,
+                                                                 n_components=self.convert_x_macro_pca,
+                                                                 prefix="macro")
+
+        df_train_pca = df_train_factor.merge(df_train_macro, left_index=True, right_index=True)
+        df_test_pca = df_test_factor.merge(df_test_macro, left_index=True, right_index=True)
+
+        return df_train_pca, df_test_pca
+
+    def _x_convert_ar(self, sample_df, arma_col: list):
+        """
+        (Obsolete) Calculate the time_series history for predicted Y (use 1/2/12 based on ARIMA results)
+        """
+
+        for i in self.convert_x_ar_period:
+            ar_col = [f"ar_{x}_{i}m" for x in arma_col]
+            sample_df[ar_col] = sample_df.groupby(level='group')[arma_col].shift(i)
+        return sample_df
+
+    def _x_convert_ma(self, sample_df, arma_col: list, ma_avg_period: int):
+        """
+        (Obsolete) Calculate the moving average for predicted Y
+        """
+        ma_q_col = [f"ma{ma_avg_period}_{x}_q" for x in arma_col]
+        sample_df[ma_q_col] = sample_df.groupby(level='group')[arma_col].rolling(ma_avg_period, min_periods=1).mean()
+
+        for i in self.convert_x_ma_period[ma_avg_period]:
+            ma_col = [f'{x}{i}' for x in ma_q_col]
+            sample_df[ma_col] = sample_df.groupby(level='group')[ma_q_col].shift(i)
+
+        return sample_df
+
+    def __x_standardize_pca(self, train, test, pca_cols: List[str], n_components: float = None, prefix: str = None):
+        """ standardize x + PCA applied to x with train_x fit """
+
+        if type(n_components) == type(None):
+            scaler = StandardScaler()
+        elif math.isnan(n_components):
+            scaler = StandardScaler()
+        else:
+            assert 0 < n_components < 1         # always use explanation ratios
+            scaler = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=n_components))])
+
+        scaler.fit(train[pca_cols].values)
+        x_train = scaler.transform(train[pca_cols].values)
+        x_test = scaler.transform(test[pca_cols].values)
+
+        pca_train = self.__x_after_pca_rename(train[pca_cols], x_train, prefix=prefix)
+        pca_test = self.__x_after_pca_rename(test[pca_cols], x_test, prefix=prefix)
+
+        return pca_train, pca_test
+
+    def __x_after_pca_rename(self, df_org, arr_pca, prefix: str = None):
+        if df_org.shape[1] == arr_pca.shape[1]:
+            new_columns = df_org.columns.to_list()
+        else:
+            new_columns = [f"{prefix}_{i}" for i in range(arr_pca.shape[1])]
+
+        df_pca = pd.DataFrame(arr_pca, index=df_org.index, columns=new_columns)
+        return df_pca
+
+    def _split_valid(self, train_x):
+        """
+        split for training and validation set indices
+        """
+
+        assert self.valid_pct < 1
+
+        if self.valid_method == "cv":
+            gkf = self.__split_valid_cv(train_x)
+        elif self.valid_method == "chron":
+            gkf = self.__split_valid_chron(train_x)
+        elif isinstance(self.valid_method, int):
+            gkf = self.__split_valid_from_year(train_x)
+        else:
+            raise ValueError(f"Invalid 'valid_method'. "
+                             f"Expecting 'cv' or 'chron' or integer of year (e.g. 2010) got {self.valid_method}")
+
+        return gkf
+    
+    def __split_valid_cv(self, train_x) -> list:
+        """ 
+        (obsolete) split validation set by cross-validation 5 split (if.valid_pct = .2)
+        """
+        n_splits = int(round(1 / self.valid_pct))
+        gkf = GroupShuffleSplit(n_splits=n_splits).split(train_x, groups=train_x.index.get_level_values("group"))
+        return gkf
+    
+    def __split_valid_chron(self, train_x) -> list:
+        """ 
+        (obsolete) split validation set by chronological order
+        """
+        gkf = []
+        train = train_x.reset_index().copy()
+        valid_len = (train['trading_day'].max() - train['trading_day'].min()) * self.valid_pct
+        valid_period = train['trading_day'].max() - valid_len
+        valid_index = train.loc[train['trading_day'] >= valid_period].index.to_list()
+        train_index = train.loc[train['trading_day'] < valid_period].index.to_list()
+        gkf.append((train_index, valid_index))
+        
+        return gkf
+    
+    def __split_valid_from_year(self, train_x) -> list:
+        """       
+         valid_method can be year name (e.g. 2010) -> use valid_pct% amount of data since 2010-01-01 as valid sets
+        """
+
+        valid_len = (train_x.index.get_level_values('testing_period').max() -
+                     train_x.index.get_level_values('testing_period').min()) * self.valid_pct
+        valid_start = dt.datetime(self.valid_method, 1, 1, 0, 0, 0)
+        valid_end = valid_start + valid_len
+
+        valid_index = train_x.loc[(train_x.index.get_level_values('testing_period') >= valid_start) &
+                                  (train_x.index.get_level_values('testing_period') < valid_end)].index.to_list()
+
+        # half of valid sample have data leak from training sets
+        train_index = train_x.loc[(train_x.index.get_level_values('testing_period') < (valid_start - valid_len / 2)) |
+                                  (train_x.index.get_level_values('testing_period') >= valid_end)].index.to_list()
+        gkf = [(train_index, valid_index)]
+        return gkf
+        
+    # def split_all(self, testing_period, **kwargs):
+    #     """ work through cleansing process """
+    #
+    #     self.split_train_test(testing_period, **kwargs)  # split x, y for tests / train samples
+    #     gkf = self.split_valid(**kwargs)  # split for cross validation in groups
+    #     return self.sample_set, gkf
 

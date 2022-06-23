@@ -1,9 +1,6 @@
 import datetime as dt
 import pandas as pd
-import numpy as np
-import argparse
-import time
-from dateutil.relativedelta import relativedelta
+from typing import List
 from itertools import product
 from sqlalchemy import select, and_, func, text
 
@@ -81,7 +78,7 @@ class loadTrainConfig:
         all_configs_df = pd.DataFrame([tuple(e)[0] for e in all_configs])
         return all_configs_df
 
-    def get_all_groups(self):
+    def get_all_groups(self) -> List[tuple]:
         all_configs_df = self.merge_groups_df()
         all_configs_df = self._replace_pillar_name_with_factor_list(all_configs_df)
 
@@ -93,7 +90,8 @@ class loadTrainConfig:
 
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
 
-        return all_configs_df.to_dict("records")
+        all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
+        return all_groups
 
     def _replace_pillar_name_with_factor_list(self, configs_df):
         """ Map pillar name to factor list by merging pillar tables & configs """

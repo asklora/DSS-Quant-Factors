@@ -97,12 +97,12 @@ class rf_HPOT:
         params = space.copy()
         params = self._clean_rf_params(params)
 
-        if 'extra' in self.sql_result['_tree_type']:
+        if 'extra' in self.sql_result['tree_type']:
             regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
-        elif 'rf' in self.sql_result['_tree_type']:
+        elif 'rf' in self.sql_result['tree_type']:
             regr = RandomForestRegressor(criterion=self.sql_result['objective'], **params)
         else:
-            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['_tree_type']}]")
+            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['tree_type']}]")
 
         regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'],
                  sample_weight=self.sample_set['train_yy_weight'])
