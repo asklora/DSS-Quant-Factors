@@ -98,11 +98,11 @@ class calcPillarCluster:
         """ period_list Timestamp match premium table i.e. testing_period = (last_data_date - weeks_to_expire) """
 
         if type(end_date) == type(None):
-            end_date = str_to_date(dateNow())
+            end_date = pd.to_datetime(dateNow())
         if type(start_date) == type(None):
-            start_date = str_to_date(backdate_by_month(3))
+            start_date = pd.to_datetime(backdate_by_month(3))
 
-        periods = (end_date - start_date).days // (7**sample_interval) + 1
+        periods = (end_date - start_date).days // (7*sample_interval) + 1
         date_list = pd.date_range(end=end_date, freq=f"{sample_interval}W-SUN", periods=periods)
         period_list = list([x - relativedelta(weeks=weeks_to_expire) for x in date_list])
 

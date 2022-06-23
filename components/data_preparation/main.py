@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     if args.recalc_subpillar:
         # default = update ratios for past 3 months
-        logger.info("=== Calculate cluster premium ===")
+        logger.info("=== Calculate cluster pillar ===")
         calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,

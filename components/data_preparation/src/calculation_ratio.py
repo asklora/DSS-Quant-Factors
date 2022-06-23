@@ -55,6 +55,8 @@ def fill_all_day(df, id_col: str = "ticker", date_col: str = "trading_day",
     Fill all the weekends between first / last day and fill NaN
     """
 
+    assert len(df) > 0
+
     daily = pd.date_range(df[date_col].min() - relativedelta(days=int(before_buffer_day)),
                           df[date_col].max() + relativedelta(days=int(after_buffer_day)), freq='D')
     indexes = pd.MultiIndex.from_product([df[id_col].unique(), daily], names=[id_col, date_col])
@@ -143,9 +145,9 @@ def get_tri(ticker=None, start_date=None):
     query = text(
         f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume, M.value as market_cap "
         f"FROM {stock_data_table_tri} T "
-        f"INNER JOIN {stock_data_table_ohlcv} C ON (T.ticker = C.ticker) AND (T.trading_day = C.trading_day) "
-        f"INNER JOIN {universe_table} U ON T.ticker = U.ticker "
-        f"INNER JOIN {latest_mktcap_data_table} M ON T.ticker = M.ticker "
+        f"LEFT JOIN {stock_data_table_ohlcv} C ON (T.ticker = C.ticker) AND (T.trading_day = C.trading_day) "
+        f"LEFT JOIN {universe_table} U ON T.ticker = U.ticker "
+        f"LEFT JOIN {latest_mktcap_data_table} M ON T.ticker = M.ticker "
         f"WHERE T.ticker in {tuple(ticker)} AND T.trading_day>='{tri_start_date}' "
         f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
     tri = read_query(query)
@@ -279,7 +281,10 @@ class cleanStockReturn:
         tri = get_tri(ticker, self.start_date)
         tri = tri.replace(0, np.nan)  # Remove all 0 since total_return_index not supposed to be 0
         # after_buffer_day = np.max([abs(e) for x in self.stock_return_map.values() for e in x])
-        tri = fill_all_day(tri, after_buffer_day=2)  # Add NaN record of tri for weekends
+        try:
+            tri = fill_all_day(tri, after_buffer_day=2)  # Add NaN record of tri for weekends
+        except Exception as e:
+            print(e)
         tri = tri.sort_values(['ticker', 'trading_day'])
         return tri
 
