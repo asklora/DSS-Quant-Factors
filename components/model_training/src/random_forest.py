@@ -2,7 +2,6 @@ import datetime as dt
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import numpy as np
 import pandas as pd
-import gc
 from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from utils import (
@@ -14,6 +13,8 @@ from utils import (
 )
 from functools import partial
 from typing import Dict
+import random
+import string
 
 logger = sys_logger(__name__, "DEBUG")
 
@@ -22,9 +23,12 @@ result_score_table = models.FactorResultScore.__tablename__
 feature_importance_table = models.FactorResultImportance.__tablename__
 
 
-def get_timestamp_now_str():
-    """ return timestamp in form of string of numbers """
-    return str(dt.datetime.now()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '')
+def get_timestamp_now_str(n_suffix: int = 4):
+    """
+    return timestamp in form of string of numbers
+    """
+    suffix = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(n_suffix))
+    return str(dt.datetime.now()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '') + suffix
 
 
 def adj_mse_score(actual: np.array, pred: np.array, multioutput=False):
@@ -79,7 +83,9 @@ class rf_HPOT:
         self.hpot_eval_metric = hpot_eval_metric
         self.sql_result = sql_result
 
-        self.hpot = {'all_results': [], 'best_score': 10000}
+        self.hpot = {"all_results": [],
+                     "best_score": 10000,
+                     }
         self.hpot_start = get_timestamp_now_str()
 
     def train_and_write(self, sample_set: Dict[str, pd.DataFrame]):
@@ -88,7 +94,6 @@ class rf_HPOT:
         trials = Trials()
         best = fmin(fn=partial(self._eval_reg, sample_set=sample_set),
                     space=self.rf_space, algo=tpe.suggest, max_evals=self.max_evals, trials=trials)
-        print(best)
 
         self.__write_score_db()
         self.__write_prediction_db()
@@ -148,14 +153,17 @@ class rf_HPOT:
         """
 
         for i in ["train", "valid", "test"]:
-            sample_set[f"{i}_y_pred"] = pd.DataFrame(
-                regr.predict(sample_set[f"{i}_x"].values),
-                index=sample_set[f"{i}_y"].index,
-                columns=sample_set[f"{i}_y"].columns,
-            )
-            if i == "train":
-                self.sql_result['train_pred_std'] = sample_set[f"{i}_y_pred"].std(axis=0).mean()
-                logger.debug(f'Y_train_pred: \n{sample_set[f"{i}_y_pred"][:5]}')
+            try:
+                sample_set[f"{i}_y_pred"] = pd.DataFrame(
+                    regr.predict(sample_set[f"{i}_x"].values),
+                    index=sample_set[f"{i}_y"].index,
+                    columns=sample_set[f"{i}_y"].columns,
+                )
+                if i == "train":
+                    self.sql_result['train_pred_std'] = sample_set[f"{i}_y_pred"].std(axis=0).mean()
+                    # logger.debug(f'Y_train_pred: \n{sample_set[f"{i}_y_pred"][:5]}')
+            except Exception as e:
+                print(e)
 
         return sample_set
 
@@ -181,13 +189,13 @@ class rf_HPOT:
         result = {}
         for set_name in ["train", "valid", "test"]:
             for score_name, func in self.score_map.items():
-                if sample_set[f"{set_name}_y"].notnull().sum().sum() == 0:
-                    logger.warning(f"[warning] can't calculate eval ({score_name}, {set_name}) because no actual Y.")
-                else:
+                if sample_set[f"{set_name}_y"].isnull().sum().sum() == 0:
                     result[f"{score_name}_{set_name}"] = func(sample_set[f"{set_name}_y"].values,
                                                               sample_set[f"{set_name}_y_pred"].values,
                                                               multioutput='uniform_average')
-
+                else:
+                    logger.info(f"[warning] can't calculate eval ({score_name}, {set_name}) because no actual Y.")
+                    to_slack("clair").message_to_slack(f"{score_name}_{set_name}: {sample_set[f'{set_name}_y']}")
         return result
 
     def __get_eval_metric(self, test_y: pd.DataFrame, default_metric: str = 'mse_valid'):

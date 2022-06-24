@@ -4,7 +4,7 @@ import argparse
 from functools import partial
 import multiprocessing as mp
 import pandas as pd
-
+from contextlib import closing
 import sys
 import os
 from pathlib import Path
@@ -22,6 +22,7 @@ from utils import (
     read_table,
     upsert_data_to_database,
     models,
+    recreate_engine,
     sys_logger,
     err2slack,
     dateNow,
@@ -81,7 +82,7 @@ if __name__ == "__main__":
 
     # --------------------------------- Model Training ------------------------------------------
 
-    with mp.Pool(processes=args.processes) as pool:
+    with closing(mp.Pool(processes=args.processes, initializer=recreate_engine)) as pool:
 
         all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
                                      sample_interval=args.sample_interval,

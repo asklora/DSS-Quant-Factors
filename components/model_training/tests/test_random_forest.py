@@ -83,6 +83,21 @@ def test_rf_HPOT__to_sql_prediction():
     assert len(sql_pred) == len(drop_dup_sql_pred)
 
 
+def test_get_timestamp_now_str():
+    from components.model_training.src.random_forest import get_timestamp_now_str
+    x = get_timestamp_now_str(n_suffix=4)
+
+    assert len(x) == 24
+
+    import multiprocessing as mp
+
+    all_groups = [4 for _ in range(50)]
+    with mp.Pool(processes=50) as pool:
+        results = pool.map(get_timestamp_now_str, all_groups)           # training will write to DB right after training
+
+    assert len(set(results)) == 50
+
+
 def test_adj_mse_score():
     from components.model_training.src.random_forest import adj_mse_score
 

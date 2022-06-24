@@ -315,7 +315,6 @@ class loadData:
         train_df = df.loc[(start_date <= df.index.get_level_values("testing_period")) &
                           (df.index.get_level_values("testing_period") <= end_date) &
                           (df.index.get_level_values("group").isin(self.train_currency))]
-
         assert len(train_df) > 0
         return train_df
 
@@ -404,8 +403,8 @@ class loadData:
 
     def _get_y(self, sample_df) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, list):
         df_y = self.__y_convert_testing_period(sample_df=sample_df)
-        df_train = self.__train_sample(df_y).copy()
-        df_test = self.__test_sample(df_y).copy()
+        df_train = self.__train_sample(df_y).copy().dropna(how='all').fillna(0)
+        df_test = self.__test_sample(df_y).copy().dropna(how='all').fillna(0)
 
         if type(self.convert_y_cut_bins) != type(None):
             df_train_cut, df_test_cut, cut_bins = self.__y_cut_with_defined_cut_bins(df_train, df_test)
@@ -650,7 +649,7 @@ class loadData:
         remove non-complete y sample for train_index / valid_index -> remove nan Y
         """
 
-        new_index = pd.MultiIndex.from_tuples(set(index) & set(train_y.dropna(how='any').index))
+        new_index = pd.MultiIndex.from_tuples(set(index) & set(train_y.index))
         return new_index
 
 

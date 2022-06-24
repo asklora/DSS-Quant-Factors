@@ -13,6 +13,7 @@ from utils import (
     models,
     sys_logger,
     err2slack,
+    backdate_by_week,
     dateNow
 )
 
@@ -63,7 +64,8 @@ class loadTrainConfig:
 
     @property
     def _period_list(self):
-        period_list = pd.date_range(end=dateNow(), freq=f"{self.sample_interval}W-SUN", periods=self.backtest_period)
+        end_date = backdate_by_week(self.weeks_to_expire)
+        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=self.backtest_period)
         return period_list
 
     def merge_groups_df(self):
