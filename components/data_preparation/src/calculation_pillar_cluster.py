@@ -18,6 +18,7 @@ from utils import (
     timestampNow,
     dateNow,
     str_to_date,
+    recreate_engine,
     backdate_by_month,
 )
 from sklearn.preprocessing import scale
@@ -110,7 +111,7 @@ class calcPillarCluster:
 
     def write_all(self):
         """ write all cluster results to table  """
-        with mp.Pool(processes=self.processes) as pool:
+        with mp.Pool(processes=self.processes, initializer=recreate_engine) as pool:
             df = self._download_pivot_ratio()
             all_groups = product(self.currency_code_list, self.period_list)
             all_groups = [tuple(e) for e in all_groups]

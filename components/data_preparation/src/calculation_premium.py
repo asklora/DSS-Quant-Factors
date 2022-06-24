@@ -16,6 +16,7 @@ from utils import (
     upsert_data_to_database,
     models,
     sys_logger,
+    recreate_engine,
     timestampNow
 )
 from contextlib import closing
@@ -67,7 +68,7 @@ class calcPremium:
 
     def write_all(self):
 
-        with closing(mp.Pool(processes=self.processes)) as pool:
+        with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
             ratio_df = self._download_pivot_ratios()
             all_groups = itertools.product(self.currency_code_list, self.factor_list, self.y_col_list)
             all_groups = [tuple(e) for e in all_groups]
