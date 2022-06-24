@@ -195,7 +195,7 @@ class rf_HPOT:
                                                               multioutput='uniform_average')
                 else:
                     logger.info(f"[warning] can't calculate eval ({score_name}, {set_name}) because no actual Y.")
-                    to_slack("clair").message_to_slack(f"{score_name}_{set_name}: {sample_set[f'{set_name}_y']}")
+                    # to_slack("clair").message_to_slack(f"{score_name}_{set_name}: {sample_set[f'{set_name}_y']}")
         return result
 
     def __get_eval_metric(self, test_y: pd.DataFrame, default_metric: str = 'mse_valid'):
