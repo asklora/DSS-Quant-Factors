@@ -4,15 +4,24 @@ import datetime as dt
 from joblib import Parallel, delayed
 import multiprocessing as mp
 from functools import partial
-from global_vars import *
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from general.sql.sql_process import (
-    read_query,
-)
-from results_analysis.calculation_backtest_score import get_fundamental_scores, scale_fundamental_scores
 from collections import Counter
+from sqlalchemy import select, and_, Integer
 
-logger = logger(__name__, LOGGER_LEVEL)
+from utils import (
+    read_query,
+    models,
+    sys_logger,
+    err2slack
+)
+
+# from calculation_backtest_score import get_fundamental_scores, scale_fundamental_scores
+
+
+logger = sys_logger(__name__, "DEBUG")
+
+pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' + models.FactorFormulaPillarCluster.__table__.name
+
 
 def apply_parallel(grouped, func):
     """ (obsolete) parallel run groupby """
@@ -25,46 +34,32 @@ def weight_qcut(x, q_):
     return pd.qcut(x, q=q_, labels=False, duplicates='drop')
 
 
-class calculate_rank_pred:
+class calcRank:
     """ process raw prediction in result_pred_table -> production_rank_table for AI Score calculation """
 
     eval_col = ['max_ret', 'r2', 'mae', 'mse']
-    if_combine_pillar = False       # combine cluster pillars
+    if_combine_pillar = False                       # combine cluster pillars
+    pred_pillar_list = None                         # evaluate all pillars
+
+    pred_start_testing_period = '2015-09-01'
+    pred_start_uid = 2e13                           # first training datetime
+
     base_score = 5
+    use_cache = True
 
-    def __init__(self, name_sql, pred_pillar=None, pred_start_testing_period='2000-01-01',
-                 pred_start_uid='200000000000000000', pass_eval=False, pass_eval_top=False, fix_config_col=None):
-        """
-        Parameters
-        ----------
-        q (Float):
-            If q > 1 (e.g. 5), top q factors used as best factors;
-            If q < 1 (e.g. 1/3), top (q * total No. factors predicted) factors am used as best factors;
-        name_sql (Str):
-            name_sql to evaluate
-        pillar (List[Str], Optional):
-            pillar to evaluate;
-        pred_start_testing_period (Str, Optional):
-            String in "%Y-%m-%d" format for the start date to download prediction;
-        pred_start_uid (Str, Optional):
-            String in "%Y%m%d%H%M%S%f" format to filter factor_model records based on training start time
-        eval_current (Boolean, Optional):
-            if True, use only current name_sql
-        # TODO: complete docstring
-        """
-
+    def __init__(self, name_sql: str, eval_factor: bool = False, eval_top: bool = False):
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
-        self.pass_eval = pass_eval
-        self.pass_eval_top = pass_eval_top
-        self.fix_config_col = fix_config_col + ["testing_period"]
+        self.eval_factor = eval_factor
+        self.eval_top = eval_top
 
-        if not self.pass_eval:
-            # 1. Download subpillar table (if removed)
-            self.subpillar_df = self._download_pillar_cluster_subpillar(pred_start_testing_period, self.weeks_to_expire)
+    def main(self):
 
-            # 2. Download & merge all prediction from iteration
-            self.pred = self._download_prediction(name_sql, pred_pillar, pred_start_testing_period, pred_start_uid)
+        # TODO: change rank
+        if self.eval_factor:
+            self.subpillar_df = self._download_pillar_cluster_subpillar()
+            self.pred = self._download_prediction()
+
             self.pred['uid_hpot'] = self.pred['uid'].str[:20]
             self.pred = self.__get_neg_factor_all(self.pred)
 
@@ -74,7 +69,7 @@ class calculate_rank_pred:
         self.eval_df_history = self._download_eval(name_sql, self.weeks_to_expire)
 
         # if calculate backtest score & eval top selections
-        if not self.pass_eval_top:
+        if self.eval_top:
             try:
                 adj_fundamentals = pd.read_pickle("adj_fundamentals.pkl")       # TODO: remove in production
             except Exception as e:
@@ -95,7 +90,7 @@ class calculate_rank_pred:
         logger.debug(f"=== Evaluation for [{kwargs}]===")
 
         # if not pass_eval = read eval table from DB and calculate top ticker table directly
-        if not self.pass_eval:
+        if self.eval_factor:
 
             # filter pred table
             df = self.pred.copy(1)
@@ -136,7 +131,7 @@ class calculate_rank_pred:
         select_history_df, select_df = self.__get_minmax_factors(eval_df, **kwargs)
         breakpoint()
 
-        if not self.pass_eval_top:
+        if self.eval_top:
             score_df = self.score_(df=select_history_df, **kwargs)
         else:
             score_df = pd.DataFrame()
@@ -165,11 +160,11 @@ class calculate_rank_pred:
 
     # -------------------------------- Download tables for ranking (if restart) ------------------------------------
 
-    def _download_pillar_cluster_subpillar(self, pred_start_testing_period, weeks_to_expire):
+    def _download_pillar_cluster_subpillar(self):
         """ download pillar cluster table """
 
         query = f"SELECT * FROM {pillar_cluster_table} WHERE pillar like 'subpillar_%%' " \
-                f"AND testing_period>='{pred_start_testing_period}' AND weeks_to_expire={weeks_to_expire}"
+                f"AND testing_period>='{self.pred_start_testing_period}' AND weeks_to_expire={self.weeks_to_expire}"
         subpillar = read_query(query)
         subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
 
@@ -181,39 +176,49 @@ class calculate_rank_pred:
         df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
         return df_new
 
-    def _download_prediction(self, name_sql, pred_pillar, pred_start_testing_period, pred_start_uid):
+    def _load_cache_prediction(self):
+        pred = pd.read_pickle(f"pred_{self.name_sql}.pkl")
+        logger.info(f'=== Load local prediction history on name_sql=[{self.name_sql}] ===')
+        # pred = pred.rename(columns={"trading_day": "testing_period"})
+        return pred
+
+    # @err2slack("clair")
+    def _download_prediction_from_db(self):
+        logger.info(f'=== Download prediction history on name_sql=[{self.name_sql}] ===')
+
+        conditions = [
+            models.FactorResultScore.name_sql == self.name_sql,
+            models.FactorResultScore.testing_period >= self.pred_start_testing_period,
+            models.FactorResultScore.uid.cast(Integer) >= self.pred_start_uid,
+        ]
+        if self.pred_pillar_list:
+            conditions.append(models.FactorResultScore.name_sql.in_(tuple(self.pred_pillar_list)))
+
+        query = select(*models.FactorResultPrediction.__table__.columns,
+                       *models.FactorResultScore.base_columns,
+                       *models.FactorResultScore.config_define_columns,
+                       *models.FactorResultScore.config_opt_columns) \
+            .join_from(models.FactorResultPrediction, models.FactorResultScore) \
+            .where(and_(*conditions)).limit(10)
+        pred = read_query(query).fillna(0)
+
+        if self.use_cache:
+            pred.to_pickle(f'pred_{self.name_sql}.pkl')
+
+        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
+
+        return pred
+
+    def _download_prediction(self):
         """ merge factor_stock & factor_model_stock """
 
-        try:
-            pred = pd.read_pickle(f"pred_{name_sql}.pkl")       # TODO: remove
-            logger.info(f'=== Load local prediction history on name_sql=[{name_sql}] ===')
-            # pred = pred.rename(columns={"trading_day": "testing_period"})
-        except Exception as e:
-            logger.info(e)
-            logger.info(f'=== Download prediction history on name_sql=[{name_sql}] ===')
-            conditions = [f"name_sql='{name_sql}'",
-                          f"testing_period>='{pred_start_testing_period}'",
-                          f"to_timestamp(left(uid, 20), 'YYYYMMDDHH24MISSUS') > "
-                          f"to_timestamp('{pred_start_uid}', 'YYYYMMDDHH24MISSUS')",
-                          ]
-            if pred_pillar:
-                conditions.append(f"pillar in {tuple(pred_pillar)}")
-
-            query = f'''SELECT P.currency_code, P.factor_name, P.actual, P.pred, S.* 
-                        FROM (SELECT * FROM {result_score_table} WHERE {' AND '.join(conditions)}) S  
-                        INNER JOIN (SELECT * FROM {result_pred_table}) P ON S.uid=P.uid
-                        ORDER BY S.uid
-                        '''
-            pred = read_query(query.replace(",)", ")")).fillna(0)
-
-            if len(pred) > 0:
-                pred.to_pickle(f'pred_{name_sql}.pkl')
-            else:
-                raise Exception(f"ERROR: No prediction download from DB with name_sql: [{name_sql}]")
-
-        self.select_config_col = pred.filter(regex='^_[a-z]').columns.to_list()
-        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
-        pred = pred.loc[pred['testing_period'] >= dt.datetime.strptime(pred_start_testing_period, "%Y-%m-%d")]
+        if self.use_cache:
+            try:
+                pred = self._load_cache_prediction()
+            except Exception as e:
+                pred = self._download_prediction_from_db()
+        else:
+            pred = self._download_prediction_from_db()
         return pred
 
     def _download_eval(self, name_sql, weeks_to_expire):
@@ -364,7 +369,7 @@ class calculate_rank_pred:
         period_agg = factor_eval_agg_select.groupby(group_config_col + ["trading_day"])[select_col].sum()
         logger.debug(period_agg.columns.to_list())
         period_agg_filter_counter = period_agg[select_col].applymap(lambda x: dict(Counter(x)))
-        logging.debug(period_agg_filter_counter)
+        logger.debug(period_agg_filter_counter)
 
         # create final filter factor list table
         period_agg_filter = pd.DataFrame(index=period_agg.index,
@@ -391,7 +396,7 @@ class calculate_rank_pred:
 
         period_agg_filter[select_col] = period_agg_filter[select_col].applymap(lambda x: [] if type(x)!=type([]) else x)
         period_agg_count = period_agg_filter[select_col].applymap(lambda x: len(x))
-        logging.debug(period_agg_count)
+        logger.debug(period_agg_count)
 
         period_agg_filter = period_agg_filter.reset_index()
         logger.debug(f"period_agg_filter columns: {period_agg_filter.columns.to_list()}")
@@ -520,7 +525,7 @@ class calculate_rank_pred:
 
 if __name__ == "__main__":
     # download_prediction('w4_d-7_20220310130330_debug')
-    download_prediction('w4_d-7_20220312222718_debug')
+    # download_prediction('w4_d-7_20220312222718_debug')
     # download_prediction('w4_d-7_20220317005620_debug')    # adj_mse (1)
     # download_prediction('w4_d-7_20220317125729_debug')    # adj_mse (2)
     # download_prediction('w4_d-7_20220321173435_debug')      # adj_mse (3) long history
