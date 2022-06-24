@@ -269,7 +269,7 @@ class loadData:
 
         self.pred_currency = pred_currency.split(',')
 
-    def split_all(self, main_df):
+    def split_all(self, main_df) -> (List[Dict[str, pd.DataFrame]], list, list):
         """ work through cleansing process """
 
         sample_df = self._filter_sample(main_df=main_df)
@@ -320,10 +320,18 @@ class loadData:
         return train_df
 
     def __test_sample(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        testing sample is all testing as at testing period
+        """
         test_df = df.loc[(df.index.get_level_values("testing_period") == self.testing_period) &
                          (df.index.get_level_values("group").isin(self.pred_currency))]
-        assert len(test_df) > 0
-        return test_df
+        if len(test_df) > 0:
+            return test_df
+        else:
+            return pd.DataFrame(
+                index=pd.MultiIndex.from_product([[self.testing_period], self.pred_currency],
+                                                 names=["testing_period", "group"]),
+                columns=df.columns.to_list())
 
     def _convert_sample_neg_factor(self, sample_df) -> (pd.DataFrame, list):
         """
@@ -408,11 +416,7 @@ class loadData:
         else:
             raise Exception("Wrong [y_qcut] config!")
 
-        return df_train_cut.dropna(how='any'), \
-               df_test_cut.dropna(how='any'), \
-               df_train.dropna(how='any'), \
-               df_test.dropna(how='any'), \
-               cut_bins
+        return df_train_cut, df_test_cut, df_train, df_test, cut_bins
 
     def __y_convert_testing_period(self, sample_df):
         """
@@ -483,6 +487,7 @@ class loadData:
 
         df_train = self.__train_sample(sample_df).copy().fillna(0)
         df_test = self.__test_sample(sample_df).copy().fillna(0)
+        assert len(df_test) > 0
 
         df_train_factor, df_test_factor = self.__x_standardize_pca(df_train, df_test,
                                                                    pca_cols=input_factor_cols,
@@ -629,8 +634,8 @@ class loadData:
                 "valid_y":       train_y.loc[new_valid_index],
                 "valid_y_final": train_y_cut.loc[new_valid_index],
                 "test_x":        test_x,
-                "test_y":        test_y,              # may have NaN -> production latest prediction
-                "test_y_final":  test_y_cut,          # may have NaN -> production latest prediction
+                "test_y":        test_y.reindex(test_x.index),              # may have NaN -> production latest prediction
+                "test_y_final":  test_y_cut.reindex(test_x.index),          # may have NaN -> production latest prediction
             }
 
             assert all([len(x) > 0 for x in df_dict.values()])

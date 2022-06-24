@@ -1,5 +1,6 @@
 import datetime as dt
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 
 def test_cleanMacros_download_index():
@@ -130,6 +131,40 @@ def test_loadData_factor_reverse_on_lasso():
     assert type(neg_factor) == list
 
 
+def test_loadData__test_sample_all_testing_period():
+    from components.model_training.src.load_data import combineData, loadData
+    from components.model_training.src.load_train_configs import loadTrainConfig
+
+    testing_period_list = loadTrainConfig(weeks_to_expire=8,
+                                          sample_interval=4,
+                                          backtest_period=14)._period_list
+
+    main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
+
+    test_factor_list = ["roic", "book_to_price", "earnings_1yr", "earnings_yield", "ni_to_cfo", "sales_to_price", "roe",
+                        "ebitda_to_ev"]
+    test_y_qcut = 10
+
+    for t in reversed(testing_period_list):
+        cls = loadData(
+            weeks_to_expire=8,
+            train_currency='USD,EUR',
+            pred_currency='USD,EUR',
+            testing_period=t - relativedelta(weeks=8),
+            average_days=-7,
+            factor_list=test_factor_list,
+            y_qcut=test_y_qcut,
+            factor_reverse=True,
+            factor_pca=0.6,
+            valid_pct=0.2,
+            valid_method=2010
+        )
+        sample_df = cls._filter_sample(main_df)
+        df_y = cls._loadData__y_convert_testing_period(sample_df=sample_df)
+        df_test = cls._loadData__test_sample(df_y)
+        assert len(df_test) > 0
+
+
 def test_loadData_get_y():
     from components.model_training.src.load_data import combineData, loadData
     main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
@@ -155,8 +190,6 @@ def test_loadData_get_y():
 
     df_train_cut, df_test_cut, df_train, df_test, cut_bins = cls._get_y(sample_df)
     after_cut_unique_value = set(df_train_cut.stack().dropna(how="any").values)
-
-    print(df_train_cut.to_dict())
 
     assert set(df_train_cut.columns.to_list()) == set(test_factor_list)
     assert len(after_cut_unique_value) == test_y_qcut
@@ -196,7 +229,7 @@ def test_loadData_get_x():
 def test_loadData_split_all():
     from components.model_training.src.load_data import combineData, loadData
     main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
-    sample_testing_period = pd.to_datetime(main_df["testing_period"].to_list()[-5])
+    sample_testing_period = pd.to_datetime(main_df["testing_period"].to_list()[-1])
 
     test_factor_list = ["roic", "book_to_price", "earnings_1yr", "earnings_yield", "ni_to_cfo",
                         "sales_to_price", "roe", "ebitda_to_ev"]
@@ -214,19 +247,8 @@ def test_loadData_split_all():
         valid_pct=0.2,
         valid_method=2010
     )
-    sample_set, gkf, neg_factor, cut_bins = cls.split_all(main_df)
+    sample_set, neg_factor, cut_bins = cls.split_all(main_df)
 
-    train_index, valid_index = gkf[0]
-    train_index = set(train_index) & set(sample_set["train_y"].dropna(how='any').index)  # remove nan Y
-    valid_index = set(valid_index) & set(sample_set["train_y"].dropna(how='any').index)
-
-    sample_set['valid_x'] = sample_set['train_x'].loc[valid_index]
-    sample_set['train_xx'] = sample_set['train_x'].loc[train_index]
-    sample_set['valid_y'] = sample_set['train_y'].loc[valid_index]
-    sample_set['train_yy'] = sample_set['train_y'].loc[train_index]
-    sample_set['valid_y_final'] = sample_set['train_y_final'].loc[valid_index]
-    sample_set['train_yy_final'] = sample_set['train_y_final'].loc[train_index]
-
-    assert len(sample_set['train_x']) == len(sample_set['train_y'])
-    assert len(sample_set['valid_x']) == len(sample_set['valid_y'])
-    assert len(sample_set['test_x']) == len(sample_set['test_y'])
+    assert all(sample_set[0]['train_x'].index == sample_set[0]['train_y'].index)
+    assert all(sample_set[0]['valid_x'].index == sample_set[0]['valid_y'].index)
+    assert all(sample_set[0]['test_x'].index == sample_set[0]['test_y'].index)
