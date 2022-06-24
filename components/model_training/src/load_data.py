@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, and_, not_, func
-from typing import List, Union
+from typing import List, Union, Dict
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -275,20 +275,21 @@ class loadData:
         sample_df = self._filter_sample(main_df=main_df)
         sample_df, neg_factor = self._convert_sample_neg_factor(sample_df=sample_df)
 
-        df_train_cut, df_test_cut, df_train, df_test, cut_bins = self._get_y(sample_df=sample_df)
+        df_train_cut, df_test_cut, df_train_org, df_test_org, cut_bins = self._get_y(sample_df=sample_df)
         df_train_pca, df_test_pca = self._get_x(sample_df=sample_df)
+
         gkf = self._split_valid(df_train_pca)
+        sample_sets = self._get_sample_sets(
+            train_x=df_train_pca,
+            train_y=df_train_org,
+            train_y_cut=df_train_cut,
+            test_x=df_test_pca,
+            test_y=df_test_org,
+            test_y_cut=df_test_cut,
+            gkf=gkf
+        )
 
-        sample_set = {
-            "train_x":       df_train_pca,
-            "train_y":       df_train,
-            "train_y_final": df_train_cut,
-            "test_x":        df_test_pca,
-            "test_y":        df_test,
-            "test_y_final":  df_test_cut,
-        }                                                  
-
-        return sample_set, gkf, neg_factor, cut_bins
+        return sample_sets, neg_factor, cut_bins
 
     def _filter_sample(self, main_df) -> pd.DataFrame:
         """
@@ -549,7 +550,7 @@ class loadData:
         df_pca = pd.DataFrame(arr_pca, index=df_org.index, columns=new_columns)
         return df_pca
 
-    def _split_valid(self, train_x):
+    def _split_valid(self, train_x) -> List[tuple]:
         """
         split for training and validation set indices
         """
@@ -567,7 +568,7 @@ class loadData:
                              f"Expecting 'cv' or 'chron' or integer of year (e.g. 2010) got {self.valid_method}")
 
         return gkf
-    
+
     def __split_valid_cv(self, train_x) -> list:
         """ 
         (obsolete) split validation set by cross-validation 5 split (if.valid_pct = .2)
@@ -608,11 +609,43 @@ class loadData:
                                   (train_x.index.get_level_values('testing_period') >= valid_end)].index.to_list()
         gkf = [(train_index, valid_index)]
         return gkf
-        
-    # def split_all(self, testing_period, **kwargs):
-    #     """ work through cleansing process """
-    #
-    #     self.split_train_test(testing_period, **kwargs)  # split x, y for tests / train samples
-    #     gkf = self.split_valid(**kwargs)  # split for cross validation in groups
-    #     return self.sample_set, gkf
+
+    def _get_sample_sets(self, train_x, train_y, train_y_cut, test_x, test_y, test_y_cut, gkf) -> List[Dict[str, pd.DataFrame]]:
+        """
+        cut sample into actual train / valid sets
+        """
+        sample_set = []
+
+        for train_index, valid_index in gkf:
+
+            new_train_index = self.__remove_nan_y_from_train_index(train_index, train_y)
+            new_valid_index = self.__remove_nan_y_from_train_index(valid_index, train_y)
+
+            df_dict = {
+                "train_x":       train_x.loc[new_train_index],
+                "train_y":       train_y.loc[new_train_index],
+                "train_y_final": train_y_cut.loc[new_train_index],
+                "valid_x":       train_x.loc[new_valid_index],
+                "valid_y":       train_y.loc[new_valid_index],
+                "valid_y_final": train_y_cut.loc[new_valid_index],
+                "test_x":        test_x,
+                "test_y":        test_y,              # may have NaN -> production latest prediction
+                "test_y_final":  test_y_cut,          # may have NaN -> production latest prediction
+            }
+
+            assert all([len(x) > 0 for x in df_dict.values()])
+            assert all([v.isnull().sum().sum() == 0 for k, v in df_dict.items() if k not in ["test_y", "test_y_final"]])
+
+            sample_set.append(df_dict)
+
+        return sample_set
+
+    def __remove_nan_y_from_train_index(self, index, train_y: pd.DataFrame) -> pd.MultiIndex:
+        """
+        remove non-complete y sample for train_index / valid_index -> remove nan Y
+        """
+
+        new_index = pd.MultiIndex.from_tuples(set(index) & set(train_y.dropna(how='any').index))
+        return new_index
+
 

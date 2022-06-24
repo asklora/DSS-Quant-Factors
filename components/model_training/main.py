@@ -30,77 +30,23 @@ from utils import (
 logger = sys_logger(__name__, "DEBUG")
 
 
-class modelRun:
+def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """ run random forest on multi-processor """
 
-    def __init__(self, sql_result):
-        self.sql_result = sql_result
+    kwargs, = args
+    sql_result.update(kwargs)
 
-    def start(self, *args, raw_df=None):
+    logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
 
-        kwargs, = args
-        self.sql_result.update(kwargs)
+    data = loadData(**sql_result)
+    sample_sets, neg_factor, cut_bins = data.split_all(raw_df)
+    sql_result['neg_factor'] = neg_factor
 
-        logger.debug(f"===== test on pillar: [{self.sql_result['pillar']}] =====")
+    for sample_set in sample_sets:
+        hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
+        hpot_cls.train_and_write(sample_set=sample_set)
 
-        data = loadData(**self.sql_result)
-        sample_set, cv, neg_factor, cut_bins = data.split_all(raw_df)
-        x_col = sample_set["train_x"].columns.to_list()
-        y_col = sample_set["train_y"].columns.to_list()
-        group_index = sample_set["test_x"].index.get_level_values("group").to_list()
-
-        self.sql_result['neg_factor'] = neg_factor
-
-        for train_index, valid_index in cv:  # roll over different validation set
-            self._sample_set_split_valid(sample_set, train_index, valid_index)
-            self._sql_result_record_len(sample_set)
-            self._sample_set_x_fillna(sample_set)
-            self._calc_neg_sample_weight(sample_set)
-
-            rf_HPOT(max_evals=10,
-                    sql_result=self.sql_result,
-                    sample_set=sample_set,
-                    x_col=x_col,
-                    y_col=y_col,
-                    group_index=group_index).write_db()
-
-    def _sample_set_split_valid(self, sample_set, train_index, valid_index):
-        """
-        split training / validation dataframe;
-        and convert pd.DataFrame to np.array.
-        """
-
-        train_index = pd.MultiIndex.from_tuples(set(train_index) & set(sample_set["train_y"].dropna(how='any').index))     # remove nan Y
-        valid_index = pd.MultiIndex.from_tuples(set(valid_index) & set(sample_set["train_y"].dropna(how='any').index))
-
-        sample_set['train_xx'] = sample_set['train_x'].loc[train_index].values
-        sample_set['train_yy'] = sample_set['train_y'].loc[train_index].values
-        sample_set['train_yy_final'] = sample_set['train_y_final'].loc[train_index].values
-
-        sample_set['valid_x'] = sample_set['train_x'].loc[valid_index].values
-        sample_set['valid_y'] = sample_set['train_y'].loc[valid_index].values
-        sample_set['valid_y_final'] = sample_set['train_y_final'].loc[valid_index].values
-
-        sample_set['test_x'] = sample_set['test_x'].values
-        sample_set['test_y'] = sample_set['test_y'].values
-        sample_set['test_y_final'] = sample_set['test_y_final'].values
-        return True
-
-    def _sql_result_record_len(self, sample_set):
-        sql_result['train_len'] = len(sample_set['train_xx'])  # record length of training/validation sets
-        sql_result['valid_len'] = len(sample_set['valid_x'])
-        return True
-
-    def _sample_set_x_fillna(self, sample_set):
-        for k in ['valid_x', 'train_xx', 'test_x', 'train_x']:
-            sample_set[k] = np.nan_to_num(sample_set[k], nan = 0)
-        return True
-
-    def _calc_neg_sample_weight(self, sample_set):
-        sample_set['train_yy_weight'] = np.where(sample_set['train_yy'][:, 0] < 0,
-                                                 self.sql_result["down_mkt_pct"],
-                                                 1 - self.sql_result["down_mkt_pct"])
-        return True
+    return True
 
 
 if __name__ == "__main__":
@@ -147,7 +93,6 @@ if __name__ == "__main__":
                              backtest_period=args.backtest_period,
                              restart=args.restart).get_raw_data()
 
-        model_run_cls = modelRun(sql_result=sql_result)
-        pool.starmap(partial(model_run_cls.start, raw_df=raw_df), all_groups)           # training will write to DB right after training
+        pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 
 

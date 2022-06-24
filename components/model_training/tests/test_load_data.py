@@ -156,6 +156,8 @@ def test_loadData_get_y():
     df_train_cut, df_test_cut, df_train, df_test, cut_bins = cls._get_y(sample_df)
     after_cut_unique_value = set(df_train_cut.stack().dropna(how="any").values)
 
+    print(df_train_cut.to_dict())
+
     assert set(df_train_cut.columns.to_list()) == set(test_factor_list)
     assert len(after_cut_unique_value) == test_y_qcut
 

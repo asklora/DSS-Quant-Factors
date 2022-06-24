@@ -12,6 +12,8 @@ from utils import (
     sys_logger,
     models
 )
+from functools import partial
+from typing import Dict
 
 logger = sys_logger(__name__, "DEBUG")
 
@@ -25,10 +27,11 @@ def get_timestamp_now_str():
     return str(dt.datetime.now()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '')
 
 
-def adj_mse_score(actual, pred, multioutput=False):
-    """ adjusted metrics:
-        when rank(actual) (ranked by row) < rank(pred) (we overestimate premium) use mse
-        when rank(actual) > rank(pred) (we underestimate premium) use mae
+def adj_mse_score(actual: np.array, pred: np.array, multioutput=False):
+    """
+    adjusted metrics:
+    when rank(actual) (ranked by row) < rank(pred) (we overestimate premium) use mse
+    when rank(actual) > rank(pred) (we underestimate premium) use mae
     """
 
     actual_sort = actual.argsort().argsort()
@@ -37,13 +40,15 @@ def adj_mse_score(actual, pred, multioutput=False):
     # rank_mse = mean_squared_error(actual_sort, pred_sort, multioutput='uniform_average')
     # rank_mae = mean_absolute_error(actual_sort, pred_sort, multioutput='uniform_average')
     diff = actual_sort - pred_sort
-    diff2 = np.where(diff > 0, diff, diff**2)  # if actual > pred
+    diff2 = np.where(diff > 0, abs(diff), diff**2)  # if actual > pred
     adj_mse = np.mean(diff2)
     return adj_mse
 
 
 class rf_HPOT:
-    """ use hyperopt on each set """
+    """
+    use hyperopt on each set
+    """
 
     if_write_feature_imp = True
     rf_space = {
@@ -58,31 +63,73 @@ class rf_HPOT:
         'max_samples'             : hp.choice('max_samples', [0.7, 0.9]),
         'ccp_alpha'               : hp.choice('ccp_alpha', [0]),
     }
+    score_map = {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error, "adj_mse": adj_mse_score}
 
-    def __init__(self, max_evals, sql_result, sample_set, x_col, y_col, group_index):
+    def __init__(self, max_evals: int,
+                 down_mkt_pct: float,
+                 tree_type: str,
+                 objective: str,
+                 sql_result: dict,
+                 hpot_eval_metric: str,
+                 **kwargs):
+        self.max_evals = max_evals
+        self.down_mkt_pct = down_mkt_pct
+        self.tree_type = tree_type
+        self.objective = objective
+        self.hpot_eval_metric = hpot_eval_metric
+        self.sql_result = sql_result
 
         self.hpot = {'all_results': [], 'best_score': 10000}
-        self.sql_result = sql_result
-        self.sample_set = sample_set
-        self.x_col = x_col
-        self.y_col = y_col
-        self.group_index = group_index
         self.hpot_start = get_timestamp_now_str()
 
-        trials = Trials()
-        best = fmin(fn=self.eval_regressor, space=self.rf_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
-        print(best)
-
-    @err2slack("clair")
-    def write_db(self):
+    def train_and_write(self, sample_set: Dict[str, pd.DataFrame]):
         """ write score/prediction/feature to DB """
 
-        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, how="append")
-        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, how="ignore")
-        upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, how="append")
+        trials = Trials()
+        best = fmin(fn=partial(self._eval_reg, sample_set=sample_set),
+                    space=self.rf_space, algo=tpe.suggest, max_evals=self.max_evals, trials=trials)
+        print(best)
+
+        self.__write_score_db()
+        self.__write_prediction_db()
+        self.__write_importance_db()
         return True
 
-    def _clean_rf_params(self, params):
+    @err2slack("clair")
+    def __write_score_db(self):
+        upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, how="append", add_primary_key=True)
+        return True
+
+    @err2slack("clair")
+    def __write_prediction_db(self):
+        upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, how="append", add_primary_key=True)
+        return True
+
+    @err2slack("clair")
+    def __write_importance_db(self):
+        upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, how="append", add_primary_key=True)
+        return True
+
+    def _regr_train(self, space: dict, sample_set: dict) -> object:
+        """ train lightgbm booster based on training / validation set -> give predictions of Y """
+
+        params = space.copy()
+        params = self.__clean_rf_params(params)
+
+        if 'extra' in self.tree_type:
+            regr = ExtraTreesRegressor(criterion=self.objective, **params)
+        elif 'rf' in self.tree_type:
+            regr = RandomForestRegressor(criterion=self.objective, **params)
+        else:
+            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.tree_type}]")
+
+        regr.fit(X=sample_set['train_x'].values,
+                 y=sample_set['train_y_final'].values,
+                 sample_weight=self.__sample_weight(sample_set['train_y']))
+
+        return regr
+
+    def __clean_rf_params(self, params):
         for k in ['max_depth', 'min_samples_split', 'min_samples_leaf', 'n_estimators']:
             params[k] = int(params[k])
         self.sql_result.update({f"{k}": v for k, v in params.items()})
@@ -91,100 +138,104 @@ class rf_HPOT:
         params['n_jobs'] = 1
         return params
 
-    def rf_train(self, space):
-        """ train lightgbm booster based on training / validaton set -> give predictions of Y """
+    def __sample_weight(self, train_y: pd.DataFrame) -> np.array:
+        sample_weight = np.where(train_y.mean(axis=1) < 0, self.down_mkt_pct, 1 - self.down_mkt_pct)
+        return sample_weight
 
-        params = space.copy()
-        params = self._clean_rf_params(params)
+    def _regr_pred(self, regr: object, sample_set: dict):
+        """
+        add [.._y_pred] pd.DataFrame to sample set
+        """
 
-        if 'extra' in self.sql_result['tree_type']:
-            regr = ExtraTreesRegressor(criterion=self.sql_result['objective'], **params)
-        elif 'rf' in self.sql_result['tree_type']:
-            regr = RandomForestRegressor(criterion=self.sql_result['objective'], **params)
+        for i in ["train", "valid", "test"]:
+            sample_set[f"{i}_y_pred"] = pd.DataFrame(
+                regr.predict(sample_set[f"{i}_x"].values),
+                index=sample_set[f"{i}_y"].index,
+                columns=sample_set[f"{i}_y"].columns,
+            )
+            if i == "train":
+                self.sql_result['train_pred_std'] = sample_set[f"{i}_y_pred"].std(axis=0).mean()
+                logger.debug(f'Y_train_pred: \n{sample_set[f"{i}_y_pred"][:5]}')
+
+        return sample_set
+
+    def _regr_importance(self, regr: object, feature_names: list) -> pd.DataFrame:
+        """
+        based on rf model -> records feature importance in DataFrame to be uploaded to DB
+        """
+
+        df = pd.DataFrame(regr.feature_importances_,
+                          index=pd.Index(feature_names, name="name"),
+                          columns=["split"]).reset_index()
+        df['uid'] = str(self.sql_result['uid'])
+        df = df.sort_values('split', ascending=False)
+        self.sql_result['feature_importance'] = df['name'].to_list()
+
+        return df
+
+    def __calc_pred_eval_scores(self, sample_set: dict):
+        """
+        Calculate evaluation scores
+        """
+
+        result = {}
+        for set_name in ["train", "valid", "test"]:
+            for score_name, func in self.score_map.items():
+                if sample_set[f"{set_name}_y"].notnull().sum().sum() == 0:
+                    logger.warning(f"[warning] can't calculate eval ({score_name}, {set_name}) because no actual Y.")
+                else:
+                    result[f"{score_name}_{set_name}"] = func(sample_set[f"{set_name}_y"].values,
+                                                              sample_set[f"{set_name}_y_pred"].values,
+                                                              multioutput='uniform_average')
+
+        return result
+
+    def __get_eval_metric(self, test_y: pd.DataFrame, default_metric: str = 'mse_valid'):
+        """
+        if multi-output (i.e. multi factors) -> [hpot_eval_metric] as defined;
+        if only 1 factor in pillar           -> default = [mse_valid]
+        """
+
+        if test_y.shape[1] > 1:
+            return self.hpot_eval_metric
         else:
-            raise Exception(f"Except tree_type = 'extra' or 'rf', get [{self.sql_result['tree_type']}]")
+            return default_metric
 
-        regr.fit(self.sample_set['train_xx'], self.sample_set['train_yy_final'],
-                 sample_weight=self.sample_set['train_yy_weight'])
-
-        # prediction on all sets
-        Y_train_pred = regr.predict(self.sample_set['train_xx'])
-        self.sql_result['train_pred_std'] = np.std(Y_train_pred, axis=0).mean()
-
-        Y_valid_pred = regr.predict(self.sample_set['valid_x'])
-        Y_test_pred = regr.predict(self.sample_set['test_x'])
-        logger.debug(f'Y_train_pred: \n{Y_train_pred[:5]}')
-
-        self.sql_result['feature_importance'], feature_importance_df = self.to_list_importance(regr)
-
-        return Y_train_pred, Y_valid_pred, Y_test_pred, feature_importance_df
-
-    def _eval_test_return(self, actual, pred):
-        """ tests return based on tests / train set quantile bins """
-
-        q_ = [0., 1 / 3, 2 / 3, 1.]
-        pred_qcut = pd.qcut(pred.flatten(), q=q_, labels=False, duplicates='drop').reshape(pred.shape)
-        ret = actual[pred_qcut == 2].mean()
-        best_factor = np.array([x[2:] for x in self.y_col])[pred_qcut[0, :] == 2]
-        return ret, best_factor
-
-    def eval_regressor(self, rf_space):
-        """ train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model """
+    def _eval_reg(self, rf_space: dict, sample_set: dict):
+        """
+        train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model
+        """
 
         self.sql_result['uid'] = self.hpot_start + get_timestamp_now_str()
 
-        self.sample_set['train_yy_pred'], self.sample_set['valid_y_pred'], self.sample_set['test_y_pred'], \
-            feature_importance_df = self.rf_train(rf_space)
+        regr = self._regr_train(space=rf_space, sample_set=sample_set)
+        sample_set = self._regr_pred(regr=regr, sample_set=sample_set)
+        feature_importance_df = self._regr_importance(regr=regr, feature_names=sample_set["train_x"].columns.to_list())
 
-        # calculate evaluation scores
-        result = {}
-        score_map = {"mae": mean_absolute_error, "r2": r2_score, "mse": mean_squared_error, "adj_mse": adj_mse_score}
-        for i in ['train_yy', 'valid_y', 'test_y']:
-            try:
-                for k, func in score_map.items():
-                    result[f"{k}_{i.split('_')[0]}"] = func(self.sample_set[i],
-                                                            self.sample_set[i + '_pred'],
-                                                            multioutput='uniform_average')
-            except Exception as e:
-                logger.warning(f"[warning] can't calculate eval metrics: {e}")
-
+        result = self.__calc_pred_eval_scores(sample_set=sample_set)
         self.sql_result.update(result)  # update result of model
         self.hpot['all_results'].append(self.sql_result.copy())
 
-        # i.e. if multioutput = multi factors
-        if self.sample_set['test_y'].shape[1] > 1:
-            eval_metric = self.sql_result['hpot_eval_metric']
-        else:
-            eval_metric = 'mse_valid'       # if only 1 factor in pillar
-
-        # try:    # print runtime evaluation
-        #     logger.info(f"HPOT --> {result[eval_metric]}, {str(result['net_ret'])[:6]}, {best_factor}")
-        # except Exception as e:
-        #     logger.warning(e)
-
+        eval_metric = self.__get_eval_metric(sample_set["test_y"])
         if result[eval_metric] < self.hpot['best_score']:  # update best_mae to the lowest value for Hyperopt
             self.hpot['best_score'] = result[eval_metric]
-            self.hpot['best_stock_df'] = self.to_sql_prediction(self.sample_set['test_y_pred'])
-            self.hpot['best_stock_feature'] = feature_importance_df.sort_values('split', ascending=False)
+            self.hpot['best_stock_df'] = self.__to_sql_prediction(sample_set['test_y'], sample_set['test_y_pred'])
+            self.hpot['best_stock_feature'] = feature_importance_df
 
-        gc.collect()
         return result[eval_metric]
 
-    def to_sql_prediction(self, Y_test_pred):
-        """ prepare array Y_test_pred to DataFrame ready to write to SQL """
+    def __to_sql_prediction(self, test_y: pd.DataFrame, test_y_pred: pd.DataFrame) -> pd.DataFrame:
+        """
+        prepare array Y_test_pred to DataFrame ready to write to SQL
+        """
 
-        df = pd.DataFrame(Y_test_pred, index=self.group_index, columns=[x[2:] for x in self.y_col])
-        df = df.unstack().reset_index(drop=False)
-        df.columns = ['factor_name', 'currency_code', 'pred']
-        df['actual'] = self.sample_set['test_y'].flatten(order='F')  # also write actual qcut to BD
-        df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
+        assert len(test_y.index.get_level_values("testing_period").unique()) == 1
+        assert test_y.index.names == ("group", "testing_period")
+
+        df = pd.concat([test_y.stack(), test_y_pred.stack()], axis=1)
+        df.columns = ["actual", "pred"]
+        df.index.names = ("currency_code", "testing_period", "factor_name")
+        df = df.reset_index().drop(columns=["testing_period"])
+        df['uid'] = str(self.sql_result['uid'])
+
         return df
-
-    def to_list_importance(self, rf):
-        """ based on rf model -> records feature importance in DataFrame to be uploaded to DB """
-
-        df = pd.DataFrame()
-        df['name'] = self.x_col  # column names
-        df['split'] = rf.feature_importances_
-        df['uid'] = [self.sql_result['uid']] * len(df)  # use finish time to distinguish dup pred
-        return df.sort_values(by=['split'], ascending=False)['name'].to_list(), df
