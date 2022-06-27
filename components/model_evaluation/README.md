@@ -1,9 +1,13 @@
 # Model Evaluation
 Evaluate model prediction results on re-training.
 
-This component differ from [model_analysis](components/model/model_analysis) based on:
-1. model_evaluation will perform standard results evaluation everytime after training and generate more meaningful result comparison metrics on top of the prediction results.
-
 ## Overview
+Run main.py to perform evaluation of given training iteration label by `name_sql` from Table [factor_model]. 
+
+Evaluation contains 3 main parts:
+- `--eval_factor`: calculate average premium for selected factors
+- `--eval_top`: calculate top selection returns with backtest AI score calculated from selected factors
+- `--eval_select`: rewrite factor selection table with good/bad factor selected by name_sql
+
 
 ## ChangeLog

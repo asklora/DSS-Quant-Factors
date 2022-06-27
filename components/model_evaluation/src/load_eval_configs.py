@@ -25,6 +25,10 @@ config_eval_table = models.FactorFormulaEvalConfig.__table__.schema + '.' + mode
 
 
 def load_eval_config(weeks_to_expire):
+    """
+    load all evaluation configuration for given weeks_to_expire for certain table
+    """
+
     eval_configs = read_query(f"SELECT * FROM {config_eval_table} WHERE is_active AND weeks_to_expire = {weeks_to_expire}")
     eval_configs = eval_configs.drop(columns=["is_active"]).to_dict("records")
     assert len(eval_configs) > 0    # else no training will be done
@@ -34,6 +38,9 @@ def load_eval_config(weeks_to_expire):
 
 
 def load_latest_name_sql(weeks_to_expire):
+    """
+    get last training iteration name_sql for given weeks_to_expire
+    """
 
     query = select(models.FactorResultScore.name_sql).where(
         models.FactorResultScore.name_sql.like(f'w{weeks_to_expire}_%%')

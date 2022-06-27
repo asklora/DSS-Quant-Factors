@@ -23,15 +23,136 @@ logger = sys_logger(__name__, "DEBUG")
 pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' + models.FactorFormulaPillarCluster.__table__.name
 
 
-def apply_parallel(grouped, func):
-    """ (obsolete) parallel run groupby """
-    g_list = Parallel(n_jobs=mp.cpu_count())(delayed(func)(group) for name, group in grouped)
-    return pd.concat(g_list)
+class cleanSubpillar:
+
+    def __init__(self, start_date: dt.datetime, weeks_to_expire: int):
+        self.start_date = start_date
+        self.weeks_to_expire = weeks_to_expire
+
+    def download_subpillars(self):
+        """
+        download subpillar from pillar cluster table """
+
+        conditions = [
+            models.FactorFormulaPillarCluster.pillar.like("subpillar_%%"),
+            models.FactorFormulaPillarCluster.testing_period >= self.start_date,
+            models.FactorFormulaPillarCluster.weeks_to_expire == self.weeks_to_expire,
+        ]
+        query = select(models.FactorFormulaPillarCluster).where(and_(*conditions))
+        subpillar = read_query(query)
+
+        subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
+
+        return self._reformat(subpillar)
+
+    def _reformat(self, df=pd.DataFrame) -> pd.DataFrame:
+        arr_len = df['factor_list'].str.len().values
+        arr_info = np.repeat(df[["testing_period", "currency_code", "pillar"]].values, arr_len, axis=0)
+        arr_factor = np.array([e for x in df["factor_list"].to_list() for e in x])[:, np.newaxis]
+
+        idx = pd.MultiIndex.from_arrays(arr_info.T, names=["testing_period", "currency_code", "subpillar"])
+        df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
+
+        return df_new
 
 
-def weight_qcut(x, q_):
-    """ qcut within groups """
-    return pd.qcut(x, q=q_, labels=False, duplicates='drop')
+
+class combineResults:
+
+    def __init__(self, name_sql, eval_factor):
+        self.name_sql = name_sql
+        self.eval_factor = eval_factor
+
+    def main(self):
+        if self.eval_factor:
+            self.subpillar_df = self._download_pillar_cluster_subpillar()
+            self.pred = self._download_prediction()
+
+            self.pred['uid_hpot'] = self.pred['uid'].str[:20]
+            self.pred = self.__get_neg_factor_all(self.pred)
+
+            if self.if_combine_pillar:
+                self.pred['pillar'] = "combine"
+
+        self.eval_df_history = self._download_eval(name_sql, self.weeks_to_expire)
+
+    # -------------------------------- Download tables for ranking (if restart) ------------------------------------
+
+
+
+    def _load_cache_prediction(self):
+        pred = pd.read_pickle(f"pred_{self.name_sql}.pkl")
+        logger.info(f'=== Load local prediction history on name_sql=[{self.name_sql}] ===')
+        # pred = pred.rename(columns={"trading_day": "testing_period"})
+        return pred
+
+    # @err2slack("clair")
+    def _download_prediction_from_db(self):
+        logger.info(f'=== Download prediction history on name_sql=[{self.name_sql}] ===')
+
+        conditions = [
+            models.FactorResultScore.name_sql == self.name_sql,
+            models.FactorResultScore.testing_period >= self.pred_start_testing_period,
+            models.FactorResultScore.uid.cast(Integer) >= self.pred_start_uid,
+        ]
+        if self.pred_pillar_list:
+            conditions.append(models.FactorResultScore.name_sql.in_(tuple(self.pred_pillar_list)))
+
+        query = select(*models.FactorResultPrediction.__table__.columns,
+                       *models.FactorResultScore.base_columns,
+                       *models.FactorResultScore.config_define_columns,
+                       *models.FactorResultScore.config_opt_columns) \
+            .join_from(models.FactorResultPrediction, models.FactorResultScore) \
+            .where(and_(*conditions)).limit(10)
+        pred = read_query(query).fillna(0)
+
+        if self.use_cache:
+            pred.to_pickle(f'pred_{self.name_sql}.pkl')
+
+        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
+
+        return pred
+
+    def _download_prediction(self):
+        """ merge factor_stock & factor_model_stock """
+
+        if self.use_cache:
+            try:
+                pred = self._load_cache_prediction()
+            except Exception as e:
+                pred = self._download_prediction_from_db()
+        else:
+            pred = self._download_prediction_from_db()
+        return pred
+
+    def _download_eval(self, name_sql, weeks_to_expire):
+        """ download eval Table directly for top ticker evaluation """
+
+        # read config eval history
+        query = f"SELECT * FROM {backtest_eval_table} WHERE _weeks_to_expire={weeks_to_expire}"
+        eval_df = read_query(query)
+
+        # for production: only use history with same data_configs as production
+        if "debug" in name_sql:
+            query_conf = f"SELECT * FROM {config_train_table} WHERE is_active AND weeks_to_expire = {weeks_to_expire}"
+
+            # remove [pred_currency] columns because [config_train] table concatenate all available pred_currency
+            prod_train_config = read_query(query_conf).drop(columns=["is_active", "last_finish", "pred_currency"])
+            prod_train_config_col = [f"_{x}" for x in prod_train_config]
+            prod_train_config.columns = prod_train_config_col
+
+            logger.debug(f'eval_df columns: {eval_df.columns.to_list()}')
+            logger.debug(f'prod_train_config columns: {prod_train_config.columns.to_list()}')
+
+            logger.debug(f'before eval_df shape: {eval_df.shape}')
+            eval_df_noncluster = eval_df.loc[eval_df["_pillar"] != "cluster"].merge(
+                prod_train_config, on=prod_train_config_col, how="left")
+            eval_df_cluster = eval_df.loc[eval_df["_pillar"] == "cluster"].merge(
+                prod_train_config.drop(columns=['_pillar']), on=[x for x in prod_train_config_col if x != "_pillar"], how="left")
+            eval_df = eval_df_noncluster.append(eval_df_cluster)
+            logger.debug(f'after eval_df shape: {eval_df.shape}')
+
+        return eval_df
 
 
 class calcRank:
@@ -82,7 +203,9 @@ class calcRank:
             # logger.debug(f"fundamental from: {adj_fundamentals['trading_day'].min()} to {adj_fundamentals['trading_day'].max()}")
 
     def rank_(self, *args):
-        """ rank based on config defined by each row in pred_config table  """
+        """
+        rank based on config defined by each row in pred_config table
+        """
 
         kwargs, = args
         if type(kwargs) != type({}):
@@ -158,97 +281,6 @@ class calcRank:
 
         return pred
 
-    # -------------------------------- Download tables for ranking (if restart) ------------------------------------
-
-    def _download_pillar_cluster_subpillar(self):
-        """ download pillar cluster table """
-
-        query = f"SELECT * FROM {pillar_cluster_table} WHERE pillar like 'subpillar_%%' " \
-                f"AND testing_period>='{self.pred_start_testing_period}' AND weeks_to_expire={self.weeks_to_expire}"
-        subpillar = read_query(query)
-        subpillar['testing_period'] = pd.to_datetime(subpillar['testing_period'])
-
-        arr_len = subpillar['factor_list'].str.len().values
-        arr_info = np.repeat(subpillar[["testing_period", "currency_code", "pillar"]].values, arr_len, axis=0)
-        arr_factor = np.array([e for x in subpillar["factor_list"].to_list() for e in x])[:, np.newaxis]
-
-        idx = pd.MultiIndex.from_arrays(arr_info.T, names=["testing_period", "currency_code", "subpillar"])
-        df_new = pd.DataFrame(arr_factor, index=idx, columns=["factor_name"]).reset_index()
-        return df_new
-
-    def _load_cache_prediction(self):
-        pred = pd.read_pickle(f"pred_{self.name_sql}.pkl")
-        logger.info(f'=== Load local prediction history on name_sql=[{self.name_sql}] ===')
-        # pred = pred.rename(columns={"trading_day": "testing_period"})
-        return pred
-
-    # @err2slack("clair")
-    def _download_prediction_from_db(self):
-        logger.info(f'=== Download prediction history on name_sql=[{self.name_sql}] ===')
-
-        conditions = [
-            models.FactorResultScore.name_sql == self.name_sql,
-            models.FactorResultScore.testing_period >= self.pred_start_testing_period,
-            models.FactorResultScore.uid.cast(Integer) >= self.pred_start_uid,
-        ]
-        if self.pred_pillar_list:
-            conditions.append(models.FactorResultScore.name_sql.in_(tuple(self.pred_pillar_list)))
-
-        query = select(*models.FactorResultPrediction.__table__.columns,
-                       *models.FactorResultScore.base_columns,
-                       *models.FactorResultScore.config_define_columns,
-                       *models.FactorResultScore.config_opt_columns) \
-            .join_from(models.FactorResultPrediction, models.FactorResultScore) \
-            .where(and_(*conditions)).limit(10)
-        pred = read_query(query).fillna(0)
-
-        if self.use_cache:
-            pred.to_pickle(f'pred_{self.name_sql}.pkl')
-
-        pred["testing_period"] = pd.to_datetime(pred["testing_period"])
-
-        return pred
-
-    def _download_prediction(self):
-        """ merge factor_stock & factor_model_stock """
-
-        if self.use_cache:
-            try:
-                pred = self._load_cache_prediction()
-            except Exception as e:
-                pred = self._download_prediction_from_db()
-        else:
-            pred = self._download_prediction_from_db()
-        return pred
-
-    def _download_eval(self, name_sql, weeks_to_expire):
-        """ download eval Table directly for top ticker evaluation """
-
-        # read config eval history
-        query = f"SELECT * FROM {backtest_eval_table} WHERE _weeks_to_expire={weeks_to_expire}"
-        eval_df = read_query(query)
-
-        # for production: only use history with same data_configs as production
-        if "debug" in name_sql:
-            query_conf = f"SELECT * FROM {config_train_table} WHERE is_active AND weeks_to_expire = {weeks_to_expire}"
-
-            # remove [pred_currency] columns because [config_train] table concatenate all available pred_currency
-            prod_train_config = read_query(query_conf).drop(columns=["is_active", "last_finish", "pred_currency"])
-            prod_train_config_col = [f"_{x}" for x in prod_train_config]
-            prod_train_config.columns = prod_train_config_col
-
-            logger.debug(f'eval_df columns: {eval_df.columns.to_list()}')
-            logger.debug(f'prod_train_config columns: {prod_train_config.columns.to_list()}')
-
-            logger.debug(f'before eval_df shape: {eval_df.shape}')
-            eval_df_noncluster = eval_df.loc[eval_df["_pillar"] != "cluster"].merge(
-                prod_train_config, on=prod_train_config_col, how="left")
-            eval_df_cluster = eval_df.loc[eval_df["_pillar"] == "cluster"].merge(
-                prod_train_config.drop(columns=['_pillar']), on=[x for x in prod_train_config_col if x != "_pillar"], how="left")
-            eval_df = eval_df_noncluster.append(eval_df_cluster)
-            logger.debug(f'after eval_df shape: {eval_df.shape}')
-
-        return eval_df
 
     # ----------------------------------- Add Rank & Evaluation Metrics ---------------------------------------------
 
@@ -521,13 +553,3 @@ class calcRank:
         top_ret["tickers"] = list(g.index)
 
         return top_ret
-
-
-if __name__ == "__main__":
-    # download_prediction('w4_d-7_20220310130330_debug')
-    # download_prediction('w4_d-7_20220312222718_debug')
-    # download_prediction('w4_d-7_20220317005620_debug')    # adj_mse (1)
-    # download_prediction('w4_d-7_20220317125729_debug')    # adj_mse (2)
-    # download_prediction('w4_d-7_20220321173435_debug')      # adj_mse (3) long history
-    # download_prediction('w4_d-7_20220324031027_debug')      # cluster pillar * 3
-    exit(1)
