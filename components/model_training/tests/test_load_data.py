@@ -137,7 +137,7 @@ def test_loadData__test_sample_all_testing_period():
 
     testing_period_list = loadTrainConfig(weeks_to_expire=8,
                                           sample_interval=4,
-                                          backtest_period=14)._period_list
+                                          backtest_period=14)._testing_period_list
 
     main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
 

@@ -16,6 +16,7 @@ from utils import (
     backdate_by_week,
     dateNow
 )
+from .load_data import calcTestingPeriod
 
 logger = sys_logger(__name__, "DEBUG")
 
@@ -23,7 +24,7 @@ pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' 
 pillar_defined_table = models.FactorFormulaPillarDefine.__table__.schema + '.' + models.FactorFormulaPillarDefine.__table__.name
 
 
-class loadTrainConfig:
+class loadTrainConfig(calcTestingPeriod):
 
     _auto_select_options = {
         "factor_pca": [0.4, None],
@@ -35,8 +36,14 @@ class loadTrainConfig:
         "tree_type": ['rf'],
     }
 
-    def __init__(self, weeks_to_expire: int, sample_interval: int = 4, backtest_period: int = 1, restart: str = None,
+    def __init__(self,
+                 weeks_to_expire: int,
+                 sample_interval: int = 4,
+                 backtest_period: int = 1,
+                 restart: str = None,
                  currency_code: str = None):
+        super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
+
         self.weeks_to_expire = weeks_to_expire
         self.restart = restart
         self.sample_interval = sample_interval
@@ -62,12 +69,6 @@ class loadTrainConfig:
 
         return defined_configs
 
-    @property
-    def _period_list(self):
-        end_date = backdate_by_week(self.weeks_to_expire)
-        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=self.backtest_period)
-        return period_list
-
     def merge_groups_df(self):
         _auto_select_configs = [dict(zip(self._auto_select_options.keys(), e)) for e in
                                 product(*self._auto_select_options.values())]
@@ -75,7 +76,7 @@ class loadTrainConfig:
         all_configs = product([{**a, **l, **{"testing_period": p}}
                                 for a in self._defined_configs
                                 for l in _auto_select_configs
-                                for p in self._period_list])
+                                for p in self._testing_period_list])
 
         all_configs_df = pd.DataFrame([tuple(e)[0] for e in all_configs])
         return all_configs_df

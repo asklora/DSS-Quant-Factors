@@ -89,7 +89,9 @@ class rf_HPOT:
         self.hpot_start = get_timestamp_now_str()
 
     def train_and_write(self, sample_set: Dict[str, pd.DataFrame]):
-        """ write score/prediction/feature to DB """
+        """
+        write score/prediction/feature to DB
+        """
 
         trials = Trials()
         best = fmin(fn=partial(self._eval_reg, sample_set=sample_set),

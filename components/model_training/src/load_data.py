@@ -35,6 +35,46 @@ factor_premium_table = models.FactorPreprocessPremium.__table__.schema + '.' + m
 factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
 
 
+class calcTestingPeriod:
+
+    def __init__(self, weeks_to_expire: int,
+                 sample_interval: int,
+                 backtest_period: int,
+                 currency_code: str = None,
+                 restart: bool = None):
+        self.weeks_to_expire = weeks_to_expire
+        self.sample_interval = sample_interval
+        self.backtest_period = backtest_period
+        self.restart = restart
+        if currency_code:
+            self.currency_code_list = [currency_code]
+
+    @property
+    def _testing_period_list(self) -> pd.DatetimeIndex:
+        """
+        testing_period matched with testing period calculation for in data_preparation/calculation_premium.py
+        """
+
+        if self.restart:
+            end_date = pd.to_datetime(pd.date_range(end=self._restart_iteration_first_running_date,
+                                                    freq=f"W-MON", periods=1)[0])
+        else:
+            end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
+
+        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500 // self.sample_interval)
+        return period_list
+
+    @property
+    def _restart_iteration_first_running_date(self) -> dt.date:
+        """
+        for restart iteration find training start date with uid
+        """
+        query = select(func.min(models.FactorResultScore.uid)).where(models.FactorResultScore.name_sql == self.restart)
+        restart_iter_running_date = read_query_list(query)[0]
+        restart_iter_running_date = pd.to_datetime(restart_iter_running_date[:8], format="YYYYMMDD").date()
+        return restart_iter_running_date
+
+
 class cleanMacros:
     """
     load clean macro as independent variables for training
@@ -142,7 +182,7 @@ class cleanMacros:
         return reindex_df.drop(columns=["trading_day"])
 
 
-class combineData:
+class combineData(calcTestingPeriod):
     """
     combine all raw premium + macro data as inputs / outputs
     """
@@ -150,8 +190,13 @@ class combineData:
     currency_code_list = ["HKD", "CNY", "USD", "EUR"]
     trim = False
 
-    def __init__(self, weeks_to_expire: int, sample_interval: int, backtest_period: int,
-                 currency_code: str = None, restart: bool = None):
+    def __init__(self,
+                 weeks_to_expire: int,
+                 sample_interval: int,
+                 backtest_period: int,
+                 currency_code: str = None,
+                 restart: bool = None):
+        super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
         self.weeks_to_expire = weeks_to_expire
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period
@@ -175,28 +220,6 @@ class combineData:
 
         return df.sort_values(by=["group", "testing_period"])
 
-    @property
-    def _testing_period_list(self) -> pd.DatetimeIndex:
-        """
-        testing_period matched with testing period calculation for in data_preparation/calculation_premium.py
-        """
-
-        if self.restart:
-            end_date = pd.to_datetime(pd.date_range(end=self._restart_iteration_first_running_date,
-                                                    freq=f"W-MON", periods=1)[0])
-        else:
-            end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
-
-        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500 // self.sample_interval)
-        return period_list
-
-    @property
-    def _restart_iteration_first_running_date(self) -> dt.date:
-        query = select(func.min(models.FactorResultScore.uid)).where(models.FactorResultScore.name_sql == self.restart)
-        restart_iter_running_date = read_query_list(query)[0]
-        restart_iter_running_date = pd.to_datetime(restart_iter_running_date[:8], format="YYYYMMDD").date()
-        return restart_iter_running_date
-
     def _add_macros_inputs(self, premium):
         """
         Combine macros and premium inputs
@@ -214,6 +237,9 @@ class combineData:
         return macros_premium
 
     def _download_premium(self):
+        """
+        download from factor processed premium table
+        """
         conditions = [
             models.FactorPreprocessPremium.weeks_to_expire == self.weeks_to_expire,
             models.FactorPreprocessPremium.group.in_(tuple(self.currency_code_list)),
@@ -244,9 +270,11 @@ class combineData:
 
 
 class loadData:
-    """ main function:
+    """
+    main function:
         1. split train + valid + tests -> sample set
-        2. convert x with standardization, y with qcut """
+        2. convert x with standardization, y with qcut
+    """
 
     train_lookback_year = 21                # 1-year buffer for Y calculation
     lasso_reverse_lookback_window = 13      # period (time-span varied depending on sample_interval at combineData)
@@ -300,7 +328,20 @@ class loadData:
         self.pred_currency = pred_currency.split(',')
 
     def split_all(self, main_df) -> (List[Dict[str, pd.DataFrame]], list, list):
-        """ work through cleansing process """
+        """
+        work through cleansing process
+
+        Returns
+        ----------
+        tuple
+            sample_sets: dict of [train / valid / test] set dataframes of
+                - x: inputs consisting of premium + macros data
+                - y: original predicted premium for [evaluation]
+                - y_cut: qcut & convert to median premium for [training]
+                - * All dataframes with pd.MultiIndex([group, testing_period])
+            neg_factor: list of factor reverse in calculation
+            cut_bins: list of threshold of cut_bins
+        """
 
         sample_df = self._filter_sample(main_df=main_df)
         sample_df, neg_factor = self._convert_sample_neg_factor(sample_df=sample_df)
@@ -336,6 +377,9 @@ class loadData:
         return sample_df.drop(columns=["average_days"]).set_index(["group", "testing_period"])
 
     def __train_sample(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        training sample from (n = lookback) year ahead to (n = weeks_to_expire) ahead (i.e. to avoid data snooping in Y)
+        """
         start_date = self.testing_period - relativedelta(years=self.train_lookback_year)
         end_date = self.testing_period - relativedelta(weeks=self.weeks_to_expire)\
 
@@ -390,7 +434,10 @@ class loadData:
         return sample_df, neg_factor
 
     def _factor_reverse_on_average(self, sample_df):
-        """ reverse if factor premium on training sets on average < 0 """
+        """
+        reverse if factor premium on training sets on average < 0
+        """
+
         sample_df_mean = self.__train_sample(sample_df).mean(axis=0)
         neg_factor = list(sample_df_mean[sample_df_mean < 0].index)
 
@@ -432,6 +479,10 @@ class loadData:
         return neg_factor
 
     def _get_y(self, sample_df) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, list):
+        """
+        convert Y with qcut and group median
+        """
+
         df_y = self.__y_convert_testing_period(sample_df=sample_df)
         df_train = self.__train_sample(df_y).copy().dropna(how='all').fillna(0)
         df_test = self.__test_sample(df_y).copy().dropna(how='all').fillna(0)
@@ -506,6 +557,10 @@ class loadData:
         return train_cut, test_cut, cut_bins
 
     def _get_x(self, sample_df):
+        """
+        convert X with standardization and PCA
+        """
+
         input_cols = sample_df.columns.to_list()
         input_factor_cols = list(set(self.all_factor_list) & set(input_cols))
         input_macro_cols = list(set(input_cols) - set(self.all_factor_list))
@@ -556,7 +611,9 @@ class loadData:
         return sample_df
 
     def __x_standardize_pca(self, train, test, pca_cols: List[str], n_components: float = None, prefix: str = None):
-        """ standardize x + PCA applied to x with train_x fit """
+        """
+        standardize x + PCA applied to x with train_x fit
+        """
 
         if type(n_components) == type(None):
             scaler = StandardScaler()
@@ -576,6 +633,10 @@ class loadData:
         return pca_train, pca_test
 
     def __x_after_pca_rename(self, df_org, arr_pca, prefix: str = None):
+        """
+        rename after PCA column names
+        """
+
         if df_org.shape[1] == arr_pca.shape[1]:
             new_columns = df_org.columns.to_list()
         else:
@@ -627,7 +688,7 @@ class loadData:
     
     def __split_valid_from_year(self, train_x) -> list:
         """       
-         valid_method can be year name (e.g. 2010) -> use valid_pct% amount of data since 2010-01-01 as valid sets
+        valid_method can be year name (e.g. 2010) -> use valid_pct% amount of data since 2010-01-01 as valid sets
         """
 
         valid_len = (train_x.index.get_level_values('testing_period').max() -
@@ -648,6 +709,7 @@ class loadData:
         """
         cut sample into actual train / valid sets
         """
+
         sample_set = []
 
         for train_index, valid_index in gkf:

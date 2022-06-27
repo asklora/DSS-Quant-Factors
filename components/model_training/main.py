@@ -84,15 +84,16 @@ if __name__ == "__main__":
 
     with closing(mp.Pool(processes=args.processes, initializer=recreate_engine)) as pool:
 
-        all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
-                                     sample_interval=args.sample_interval,
-                                     backtest_period=args.backtest_period,
-                                     restart=args.restart,
-                                     currency_code=args.currency_code).get_all_groups()
         raw_df = combineData(weeks_to_expire=args.weeks_to_expire,
                              sample_interval=args.sample_interval,
                              backtest_period=args.backtest_period,
                              restart=args.restart).get_raw_data()
+
+        all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
+                                     sample_interval=args.sample_interval,
+                                     backtest_period=args.backtest_period,
+                                     restart=args.restart,
+                                     currency_code=args.currency_code).get_all_groups(testing_period_list)
 
         pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 
