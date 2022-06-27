@@ -120,7 +120,6 @@ class loadTrainConfig:
         return config_df
 
     def _restart_finished_configs(self):
-
         diff_config_col = models.FactorResultScore.base_columns + \
                           models.FactorResultScore.config_define_columns + \
                           models.FactorResultScore.config_opt_columns

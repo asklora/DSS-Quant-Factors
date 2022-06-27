@@ -39,10 +39,13 @@ def test_filter_factor_df():
 def test_calcPremium_single_factor():
     from components.data_preparation.src.calculation_premium import calcPremium
     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4,
-                     currency_code_list=["USD"], factor_list=["fwd_roic"]).write_all()
+                     currency_code_list=["USD"], factor_list=["roic"]).write_all()
 
     assert len(df) > 0
-    assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
+
+    from utils import backdate_by_day
+    end_date = pd.date_range(end=pd.date_range(end=backdate_by_day(1), periods=1, freq='W-MON')[0], periods=2, freq='8W-SUN')[0]
+    assert df["testing_period"].max() == end_date
 
 
 def test_calcPremium():

@@ -21,6 +21,7 @@ from utils import (
     dateNow,
     read_table,
     upsert_data_to_database,
+    backdate_by_day,
     models
 )
 
@@ -35,13 +36,18 @@ factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + model
 
 
 class cleanMacros:
-    """ load clean macro as independent variables for training """
+    """
+    load clean macro as independent variables for training
+    """
 
     def __init__(self, period_list: pd.DatetimeIndex, weeks_to_expire: int):
         self.period_list = period_list
         self.weeks_to_expire = weeks_to_expire
 
     def _download_clean_macro(self):
+        """
+        download from [data_macro] (macro data from dsws, e.g. GDP, interest rate, ...)
+        """
         macros = read_query(select(models.DataMacro))[["field", "trading_day", "value"]]
         macros['trading_day'] = pd.to_datetime(macros['trading_day'], format='%Y-%m-%d')
         macros = self.__calc_yoy(macros)
@@ -65,18 +71,27 @@ class cleanMacros:
         return macros.drop(columns=["value_1yb"])
 
     def _download_vix(self):
+        """
+        download from [data_vix] (vix index for different market)
+        """
         vix = read_query(select(models.DataVix))
-        vix = vix.rename(columns = {"vix_id": "field", "vix_value": "value"})
-        vix['trading_day'] = pd.to_datetime(vix['trading_day'], format = '%Y-%m-%d')
+        vix = vix.rename(columns={"vix_id": "field", "vix_value": "value"})
+        vix['trading_day'] = pd.to_datetime(vix['trading_day'], format='%Y-%m-%d')
         return vix[["field", "trading_day", "value"]]
 
     def _download_fred(self):
+        """
+        download from [data_fred] (ICE BofA BB US High Yield Index Effective Yield)
+        """
         fred = read_query(select(models.DataFred))
         fred['field'] = "fred_data"
         fred['trading_day'] = pd.to_datetime(fred['trading_day'], format = '%Y-%m-%d')
         return fred[["field", "trading_day", "value"]]
 
     def _download_index_return(self):
+        """
+        download from factor preprocessed ratio table (index returns)
+        """
         index_col = ['stock_return_r12_7', 'stock_return_r1_0', 'stock_return_r6_2']
         index_ticker = ['.SPX', '.CSI300', '.SXXGR', '.HSI']
         conditions = [
@@ -92,6 +107,9 @@ class cleanMacros:
         return index_ret[["field", "trading_day", "value"]]
 
     def get_all_macros(self):
+        """
+        combine all macros and resample to testing periods matched with premium table dates
+        """
         logger.debug(f'=== Download macro data ===')
 
         macros = self._download_clean_macro()
@@ -107,7 +125,8 @@ class cleanMacros:
 
     def _resample_macros_to_testing_period(self, df):
         """
-        Use last available macro data for each testing_period
+        Use last available macro data for each testing_period.
+        [testing_period] should match with [testing_period] in factor preprocessed premium table.
         """
 
         df["testing_period"] = df["trading_day"] - pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
@@ -124,6 +143,9 @@ class cleanMacros:
 
 
 class combineData:
+    """
+    combine all raw premium + macro data as inputs / outputs
+    """
 
     currency_code_list = ["HKD", "CNY", "USD", "EUR"]
     trim = False
@@ -155,10 +177,15 @@ class combineData:
 
     @property
     def _testing_period_list(self) -> pd.DatetimeIndex:
+        """
+        testing_period matched with testing period calculation for in data_preparation/calculation_premium.py
+        """
+
         if self.restart:
-            end_date = self._restart_iteration_first_running_date
+            end_date = pd.to_datetime(pd.date_range(end=self._restart_iteration_first_running_date,
+                                                    freq=f"W-MON", periods=1)[0])
         else:
-            end_date = dateNow()
+            end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
 
         period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500 // self.sample_interval)
         return period_list
@@ -175,8 +202,11 @@ class combineData:
         Combine macros and premium inputs
         """
 
-        macros = cleanMacros(period_list=self._testing_period_list,
-                             weeks_to_expire=self.weeks_to_expire).get_all_macros()
+        # macros = cleanMacros(period_list=self._testing_period_list,
+        #                      weeks_to_expire=self.weeks_to_expire).get_all_macros()         # TODO: remove after debug
+        # macros.to_pickle("factor_macros.pkl")
+
+        macros = pd.read_pickle("factor_macros.pkl")
         macros_premium = premium.merge(macros, on=["testing_period"])
 
         assert len(macros_premium) == len(premium)

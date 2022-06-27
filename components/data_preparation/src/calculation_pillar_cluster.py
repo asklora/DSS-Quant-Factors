@@ -20,6 +20,7 @@ from utils import (
     str_to_date,
     recreate_engine,
     backdate_by_month,
+    backdate_by_day,
 )
 from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
@@ -112,8 +113,9 @@ class calcPillarCluster:
         period_list Timestamp match premium table i.e. testing_period = (last_data_date - weeks_to_expire)
         """
 
+        # end on last sunday so that we use last week TRI to calculate average TRI
         if type(end_date) == type(None):
-            end_date = pd.to_datetime(dateNow())
+            end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
         if type(start_date) == type(None):
             start_date = pd.to_datetime(backdate_by_month(3))
 

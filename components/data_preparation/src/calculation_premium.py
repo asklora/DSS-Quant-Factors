@@ -14,6 +14,7 @@ from utils import (
     read_query,
     read_query_list,
     upsert_data_to_database,
+    backdate_by_day,
     models,
     sys_logger,
     recreate_engine,
@@ -68,6 +69,15 @@ class calcPremium:
     def write_all(self):
         """
         calculate premium for each group / factor and insert to Table [factor_processed_premium]
+
+        [testing_period] is the start date of premium calculation, e.g. for premium with
+        - weeks_to_expire = 4
+        - average days = -7
+        - testing_period = 2022-04-10
+
+        This premium is in fact using average TRI up to 2022-05-08 (i.e. point-in-time TRI up to 2022-05-15).
+
+        We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
         with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
@@ -163,7 +173,9 @@ class calcPremium:
         return prem
 
     def _clean_prem_df(self, group, factor, y_col, prem=None):
-        """ Calculate small minus big """
+        """
+        premium = small group average returns - big groups
+        """
 
         prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
 
@@ -183,8 +195,9 @@ class calcPremium:
         resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
         """
 
-        periods = (df["trading_day"].max() - df["trading_day"].min()).days // (7*self.weeks_to_offset) + 1
-        date_list = pd.date_range(end=df["trading_day"].max(), freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
+        end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()
+        periods = (end_date - df["trading_day"].min()).days // (7*self.weeks_to_offset) + 1
+        date_list = pd.date_range(end=end_date, freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
         date_list = list(date_list)
         df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]
 
