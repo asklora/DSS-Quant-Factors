@@ -21,8 +21,8 @@ from utils import (
 logger = sys_logger(__name__, "DEBUG")
 
 
-all_currency_list = ["HKD", "USD", "CNY", "EUR"]
-all_average_days = [-7]
+all_currency_list = ["HKD", "USD", "CNY", "EUR"]            # currency covered by factor model (train / prediction)
+all_average_days = [-7]                                     # stock return use average of next 7 days (i.e. prediction valid for 7 days)
 
 
 if __name__ == "__main__":
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
-    if args.currency_code:
+    if args.currency_code:                              # for debugging only
         all_currency_list = [args.currency_code]
 
     # ---------------------------------------- Rerun Write Premium -----------------------------------------------
@@ -62,6 +62,7 @@ if __name__ == "__main__":
                                     start_date=dt.datetime(1998, 1, 1) if args.history else None)
 
     if args.recalc_premium:
+        # default = update ratios for as long as possible (b/c universe changes will affect the value of premium).
         logger.info("=== Calculate premium ===")
         premium_data = calcPremium(weeks_to_expire=args.weeks_to_expire,
                                    average_days_list=all_average_days,
@@ -70,7 +71,7 @@ if __name__ == "__main__":
                                    processes=args.process).write_all()
 
     if args.recalc_subpillar:
-        # default = update ratios for past 3 months
+        # default = update subpillar for past 3 months
         logger.info("=== Calculate cluster pillar ===")
         calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
                           currency_code_list=all_currency_list,

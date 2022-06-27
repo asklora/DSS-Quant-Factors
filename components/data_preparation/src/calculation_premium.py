@@ -41,20 +41,19 @@ class calcPremium:
                  weeks_to_expire: int, weeks_to_offset: int = 1,
                  average_days_list: List[int] = (-7,), currency_code_list: List[str] = None,
                  processes: int = 1, factor_list: List[str] = ()):
-        """  calculate factor premium for different configurations and write to DB Table [factor_premium_table]
-
+        """
         Parameters
         ----------
-        weeks_to_expire (Int):
+        weeks_to_expire:
             forward period for premium calculation
-        weeks_to_offset (Int, Optional):
+        weeks_to_offset
             weeks offset between samples (default=1 week),
             i.e. if calculating non-duplicated premiums, should set "weeks_to_offset"="weeks_to_expire"
-        average_day_list (Int, Optional):
+        average_day_list:
             number of average days for the stock returns used to calculate premiums
-        currency_code_list (List[Str], Optional):
+        currency_code_list:
             currencies to calculate premiums (default=[USD])
-        factor_list (List[Str], Optional):
+        factor_list:
             factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
         """
         logger.info(f'Groups: {" -> ".join(currency_code_list)}')
@@ -63,10 +62,13 @@ class calcPremium:
         self.weeks_to_offset = weeks_to_offset
         self.processes = processes
         self.currency_code_list = currency_code_list
-        self.factor_list = factor_list if len(factor_list) > 0 else self._factor_list_from_formula
+        self.factor_list = factor_list if len(factor_list) > 0 else self._factor_list_from_formula      # if not
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days_list]
 
     def write_all(self):
+        """
+        calculate premium for each group / factor and insert to Table [factor_processed_premium]
+        """
 
         with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
             ratio_df = self._download_pivot_ratios()
@@ -86,12 +88,20 @@ class calcPremium:
 
     @property
     def _factor_list_from_formula(self):
+        """
+        get list of active factors defined and to update premium
+        """
+
         logger.debug(f'=== Get {factors_formula_table} ===')
         formula_query = f"SELECT name FROM {factors_formula_table} WHERE is_active AND NOT(keep) "
         factor_list = read_query_list(formula_query)
         return factor_list
 
     def _download_pivot_ratios(self):
+        """
+        download ratio table calculated with calculation_ratio.py and pivot
+        """
+
         logger.debug(f"=== Get ratios from {processed_ratio_table} ===")
 
         ratio_query = f'''
@@ -113,7 +123,9 @@ class calcPremium:
 
     @err2slack("clair")
     def get_premium(self, *args, ratio_df=None):
-        """ calculate premium for each group / factor and insert to Table [factor_processed_premium] """
+        """
+        calculate premium for certain group and factor (e.g. EUR + roic) in 1 process
+        """
 
         logger.debug(f'=== Calculate premium for ({args}) ===')
         group, factor, y_col = args
@@ -128,7 +140,9 @@ class calcPremium:
         return prem
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
-        """ work on pd.DataFrame for certain Y & Factor only """
+        """
+        filter complete ratio pd.DataFrame for certain Y & Factor only
+        """
 
         df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
         df = self.__clean_missing_y_row(df, y_col, group)
@@ -189,7 +203,9 @@ class calcPremium:
         return df
 
     def __trim_outlier(self, df, prc: float = 0):
-        """ assign a max value for the 99% percentile to replace  """
+        """
+        assign a max value for the 99% percentile to replace
+        """
 
         df_nan = df.replace([np.inf, -np.inf], np.nan)
         pmax = df_nan.quantile(q=(1 - prc))
@@ -200,7 +216,9 @@ class calcPremium:
         return df
 
     def __qcut(self, series):
-        """ assign a max value for the 99% percentile to replace  """
+        """
+        assign a max value for the 99% percentile to replace
+        """
 
         try:
             series_fillinf = series.replace([-np.inf, np.inf], np.nan)

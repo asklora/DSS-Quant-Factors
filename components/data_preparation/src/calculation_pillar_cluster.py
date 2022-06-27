@@ -34,17 +34,20 @@ pillar_cluster_table = models.FactorFormulaPillarCluster.__tablename__
 
 
 class clusterFeature:
+    """
+    general cluster for distance calculation
+    """
 
     def __init__(self, df):
-        """
-        general cluster for distance calculation
-        """
         self.X = scale(df)
         self.feature_names = np.array(df.columns.to_list())
         self.agglo = FeatureAgglomeration(n_clusters=None, distance_threshold=0, linkage='average')
         self.agglo.fit(self.X)
 
     def find_subpillar(self, subpillar_trh):
+        """
+        subpillar groups = factors with distance <  subpillar_trh
+        """
         subpillar_dist = self.agglo.distances_[subpillar_trh]
         subpillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=subpillar_dist, linkage='average')
         subpillar_cluster.fit(self.X)
@@ -57,6 +60,10 @@ class clusterFeature:
         return subpillar
 
     def find_pillar(self, pillar_trh):
+        """
+        pillar groups = factors with distance <  pillar_trh
+        """
+
         pillar_dist = self.agglo.distances_[-pillar_trh]
         pillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=pillar_dist, linkage='average')
         pillar_cluster.fit(self.X)
@@ -69,6 +76,11 @@ class clusterFeature:
 
 
 class calcPillarCluster:
+    """
+    calculate pillar / subpillar using hierarchical clustering on ratios over past (n = self.lookback) years
+    - pillar: factors will be evaluated together (i.e. equivalent to value/momentum/quality) in multi-output RF tree
+    - subpillar: factors will not be selected together if both deemed as "good" / "bad" factors
+    """
 
     active_factor = read_query_list(f"SELECT name FROM {factors_formula_table} WHERE is_active")
 
@@ -96,7 +108,9 @@ class calcPillarCluster:
         self.processes = processes
 
     def _testing_period_list(self, start_date, end_date, sample_interval, weeks_to_expire):
-        """ period_list Timestamp match premium table i.e. testing_period = (last_data_date - weeks_to_expire) """
+        """
+        period_list Timestamp match premium table i.e. testing_period = (last_data_date - weeks_to_expire)
+        """
 
         if type(end_date) == type(None):
             end_date = pd.to_datetime(dateNow())
@@ -110,7 +124,10 @@ class calcPillarCluster:
         return period_list
 
     def write_all(self):
-        """ write all cluster results to table  """
+        """
+        write all cluster results to table [factor_formula_pillar_cluster]
+        """
+
         with mp.Pool(processes=self.processes, initializer=recreate_engine) as pool:
             df = self._download_pivot_ratio()
             all_groups = product(self.currency_code_list, self.period_list)
@@ -133,7 +150,9 @@ class calcPillarCluster:
         return results
 
     def _download_pivot_ratio(self):
-        """ download past lookback = [5] year ratio for clustering """
+        """
+        download past lookback = [5] year ratio for clustering
+        """
 
         end_date = np.max(self.period_list) + relativedelta(weeks=self.weeks_to_expire)
         start_date = np.min(self.period_list) - relativedelta(years=self.lookback)
@@ -154,7 +173,9 @@ class calcPillarCluster:
 
     @err2slack("clair", )
     def _calc_cluster(self, *args, ratio_df=None) -> pd.DataFrame:
-        """ calculte pillar / subpillar """
+        """
+        calculate pillar / subpillar using hierarchical clustering
+        """
 
         currency_code, testing_period = args
 
