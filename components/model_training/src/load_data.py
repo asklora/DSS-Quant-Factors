@@ -61,7 +61,7 @@ class calcTestingPeriod:
         else:
             end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
 
-        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500 // self.sample_interval)
+        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500//self.sample_interval)
         return period_list
 
     @property
@@ -75,13 +75,20 @@ class calcTestingPeriod:
         return restart_iter_running_date
 
 
-class cleanMacros:
+class cleanMacros(calcTestingPeriod):
     """
     load clean macro as independent variables for training
     """
 
-    def __init__(self, period_list: pd.DatetimeIndex, weeks_to_expire: int):
-        self.period_list = period_list
+    def __init__(self,
+                 weeks_to_expire: int,
+                 sample_interval: int,
+                 backtest_period: int,
+                 currency_code: str = None,
+                 restart: bool = None):
+
+        super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
+        self.period_list = self._testing_period_list
         self.weeks_to_expire = weeks_to_expire
 
     def _download_clean_macro(self):
@@ -182,7 +189,7 @@ class cleanMacros:
         return reindex_df.drop(columns=["trading_day"])
 
 
-class combineData(calcTestingPeriod):
+class combineData(cleanMacros):
     """
     combine all raw premium + macro data as inputs / outputs
     """
@@ -196,6 +203,7 @@ class combineData(calcTestingPeriod):
                  backtest_period: int,
                  currency_code: str = None,
                  restart: bool = None):
+
         super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
         self.weeks_to_expire = weeks_to_expire
         self.sample_interval = sample_interval
@@ -225,9 +233,8 @@ class combineData(calcTestingPeriod):
         Combine macros and premium inputs
         """
 
-        # macros = cleanMacros(period_list=self._testing_period_list,
-        #                      weeks_to_expire=self.weeks_to_expire).get_all_macros()         # TODO: remove after debug
-        # macros.to_pickle("factor_macros.pkl")
+        macros = self.get_all_macros()         # TODO: remove after debug
+        macros.to_pickle("factor_macros.pkl")
 
         macros = pd.read_pickle("factor_macros.pkl")
         macros_premium = premium.merge(macros, on=["testing_period"])

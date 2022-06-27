@@ -1,11 +1,24 @@
 import datetime as dt
 import pandas as pd
 from dateutil.relativedelta import relativedelta
+from utils import dateNow
+
+
+combineData_kwargs = dict(weeks_to_expire=4, sample_interval=4, backtest_period=14, currency_code="EUR", restart=None)
+
+
+def test_combineData_testing_period_list():
+    from components.model_training.src.load_data import calcTestingPeriod
+    lst = calcTestingPeriod(**combineData_kwargs)._testing_period_list
+
+    assert len(lst) > 1
+    assert min(lst) < dt.datetime(1998, 1, 1)
+    assert max(lst).date() == pd.date_range(end=dateNow(), freq="W-SUN", periods=2)[0].date()
 
 
 def test_cleanMacros_download_index():
     from components.model_training.src.load_data import cleanMacros
-    df = cleanMacros()._download_index_return()
+    df = cleanMacros(**combineData_kwargs)._download_index_return()
 
     assert len(df) > 1
     assert set(df.columns.to_list()) == {"field", "trading_day", "value"}
@@ -14,7 +27,7 @@ def test_cleanMacros_download_index():
 
 def test_cleanMacros_download_fred():
     from components.model_training.src.load_data import cleanMacros
-    df = cleanMacros()._download_fred()
+    df = cleanMacros(**combineData_kwargs)._download_fred()
 
     assert len(df) > 1
     assert set(df.columns.to_list()) == {"field", "trading_day", "value"}
@@ -22,7 +35,7 @@ def test_cleanMacros_download_fred():
 
 def test_cleanMacros_download_macro():
     from components.model_training.src.load_data import cleanMacros
-    df = cleanMacros()._download_clean_macro()
+    df = cleanMacros(**combineData_kwargs)._download_clean_macro()
 
     df_is_nan = df.loc[df["value"].isnull()]
 
@@ -33,7 +46,7 @@ def test_cleanMacros_download_macro():
 
 def test_cleanMacros_download_vix():
     from components.model_training.src.load_data import cleanMacros
-    df = cleanMacros()._download_vix()
+    df = cleanMacros(**combineData_kwargs)._download_vix()
 
     assert len(df) > 1
     assert set(df.columns.to_list()) == {"field", "trading_day", "value"}
@@ -41,7 +54,7 @@ def test_cleanMacros_download_vix():
 
 def test_cleanMacros():
     from components.model_training.src.load_data import cleanMacros
-    df = cleanMacros().get_all_macros()
+    df = cleanMacros(**combineData_kwargs).get_all_macros()
 
     assert len(df) > 1
     assert df["trading_day"].isnull().sum() == 0
@@ -49,17 +62,9 @@ def test_cleanMacros():
     assert len(df.columns) > 4
 
 
-def test_combineData_testing_period_list():
-    from components.model_training.src.load_data import combineData
-    lst = combineData(weeks_to_expire=4, currency_code="EUR", sample_interval=4, backtest_period=14)._testing_period_list
-
-    assert len(lst) > 1
-    assert min(lst) < dt.datetime(1998, 1, 1)
-
-
 def test_combineData_download_premium():
     from components.model_training.src.load_data import combineData
-    df = combineData(weeks_to_expire=4, sample_interval=4, backtest_period=14)._download_premium()
+    df = combineData(**combineData_kwargs)._download_premium()
 
     assert len(df) > 1
     assert {"group", "testing_period", "average_days"}.issubset(set(df.columns.to_list()))
@@ -68,9 +73,9 @@ def test_combineData_download_premium():
 
 def test_combineData_resample_macros_to_testing_period():
     from components.model_training.src.load_data import combineData, cleanMacros
-    df = cleanMacros().get_all_macros()
+    df = cleanMacros(**combineData_kwargs).get_all_macros()
 
-    cls = combineData(weeks_to_expire=4, currency_code="EUR", sample_interval=4, backtest_period=14)
+    cls = combineData(**combineData_kwargs)
     df_resample = cls._resample_macros_to_testing_period(df)
 
     assert len(df_resample) > 1
@@ -80,7 +85,7 @@ def test_combineData_resample_macros_to_testing_period():
 
 def test_combineData_remove_high_missing_samples():
     from components.model_training.src.load_data import combineData
-    cls = combineData(weeks_to_expire=4, currency_code="EUR", sample_interval=4, backtest_period=14)
+    cls = combineData(**combineData_kwargs)
     df = cls._download_premium()
     df_missing_rate = df.isnull().sum().sum() / (df.shape[0] * df.shape[1])
     clean_df = cls._remove_high_missing_samples(df, trh=0.5)
@@ -94,7 +99,7 @@ def test_combineData_remove_high_missing_samples():
 
 def test_combineData_get_raw_data():
     from components.model_training.src.load_data import combineData
-    cls = combineData(weeks_to_expire=4, sample_interval=4, backtest_period=14)
+    cls = combineData(**combineData_kwargs)
     df = cls.get_raw_data()
 
     diff = df.groupby(["group"])["testing_period"].diff()
@@ -110,7 +115,7 @@ def test_combineData_get_raw_data():
 
 def test_loadData_factor_reverse_on_lasso():
     from components.model_training.src.load_data import combineData, loadData
-    main_df = combineData(weeks_to_expire=4, sample_interval=4, backtest_period=14).get_raw_data()
+    main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
     sample_testing_period = pd.to_datetime(main_df["testing_period"].to_list()[-5])
 
     cls = loadData(
@@ -122,10 +127,12 @@ def test_loadData_factor_reverse_on_lasso():
         factor_list=["roic", "book_to_price", "earnings_1yr", "earnings_yield", "ni_to_cfo", "sales_to_price", "roe", "ebitda_to_ev"],
         y_qcut=1,
         factor_reverse=True,
-        factor_pca=0.6
+        factor_pca=0.6,
+        valid_pct=0.2,
+        valid_method=2010
     )
     sample_df = cls._filter_sample(main_df)
-    assert set(cls.train_currency) == set(sample_df.index.get_level_values("group").unique())
+    assert set(cls.train_currency).issubset(sample_df.index.get_level_values("group").unique())
 
     neg_factor = cls._factor_reverse_on_lasso(sample_df)
     assert type(neg_factor) == list
@@ -186,7 +193,7 @@ def test_loadData_get_y():
         valid_method=2010
     )
     sample_df = cls._filter_sample(main_df)
-    assert set(cls.train_currency) == set(sample_df.index.get_level_values("group").unique())
+    assert set(cls.train_currency).issubset(sample_df.index.get_level_values("group").unique())
 
     df_train_cut, df_test_cut, df_train, df_test, cut_bins = cls._get_y(sample_df)
     after_cut_unique_value = set(df_train_cut.stack().dropna(how="any").values)

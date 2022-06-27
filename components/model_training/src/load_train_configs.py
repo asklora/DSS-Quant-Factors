@@ -76,7 +76,7 @@ class loadTrainConfig(calcTestingPeriod):
         all_configs = product([{**a, **l, **{"testing_period": p}}
                                 for a in self._defined_configs
                                 for l in _auto_select_configs
-                                for p in self._testing_period_list])
+                                for p in self._testing_period_list[-self.backtest_period-1:-1]])
 
         all_configs_df = pd.DataFrame([tuple(e)[0] for e in all_configs])
         return all_configs_df

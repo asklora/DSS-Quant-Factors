@@ -33,7 +33,9 @@ logger = sys_logger(__name__, "DEBUG")
 
 @err2slack("clair")
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
-    """ run random forest on multi-processor """
+    """
+    run random forest on multi-processor
+    """
 
     kwargs, = args
     sql_result.update(kwargs)

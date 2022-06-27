@@ -160,7 +160,7 @@ def test_rf_HPOT__write_score_db():
     result = cls._rf_HPOT__write_prediction_db()
 
 
-def test_rf_HPOT_split_all():
+def test_rf_HPOT_train_and_write():
     from components.model_training.src.load_data import combineData, loadData
 
     main_df = combineData(weeks_to_expire=8, sample_interval=4, backtest_period=14).get_raw_data()
@@ -171,7 +171,7 @@ def test_rf_HPOT_split_all():
     test_y_qcut = 10
     cls = loadData(
         weeks_to_expire=8,
-        train_currency='USD,EUR',
+        train_currency='USD',
         pred_currency='USD,EUR',
         testing_period=sample_testing_period,
         average_days=-7,

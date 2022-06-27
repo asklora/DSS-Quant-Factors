@@ -102,17 +102,14 @@ class rf_HPOT:
         self.__write_importance_db()
         return True
 
-    @err2slack("clair")
     def __write_score_db(self):
         upsert_data_to_database(pd.DataFrame(self.hpot['all_results']), result_score_table, how="append", add_primary_key=True)
         return True
 
-    @err2slack("clair")
     def __write_prediction_db(self):
         upsert_data_to_database(self.hpot['best_stock_df'], result_pred_table, how="append", add_primary_key=True)
         return True
 
-    @err2slack("clair")
     def __write_importance_db(self):
         upsert_data_to_database(self.hpot['best_stock_feature'], feature_importance_table, how="append", add_primary_key=True)
         return True
