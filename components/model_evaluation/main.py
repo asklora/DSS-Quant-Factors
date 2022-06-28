@@ -9,9 +9,15 @@ import multiprocessing as mp
 import gc
 from contextlib import closing
 from sqlalchemy import select
+import sys
+import os
+from pathlib import Path
+
+path = Path(os.path.abspath(__file__))
+sys.path.append(str(path.parent.parent.parent.absolute()))
 
 from src.load_eval_configs import load_eval_config
-from src.calculation_rank import calcRank
+from src.evaluate_factor_premium import evalFactor
 # from src.calculation_backtest import
 # from src.calculation_backtest_score import
 
@@ -51,22 +57,11 @@ if __name__ == "__main__":
     else:
         eval_name_sql = load_latest_name_sql(args.weeks_to_expire)
 
-    if args.eval_factor or args.eval_top:
-        with closing(mp.Pool(processes=args.processes, initializer=recreate_engine)) as pool:
-            all_groups = load_eval_config(args.weeks_to_expire)
-            rank_cls = calcRank(name_sql=eval_name_sql,
-                                eval_factor=args.eval_factor,
-                                eval_top=args.eval_top)
-            eval_results = pool.starmap(rank_cls.rank_, all_groups)
+    all_groups = load_eval_config(args.weeks_to_expire)
 
     # 1. update [backtest_eval_table]
     if args.eval_factor:
-        eval_df = pd.concat([e[0] for e in eval_results], axis=0)  # df for each config evaluation results
-        eval_df["_name_sql"] = eval_name_sql
-        eval_df['updated'] = dt.datetime.now()
-        eval_primary_key = eval_df.filter(regex="^_").columns.to_list()
-        eval_df.to_pickle(f"eval_{eval_name_sql}.pkl")
-        upsert_data_to_database(eval_df, models.FactorBacktestEval.__tablename__, how="update")
+        rank_cls = evalFactor(name_sql=eval_name_sql, processes=args.processes, all_groups=all_groups).write_db()
 
     # 2. update [backtest_top_table]
     if args.eval_top:
