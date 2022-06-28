@@ -300,7 +300,7 @@ class loadData:
                  testing_period: dt.datetime,
                  average_days: int,
                  factor_list: List[str],
-                 factor_reverse: bool,
+                 factor_reverse: int,
                  y_qcut: int,
                  factor_pca: float,
                  valid_pct: float,
@@ -420,19 +420,19 @@ class loadData:
 
         Parameters
         ----------
-        _factor_reverse (Bool, Optional):
-            if True, use training period average;
-            if False, use lasso;
-            if None, no conversion.
+        factor_reverse (Int, Optional):
+            if 1, use training period average;
+            if 2, use lasso;
+            if 0, no conversion.
         n_years (Int, Optional):
             lasso training period length (default = 7) years.
         lasso_alpha (Float, Optional):
             lasso training alpha lasso_alpha (default = 1e-5).
         """
 
-        if type(self.factor_reverse) == type(None):
+        if self.factor_reverse == 0:
             neg_factor = []
-        elif self.factor_reverse:  # using average of training period -> next period +/-
+        elif self.factor_reverse == 1:  # using average of training period -> next period +/-
             neg_factor = self._factor_reverse_on_average(sample_df)
         else:
             neg_factor = self._factor_reverse_on_lasso(sample_df)
@@ -622,13 +622,12 @@ class loadData:
         standardize x + PCA applied to x with train_x fit
         """
 
-        if type(n_components) == type(None):
-            scaler = StandardScaler()
-        elif math.isnan(n_components):
-            scaler = StandardScaler()
-        else:
-            assert 0 < n_components < 1         # always use explanation ratios
+        assert n_components < 1  # always use explanation ratios
+
+        if n_components > 0:
             scaler = Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=n_components))])
+        else:
+            scaler = StandardScaler()
 
         scaler.fit(train[pca_cols].values)
         x_train = scaler.transform(train[pca_cols].values)

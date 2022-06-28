@@ -1,4 +1,5 @@
 import pandas as pd
+import datetime as dt
 from utils import dateNow
 
 
@@ -25,7 +26,7 @@ def test_calcPillarCluster_download_pivot_ratio():
 def test_calcPillarCluster():
     from components.data_preparation.src.calculation_pillar_cluster import calcPillarCluster
 
-    df = calcPillarCluster(4, 4, ["USD"]).write_all()
+    df = calcPillarCluster(8, 4, ["EUR", "USD"], start_date=dt.datetime(1998, 1, 1)).write_all()
 
     assert len(df) > 0
     assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=5, freq='W-Sun')[0]
