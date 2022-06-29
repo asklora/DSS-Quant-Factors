@@ -50,9 +50,38 @@ class loadTrainConfig(calcTestingPeriod):
         self.backtest_period = backtest_period
         self.currency_code = currency_code
 
+    def get_all_groups(self) -> List[tuple]:
+        """
+        Returns
+        -------
+        all_groups: List[(dict)}
+            each dict defined the training configuration of:
+            - testing_period
+            - pillar
+            - train_currency
+            - pred_currency
+            + other configuration defined in [FactorFormulaTrainConfig] ...
+            + other grid search configuration (i.e. _auto_select_options) ...
+        """
+        all_configs_df = self.merge_groups_df()
+        all_configs_df = self._replace_pillar_name_with_factor_list(all_configs_df)
+
+        if self.restart:
+            finish_configs_df = self._restart_finished_configs()
+            diff_config_col = [x for x in finish_configs_df.columns.to_list() if x != "count"]
+            all_configs_df = all_configs_df.merge(finish_configs_df, how="left", on=diff_config_col)
+            all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()].drop(columns=["count"])
+
+        report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
+
+        all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
+        return all_groups
+
     @property
     def _defined_configs(self):
-        """ for production: use defined configs """
+        """
+        for production: use defined configs
+        """
 
         conditions = [
             models.FactorFormulaTrainConfig.is_active == True,
@@ -76,28 +105,15 @@ class loadTrainConfig(calcTestingPeriod):
         all_configs = product([{**a, **l, **{"testing_period": p}}
                                 for a in self._defined_configs
                                 for l in _auto_select_configs
-                                for p in self._testing_period_list[-self.backtest_period-1:-1]])
+                                for p in self._testing_period_list[-self.backtest_period:]])
 
         all_configs_df = pd.DataFrame([tuple(e)[0] for e in all_configs])
         return all_configs_df
 
-    def get_all_groups(self) -> List[tuple]:
-        all_configs_df = self.merge_groups_df()
-        all_configs_df = self._replace_pillar_name_with_factor_list(all_configs_df)
-
-        if self.restart:
-            finish_configs_df = self._restart_finished_configs()
-            diff_config_col = [x for x in finish_configs_df.columns.to_list() if x!="count"]
-            all_configs_df = all_configs_df.merge(finish_configs_df, how="left", on=diff_config_col)
-            all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()].drop(columns=["count"])
-
-        report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
-
-        all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
-        return all_groups
-
     def _replace_pillar_name_with_factor_list(self, configs_df):
-        """ Map pillar name to factor list by merging pillar tables & configs """
+        """
+        Map pillar name to factor list by merging pillar tables & configs
+        """
 
         cluster_pillar_df = self.__cluster_pillar_map(configs_df)
         defined_pillar_df = self.__defined_pillar_map(configs_df)
@@ -105,15 +121,36 @@ class loadTrainConfig(calcTestingPeriod):
         return configs_df
 
     def __cluster_pillar_map(self, config_df) -> pd.DataFrame:
-        map_df = read_query(f"SELECT currency_code as train_currency, testing_period, pillar, factor_list FROM {pillar_cluster_table}")
+        """
+        Returns
+        -------
+        pd.DataFrame:
+            Columns (add):
+                pillar:         str, name of pillars (i.e. pillar_1/2/3...)
+                factor_list:    list, list of factors belongs to this pillar
+        """
+
+        tbl = models.FactorFormulaPillarCluster
+        query = select(tbl.currency_code.label("train_currency"), tbl.testing_period, tbl.pillar, tbl.factor_list)\
+            .where(tbl.weeks_to_expire == self.weeks_to_expire)
+        map_df = read_query(query)
         map_df["testing_period"] = pd.to_datetime(map_df["testing_period"])
         map_df = map_df.loc[map_df["pillar"].str.startswith("pillar")]
 
         config_df = config_df.loc[config_df["pillar"] == "cluster"].drop(columns=["pillar"])
         config_df = config_df.merge(map_df, on=["train_currency", "testing_period"], how="left")
+
         return config_df
 
     def __defined_pillar_map(self, df) -> pd.DataFrame:
+        """
+        Returns
+        -------
+        pd.DataFrame:
+            Columns (add):
+                pillar:         str, value / quality / momentum
+                factor_list:    list, list of factors belongs to this pillar
+        """
         map_df = read_query(f"SELECT pillar, factor_list FROM {pillar_defined_table}")
 
         config_df = df.loc[df["pillar"] != "cluster"]

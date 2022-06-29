@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 from collections import Counter
 import multiprocessing as mp
 from sqlalchemy import select, and_
-from typing import List
+from typing import List, Union
 from itertools import product
 
 from utils import (
@@ -53,7 +53,7 @@ class clusterFeature:
         subpillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=subpillar_dist, linkage='average')
         subpillar_cluster.fit(self.X)
         subpillar_label = subpillar_cluster.labels_
-        logger.info(Counter(subpillar_label))
+        logger.debug(Counter(subpillar_label))
         subpillar = {f"subpillar_{k}": list(self.feature_names[subpillar_label == k]) for k, v in
                      dict(Counter(subpillar_label)).items()
                      if (v < len(self.feature_names) * subpillar_trh) and (v > 1)}
@@ -69,7 +69,7 @@ class clusterFeature:
         pillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=pillar_dist, linkage='average')
         pillar_cluster.fit(self.X)
         pillar_label = pillar_cluster.labels_
-        logger.info(Counter(pillar_label))
+        logger.debug(Counter(pillar_label))
         pillar = {f"pillar_{k}": list(self.feature_names[pillar_label == k]) for k, v in
                   dict(Counter(pillar_label)).items()}
 
@@ -174,7 +174,7 @@ class calcPillarCluster:
         return df
 
     @err2slack("clair", )
-    def _calc_cluster(self, *args, ratio_df=None) -> pd.DataFrame:
+    def _calc_cluster(self, *args, ratio_df=None) -> Union[None, pd.DataFrame]:
         """
         calculate pillar / subpillar using hierarchical clustering
         """
@@ -187,6 +187,9 @@ class calcPillarCluster:
             (ratio_df.index.get_level_values("currency_code") == currency_code) &
             (ratio_df.index.get_level_values("trading_day") <= subset_end_date.date()) &
             (ratio_df.index.get_level_values("trading_day") > subset_start_date.date())]
+
+        if len(df) == 0:
+            return None
 
         cluster_cls = clusterFeature(df)
         subpillar = cluster_cls.find_pillar(self.subpillar_trh)

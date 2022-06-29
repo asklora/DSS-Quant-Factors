@@ -53,15 +53,29 @@ class calcTestingPeriod:
     def _testing_period_list(self) -> pd.DatetimeIndex:
         """
         testing_period matched with testing period calculation for in data_preparation/calculation_premium.py
+
+        Returns
+        -------
+        period_list:
+            list of dates at (n = sample_interval) weeks on Sunday;
+            up to last available date = last Tuesday of first running date - (n = weeks_to_expire) weeks
+
+            * We usually run production on Sunday, i.e. we use entire weeks (n=7) days to calculate average.
+            * In case, we restart training on week days, if Monday price is available, then use monday TRI as proxy for weekly average
+
         """
 
         if self.restart:
-            end_date = pd.to_datetime(pd.date_range(end=self._restart_iteration_first_running_date,
-                                                    freq=f"W-MON", periods=1)[0])
+            first_run_date = self._restart_iteration_first_running_date
         else:
-            end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
+            first_run_date = dateNow()
 
-        period_list = pd.date_range(end=end_date, freq=f"{self.sample_interval}W-SUN", periods=1500//self.sample_interval)
+        back_by_average_days = pd.to_datetime(pd.date_range(end=first_run_date, freq=f"W-TUE", periods=1)[0])
+        back_by_weeks_to_expire = pd.to_datetime(pd.date_range(end=back_by_average_days, freq=f"W-SUN",
+                                                               periods=self.weeks_to_expire + 1)[0])
+        period_list = pd.date_range(end=back_by_weeks_to_expire, freq=f"{self.sample_interval}W-SUN",
+                                    periods=1500//self.sample_interval)
+
         return period_list
 
     @property

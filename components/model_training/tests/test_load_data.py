@@ -126,7 +126,7 @@ def test_loadData_factor_reverse_on_lasso():
         average_days=-7,
         factor_list=["roic", "book_to_price", "earnings_1yr", "earnings_yield", "ni_to_cfo", "sales_to_price", "roe", "ebitda_to_ev"],
         y_qcut=1,
-        factor_reverse=True,
+        factor_reverse=1,
         factor_pca=0.6,
         valid_pct=0.2,
         valid_method=2010
@@ -161,7 +161,7 @@ def test_loadData__test_sample_all_testing_period():
             average_days=-7,
             factor_list=test_factor_list,
             y_qcut=test_y_qcut,
-            factor_reverse=True,
+            factor_reverse=1,
             factor_pca=0.6,
             valid_pct=0.2,
             valid_method=2010
@@ -187,7 +187,7 @@ def test_loadData_get_y():
         average_days=-7,
         factor_list=test_factor_list,
         y_qcut=test_y_qcut,
-        factor_reverse=True,
+        factor_reverse=1,
         factor_pca=0.6,
         valid_pct=0.2,
         valid_method=2010
@@ -221,7 +221,7 @@ def test_loadData_get_x():
         average_days=-7,
         factor_list=test_factor_list,
         y_qcut=test_y_qcut,
-        factor_reverse=True,
+        factor_reverse=0,
         factor_pca=0.6,
         valid_pct=0.2,
         valid_method=2010

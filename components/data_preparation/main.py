@@ -77,4 +77,4 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.process,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else None)
+                          start_date=dt.datetime(1998, 1, 1) if args.history else None).write_all()

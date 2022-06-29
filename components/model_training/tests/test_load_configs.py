@@ -15,6 +15,13 @@ def test__restart_finished_configs():
 
 def test_loadTrainConfig():
     from components.model_training.src.load_train_configs import loadTrainConfig
-    lst = loadTrainConfig(weeks_to_expire = 4).get_all_groups()
+    lst = loadTrainConfig(weeks_to_expire=4).get_all_groups()
+
+    assert len(lst) > 0
+
+
+def test_loadTrainConfig_HKD():
+    from components.model_training.src.load_train_configs import loadTrainConfig
+    lst = loadTrainConfig(weeks_to_expire=8, currency_code="HKD", backtest_period=14).get_all_groups()
 
     assert len(lst) > 0
