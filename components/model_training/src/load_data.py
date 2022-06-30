@@ -247,8 +247,8 @@ class combineData(cleanMacros):
         Combine macros and premium inputs
         """
 
-        macros = self.get_all_macros()         # TODO: remove after debug
-        macros.to_pickle("factor_macros.pkl")
+        # macros = self.get_all_macros()         # TODO: remove after debug
+        # macros.to_pickle("factor_macros.pkl")
 
         macros = pd.read_pickle("factor_macros.pkl")
         macros_premium = premium.merge(macros, on=["testing_period"])
@@ -524,6 +524,7 @@ class loadData:
         testing_period of y = testing_period of X + weeks_to_expire to avoid data snooping
         """
 
+        logger.debug(self.factor_list)
         df_y = sample_df[self.factor_list].copy()
 
         df_y = df_y.reset_index()

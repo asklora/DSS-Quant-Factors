@@ -43,7 +43,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check 1: if monthly -> only first Sunday every month
-    if os.getenv("DEBUG").lower() != "true":
+    if bool(os.getenv("DEBUG")):
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 

@@ -1,4 +1,6 @@
 import datetime as dt
+import os
+
 import pandas as pd
 from typing import List
 from itertools import product
@@ -84,15 +86,16 @@ class loadTrainConfig(calcTestingPeriod):
         """
 
         conditions = [
-            models.FactorFormulaTrainConfig.is_active == True,
             models.FactorFormulaTrainConfig.weeks_to_expire == self.weeks_to_expire,
         ]
         if self.currency_code:
             conditions.append(models.FactorFormulaTrainConfig.pred_currency.like(f"%{self.currency_code}%"))
+        if not bool(os.getenv("DEBUG")):
+            conditions.append(models.FactorFormulaTrainConfig.id == 0)
 
         query = select(models.FactorFormulaTrainConfig).where(and_(*conditions))
         df = read_query(query)
-        defined_configs = df.drop(columns=["is_active", "last_finish"]).to_dict("records")
+        defined_configs = df.drop(columns=["finished", "id"]).to_dict("records")
 
         assert len(defined_configs) > 0  # else no training will be done
 

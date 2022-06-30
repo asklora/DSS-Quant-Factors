@@ -26,12 +26,23 @@ from utils import (
     sys_logger,
     err2slack,
     dateNow,
+    timestampNow
 )
 
 logger = sys_logger(__name__, "DEBUG")
 
 
-@err2slack("clair")
+def write_args_finished(kwargs):
+    """
+    write finish timing to database for sqlalchemy
+    """
+    tbl = models.FactorFormulaTrainConfig
+    df = pd.Series(kwargs).to_frame().T.filter([x.name for x in tbl.__table__.columns])
+    df = df.assign(finished=timestampNow(), id=0)
+    upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
+
+
+# @err2slack("clair")
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -49,6 +60,9 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     for sample_set in sample_sets:
         hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
         hpot_cls.train_and_write(sample_set=sample_set)
+
+    if not bool(os.getenv("DEBUG")):
+        write_args_finished(kwargs)
 
     return True
 
@@ -71,7 +85,7 @@ if __name__ == "__main__":
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    if os.getenv("DEBUG").lower() != "true":
+    if bool(os.getenv("DEBUG")):
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
