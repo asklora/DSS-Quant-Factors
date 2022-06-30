@@ -42,7 +42,7 @@ def write_args_finished(kwargs):
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-# @err2slack("clair")
+@err2slack("clair")
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    if bool(os.getenv("DEBUG")):
+    if not bool(os.getenv("DEBUG")):
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 

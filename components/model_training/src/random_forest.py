@@ -236,8 +236,11 @@ class rf_HPOT:
         prepare array Y_test_pred to DataFrame ready to write to SQL
         """
 
-        assert len(test_y.index.get_level_values("testing_period").unique()) == 1
-        assert test_y.index.names == ("group", "testing_period")
+        if len(test_y.index.get_level_values("testing_period").unique()) != 1:
+            raise Exception(f"{__name__} Predict for more than 1 testing period!")
+
+        if test_y.index.names != ["group", "testing_period"]:
+            raise Exception(f"{__name__} Index name is not (group, testing_period) but: {test_y.index.names}")
 
         df = pd.concat([test_y.stack(), test_y_pred.stack()], axis=1)
         df.columns = ["actual", "pred"]

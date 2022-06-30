@@ -247,13 +247,15 @@ class combineData(cleanMacros):
         Combine macros and premium inputs
         """
 
-        # macros = self.get_all_macros()         # TODO: remove after debug
-        # macros.to_pickle("factor_macros.pkl")
+        macros = self.get_all_macros()
 
-        macros = pd.read_pickle("factor_macros.pkl")
+        # macros.to_pickle("factor_macros.pkl")
+        # macros = pd.read_pickle("factor_macros.pkl")
+
         macros_premium = premium.merge(macros, on=["testing_period"])
 
-        assert len(macros_premium) == len(premium)
+        if len(macros_premium) != len(premium):
+            raise Exception(f"Macro data is not match with premium data! {__name__}")
 
         return macros_premium
 
@@ -563,7 +565,8 @@ class loadData:
         """
 
         arr = train.values.flatten()
-        assert len(arr) > 0
+        if len(arr) <= 0:
+            raise Exception(f"{__name__}: empty training set!")
 
         arr_cut, cut_bins = pd.qcut(arr, q=self.y_qcut, retbins=True, labels=False)
         cut_bins[0], cut_bins[-1] = [-np.inf, np.inf]

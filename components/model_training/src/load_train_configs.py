@@ -97,7 +97,8 @@ class loadTrainConfig(calcTestingPeriod):
         df = read_query(query)
         defined_configs = df.drop(columns=["finished", "id"]).to_dict("records")
 
-        assert len(defined_configs) > 0  # else no training will be done
+        if len(defined_configs) <= 0:
+            raise ValueError(f"No train config selected from [{models.FactorFormulaTrainConfig.__tablename__}] by {__name__}")
 
         return defined_configs
 
