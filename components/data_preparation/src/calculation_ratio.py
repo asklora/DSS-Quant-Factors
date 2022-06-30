@@ -55,7 +55,8 @@ def fill_all_day(df, id_col: str = "ticker", date_col: str = "trading_day",
     Fill all the weekends between first / last day and fill NaN
     """
 
-    assert len(df) > 0
+    if len(df) <= 0:
+        raise ValueError("df is empty!")
 
     daily = pd.date_range(df[date_col].min() - relativedelta(days=int(before_buffer_day)),
                           df[date_col].max() + relativedelta(days=int(after_buffer_day)), freq='D')
