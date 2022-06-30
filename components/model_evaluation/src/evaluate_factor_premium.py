@@ -17,7 +17,9 @@ from utils import (
     err2slack,
     recreate_engine,
     upsert_data_to_database,
+    timestampNow
 )
+from .load_eval_configs import load_eval_config
 
 logger = sys_logger(__name__, "DEBUG")
 
@@ -184,14 +186,55 @@ class cleanPrediction:
 
 
 class groupSummaryStats:
+    """
+    Calculate good/bad factor and evaluation metrics into results (pd.Series) for each group;
 
-    def __init__(self, eval_q: float, eval_removed_subpillar: bool, **kwargs):
+    One group defined as all factors for
+    - 1 pillar
+    - 1 testing_period
+    - 1 currency_code
+    - 1 weeks_to_expire
+
+    call get_stats() in groupby.apply function in evalFactor to calculate stats for all groups
+    """
+
+    def __init__(self, eval_q: float = 0.33, eval_removed_subpillar: bool = True, **kwargs):
+        """
+        Parameters
+        ----------
+        eval_q :
+            default = 0.33, i.e. top 1/3 with highest predicted premium as good factors; bottom 1/3 as bad factors;
+        eval_removed_subpillar:
+            If True, factors within same subpillar will only be selected once.
+        """
         self.eval_q = eval_q
         self.eval_removed_subpillar = eval_removed_subpillar
 
-    def get_stats(self, g: pd.DataFrame) -> pd.Series:
+    def get_stats(self, g: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate factor evaluation metrics as pd.Series for each group
+        Parameters
+        ----------
+        g : pd.DataFrame
+            Columns:
+                pred:           float64, predicted premium for the group;
+                actual:         float64, predicted premium for the group;
+                subpillar:      str, name of subpillar;
+                factor_name:    str, name of factors;
+
+                + other columns(...) from the groupby function to label the group
+
+        Returns
+        ----------
+        results: pd.DataFrame
+            Columns:
+                eval_q:                     float64, from inputs parameters
+                eval_removed_subpillar:     bool, from inputs parameters
+                max/min_factor:             list, list of factor name select as good/bad factors
+                max/min_factor_pred:        dict, dict of {factor_name: prediction premium} for good/bad factors
+                max/min_factor_actual:      dict, dict of {factor_name: actual premium} for good/bad factors
+                max/min_ret:                float64, good/bad factors average actual premiums
+                mae / mse / r2:             float64, metrics calculated with all factors pred and actual\
+            Index = [0]
         """
 
         if len(g) > 1:
@@ -204,9 +247,9 @@ class groupSummaryStats:
         min_select_dict = self.__group_df_to_dict(prefix="min", g=min_g)
 
         results = pd.Series({**accu_dict, **max_select_dict, **min_select_dict,
-                             "eval_q"                : self.eval_q,
-                             "eval_removed_subpillar": self.eval_removed_subpillar})
-
+                                "eval_q"                : self.eval_q,
+                                "eval_removed_subpillar": self.eval_removed_subpillar}).to_frame().T
+        results.index.name = "group_idx"
         return results
 
     def __stats_if_multioutput(self, g: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
@@ -270,26 +313,24 @@ class groupSummaryStats:
 
 class evalFactor:
     """
-    process raw prediction in result_pred_table -> [factor_result_rank_backtest_eval] Table for AI Score calculation
+    process raw prediction in result_pred_table -> models.FactorBacktestEval Table for AI Score calculation
     """
 
     save_cache = True
-    config_opt_columns = [x.name for x in models.FactorResultScore.config_opt_columns]
-    config_define_columns = [x.name for x in models.FactorResultScore.config_define_columns] + \
-                            [x.name for x in models.FactorResultScore.base_columns]
+    config_opt_columns = [x.name for x in models.FactorBacktestEval.config_opt_columns]
+    config_define_columns = [x.name for x in models.FactorBacktestEval.train_config_define_columns] + \
+                            [x.name for x in models.FactorBacktestEval.base_columns]
 
-    def __init__(self, name_sql: str, processes: int, all_groups: List[dict]):
+    def __init__(self, name_sql: str, processes: int):
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.processes = processes
-        self.all_groups = all_groups
 
     def write_db(self):
         """
         Returns
         -------
-        pd.DataFrame
-            Columns:
+        pd.DataFrame for [FactorBacktestEval] Table
 
         """
 
@@ -298,17 +339,18 @@ class evalFactor:
             subpillar_df = cleanSubpillar(start_date=pred_df["testing_period"].min(),
                                           weeks_to_expire=self.weeks_to_expire).get_subpillar()
 
-            eval_results = pool.starmap(partial(self._rank, pred_df=pred_df, subpillar_df=subpillar_df),
-                                        self.all_groups)
+            all_groups = load_eval_config(self.weeks_to_expire)
+
+            eval_results = pool.starmap(partial(self._rank, pred_df=pred_df, subpillar_df=subpillar_df), all_groups)
 
         eval_df = pd.concat([e for e in eval_results if type(e) != type(None)], axis=0)  # df for each config evaluation results
-        eval_df["name_sql"] = self.name_sql
-        eval_df['updated'] = dt.datetime.now()
+        eval_df = eval_df.assign(name_sql=self.name_sql, updated=timestampNow())
+        eval_df = self.__map_actual_factor_premium(eval_df=eval_df, pred_df=pred_df)
 
         if self.save_cache:
             eval_df.to_pickle(f"eval_{self.name_sql}.pkl")
 
-        upsert_data_to_database(eval_df, models.FactorBacktestEval.__tablename__, how="update")
+        upsert_data_to_database(eval_df, models.FactorBacktestEval.__tablename__, how="ignore")
 
         return eval_df
 
@@ -336,9 +378,9 @@ class evalFactor:
         """
 
         if pillar != "cluster":
-            sample_df = df.loc[(df["currency_code"] == currency_code) & (df["pillar"] == pillar)]
+            sample_df = df.loc[(df["currency_code"] == currency_code) & (df["pillar"] == pillar)].copy(1)
         else:
-            sample_df = df.loc[(df["currency_code"] == currency_code) & (df["pillar"].str.startswith("pillar"))]
+            sample_df = df.loc[(df["currency_code"] == currency_code) & (df["pillar"].str.startswith("pillar"))].copy(1)
 
         return sample_df
 
@@ -364,8 +406,6 @@ class evalFactor:
 
     def _eval_factor_all(self, df, eval_q: float, eval_removed_subpillar: bool, **kwargs):
         """
-        save backtest evaluation metrics to DB Table [backtest_eval]
-
         evaluate & rank different configuration;
         save backtest evaluation metrics -> backtest_eval_table
         """
@@ -375,9 +415,7 @@ class evalFactor:
         df_eval = df.groupby(self.config_define_columns + self.config_opt_columns).apply(
             summary_cls.get_stats).reset_index()
 
-        df_eval = self.__map_actual_factor_premium(eval_df=df_eval, pred_df=df)
-
-        return df_eval
+        return df_eval.drop(columns=["group_idx"])
 
     def __map_actual_factor_premium(self, eval_df: pd.DataFrame, pred_df: pd.DataFrame):
         """

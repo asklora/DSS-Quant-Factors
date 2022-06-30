@@ -115,18 +115,26 @@ def test_groupSummaryStats_get_stats_multioutput_no_actual():
     assert len(results) == 6
 
 
-def test_evalFactor_rank():
+def test_evalFactor_rank_pillar_cluster():
     from components.model_evaluation.src.evaluate_factor_premium import evalFactor, cleanPrediction, cleanSubpillar
     from components.model_evaluation.src.load_eval_configs import load_eval_config
 
     all_groups = load_eval_config(weeks_to_expire=8)
 
-    name_sql = 'w4_20220627171813'
+    name_sql = 'w8_20220629115419'
     weeks_to_expire = 4
     pred_df = cleanPrediction(name_sql=name_sql).get_prediction()
     subpillar_df = cleanSubpillar(start_date=pred_df["testing_period"].min(), weeks_to_expire=weeks_to_expire).get_subpillar()
 
-    eval_cls = evalFactor(name_sql='w4_20220627171813', processes=1, all_groups=all_groups)
-    df = eval_cls._rank(all_groups[0][0], pred_df=pred_df, subpillar_df=subpillar_df)
+    eval_cls = evalFactor(name_sql='w8_20220629115419', processes=1, all_groups=all_groups)
 
-    assert len(df) > 0
+    df1 = eval_cls._rank(next(i[0] for i in all_groups if i[0]["currency_code"] == "HKD"), pred_df=pred_df, subpillar_df=subpillar_df)
+    assert len(df1) > 0
+    assert {"eval_q", "eval_remove_subpillar"}.issubset(set(df1.columns.to_list()))
+
+
+def test_evalFactor():
+    from components.model_evaluation.src.evaluate_factor_premium import evalFactor
+    eval_df = evalFactor(name_sql="w8_20220629115419", processes=1).write_db()
+
+    assert len(eval_df) > 0
