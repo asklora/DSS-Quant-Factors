@@ -32,3 +32,11 @@ WORKDIR /app
 USER app
 
 FROM builder as main
+
+COPY components/data_preparation components/data_preparation
+COPY components/model_training components/model_training
+COPY components/model_evaluation components/model_evaluation
+
+ENV DEBUG=True
+ENV DB_USERNAME=quant_factor
+ENV DB_PASSWORD=quant_factor

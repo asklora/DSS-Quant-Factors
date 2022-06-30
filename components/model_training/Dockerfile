@@ -1,6 +1,4 @@
-# TODO: Build this image on top of baseDocker
+ARG BASE
+FROM $BASE as base
 
-ARG Base
-
-
-
+COPY components/model_training components/model_training
