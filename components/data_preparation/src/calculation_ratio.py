@@ -698,7 +698,7 @@ class combineData:
 
     def get_all_tri_related(self, ticker):
         """
-        Get all ratios calculated with stock data only (i.e. for ETF / index)
+        Get all price ratios for ticker without fundamental data (i.e. for ETF / index)
         """
 
         tri = cleanData(self.start_date, self.end_date).get_tri_all(ticker)
@@ -744,7 +744,7 @@ class combineData:
 
 
 class calcRatio:
-    """ Calculate all factor used referring to DB ratio table """
+    """ Calculate all factors required referencing the DB ratio table """
 
     formula = read_query(select(models.FactorFormulaRatio).where(models.FactorFormulaRatio.is_active == True))
     etf_list = read_query(select(models.Universe.ticker).where(models.Universe.is_etf == True))["ticker"].to_list()
@@ -758,7 +758,8 @@ class calcRatio:
     @err2slack("clair")
     def get(self, *args):
         """
-        calculate ratio for 1 ticker within 1 process
+        calculate ratio for 1 ticker within 1 process for multithreading
+        return df = PIT returns processed TRI data, 
         """
         ticker = args
 
@@ -785,7 +786,7 @@ class calcRatio:
 
     def _calc_add_minus_fields(self, df):
         """
-        Prepare for field requires add/minus
+        Data processing: prepare for fields requires addition/subtraction operations
         """
 
         add_minus_fields = self.formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -818,7 +819,7 @@ class calcRatio:
 
     def _calculate_keep_ratios(self, df):
         """
-        Ratios Keep original values = just rename
+        Data processing: prepare for fields requires renaming operations
         """
 
         keep_original_mask = self.formula['field_denom'].isnull() & self.formula['field_num'].notnull()
@@ -851,7 +852,7 @@ class calcRatio:
 
     def _calculate_divide_ratios(self, df):
         """
-        Divide ratios = field A / field B
+        Data processing: prepare for fields requires division operations
         """
 
         logger.debug(f'Calculate dividing ratios ')
@@ -865,7 +866,7 @@ class calcRatio:
 
     def _clean_missing_ratio_records(self, df):
         """
-        drop records without any ratios
+        Data cleaning: drop records without any ratios
         """
 
         dropna_col = set(df.columns.to_list()) & set(self.formula['name'].to_list())
@@ -875,8 +876,8 @@ class calcRatio:
 
     def _clean_missing_y_records(self, df):
         """
-        drop records before stock price return is first available;
-        latest records will also have missing stock_return, but we will keep the records.
+        Data cleaning: drop records before stock price return is first available;
+        latest records will also have missing stock_return, but we will keep the records.  ??????????
         """
 
         y_col = [x for x in df.columns.to_list() if x.startswith("stock_return_y")]
@@ -888,7 +889,7 @@ class calcRatio:
 
     def _reformat_df(self, df):
         """
-        filter for time period needed & melt table into (ticker, trading_day, field, value) format
+        Data processing: filter for time periods needed & melt/reshape table into (ticker, trading_day, field, value) format
         """
 
         df = df.loc[(df["trading_day"] >= self.start_date) & (df["trading_day"] <= self.end_date)]
@@ -901,6 +902,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
                                 start_date: dt.datetime = None, end_date: dt.datetime = None,
                                 tri_return_only: bool = False, processes: int = 1):
     """
+    --recalc_ratio
     Calculate weekly ratios for all factors + all tickers with multiprocess
 
     Parameters

@@ -90,7 +90,7 @@ class cleanSubpillar:
 
 class cleanPrediction:
     """
-    Combine prediction and score table
+    Data Processing: Combine prediction and score table
     """
 
     pred_pillar_list = None  # evaluate all pillars
@@ -330,7 +330,7 @@ class evalFactor:
         """
         Returns
         -------
-        pd.DataFrame for [FactorBacktestEval] Table
+        eval_df = pd.DataFrame for [FactorBacktestEval] Table
 
         """
 

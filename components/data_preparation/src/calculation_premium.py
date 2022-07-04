@@ -134,7 +134,7 @@ class calcPremium:
     @err2slack("clair")
     def get_premium(self, *args, ratio_df=None):
         """
-        calculate premium for certain group and factor (e.g. EUR + roic) in 1 process
+        Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
         """
 
         logger.debug(f'=== Calculate premium for ({args}) ===')
@@ -151,7 +151,7 @@ class calcPremium:
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
         """
-        filter complete ratio pd.DataFrame for certain Y & Factor only
+        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only ??????????
         """
 
         df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
@@ -174,7 +174,8 @@ class calcPremium:
 
     def _clean_prem_df(self, group, factor, y_col, prem=None):
         """
-        premium = small group average returns - big groups
+        premium = small group average returns - big groups  ?????????? 
+        Calculate: prem = top quantile - bottom quantile? 
         """
 
         prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
@@ -192,7 +193,7 @@ class calcPremium:
 
     def __resample_df_by_interval(self, df):
         """
-        resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
+        Data processing: resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
         """
 
         end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()

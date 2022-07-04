@@ -110,7 +110,7 @@ class calcPillarCluster:
 
     def _testing_period_list(self, start_date, end_date, sample_interval, weeks_to_expire):
         """
-        period_list Timestamp match premium table i.e. testing_period = (last_data_date - weeks_to_expire)
+        Data processing: align period_list Timestamp to match premium table i.e. testing_period = (last_data_date - weeks_to_expire)
         """
 
         # end on last sunday so that we use last week TRI to calculate average TRI
@@ -127,7 +127,7 @@ class calcPillarCluster:
 
     def write_all(self):
         """
-        write all cluster results to table [factor_formula_pillar_cluster]
+        Data output: write all cluster results to table [factor_formula_pillar_cluster]
         """
 
         with mp.Pool(processes=self.processes, initializer=recreate_engine) as pool:
