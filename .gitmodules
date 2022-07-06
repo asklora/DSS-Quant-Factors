@@ -1,4 +1,4 @@
 [submodule "utils"]
 	path = utils
-	url = https://github.com/asklora/DSS-Quant-ML-Utils
+	url = https://[claircui]@github.com/asklora/DSS-Quant-ML-Utils.git
 
