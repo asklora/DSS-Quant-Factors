@@ -90,7 +90,7 @@ class loadTrainConfig(calcTestingPeriod):
         ]
         if self.currency_code:
             conditions.append(models.FactorFormulaTrainConfig.pred_currency.like(f"%{self.currency_code}%"))
-        if not bool(os.getenv("DEBUG")):
+        if not os.getenv("DEBUG").lower == "true":
             conditions.append(models.FactorFormulaTrainConfig.id == 0)
 
         query = select(models.FactorFormulaTrainConfig).where(and_(*conditions))

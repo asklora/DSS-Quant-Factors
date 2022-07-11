@@ -31,10 +31,10 @@ latest_mktcap_data_table = models.LatestMktcap.__table__.schema + '.' + models.L
 
 worldscope_data_table = models.DataWorldscope.__table__.schema + '.' + models.DataWorldscope.__table__.name
 ibes_data_table = models.DataIbes.__table__.schema + '.' + models.DataIbes.__table__.name
-currency_history_table = "currency_price_history"       # TODO: change to ORM
+currency_history_table = models.CurrencyPriceHistory.__table__.schema + '.' + models.CurrencyPriceHistory.__table__.name
 
 factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
-ingestion_name_table = "ingestion_name"     # TODO: change to ORM
+ingestion_name_table = models.IngestionName.__table__.schema + '.' + models.IngestionName.__table__.name
 factor_ratio_table = models.FactorPreprocessRatio.__tablename__
 
 # ----------------------------------------- FX Conversion --------------------------------------------
@@ -64,6 +64,7 @@ def fill_all_day(df, id_col: str = "ticker", date_col: str = "trading_day",
 
     # Insert weekend/before first trading date to df
     result = df.set_index([id_col, date_col]).reindex(indexes).reset_index()
+    result[date_col] = pd.to_datetime(result[date_col])
 
     return result
 
@@ -74,13 +75,13 @@ def get_daily_fx_rate_df():
     """
 
     fx = read_table(currency_history_table)
-    fx['last_date'] = pd.to_datetime(fx['last_date'])
+    fx['trading_day'] = pd.to_datetime(fx['trading_day'])
 
-    fx = fill_all_day(fx, id_col="currency_code", date_col='last_date')
+    fx = fill_all_day(fx, id_col="currency_code", date_col='trading_day')
     fx.loc[fx["currency_code"] == "USD", "last_price"] = 1
-    fx['last_price'] = fx.sort_values(by=["currency_code", "last_date"]).groupby('currency_code')['last_price'].ffill()
+    fx['last_price'] = fx.sort_values(by=["currency_code", "trading_day"]).groupby('currency_code')['last_price'].ffill()
 
-    fx = fx.rename(columns={"currency_code": "_currency", "last_date": "trading_day", "last_price": "fx_rate"})
+    fx = fx.rename(columns={"currency_code": "_currency", "last_price": "fx_rate"})
 
     return fx
 

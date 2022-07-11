@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
     args = parser.parse_args()
 
-    if not bool(os.getenv("DEBUG")):
+    if not os.getenv("DEBUG").lower == "true":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 

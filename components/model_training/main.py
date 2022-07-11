@@ -61,7 +61,7 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
         hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
         hpot_cls.train_and_write(sample_set=sample_set)
 
-    if not bool(os.getenv("DEBUG")):
+    if not os.getenv("DEBUG").lower == "true":
         write_args_finished(kwargs)
 
     return True
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    if not bool(os.getenv("DEBUG")):
+    if not os.getenv("DEBUG").lower == "true":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
