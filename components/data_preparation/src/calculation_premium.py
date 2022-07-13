@@ -49,7 +49,7 @@ class calcPremium:
             forward period for premium calculation
         weeks_to_offset
             weeks offset between samples (default=1 week),
-            i.e. if calculating non-duplicated premiums, should set "weeks_to_offset"="weeks_to_expire"
+            i.e. non-overlapping premiums <=> "weeks_to_offset"="weeks_to_expire"
         average_day_list:
             number of average days for the stock returns used to calculate premiums
         currency_code_list:
@@ -151,7 +151,7 @@ class calcPremium:
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
         """
-        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only ??????????
+        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only 
         """
 
         df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
@@ -193,7 +193,7 @@ class calcPremium:
 
     def __resample_df_by_interval(self, df):
         """
-        Data processing: resample df for premium calculation dates every (n=weeks_to_offset) since the most recent period
+        Data processing: resample df (days ->weeks) for premium calculation dates every (n=weeks_to_offset) since the most recent period
         """
 
         end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()
@@ -231,7 +231,7 @@ class calcPremium:
 
     def __qcut(self, series):
         """
-        assign a max value for the 99% percentile to replace
+        ????????????
         """
 
         try:

@@ -761,6 +761,10 @@ class calcRatio:
         """
         calculate ratio for 1 ticker within 1 process for multithreading
         return df = PIT returns processed TRI data, 
+        
+        1. pre-process operations on data using name,field_num, field_denom fields
+        2. DIVIDE for ratios
+        3. clean up 
         """
         ticker = args
 
@@ -774,11 +778,11 @@ class calcRatio:
             df = self.raw_data.get_all_tri_related(ticker)
         else:
             df = self.raw_data.get_all(ticker)
-            df = self._calc_add_minus_fields(df)
-            df = self._calculate_keep_ratios(df)
-            df = self._calculate_ts_ratios(df)
-            df = self._calculate_divide_ratios(df)
-            df = self._clean_missing_ratio_records(df)
+            df = self._calc_add_minus_fields(df) 'pre'
+            df = self._calculate_keep_ratios(df) 'pre'
+            df = self._calculate_ts_ratios(df) 'pre'
+            df = self._calculate_divide_ratios(df) 'DIVIDE'
+            df = self._clean_missing_ratio_records(df) 'clean-up'
 
         df = self._clean_missing_y_records(df)
         df = self._reformat_df(df)
@@ -787,7 +791,7 @@ class calcRatio:
 
     def _calc_add_minus_fields(self, df):
         """
-        Data processing: prepare for fields requires addition/subtraction operations
+        Data pre-processing: prepare fields that requires addition/subtraction operations for the numerator and denominator
         """
 
         add_minus_fields = self.formula[['field_num', 'field_denom']].dropna(how='any').to_numpy().flatten()
@@ -820,7 +824,7 @@ class calcRatio:
 
     def _calculate_keep_ratios(self, df):
         """
-        Data processing: prepare for fields requires renaming operations
+        Data pre-processing: prepare fields without division - no denom
         """
 
         keep_original_mask = self.formula['field_denom'].isnull() & self.formula['field_num'].notnull()
@@ -834,7 +838,7 @@ class calcRatio:
 
     def _calculate_ts_ratios(self, df, period_yr = 52, period_q = 12):
         """
-        Time series ratios (Calculate 1m change first)
+        Data pre-processing: delta/growth time series (Calculate 1m change first) 
         """
 
         logger.debug(f'Calculate time-series ratio')
@@ -853,7 +857,7 @@ class calcRatio:
 
     def _calculate_divide_ratios(self, df):
         """
-        Data processing: prepare for fields requires division operations
+        Data processing: divide all ratios AFTER all pre-processing
         """
 
         logger.debug(f'Calculate dividing ratios ')
