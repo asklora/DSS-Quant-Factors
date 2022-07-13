@@ -104,6 +104,7 @@ if __name__ == "__main__":
         raw_df = combineData(weeks_to_expire=args.weeks_to_expire,
                              sample_interval=args.sample_interval,
                              backtest_period=args.backtest_period,
+                             currency_code=None,                        # raw_df should get all
                              restart=args.restart).get_raw_data()
 
         all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
