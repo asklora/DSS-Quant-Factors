@@ -1,0 +1,30 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quant-factors-backtest-train
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: quant-factors
+        image: factor
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -c
+        - python3 components/model_training/main.py --weeks_to_expire 8 --backtest_period 60 --processes 12
+        - python3 components/model_training/main.py --weeks_to_expire 4 --backtest_period 60 --processes 12
+        - python3 components/model_training/main.py --weeks_to_expire 26 --backtest_period 60 --processes 12
+        - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select
+        - python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select
+        - python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select
+        resources:
+          requests:
+            memory: "12Gi"
+            cpu: "12000m"
+          limits:
+            memory: "24Gi"
+            cpu: "24000m"

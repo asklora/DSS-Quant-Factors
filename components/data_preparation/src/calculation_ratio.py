@@ -778,11 +778,11 @@ class calcRatio:
             df = self.raw_data.get_all_tri_related(ticker)
         else:
             df = self.raw_data.get_all(ticker)
-            df = self._calc_add_minus_fields(df) 'pre'
-            df = self._calculate_keep_ratios(df) 'pre'
-            df = self._calculate_ts_ratios(df) 'pre'
-            df = self._calculate_divide_ratios(df) 'DIVIDE'
-            df = self._clean_missing_ratio_records(df) 'clean-up'
+            df = self._calc_add_minus_fields(df) #'pre'
+            df = self._calculate_keep_ratios(df) #'pre'
+            df = self._calculate_ts_ratios(df) #'pre'
+            df = self._calculate_divide_ratios(df) #'DIVIDE'
+            df = self._clean_missing_ratio_records(df) #'clean-up'
 
         df = self._clean_missing_y_records(df)
         df = self._reformat_df(df)
