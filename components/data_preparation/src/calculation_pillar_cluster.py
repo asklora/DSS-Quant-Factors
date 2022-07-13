@@ -192,7 +192,7 @@ class calcPillarCluster:
             return None
 
         cluster_cls = clusterFeature(df)
-        subpillar = cluster_cls.find_pillar(self.subpillar_trh)
+        subpillar = cluster_cls.find_subpillar(self.subpillar_trh)
         pillar = cluster_cls.find_pillar(self.pillar_trh)
 
         df_pillar = pd.DataFrame({"factor_list": {**pillar, **subpillar}})
