@@ -115,12 +115,13 @@ class rf_HPOT:
         return True
 
     def _regr_train(self, space: dict, sample_set: dict) -> object:
-        """ train lightgbm booster based on training / validation set -> give predictions of Y """
+        """ train RandomForest booster based on training / validation set -> give predictions of Y """
 
         params = space.copy()
         params = self.__clean_rf_params(params)
 
         if 'extra' in self.tree_type:
+            #Extremely Randomized Trees ~ Extra Trees worse when there is a high number of noisy features
             regr = ExtraTreesRegressor(criterion=self.objective, **params)
         elif 'rf' in self.tree_type:
             regr = RandomForestRegressor(criterion=self.objective, **params)
@@ -210,7 +211,7 @@ class rf_HPOT:
 
     def _eval_reg(self, rf_space: dict, sample_set: dict):
         """
-        train & evaluate LightGBM on given rf_space by hyperopt trials with Regression model
+        train & evaluate Random Forest on given rf_space by hyperopt trials with Regression model
         """
 
         self.sql_result['uid'] = self.hpot_start + get_timestamp_now_str()
