@@ -12,11 +12,19 @@ profiles:
   - kubeContext: minikube           # LATER MOVE
   build:
     artifacts:
-       - image: quant-utils
+       - image: quant-build-essential
          context: utils
          docker:
-           dockerfile: .Dockerfile
+           dockerfile: deployment/build-essential.Dockerfile
+       - image: quant-utils
+         context: utils
+         requires:
+           - image: quant-build-essential
+             alias: BUILD
+         docker:
+           dockerfile: deployment/utils.Dockerfile
        - image: quant-factor
+         context: .
          requires:
            - image: quant-utils
              alias: BASE

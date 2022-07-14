@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: quant-factors-preprocess-history
+  name: quant-factors-backtest-train
 spec:
   backoffLimit: 1
   template:
@@ -10,14 +10,17 @@ spec:
       restartPolicy: Never
       containers:
       - name: quant-factors
-        image: factor
+        image: quant-factor
         imagePullPolicy: IfNotPresent
         command:
         - /bin/sh
         - -c
-        - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_ratio --recalc_premium --recalc_subpillar --processes 12 --history
-        - python3 components/data_preparation/main.py --weeks_to_expire 4 --recalc_premium --recalc_subpillar --processes 12 --history
-        - python3 components/data_preparation/main.py --weeks_to_expire 26 --recalc_premium --recalc_subpillar --processes 12 --history
+        - python3 components/model_training/main.py --weeks_to_expire 8 --backtest_period 60 --processes 12
+        - python3 components/model_training/main.py --weeks_to_expire 4 --backtest_period 60 --processes 12
+        - python3 components/model_training/main.py --weeks_to_expire 26 --backtest_period 60 --processes 12
+        - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select
+        - python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select
+        - python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select
         resources:
           requests:
             memory: "12Gi"
