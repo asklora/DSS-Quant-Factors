@@ -39,7 +39,7 @@ def test_filter_factor_df():
 def test_calcPremium_single_factor():
     from components.data_preparation.src.calculation_premium import calcPremium
     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4,
-                     currency_code_list=["USD"], factor_list=["roic"]).write_all()
+                     currency_code_list=["EUR"], factor_list=["gross_margin"]).write_all()
 
     assert len(df) > 0
 
@@ -50,7 +50,7 @@ def test_calcPremium_single_factor():
 
 def test_calcPremium():
     from components.data_preparation.src.calculation_premium import calcPremium
-    df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"]).write_all()
+    df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["EUR"]).write_all()
 
     assert len(df) > 0
     assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]

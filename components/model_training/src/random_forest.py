@@ -240,13 +240,14 @@ class rf_HPOT:
         if len(test_y.index.get_level_values("testing_period").unique()) != 1:
             raise Exception(f"{__name__} Predict for more than 1 testing period!")
 
-        if test_y.index.names != ["group", "testing_period"]:
-            raise Exception(f"{__name__} Index name is not (group, testing_period) but: {test_y.index.names}")
+        # if test_y.index.names != ["group", "testing_period"]:
+        #     raise Exception(f"{__name__} Index name is not (group, testing_period) but: {test_y.index.names}")
 
         df = pd.concat([test_y.stack(), test_y_pred.stack()], axis=1)
         df.columns = ["actual", "pred"]
-        df.index.names = ("currency_code", "testing_period", "factor_name")
-        df = df.reset_index().drop(columns=["testing_period"])
+        df = df.reset_index().rename(columns={"group": "currency_code", "field": "factor_name", "level_2": "factor_name"})
+        # df.index.names = ("currency_code", "testing_period", "factor_name")
+        df = df.drop(columns=["testing_period"])
         df['uid'] = str(self.sql_result['uid'])
 
         return df

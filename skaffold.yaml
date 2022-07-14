@@ -12,10 +12,20 @@ profiles:
   - kubeContext: minikube           # LATER MOVE
   build:
     artifacts:
-      - image: factor-base
+       - image: utils
+         context: utils
+         docker:
+           dockerfile: .Dockerfile
+       - image: factor
+         requires:
+           - image: utils
+             alias: BASE
+         docker:
+           dockerfile: components/base.Dockerfile
+#      - image: factor-base
 #        context: ../
-        docker:
-          dockerfile: components/base.Dockerfile
+#        docker:
+#          dockerfile: components/base.Dockerfile
 #      - image: factor-data-preparation
 ##        context: ../
 #        requires:
@@ -40,4 +50,4 @@ profiles:
   deploy:
     kubectl:
       manifests:
-        - k8s.yaml
+        - deployment/k8s.yaml

@@ -36,14 +36,14 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_ratio', action='store_true', help='Start recalculate ratios')
     parser.add_argument('--recalc_premium', action='store_true', help='Start recalculate premiums')
     parser.add_argument('--recalc_subpillar', action='store_true', help='Start recalculate cluster pillar / subpillar')
-    parser.add_argument('--process', default=1, type=int, help='Multiprocessing')
+    parser.add_argument('--processes', default=1, type=int, help='Multiprocessing')
 
     parser.add_argument('--history', action='store_true', help='Rewrite entire history')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
     args = parser.parse_args()
 
     # Check 1: if monthly -> only first Sunday every month
-    if not bool(os.getenv("DEBUG")):
+    if not os.getenv("DEBUG").lower == "true":
         if dt.datetime.today().day > 7:
             raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         calc_factor_variables_multi(tickers=None,
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
-                                    processes=args.process,
+                                    processes=args.processes,
                                     start_date=dt.datetime(1998, 1, 1) if args.history else None)
 
     if args.recalc_premium:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
-                                   processes=args.process).write_all()
+                                   processes=args.processes).write_all()
 
     if args.recalc_subpillar:
         # default = update subpillar for past 3 months
@@ -76,5 +76,5 @@ if __name__ == "__main__":
         calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
-                          processes=args.process,
+                          processes=args.processes,
                           start_date=dt.datetime(1998, 1, 1) if args.history else None).write_all()

@@ -33,8 +33,8 @@ def load_eval_config(weeks_to_expire: int):
     conditions = [
         models.FactorFormulaEvalConfig.weeks_to_expire == weeks_to_expire,
     ]
-    if not bool(os.getenv("DEBUG")):
-        conditions.append(models.FactorFormulaTrainConfig.id == 0)
+    if not os.getenv("DEBUG").lower == "true":
+        conditions.append(models.FactorFormulaEvalConfig.id == 0)
 
     query = select(models.FactorFormulaEvalConfig).where(and_(*conditions))
 

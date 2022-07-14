@@ -193,7 +193,7 @@ class calcPillarCluster:
 
         cluster_cls = clusterFeature(df)
         subpillar = cluster_cls.find_subpillar(self.subpillar_trh)
-        pillar = cluster_cls.find_pillar(self.pillar_trh)
+        pillar = cluster_cls.find_subpillar(self.pillar_trh)
 
         df_pillar = pd.DataFrame({"factor_list": {**pillar, **subpillar}})
         df_pillar["testing_period"] = testing_period
