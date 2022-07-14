@@ -99,7 +99,7 @@ class cleanPrediction:
 
     if_combine_pillar = False  # combine cluster pillars
 
-    use_cache = True  # for debugging
+    save_cache = False  # for debugging
 
     def __init__(self, name_sql: str):
         self.name_sql = name_sql
@@ -117,7 +117,7 @@ class cleanPrediction:
                 + ..config_opt_columns
         """
 
-        if self.use_cache:
+        if self.save_cache:
             try:
                 pred = self.__load_cache_prediction()
             except Exception as e:
@@ -171,7 +171,7 @@ class cleanPrediction:
             .where(and_(*conditions))
         pred = read_query(query).fillna(0)
 
-        if self.use_cache:
+        if self.save_cache:
             pred.to_pickle(f'pred_{self.name_sql}.pkl')
 
         pred["testing_period"] = pd.to_datetime(pred["testing_period"])
@@ -316,7 +316,7 @@ class evalFactor:
     process raw prediction in result_pred_table -> models.FactorBacktestEval Table for AI Score calculation
     """
 
-    save_cache = True
+    save_cache = False
     config_opt_columns = [x.name for x in models.FactorBacktestEval.config_opt_columns]
     config_define_columns = [x.name for x in models.FactorBacktestEval.train_config_define_columns] + \
                             [x.name for x in models.FactorBacktestEval.base_columns]

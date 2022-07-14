@@ -73,7 +73,7 @@ class evalTop:
                                  [x.name for x in models.FactorBacktestEval.eval_config_define_columns]  # select evaluation factors within each group
     top_config_define_columns = [x.name for x in models.FactorFormulaEvalConfig.eval_top_config_columns]
 
-    save_cache = True
+    save_cache = False
 
     n_top_ticker_list = [-10, -50, 50, 10, 3]
     industry_name_map = get_industry_name_map()

@@ -22,7 +22,7 @@ class scaleFundamentalScore:
 
     sample_interval = 1
 
-    use_cache = True
+    save_cache = False
 
     def __init__(self, start_date: str = '2016-01-01'):
         self.start_date = start_date
@@ -42,7 +42,7 @@ class scaleFundamentalScore:
                         float64, returns to calculate evaluation results
         """
 
-        if self.use_cache:
+        if self.save_cache:
             try:
                 df = self.__load_cache_fundamental_score()
             except Exception as e:
@@ -86,7 +86,7 @@ class scaleFundamentalScore:
         df = df.replace([np.inf, -np.inf], np.nan).copy()
         adj_df = df.groupby(level=['currency_code', 'trading_day']).apply(self._scale_fundamental_scores)
 
-        if self.use_cache:
+        if self.save_cache:
             adj_df.to_pickle(f'cached_fundamental_score_{self.start_date}.pkl')
 
         return adj_df

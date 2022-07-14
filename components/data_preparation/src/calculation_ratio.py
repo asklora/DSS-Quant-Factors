@@ -756,7 +756,7 @@ class calcRatio:
         self.tri_return_only = tri_return_only
         self.raw_data = combineData(self.start_date, self.end_date)
 
-    @err2slack("clair")
+    # @err2slack("clair")
     def get(self, *args):
         """
         calculate ratio for 1 ticker within 1 process for multithreading
@@ -933,6 +933,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
     if type(currency_codes) != type(None):
         conditions.append(f"currency_code in {tuple(currency_codes)}")
     ticker_query = f"SELECT ticker FROM universe WHERE {' AND '.join(conditions)}".replace(",)", ")")
+    logger.debug(ticker_query)
     tickers = read_query(ticker_query)["ticker"].to_list()
 
     # define start_date / end_date for AI score
@@ -943,6 +944,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
 
     # multiprocessing
     tickers = [{e} for e in tickers]
+    logger.debug(tickers)
     with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
         df = pool.starmap(calc_ratio_cls.get, tickers)
