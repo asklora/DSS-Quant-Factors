@@ -17,6 +17,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/components/base.Dockerfile">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/components/data/data_preparation/main.py">
           <value>
             <Attribute>
@@ -81,6 +88,13 @@
           </value>
         </entry>
         <entry key="/components/data_preparation/src/calculation_ratio.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/components/data_preparation/tests/test_calculate_ratio.py">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -231,6 +245,13 @@
           <value>
             <Attribute>
               <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/k8s.yaml">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
             </Attribute>
           </value>
         </entry>

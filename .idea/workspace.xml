@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="1e3066d6-7d99-464b-96af-9bad1cd1347e" name="Changes" comment="" />
+    <list default="true" id="1e3066d6-7d99-464b-96af-9bad1cd1347e" name="Changes" comment="update deployment">
+      <change beforePath="$PROJECT_DIR$/.idea/csv-plugin.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/csv-plugin.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/deployment/k8s.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/deployment/k8s.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils" beforeDir="false" afterPath="$PROJECT_DIR$/utils" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -22,6 +28,17 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/components/base.Dockerfile" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/data_preparation/main.py" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/data_preparation/requirements.txt" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/data_preparation/src/calculation_ratio.py" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/data_preparation/tests/test_calculate_ratio.py" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/data_preparation/tests/test_calculation_pillar_cluster.py" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/components/model_evaluation/requirements.txt" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/deployment/k8s.yaml" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/utils/packages/__init__.py" root0="FORCE_HIGHLIGHTING" />
+  </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
@@ -31,66 +48,34 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/loratech/PycharmProjects/DSS-Quant-Ingestion&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.sourceCode.Python&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "last_opened_file_path": "/home/loratech/PycharmProjects/DSS-Quant-Factors/deployment",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "project.propVCSSupport.DirectoryMappings"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/deployment" />
       <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/components/model_evaluation/src" />
       <recent name="$PROJECT_DIR$/components/data" />
       <recent name="$PROJECT_DIR$/components/data/data_preparation" />
-      <recent name="$PROJECT_DIR$/components/data/data_preparation/tests" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/deployment" />
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/components/model_training/tests" />
       <recent name="$PROJECT_DIR$/components/model_training/src" />
       <recent name="$PROJECT_DIR$/components/model_evaluation/src" />
-      <recent name="$PROJECT_DIR$" />
-      <recent name="$PROJECT_DIR$/components/data_preparation" />
     </key>
   </component>
-  <component name="RunManager" selected="Python tests.Python tests for test_calculate_premium.test_download_pivot_ratios">
-    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="DSS-Quant-Factors" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/components/model_evaluation" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <EXTENSION ID="net.ashald.envfile">
-        <option name="IS_ENABLED" value="false" />
-        <option name="IS_SUBST" value="false" />
-        <option name="IS_PATH_MACRO_SUPPORTED" value="false" />
-        <option name="IS_IGNORE_MISSING_FILES" value="false" />
-        <option name="IS_ENABLE_EXPERIMENTAL_INTEGRATIONS" value="false" />
-        <ENTRIES>
-          <ENTRY IS_ENABLED="true" PARSER="runconfig" />
-        </ENTRIES>
-      </EXTENSION>
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/components/model_evaluation/main.py" />
-      <option name="PARAMETERS" value="--weeks_to_expire 8 --eval_factor" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="Python tests for test_calculate_premium.test_download_pivot_ratios" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+  <component name="RunManager" selected="Python tests.Python tests for test_load_configs.test_loadTrainConfig">
+    <configuration name="Python tests for test_calculate_premium.test_calcPremium" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
       <module name="DSS-Quant-Factors" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -101,26 +86,56 @@
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_calculate_premium.test_download_pivot_ratios&quot;" />
+      <option name="_new_target" value="&quot;test_calculate_premium.test_calcPremium&quot;" />
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
       <method v="2" />
     </configuration>
-    <configuration name="Python tests for test_date_process.test_timestampnow" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+    <configuration name="Python tests for test_calculation_pillar_cluster.test_calcPillarCluster" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
       <module name="DSS-Quant-Factors" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/utils/tests/date_process" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/components/data_preparation/tests" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_date_process.test_timestampnow&quot;" />
+      <option name="_new_target" value="&quot;test_calculation_pillar_cluster.test_calcPillarCluster&quot;" />
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
       <method v="2" />
     </configuration>
-    <configuration name="Python tests for test_evaluate_top_seletion.test_evalTop_write_latest_select" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+    <configuration name="Python tests for test_load_configs.test_loadTrainConfig" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+      <module name="DSS-Quant-Factors" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/components/model_training/tests" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;test_load_configs.test_loadTrainConfig&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="Python tests for test_load_configs.test_loadTrainConfig_HKD" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+      <module name="DSS-Quant-Factors" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/components/model_training/tests" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;test_load_configs.test_loadTrainConfig_HKD&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="Python tests for test_load_configs.test_load_eval_config" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
       <module name="DSS-Quant-Factors" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -131,54 +146,24 @@
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_evaluate_top_seletion.test_evalTop_write_latest_select&quot;" />
-      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
-      <method v="2" />
-    </configuration>
-    <configuration name="Python tests for test_evaluate_top_seletion.test_evalTop_write_top_select_eval" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
-      <module name="DSS-Quant-Factors" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/components/model_evaluation/tests" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_evaluate_top_seletion.test_evalTop_write_top_select_eval&quot;" />
-      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
-      <method v="2" />
-    </configuration>
-    <configuration name="Python tests for test_queries_initiate.test_create_table" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
-      <module name="DSS-Quant-Factors" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/utils/tests/sql" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_queries_initiate.test_create_table&quot;" />
+      <option name="_new_target" value="&quot;test_load_configs.test_load_eval_config&quot;" />
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
       <method v="2" />
     </configuration>
     <list>
-      <item itemvalue="Python tests.Python tests for test_calculate_premium.test_download_pivot_ratios" />
-      <item itemvalue="Python tests.Python tests for test_date_process.test_timestampnow" />
-      <item itemvalue="Python tests.Python tests for test_evaluate_top_seletion.test_evalTop_write_latest_select" />
-      <item itemvalue="Python tests.Python tests for test_evaluate_top_seletion.test_evalTop_write_top_select_eval" />
-      <item itemvalue="Python tests.Python tests for test_queries_initiate.test_create_table" />
+      <item itemvalue="Python tests.Python tests for test_calculation_pillar_cluster.test_calcPillarCluster" />
+      <item itemvalue="Python tests.Python tests for test_load_configs.test_loadTrainConfig" />
+      <item itemvalue="Python tests.Python tests for test_load_configs.test_loadTrainConfig_HKD" />
+      <item itemvalue="Python tests.Python tests for test_load_configs.test_load_eval_config" />
+      <item itemvalue="Python tests.Python tests for test_calculate_premium.test_calcPremium" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python tests.Python tests for test_calculate_premium.test_download_pivot_ratios" />
-        <item itemvalue="Python tests.Python tests for test_date_process.test_timestampnow" />
-        <item itemvalue="Python tests.Python tests for test_evaluate_top_seletion.test_evalTop_write_top_select_eval" />
-        <item itemvalue="Python tests.Python tests for test_queries_initiate.test_create_table" />
-        <item itemvalue="Python tests.Python tests for test_evaluate_top_seletion.test_evalTop_write_latest_select" />
+        <item itemvalue="Python tests.Python tests for test_load_configs.test_loadTrainConfig" />
+        <item itemvalue="Python tests.Python tests for test_load_configs.test_load_eval_config" />
+        <item itemvalue="Python tests.Python tests for test_load_configs.test_loadTrainConfig_HKD" />
+        <item itemvalue="Python tests.Python tests for test_calculate_premium.test_calcPremium" />
+        <item itemvalue="Python tests.Python tests for test_calculation_pillar_cluster.test_calcPillarCluster" />
       </list>
     </recent_temporary>
   </component>
@@ -198,49 +183,10 @@
       <workItem from="1656393719999" duration="80588000" />
       <workItem from="1656896377565" duration="15799000" />
       <workItem from="1657011749757" duration="328000" />
-      <workItem from="1657012697482" duration="3860000" />
-    </task>
-    <task id="LOCAL-00001" summary="move original .py file to folders">
-      <created>1655279602082</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1655279602082</updated>
-    </task>
-    <task id="LOCAL-00002" summary="update ratio calculation">
-      <created>1655384409276</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1655384409276</updated>
-    </task>
-    <task id="LOCAL-00003" summary="sql multithreading">
-      <created>1655438437518</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1655438437518</updated>
-    </task>
-    <task id="LOCAL-00004" summary="add calc premium test">
-      <created>1655452431171</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1655452431171</updated>
-    </task>
-    <task id="LOCAL-00005" summary="reformat cluster pillar calculation">
-      <created>1655455667777</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1655455667777</updated>
-    </task>
-    <task id="LOCAL-00006" summary="separate docker / requirements.txt">
-      <created>1655459659421</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1655459659421</updated>
+      <workItem from="1657012697482" duration="4146000" />
+      <workItem from="1657088684719" duration="1044000" />
+      <workItem from="1657102351472" duration="29216000" />
+      <workItem from="1657502225242" duration="75901000" />
     </task>
     <task id="LOCAL-00007" summary="update date filter to ratio / premium">
       <created>1655712514064</created>
@@ -515,7 +461,77 @@
       <option name="project" value="LOCAL" />
       <updated>1656591114955</updated>
     </task>
-    <option name="localTasksCounter" value="46" />
+    <task id="LOCAL-00046" summary="update orm / os.getenv">
+      <created>1657519444175</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1657519444175</updated>
+    </task>
+    <task id="LOCAL-00047" summary="update deployment / submodule">
+      <created>1657519486210</created>
+      <option name="number" value="00047" />
+      <option name="presentableId" value="LOCAL-00047" />
+      <option name="project" value="LOCAL" />
+      <updated>1657519486210</updated>
+    </task>
+    <task id="LOCAL-00048" summary="update deployment">
+      <created>1657694549371</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1657694549371</updated>
+    </task>
+    <task id="LOCAL-00049" summary="update deployment &amp; ratio comments">
+      <created>1657703777616</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1657703777616</updated>
+    </task>
+    <task id="LOCAL-00050" summary="update subpillar">
+      <created>1657703811739</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1657703811740</updated>
+    </task>
+    <task id="LOCAL-00051" summary="save_cached + update deployment">
+      <created>1657779594134</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1657779594134</updated>
+    </task>
+    <task id="LOCAL-00052" summary="update docker deployment">
+      <created>1657796659260</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1657796659260</updated>
+    </task>
+    <task id="LOCAL-00053" summary="update docker">
+      <created>1657796755785</created>
+      <option name="number" value="00053" />
+      <option name="presentableId" value="LOCAL-00053" />
+      <option name="project" value="LOCAL" />
+      <updated>1657796755785</updated>
+    </task>
+    <task id="LOCAL-00054" summary="debug development">
+      <created>1657848141134</created>
+      <option name="number" value="00054" />
+      <option name="presentableId" value="LOCAL-00054" />
+      <option name="project" value="LOCAL" />
+      <updated>1657848141134</updated>
+    </task>
+    <task id="LOCAL-00055" summary="update testing / deployment">
+      <created>1657877620057</created>
+      <option name="number" value="00055" />
+      <option name="presentableId" value="LOCAL-00055" />
+      <option name="project" value="LOCAL" />
+      <updated>1657877620057</updated>
+    </task>
+    <option name="localTasksCounter" value="56" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -552,15 +568,9 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="add initializer for mp" />
-    <MESSAGE value="load data for production (e.g. no actual y)" />
-    <MESSAGE value="change load configs train" />
-    <MESSAGE value="debug training" />
-    <MESSAGE value="debug premium calculation" />
-    <MESSAGE value="remove slack error report" />
-    <MESSAGE value="reformat calculation_rank.py" />
-    <MESSAGE value="add more comments for data preparation" />
-    <MESSAGE value="update testing_period calculation" />
+    <ignored-roots>
+      <path value="$PROJECT_DIR$/utils" />
+    </ignored-roots>
     <MESSAGE value="add documentation for model_training" />
     <MESSAGE value="debug main.py" />
     <MESSAGE value="update training documentation" />
@@ -576,8 +586,17 @@
     <MESSAGE value="update debug / runtime check" />
     <MESSAGE value="slack send &lt; 1024 size" />
     <MESSAGE value="update factor ORM" />
+    <MESSAGE value="update orm / os.getenv" />
+    <MESSAGE value="update deployment / submodule" />
     <MESSAGE value="update deployment" />
-    <option name="LAST_COMMIT_MESSAGE" value="update deployment" />
+    <MESSAGE value="update deployment &amp; ratio comments" />
+    <MESSAGE value="update subpillar" />
+    <MESSAGE value="save_cached + update deployment" />
+    <MESSAGE value="update docker deployment" />
+    <MESSAGE value="update docker" />
+    <MESSAGE value="debug development" />
+    <MESSAGE value="update testing / deployment" />
+    <option name="LAST_COMMIT_MESSAGE" value="update testing / deployment" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -594,7 +613,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/components/model_training/src/random_forest.py</url>
-          <line>164</line>
+          <line>165</line>
           <option name="timeStamp" value="428" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -608,9 +627,19 @@
           <option name="timeStamp" value="552" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/components/model_evaluation/src/evaluate_top_selection.py</url>
-          <line>502</line>
-          <option name="timeStamp" value="634" />
+          <url>file://$PROJECT_DIR$/components/model_evaluation/src/evaluate_factor_premium.py</url>
+          <line>343</line>
+          <option name="timeStamp" value="573" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/components/model_training/tests/test_load_configs.py</url>
+          <line>26</line>
+          <option name="timeStamp" value="577" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/components/model_evaluation/tests/test_load_configs.py</url>
+          <line>14</line>
+          <option name="timeStamp" value="579" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -625,10 +654,10 @@
     </watches-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/DSS_Quant_Factors$.coverage" NAME=" Coverage Results" MODIFIED="1657017201503" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/utils/tests/date_process" />
+    <SUITE FILE_PATH="coverage/DSS_Quant_Factors$.coverage" NAME=" Coverage Results" MODIFIED="1657865612761" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components/model_training/tests" />
     <SUITE FILE_PATH="coverage/DSS_Quant_Factors$calculation_rank.coverage" NAME="calculation_rank Coverage Results" MODIFIED="1656044104931" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components/model_evaluation/src" />
     <SUITE FILE_PATH="coverage/DSS_Quant_Factors$__init____1_.coverage" NAME="__init__ (1) Coverage Results" MODIFIED="1655281378999" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components" />
-    <SUITE FILE_PATH="coverage/DSS_Quant_Factors$calculation_ratio.coverage" NAME="calculation_ratio Coverage Results" MODIFIED="1655281793623" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components/data/data_preparation/src" />
+    <SUITE FILE_PATH="coverage/DSS_Quant_Factors$calculation_ratio.coverage" NAME="calculation_ratio Coverage Results" MODIFIED="1657260966472" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components/data_preparation/src" />
     <SUITE FILE_PATH="coverage/DSS_Quant_Factors$__init__.coverage" NAME="__init__ Coverage Results" MODIFIED="1655202780772" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/utils/packages" />
     <SUITE FILE_PATH="coverage/DSS_Quant_Factors$debug.coverage" NAME="debug Coverage Results" MODIFIED="1655709271104" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/DSS_Quant_Factors$random_forest.coverage" NAME="random_forest Coverage Results" MODIFIED="1656053475000" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/components/model_training/src" />
