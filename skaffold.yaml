@@ -30,31 +30,6 @@ profiles:
             alias: BASE
         docker:
           dockerfile: components/base.Dockerfile
-#      - image: factor-base
-#        context: ../
-#        docker:
-#          dockerfile: components/base.Dockerfile
-#      - image: factor-data-preparation
-##        context: ../
-#        requires:
-#          - image: factor-base
-#            alias: BASE
-#        docker:
-#          dockerfile: components/data_preparation/Dockerfile
-#      - image: factor-model-training
-#          #        context: ../
-#          requires:
-#              - image: factor-base
-#                alias: BASE
-#          docker:
-#            dockerfile: components/model_training/Dockerfile
-#      - image: factor-model-evaluation
-#          #        context: ../
-#          requires:
-#              - image: factor-base
-#                alias: BASE
-#          docker:
-#            dockerfile: components/model_evaluation/Dockerfile
   deploy:
     kubectl:
       manifests:

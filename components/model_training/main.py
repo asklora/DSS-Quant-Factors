@@ -85,9 +85,9 @@ if __name__ == "__main__":
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    if not os.getenv("DEBUG").lower() == "true":
-        if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+    # if not os.getenv("DEBUG").lower() == "true":
+    #     if dt.datetime.today().day > 7:
+    #         raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
