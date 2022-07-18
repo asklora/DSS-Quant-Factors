@@ -81,13 +81,16 @@ if __name__ == "__main__":
 
     parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
+
+    parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    # if not os.getenv("DEBUG").lower() == "true":
-    #     if dt.datetime.today().day > 7:
-    #         raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+    if not ((os.getenv("DEBUG").lower() == "true") or args.debug):
+        if dt.datetime.today().day > 7:
+            logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
