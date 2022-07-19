@@ -1,0 +1,28 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quant-factors-rerun-select
+  namespace: quant-factors
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: server1
+      containers:
+      - name: quant-factors
+        image: quant-factor
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -c
+        - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_select --processes 1 --debug
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      restartPolicy: Never

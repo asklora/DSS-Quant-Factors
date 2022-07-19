@@ -2,13 +2,11 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: quant-factors-preprocess-history
+  name: quant-factors-preprocess-latest
 spec:
   backoffLimit: 1
   template:
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: pc2
       restartPolicy: Never
       containers:
       - name: quant-factors

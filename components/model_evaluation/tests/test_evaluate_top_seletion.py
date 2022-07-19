@@ -30,7 +30,7 @@ def test_evalTop__calc_agg_returns():
 
 def test_evalTop_write_latest_select():
     from components.model_evaluation.src.evaluate_top_selection import evalTop
-    select_df = evalTop(name_sql="w8_20220629115419", processes=1).write_latest_select()
+    select_df = evalTop(name_sql="w8_20220712105506", processes=1).write_latest_select()
 
     assert len(select_df) > 0
 
