@@ -161,11 +161,6 @@ class calcPillarCluster:
         end_date = np.max(self.period_list) + relativedelta(weeks=self.weeks_to_expire)
         start_date = np.min(self.period_list) - relativedelta(years=self.lookback)
 
-        conditions = [f"currency_code in {tuple(self.currency_code_list)}",
-                      f"trading_day <= '{end_date}'",
-                      f"trading_day > '{start_date}'",
-                      f"field in {tuple(self.active_factor)}"]
-
         conditions = [
             models.Universe.currency_code.in_(self.currency_code_list),
             models.Universe.is_active,
