@@ -11,7 +11,7 @@ spec:
       containers:
       - name: quant-factors
         image: quant-factor
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command:
         - /bin/sh
         - -c

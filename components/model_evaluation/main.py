@@ -40,11 +40,14 @@ if __name__ == "__main__":
     parser.add_argument('--eval_top', action='store_true', help='Top selection from selected factor evaluation')
     parser.add_argument('--eval_select', action='store_true', help='Use iteration selection to overwrite factor selection table')
     parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
+
+    parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
 
-    if not os.getenv("DEBUG").lower() == "true":
+    if not ((os.getenv("DEBUG").lower() == "true") or args.debug):
         if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+            logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     if args.name_sql:
         eval_name_sql = args.name_sql

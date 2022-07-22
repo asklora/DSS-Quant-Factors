@@ -190,6 +190,7 @@ class evalTop:
 
         select_df = self._get_minmax_factors_df(sample_df, **kwargs).reset_index()
         select_df = self.__convert_trading_day(select_df)
+        select_df["eval_metric"] = kwargs["eval_top_metric"]
 
         return select_df
 

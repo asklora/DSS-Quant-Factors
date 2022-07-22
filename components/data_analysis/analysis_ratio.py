@@ -3,8 +3,8 @@ import pandas as pd
 import datetime as dt
 from dateutil.relativedelta import relativedelta
 
-from global_vars import processed_ratio_table
-from general.sql.sql_process import read_query
+# from global_vars import processed_ratio_table
+# from general.sql.sql_process import read_query
 import matplotlib.pyplot as plt
 
 
@@ -93,61 +93,116 @@ from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
 from scipy.cluster.hierarchy import dendrogram
 from collections import Counter
+from typing import List
+from sqlalchemy import select, and_
+
+from utils import  (
+    models,
+    date_minus_,
+    dateNow,
+    read_query
+)
 
 
 class ratio_cluster:
 
-    def __init__(self, start_date='2000-01-01', currency_code='USD'):
+    save_cached = True
 
-        # conditions = [f"ticker in (SELECT ticker FROM universe WHERE currency_code='{currency_code}')"]
-        # if start_date:
-        #     conditions.append(f"trading_day > '{start_date}'")
-        # query = f"SELECT * FROM {processed_ratio_table} WHERE {' AND '.join(conditions)}"
-        # df = read_query(query)
-        # df.to_pickle('cache_factor_ratio.pkl')
+    def __init__(self, end_date=dateNow(), lookback: int = 5, currency_code_list: List[str] = ('USD',),
+                 ticker_list: List[str] = None, png_name: str = None):
+        self.end_date = end_date
+        self.lookback = lookback
+        self.currency_code_list = currency_code_list
+        self.ticker_list = ticker_list
+        self.png_name = png_name
 
-        df = pd.read_pickle('cache_factor_ratio.pkl')
+    def _get_ratio(self):
+        """
+        Load Data: load save pickle or download for preprocessed ratios
+        """
 
-        df['trading_day'] = pd.to_datetime(df['trading_day'])
-        df = df.set_index(['trading_day', 'ticker', 'field'])['value'].unstack()
+        if self.save_cached:
+            try:
+                df = self.__load_cache_ratio()
+            except Exception as e:
+                df = self.__download_ratio()
+                df.to_pickle('cached_cluster_factor_ratio.pkl')
+        else:
+            df = self.__download_ratio()
+
+        return df
+
+    def __load_cache_ratio(self):
+        """
+        Load Data: load save pickle
+        """
+        df = pd.read_pickle('cached_cluster_factor_ratio.pkl')
+        df = df.loc[
+            (df.index.get_level_values("currency_code").isin(self.currency_code_list)) &
+            (df.index.get_level_values("trading_day") <= pd.to_datetime(self.end_date)) &
+            (df.index.get_level_values("trading_day") > pd.to_datetime(date_minus_(self.end_date, years=self.lookback)))
+        ]
+
+        if type(self.ticker_list) != type(None):
+            df = df.loc[df.index.get_level_values("ticker").isin(self.ticker_list)]
+
+        if len(df) == 0:
+            raise Exception("Local cached not includes requested trading_day / ticker.")
+
+        return df
+
+    def __download_ratio(self):
+        """
+        Load Data: download from Table factor_preprocessed_ratios
+        """
+        conditions = [
+            models.Universe.currency_code.in_(self.currency_code_list),
+            models.Universe.is_active,
+            models.FactorPreprocessRatio.trading_day <= self.end_date,
+            models.FactorPreprocessRatio.trading_day > date_minus_(self.end_date, years=self.lookback),
+        ]
+
+        if type(self.ticker_list) != type(None):
+            conditions.append(models.FactorPreprocessRatio.ticker.in_(self.ticker_list))
+
+        query = select(*models.FactorPreprocessRatio.__table__.columns, models.Universe.currency_code)\
+            .join(models.Universe)\
+            .where(and_(*conditions))
+        df = read_query(query)
+        df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value')
         df = df.fillna(0)
 
-        df_year = df.index.get_level_values('trading_day').to_series().dt.year
+        return df
+
+    def get(self):
+        # df = pd.read_pickle('cache_factor_ratio.pkl')
+
+        df = self._get_ratio()
 
         X = scale(df)
-        # Y = {"since 2000": pdist(X.T), "since 2016": pdist(X[df_year > 2016].T)}
-        # for year in np.sort(df_year.unique()):
-        #     X_year = X[df_year == year]
-        #     Y[year] = pdist(X_year.T)
 
-        cop_coef = {}
-        for i in [5]:
-            start_year = 2016 - i
-            X_sample = X[(df_year < 2016) & (df_year >= start_year)]
-            cop_coef[start_year] = {}
+        # cop_coef = {}
 
-            for l in ['average']:     # ['ward', 'average', 'complete', 'single']
-                agglo = FeatureAgglomeration(n_clusters=3, distance_threshold=None, linkage=l)
-                agglo.fit(X_sample)
-                print(Counter(agglo.labels_))
+        for l in ['average']:     # ['ward', 'average', 'complete', 'single']
+            agglo = FeatureAgglomeration(n_clusters=None, distance_threshold=0, linkage=l)
+            agglo.fit(X)
+            # print(Counter(agglo.labels_))
 
-                plt.plot(agglo.distances_)
-                plt.show()
+            # plt.plot(agglo.distances_)
+            # plt.show()
 
-                Z = ratio_cluster.__linkage(agglo)
+            Z = self.__linkage(agglo)
+            self.plot_dendrogram(Z, labels=df.columns.to_list())
 
-                # cop_coef[l] = {}
-                # for k, v in Y.items():
-                #     cop_coef[start_year][k], _ = cophenet(Z, v)
-                #     print(l, k, cop_coef)
+            # cop_coef[l] = {}
+            # for k, v in Y.items():
+            #     cop_coef[start_year][k], _ = cophenet(Z, v)
+            #     print(l, k, cop_coef)
 
-        cop_coef_df = pd.DataFrame(cop_coef)
-        cop_coef_df.to_csv(f'temp.csv')
+        # cop_coef_df = pd.DataFrame(cop_coef)
+        # cop_coef_df.to_csv(f'temp.csv')
 
-            # ratio_cluster.plot_dendrogram(Z, png_name=f"{start_date}_{l}.png", labels=df.columns.to_list())
-
-    @staticmethod
-    def __linkage(model):
+    def __linkage(self, model):
         """ Create linkage metrix from model """
 
         # create the counts of samples under each node
@@ -162,22 +217,63 @@ class ratio_cluster:
                     current_count += counts[child_idx - n_samples]
             counts[i] = current_count
 
+        distance = np.arange(model.children_.shape[0])
         linkage_matrix = np.column_stack(
-            [model.children_, model.distances_, counts]
+            [model.children_, distance, counts]
         ).astype(float)
 
         return linkage_matrix
 
-    @staticmethod
-    def plot_dendrogram(linkage_matrix, png_name, **kwargs):
+    def plot_dendrogram(self, linkage_matrix, **kwargs):
         """ Plot the corresponding dendrogram """
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
         dendrogram(linkage_matrix, orientation='left', ax=ax, **kwargs)
         plt.tight_layout()
-        plt.savefig(png_name)
+
+        if type(self.png_name) == type(None):
+            plt.show()
+        else:
+            plt.title(self.png_name)
+            plt.savefig(self.png_name + ".png")
+
+    def sample_ratio_rank(self):
+        """
+        Calculate: rank% for selected samples + selected factors by comparing two dendrogram (universe vs sample)
+        """
+
+        sample_ticker = self.ticker_list
+
+        self.ticker_list = None
+        df = self._get_ratio()
+
+        df = df.reset_index().sort_values(by="trading_day").groupby(["ticker"]).last()
+
+        df_rank = df.rank()[["market_cap_usd", "inv_turnover", "cash_ratio", "ca_turnover"]]
+        df_rank = df_rank / df_rank.max(axis=0)
+
+        df_rank_sample = df_rank.loc[df.index.get_level_values("ticker").isin(sample_ticker)]
+        return df_rank_sample
 
 
 if __name__ == '__main__':
     # stock_return_hist(weeks_to_expire=4, average_days=7)
     # stock_return_boxplot()
-    ratio_cluster()
+
+    # ratio_cluster(currency_code_list=["USD"],
+    #               png_name="usd_all").get()
+
+    # ratio_cluster(currency_code_list=["USD"],
+    #               ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
+    #               png_name="usd_innovative").get()
+
+    ratio_cluster(currency_code_list=["USD"],
+                  ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
+                  png_name="usd_innovative").sample_ratio_rank()
+
+    # ratio_cluster(currency_code_list=["USD"],
+    #               ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
+    #               png_name="usd_revenue").get()
+    #
+    ratio_cluster(currency_code_list=["USD"],
+                  ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
+                  png_name="usd_revenue").sample_ratio_rank()

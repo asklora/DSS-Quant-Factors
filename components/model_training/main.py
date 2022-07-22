@@ -38,11 +38,13 @@ def write_args_finished(kwargs):
     """
     tbl = models.FactorFormulaTrainConfig
     df = pd.Series(kwargs).to_frame().T.filter([x.name for x in tbl.__table__.columns])
+    if kwargs["pillar"][:6] == "pillar":
+        df["pillar"] = "cluster"
     df = df.assign(finished=timestampNow(), id=0)
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-@err2slack("clair")
+@err2slack("factor")
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -81,13 +83,16 @@ if __name__ == "__main__":
 
     parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
+
+    parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
 
     # --------------------------------------- Production / Development --------------------------------------------
 
-    # if not os.getenv("DEBUG").lower() == "true":
-    #     if dt.datetime.today().day > 7:
-    #         raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+    if not ((os.getenv("DEBUG").lower() == "true") or args.debug):
+        if dt.datetime.today().day > 7:
+            logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')

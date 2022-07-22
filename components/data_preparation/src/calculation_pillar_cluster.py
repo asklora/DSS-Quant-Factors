@@ -87,6 +87,7 @@ class calcPillarCluster:
 
     def __init__(self, weeks_to_expire: int, sample_interval: int,
                  currency_code_list: List[str] = ('USD',),
+                 ticker_list: List[str] = None,
                  start_date: dt.datetime = None, end_date: dt.datetime = None,
                  subpillar_trh: int = 5, pillar_trh: int = 2, lookback: int = 5, processes: int = 1):
         """
@@ -103,6 +104,7 @@ class calcPillarCluster:
         self.period_list = self._testing_period_list(start_date, end_date, sample_interval, weeks_to_expire)
         self.weeks_to_expire = weeks_to_expire
         self.currency_code_list = currency_code_list
+        self.ticker_list = ticker_list
         self.subpillar_trh = subpillar_trh
         self.pillar_trh = pillar_trh
         self.lookback = lookback
@@ -159,21 +161,27 @@ class calcPillarCluster:
         end_date = np.max(self.period_list) + relativedelta(weeks=self.weeks_to_expire)
         start_date = np.min(self.period_list) - relativedelta(years=self.lookback)
 
-        conditions = [f"currency_code in {tuple(self.currency_code_list)}",
-                      f"trading_day <= '{end_date}'",
-                      f"trading_day > '{start_date}'",
-                      f"field in {tuple(self.active_factor)}"]
-        query = f"SELECT r.*, u.currency_code FROM {processed_ratio_table} r " \
-                f"INNER JOIN {universe_table} u on r.ticker::text = u.ticker::text " \
-                f"WHERE {' AND '.join(conditions)}"
-        df = read_query(query.replace(",)", ")"))
+        conditions = [
+            models.Universe.currency_code.in_(self.currency_code_list),
+            models.Universe.is_active,
+            models.FactorPreprocessRatio.trading_day <= end_date,
+            models.FactorPreprocessRatio.trading_day > start_date,
+            models.FactorPreprocessRatio.field.in_(self.active_factor)
+        ]
 
+        if type(self.ticker_list) != type(None):
+            conditions.append(models.FactorPreprocessRatio.ticker.in_(self.ticker_list))
+
+        query = select(*models.FactorPreprocessRatio.__table__.columns, models.Universe.currency_code)\
+            .join(models.Universe)\
+            .where(and_(*conditions))
+        df = read_query(query)
         df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value')
         df = df.fillna(0)
 
         return df
 
-    @err2slack("clair", )
+    @err2slack("factor", )
     def _calc_cluster(self, *args, ratio_df=None) -> Union[None, pd.DataFrame]:
         """
         calculate pillar / subpillar using hierarchical clustering
@@ -193,7 +201,7 @@ class calcPillarCluster:
 
         cluster_cls = clusterFeature(df)
         subpillar = cluster_cls.find_subpillar(self.subpillar_trh)
-        pillar = cluster_cls.find_subpillar(self.pillar_trh)
+        pillar = cluster_cls.find_pillar(self.pillar_trh)
 
         df_pillar = pd.DataFrame({"factor_list": {**pillar, **subpillar}})
         df_pillar["testing_period"] = testing_period

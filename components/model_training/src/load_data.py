@@ -275,8 +275,15 @@ class combineData(cleanMacros):
 
         query = select(models.FactorPreprocessPremium).where(and_(*conditions))
         df = read_query(query)
+
+        if len(df) == 0:
+            latest_period = read_query_list(select(func.max(models.FactorPreprocessPremium.testing_period)))
+            raise Exception(f"Testing period mismatch: expected testing_period = ({self._testing_period_list[0]}, ..., "
+                            f"{self._testing_period_list[-2]}, {self._testing_period_list[-1]} got {latest_period} in DB."
+                            f"Please rerun data_preparation.")
+
         df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
-        df['testing_period'] = pd.to_datetime(df['testing_period'], format = '%Y-%m-%d')
+        df['testing_period'] = pd.to_datetime(df['testing_period'], format='%Y-%m-%d')
 
         return df
 

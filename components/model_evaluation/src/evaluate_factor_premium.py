@@ -146,7 +146,7 @@ class cleanPrediction:
 
         return pred.drop(columns=["neg_factor"])
 
-    # @err2slack("clair")
+    # @err2slack("factor")
     def __download_prediction_from_db(self):
         """
         merge factor_stock & factor_model_stock
@@ -170,6 +170,9 @@ class cleanPrediction:
             .join_from(models.FactorResultPrediction, models.FactorResultScore) \
             .where(and_(*conditions))
         pred = read_query(query).fillna(0)
+
+        if len(pred) == 0:
+            raise Exception(f"No prediction for ({self.name_sql}). Please check records exists in FactorResultScore.")
 
         if self.save_cache:
             pred.to_pickle(f'pred_{self.name_sql}.pkl')

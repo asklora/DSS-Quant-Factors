@@ -40,12 +40,15 @@ if __name__ == "__main__":
 
     parser.add_argument('--history', action='store_true', help='Rewrite entire history')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
+
+    parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
 
     # Check 1: if monthly -> only first Sunday every month
-    if not os.getenv("DEBUG").lower() == "true":
+    if not ((os.getenv("DEBUG").lower() == "true") or args.debug):
         if dt.datetime.today().day > 7:
-            raise Exception('Not start: Factor model only run on the next day after first Sunday every month! ')
+            logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
+            exit(0)
 
     if args.currency_code:                              # for debugging only
         all_currency_list = [args.currency_code]

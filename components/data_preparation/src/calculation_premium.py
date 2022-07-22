@@ -131,7 +131,7 @@ class calcPremium:
 
         return df
 
-    @err2slack("clair")
+    @err2slack("factor")
     def get_premium(self, *args, ratio_df=None):
         """
         Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
