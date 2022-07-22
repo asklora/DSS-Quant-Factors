@@ -38,11 +38,13 @@ def write_args_finished(kwargs):
     """
     tbl = models.FactorFormulaTrainConfig
     df = pd.Series(kwargs).to_frame().T.filter([x.name for x in tbl.__table__.columns])
+    if kwargs["pillar"][:6] == "pillar":
+        df["pillar"] = "cluster"
     df = df.assign(finished=timestampNow(), id=0)
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-@err2slack("clair")
+@err2slack("factor")
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor

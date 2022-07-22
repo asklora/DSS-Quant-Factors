@@ -49,19 +49,19 @@ from typing import Dict
 #         ], names=["group", "testing_period"]),
 #         columns=["roic", "book_to_price"]
 #     )
-#
-#
-# def hpot_cls():
-#     from components.model_training.src.random_forest import rf_HPOT
-#     return rf_HPOT(max_evals=10,
-#                    down_mkt_pct=0,
-#                    tree_type='rf',
-#                    objective='squared_error',
-#                    sql_result={"uid": "test_uid"},
-#                    hpot_eval_metric='mse_valid'
-#                    )
-#
-#
+
+
+def hpot_cls():
+    from components.model_training.src.random_forest import rf_HPOT
+    return rf_HPOT(max_evals=10,
+                   down_mkt_pct=0,
+                   tree_type='rf',
+                   objective='squared_error',
+                   sql_result={"uid": "test_uid"},
+                   hpot_eval_metric='mse_valid'
+                   )
+
+
 # def test_rf_HPOT__sample_weight():
 #
 #     train_y = df_1_curr_n_time()
@@ -171,8 +171,8 @@ def test_rf_HPOT_train_and_write():
     test_y_qcut = 10
     cls = loadData(
         weeks_to_expire=8,
-        train_currency='USD',
-        pred_currency='USD,EUR',
+        train_currency='CNY',
+        pred_currency='CNY',
         testing_period=sample_testing_period,
         average_days=-7,
         factor_list=test_factor_list,

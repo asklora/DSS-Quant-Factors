@@ -259,21 +259,21 @@ if __name__ == '__main__':
     # stock_return_hist(weeks_to_expire=4, average_days=7)
     # stock_return_boxplot()
 
-    ratio_cluster(currency_code_list=["USD"],
-                  png_name="usd_all").get()
+    # ratio_cluster(currency_code_list=["USD"],
+    #               png_name="usd_all").get()
 
     # ratio_cluster(currency_code_list=["USD"],
     #               ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
     #               png_name="usd_innovative").get()
 
-    # ratio_cluster(currency_code_list=["USD"],
-    #               ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
-    #               png_name="usd_innovative").sample_ratio_rank()
+    ratio_cluster(currency_code_list=["USD"],
+                  ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
+                  png_name="usd_innovative").sample_ratio_rank()
 
     # ratio_cluster(currency_code_list=["USD"],
     #               ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
     #               png_name="usd_revenue").get()
     #
-    # ratio_cluster(currency_code_list=["USD"],
-    #               ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
-    #               png_name="usd_revenue").sample_ratio_rank()
+    ratio_cluster(currency_code_list=["USD"],
+                  ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
+                  png_name="usd_revenue").sample_ratio_rank()

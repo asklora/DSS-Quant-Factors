@@ -502,9 +502,17 @@ class cleanWorldscope:
         query_ws = f"SELECT * FROM {worldscope_data_table} " \
                    f"WHERE ticker in {tuple(ticker)} AND trading_day>='{ws_start_date}' ".replace(",)", ")")
         ws = read_query(query_ws)
+
+        if len(ws) == 0:
+            raise Exception(f"No Worldscope data for ticker: {ticker}. Will pass ratio calculation for this ticker.")
+
         ws = ws.pivot(index=["ticker", "trading_day"], columns=["field"], values="value").reset_index()
 
         ws['trading_day'] = pd.to_datetime(ws['trading_day'], format='%Y-%m-%d')
+
+        if "report_date" not in ws.columns.to_list():
+            raise Exception(f"No [report_date] data for ticker: {ticker}. Will pass ratio calculation for this ticker.")
+
         return ws
 
     def _fill_missing_ws(self, ws):
@@ -756,8 +764,8 @@ class calcRatio:
         self.tri_return_only = tri_return_only
         self.raw_data = combineData(self.start_date, self.end_date)
 
-    # @err2slack("clair")
-    def get(self, *args):
+    @err2slack("factor", return_obj=pd.DataFrame())
+    def get(self, *args) -> pd.DataFrame:
         """
         calculate ratio for 1 ticker within 1 process for multithreading
         return df = PIT returns processed TRI data, 

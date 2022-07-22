@@ -181,7 +181,7 @@ class calcPillarCluster:
 
         return df
 
-    @err2slack("clair", )
+    @err2slack("factor", )
     def _calc_cluster(self, *args, ratio_df=None) -> Union[None, pd.DataFrame]:
         """
         calculate pillar / subpillar using hierarchical clustering
