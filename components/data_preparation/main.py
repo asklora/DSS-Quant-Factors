@@ -1,14 +1,7 @@
 import datetime as dt
 import argparse
 import os
-from pathlib import Path
-
-import sys
-import os
-
-path = Path(os.path.abspath(__file__))
-sys.path.append(str(path.parent.parent.parent.absolute()))
-
+import gc
 from src.calculation_ratio import calc_factor_variables_multi
 from src.calculation_premium import calcPremium
 from src.calculation_pillar_cluster import calcPillarCluster
@@ -16,6 +9,7 @@ from utils import (
     sys_logger,
     read_query,
     models,
+    check_memory
 )
 
 logger = sys_logger(__name__, "DEBUG")
@@ -53,7 +47,7 @@ if __name__ == "__main__":
     if args.currency_code:                              # for debugging only
         all_currency_list = [args.currency_code]
 
-    # ---------------------------------------- Rerun Write Premium -----------------------------------------------
+    # -------------------------- Rerun Write Premium ---------------------------
 
     if args.recalc_ratio:
         # default = update ratios for past 3 months
@@ -63,6 +57,11 @@ if __name__ == "__main__":
                                     tri_return_only=False,
                                     processes=args.processes,
                                     start_date=dt.datetime(1998, 1, 1) if args.history else None)
+        del calc_factor_variables_multi
+        gc.collect()
+
+    logger.info("Done Ratio calculation")
+    check_memory(logger=logger)
 
     if args.recalc_premium:
         # default = update ratios for as long as possible (b/c universe changes will affect the value of premium).
@@ -72,6 +71,7 @@ if __name__ == "__main__":
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
                                    processes=args.processes).write_all()
+    check_memory(logger=logger)
 
     if args.recalc_subpillar:
         # default = update subpillar for past 3 months
@@ -81,3 +81,4 @@ if __name__ == "__main__":
                           sample_interval=args.sample_interval,
                           processes=args.processes,
                           start_date=dt.datetime(1998, 1, 1) if args.history else None).write_all()
+    check_memory(logger=logger)

@@ -1,21 +1,5 @@
 import datetime as dt
-import pandas as pd
-import numpy as np
 import argparse
-import time
-from dateutil.relativedelta import relativedelta
-from itertools import product
-import multiprocessing as mp
-import gc
-from contextlib import closing
-from sqlalchemy import select
-import sys
-import os
-from pathlib import Path
-
-path = Path(os.path.abspath(__file__))
-sys.path.append(str(path.parent.parent.parent.absolute()))
-
 from src.evaluate_factor_premium import evalFactor
 from src.evaluate_top_selection import evalTop
 from src.load_eval_configs import load_latest_name_sql

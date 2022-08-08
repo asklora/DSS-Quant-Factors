@@ -18,3 +18,4 @@ COPY components/model_evaluation components/model_evaluation
 ENV DEBUG=False
 ENV DB_USERNAME=quant_factor
 ENV DB_PASSWORD=quant_factor
+ENV PYTHONPATH=$PYTHONPATH:.
