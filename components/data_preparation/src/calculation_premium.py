@@ -18,7 +18,8 @@ from utils import (
     models,
     sys_logger,
     recreate_engine,
-    timestampNow
+    timestampNow,
+    check_memory
 )
 from contextlib import closing
 
@@ -63,8 +64,10 @@ class calcPremium:
         self.weeks_to_offset = weeks_to_offset
         self.processes = processes
         self.currency_code_list = currency_code_list
-        self.factor_list = factor_list if len(factor_list) > 0 else self._factor_list_from_formula      # if not
-        self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}' for x in average_days_list]
+        self.factor_list = factor_list if len(factor_list) > 0 \
+            else self._factor_list_from_formula()      # if not
+        self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
+                           for x in average_days_list]
 
     def write_all(self):
         """
@@ -96,7 +99,6 @@ class calcPremium:
 
         return prem
 
-    @property
     def _factor_list_from_formula(self):
         """
         get list of active factors defined and to update premium

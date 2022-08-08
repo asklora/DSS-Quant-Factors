@@ -755,14 +755,15 @@ class combineData:
 class calcRatio:
     """ Calculate all factors required referencing the DB ratio table """
 
-    formula = read_query(select(models.FactorFormulaRatio).where(models.FactorFormulaRatio.is_active == True))
-    etf_list = read_query(select(models.Universe.ticker).where(models.Universe.is_etf == True))["ticker"].to_list()
-
     def __init__(self, start_date: dt.datetime = None, end_date: dt.datetime = None, tri_return_only: bool = False):
         self.start_date = start_date
         self.end_date = end_date
         self.tri_return_only = tri_return_only
         self.raw_data = combineData(self.start_date, self.end_date)
+        self.formula = read_query(select(models.FactorFormulaRatio).where(
+            models.FactorFormulaRatio.is_active))
+        self.etf_list = read_query(select(models.Universe.ticker).where(
+            models.Universe.is_etf))["ticker"].to_list()
 
     @err2slack("factor", return_obj=pd.DataFrame())
     def get(self, *args) -> pd.DataFrame:
