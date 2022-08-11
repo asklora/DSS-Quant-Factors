@@ -156,6 +156,9 @@ def get_tri(ticker=None, start_date=None):
         f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
     tri = read_query(query)
 
+    if len(tri) == 0:
+        raise Exception(f"Table data_tri is empty for [{ticker}]")
+
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     return tri
 
