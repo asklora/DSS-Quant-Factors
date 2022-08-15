@@ -144,7 +144,7 @@ class rf_HPOT:
         return params
 
     def __sample_weight(self, train_y: pd.DataFrame) -> np.array:
-        sample_weight = np.where(train_y.mean(axis=1) < 0, self.down_mkt_pct, 1 - self.down_mkt_pct)
+        sample_weight = np.where(train_y.mean(axis=1) < 0, self.down_mkt_pct, 1 - self.down_mkt_pct) # if the label (factor premium is negative), we assign it with higher weightings
         return sample_weight
 
     def _regr_pred(self, regr: object, sample_set: dict):

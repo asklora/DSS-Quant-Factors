@@ -1,3 +1,4 @@
+from sys import breakpointhook
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -79,11 +80,14 @@ class calcPremium:
 
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
-
+        # breakpoint()
         with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
             ratio_df = self._download_pivot_ratios()
             all_groups = itertools.product(self.currency_code_list, self.factor_list, self.y_col_list)
             all_groups = [tuple(e) for e in all_groups]
+            # all_groups=('HKD','fwd_roic','stock_return_y_w4_d-7')
+            # breakpoint()
+            # prem=self.get_premium(ratio_df=ratio_df,*all_groups)
             prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), all_groups)
 
         prem = pd.concat([x for x in prem if type(x) != type(None)], axis=0).sort_values(by=['group', 'trading_day'])
@@ -107,11 +111,27 @@ class calcPremium:
         factor_list = read_query_list(formula_query)
         return factor_list
 
-    def _download_pivot_ratios(self):
+    def _download_pivot_ratios(self):  
+        """ Sample table
+                field     ticker trading_day currency_code  cash_ratio  stock_return_y_w8_d-7
+        0      000001.SZ  2022-05-15           CNY         NaN               0.003978
+        1      000001.SZ  2022-05-22           CNY         NaN              -0.027937
+        2      000001.SZ  2022-05-29           CNY         NaN              -0.040709
+        3      000001.SZ  2022-06-05           CNY         NaN              -0.036256
+        4      000001.SZ  2022-06-12           CNY         NaN              -0.064556
+        ...          ...         ...           ...         ...                    ...
+        7191     9999.HK  2022-07-10           HKD    0.888837                    NaN
+        7192     9999.HK  2022-07-17           HKD    0.888837                    NaN
+        7193     9999.HK  2022-07-24           HKD    0.888837                    NaN
+        7194     9999.HK  2022-07-31           HKD    0.888837                    NaN
+        7195     9999.HK  2022-08-07           HKD    0.888837                    NaN
+        total 612 tickers
+        """
+        
         """
         download ratio table calculated with calculation_ratio.py and pivot
         """
-
+        # breakpoint()
         logger.debug(f"=== Get ratios from {processed_ratio_table} ===")
 
         ratio_query = f'''
@@ -125,10 +145,8 @@ class calcPremium:
             WHERE field in {tuple(self.factor_list + self.y_col_list)} 
                 AND trading_day>='{self.start_date}'
         '''.replace(",)", ")")
-
         df = read_query(ratio_query)
         df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
-
         return df
 
     @err2slack("factor")
@@ -142,18 +160,20 @@ class calcPremium:
         kwargs = {"group": group,
                   "factor": factor,
                   "y_col": y_col}
-
+        # breakpoint()
         df = self._filter_factor_df(ratio_df=ratio_df, **kwargs)
         df = self._qcut_factor_df(df=df, **kwargs)
+        # breakpoint()
         prem = self._clean_prem_df(prem=df, **kwargs)
 
         return prem
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
         """
-        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only 
+        Data processing: filter complete ratio pd.DataFrame for certain Y(dependent variable) & Factor only 
         """
-
+        # breakpoint()
+        # breakpoint()
         df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
         df = self.__clean_missing_y_row(df, y_col, group)
         df = self.__resample_df_by_interval(df)
@@ -165,6 +185,7 @@ class calcPremium:
         return df
 
     def _qcut_factor_df(self, group, factor, y_col, df=None):
+
         df['quantile_train_currency'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
         df = df.dropna(subset=['quantile_train_currency']).copy()
         df['quantile_train_currency'] = df['quantile_train_currency'].astype(int)

@@ -16,8 +16,6 @@ from utils import (
     upsert_data_to_database,
     err2slack,
     timestampNow,
-    dateNow,
-    str_to_date,
     recreate_engine,
     backdate_by_month,
     backdate_by_day,
@@ -64,7 +62,7 @@ class clusterFeature:
         """
         pillar groups = factors with distance <  pillar_trh
         """
-
+        # breakpoint()
         pillar_dist = self.agglo.distances_[-pillar_trh]
         pillar_cluster = FeatureAgglomeration(n_clusters=None, distance_threshold=pillar_dist, linkage='average')
         pillar_cluster.fit(self.X)
@@ -94,13 +92,12 @@ class calcPillarCluster:
         Parameters
         ----------
         subpillar_trh (Int):
-            nth smallest distances below which factors belong to same sub-pillar (i.e. factors won't be selected together)
+            nth largest distances below which factors belong to same sub-pillar (i.e. factors won't be selected together)
         pillar_trh (Int):
             nth largest distances below which factors belong to same pillar
         lookback (Int):
             number of years for sample lookback periods prior to testing_period for clustering
         """
-
         self.period_list = self._testing_period_list(start_date, end_date, sample_interval, weeks_to_expire)
         self.weeks_to_expire = weeks_to_expire
         self.currency_code_list = currency_code_list
@@ -114,7 +111,7 @@ class calcPillarCluster:
         """
         Data processing: align period_list Timestamp to match premium table i.e. testing_period = (last_data_date - weeks_to_expire)
         """
-
+        
         # end on last sunday so that we use last week TRI to calculate average TRI
         if type(end_date) == type(None):
             end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0])
@@ -157,7 +154,6 @@ class calcPillarCluster:
         """
         download past lookback = [5] year ratio for clustering
         """
-
         end_date = np.max(self.period_list) + relativedelta(weeks=self.weeks_to_expire)
         start_date = np.min(self.period_list) - relativedelta(years=self.lookback)
 
@@ -191,6 +187,7 @@ class calcPillarCluster:
 
         subset_end_date = testing_period + relativedelta(weeks=self.weeks_to_expire)
         subset_start_date = subset_end_date - relativedelta(years=self.lookback)
+        # breakpoint()
         df = ratio_df.loc[
             (ratio_df.index.get_level_values("currency_code") == currency_code) &
             (ratio_df.index.get_level_values("trading_day") <= subset_end_date.date()) &
