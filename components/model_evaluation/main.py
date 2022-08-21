@@ -1,3 +1,4 @@
+import os
 import datetime as dt
 import argparse
 from src.evaluate_factor_premium import evalFactor
@@ -51,4 +52,3 @@ if __name__ == "__main__":
     # 3. update [FactorResultSelect/History]
     if args.eval_select:
        select_df = evalTop(name_sql=eval_name_sql, processes=args.processes).write_latest_select(eval_df=eval_df)
-
