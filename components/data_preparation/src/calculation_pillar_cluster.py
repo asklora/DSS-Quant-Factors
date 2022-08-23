@@ -19,6 +19,7 @@ from utils import (
     recreate_engine,
     backdate_by_month,
     backdate_by_day,
+    check_memory
 )
 from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
@@ -92,7 +93,7 @@ class calcPillarCluster:
         Parameters
         ----------
         subpillar_trh (Int):
-            nth largest distances below which factors belong to same sub-pillar (i.e. factors won't be selected together)
+            nth smallest distances below which factors belong to same sub-pillar (i.e. factors won't be selected together)
         pillar_trh (Int):
             nth largest distances below which factors belong to same pillar
         lookback (Int):

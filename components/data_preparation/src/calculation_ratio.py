@@ -147,6 +147,7 @@ def get_tri(ticker=None, start_date=None):
         f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
     # breakpoint()
     tri = read_query(query)
+    # breakpoint()
     tri['trading_day'] = pd.to_datetime(tri['trading_day'])
     return tri
 
@@ -287,6 +288,7 @@ class cleanStockReturn:
         # breakpoint()
         self.drop_col = {'tri', 'open', 'high', 'low'}
         tri = self._get_consecutive_tri(ticker)
+        # breakpoint()
         tri = get_skew(tri)
         tri = self._calc_rs_vol(tri)
         tri = self._calc_avg_day_volume(tri)
@@ -764,7 +766,8 @@ class calcRatio:
         3. clean up 
         """
         ticker = args
-        logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
+        # logger.info(f" Calculate ratio for {ticker}  from {self.start_date} to {self.end_date}=")
+        logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker} from {self.start_date} to {self.end_date}===')
         if self.tri_return_only:
             df = self.raw_data.get_future_return(ticker)
         elif all([x[0] == '.' for x in ticker]):        # index
@@ -903,7 +906,7 @@ class calcRatio:
 
 def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[str] = None,
                                 start_date: dt.datetime = None, end_date: dt.datetime = None,
-                                tri_return_only: bool = False, processes: int = 1):
+                                tri_return_only: bool = False, processes: int = 18):
     """
     --recalc_ratio
     Calculate weekly ratios for all factors + all tickers with multiprocess
@@ -924,15 +927,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
         number of processes in multiprocessing.
     """
     # get list of active tickers to calculate ratios
-    conditions = ["is_active"]
-    if type(tickers) != type(None):
-        conditions.append(f"ticker in {tuple(tickers)}")
-    if type(currency_codes) != type(None):
-        conditions.append(f"currency_code in {tuple(currency_codes)}")
-    # breakpoint()
-    ticker_query = f"SELECT ticker FROM universe WHERE {' AND '.join(conditions)}".replace(",)", ")")
-    logger.debug(ticker_query)
-    tickers = read_query(ticker_query)["ticker"].to_list()
+
 
     # define start_date / end_date for AI score
     if type(end_date) == type(None):
@@ -943,6 +938,7 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
     # multiprocessing
     tickers = [{e} for e in tickers]
     logger.debug(tickers)
+    # breakpoint()
     with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
         df = pool.starmap(calc_ratio_cls.get, tickers)

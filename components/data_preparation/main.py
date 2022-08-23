@@ -2,10 +2,11 @@ import datetime as dt
 import argparse
 import os
 from pathlib import Path
-
+from sqlalchemy import select, text
+import datetime
 import sys
 import os
-
+import pandas as pd
 path = Path(os.path.abspath(__file__))
 sys.path.append(str(path.parent.parent.parent.absolute()))
 
@@ -16,6 +17,8 @@ from utils import (
     sys_logger,
     read_query,
     models,
+    forwarddate_by_year,
+    dateNow
 )
 
 logger = sys_logger(__name__, "DEBUG")
@@ -57,27 +60,61 @@ if __name__ == "__main__":
 
     if args.recalc_ratio:
         # default = update ratios for past 3 months
+        query = select(models.Universe.ticker).where(models.Universe.is_active)
+        tickers=read_query(query)['ticker'].to_list()
+
+        # query = select(models.Currency.currency_code).where(models.Currency.is_active)
+        # currency_code=read_query(query)['currency_code'].to_list()
+
+
         logger.info("=== Calculate ratio ===")
-        calc_factor_variables_multi(tickers=None,
-                                    currency_codes=all_currency_list,
-                                    tri_return_only=False,
-                                    processes=args.processes,
-                                    start_date=dt.datetime(1998, 1, 1) if args.history else None)
+        if args.history:
+            year_list=pd.date_range(start='1998-01-01',end=forwarddate_by_year(1),freq='Y').to_list()
+            year_list[0]=pd.Timestamp('1998-01-01T12')
+            year_list[-1]=pd.Timestamp('today')
+            for i in range(len(year_list)-1):
+                calc_factor_variables_multi(tickers=tickers,
+                                        currency_codes=all_currency_list ,
+                                        tri_return_only=False,
+                                        processes=args.processes,
+                                        start_date=year_list[i],end_date=year_list[i+1])
+        else:
+            calc_factor_variables_multi(tickers=None,
+                                        currency_codes=all_currency_list ,
+                                        tri_return_only=False,
+                                        processes=args.processes,
+                                        start_date=dt.datetime(1998, 1, 1) if args.history else None)
 
     if args.recalc_premium:
         # default = update ratios for as long as possible (b/c universe changes will affect the value of premium).
         logger.info("=== Calculate premium ===")
-        premium_data = calcPremium(weeks_to_expire=args.weeks_to_expire,
+
+        # for currency in all_currency_list:
+        year_list=pd.date_range(start='1998-01-01',end=forwarddate_by_year(1),freq='5Y').to_list()
+        year_list[0]=pd.Timestamp('1998-01-01T12')
+        year_list[-1]=pd.Timestamp('today')
+        # breakpoint()
+        if args.currency_code == 'USD': # USD is too large, need to chunck (5 year per chunck)
+            for i in range(len(year_list)-1):
+                calcPremium(weeks_to_expire=args.weeks_to_expire,
+                                   average_days_list=all_average_days,
+                                   weeks_to_offset=min(4, args.sample_interval),
+                                   currency_code_list=args.currency_code ,
+                                   processes=args.processes).write_all(start_date=year_list[i].date().strftime("%Y-%m-%d"),end_date=year_list[i+1].date().strftime("%Y-%m-%d"))
+        else:
+            premium_data = calcPremium(weeks_to_expire=args.weeks_to_expire,
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
-                                   processes=args.processes).write_all()
+                                   processes=args.processes,start_date='1998-01-01',end_date = dateNow()).write_all()
 
     if args.recalc_subpillar:
         # default = update subpillar for past 3 months
         logger.info("=== Calculate cluster pillar ===")
+        # breakpoint()
         calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
-                          currency_code_list=all_currency_list,
+                          currency_code_list=all_currency_list ,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
                           start_date=dt.datetime(1998, 1, 1) if args.history else None).write_all()
+
