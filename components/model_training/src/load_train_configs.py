@@ -43,7 +43,8 @@ class loadTrainConfig(calcTestingPeriod):
                  sample_interval: int = 4,
                  backtest_period: int = 1,
                  restart: str = None,
-                 currency_code: str = None):
+                 currency_code: str = None,
+                 look_back:int=5):
         super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
 
         self.weeks_to_expire = weeks_to_expire
@@ -51,6 +52,7 @@ class loadTrainConfig(calcTestingPeriod):
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period
         self.currency_code = currency_code
+        self.look_back=look_back
 
     def get_all_groups(self) -> List[tuple]:
         """
@@ -135,8 +137,10 @@ class loadTrainConfig(calcTestingPeriod):
         """
 
         tbl = models.FactorFormulaPillarCluster
+        conditions = [tbl.weeks_to_expire==self.weeks_to_expire,
+                    tbl.lookback==self.look_back]
         query = select(tbl.currency_code.label("train_currency"), tbl.testing_period, tbl.pillar, tbl.factor_list)\
-            .where(tbl.weeks_to_expire == self.weeks_to_expire)
+            .where(and_(*conditions))
         map_df = read_query(query)
         map_df["testing_period"] = pd.to_datetime(map_df["testing_period"])
         map_df = map_df.loc[map_df["pillar"].str.startswith("pillar")]
