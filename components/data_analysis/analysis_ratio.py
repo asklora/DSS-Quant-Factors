@@ -91,7 +91,8 @@ def stock_return_boxplot(currency='USD', weeks_to_expire='%%', average_days='%%'
 
 from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
-from scipy.cluster.hierarchy import dendrogram
+from scipy.cluster.hierarchy import dendrogram  ,cophenet,linkage
+from scipy.spatial.distance import squareform,pdist
 from collections import Counter
 from typing import List
 from sqlalchemy import select, and_
@@ -191,6 +192,7 @@ class ratio_cluster:
             # plt.plot(agglo.distances_)
             # plt.show()
 
+
             Z = self.__linkage(agglo)
             self.plot_dendrogram(Z, labels=df.columns.to_list())
 
@@ -198,7 +200,8 @@ class ratio_cluster:
             # for k, v in Y.items():
             #     cop_coef[start_year][k], _ = cophenet(Z, v)
             #     print(l, k, cop_coef)
-
+            coefficient ,condensed_cop_dis = cophenet(Z,pdist(np.transpose(X))) # by coefficient we mean cophenetic correlation coefficient
+            cop_dis = squareform(condensed_cop_dis) # condensed_cop_dis is an 1D array , we  are converting it into top triangle of matrix
         # cop_coef_df = pd.DataFrame(cop_coef)
         # cop_coef_df.to_csv(f'temp.csv')
 
