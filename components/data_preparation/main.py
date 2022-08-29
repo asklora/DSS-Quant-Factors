@@ -80,5 +80,5 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else None).write_all()
+                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2015,1,1),end_date=dt.datetime.today(),lookback=10).write_all()
     check_memory(logger=logger)

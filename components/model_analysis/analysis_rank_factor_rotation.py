@@ -127,7 +127,7 @@ def factor_pred_variance_single(is_rank=True):
     from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 
     def group_metrics(g):
-        g_actual = g.groupby(['uid_hpot', 'factor_name'])['actual'].mean().unstack().fillna(0)
+        g_actual = g.groupby(['uid_hpot', 'factor_name'])['actual'].mean().unstack().filnet_retlna(0)
         g_pred = g.groupby(['uid_hpot', 'factor_name'])['pred'].mean().unstack()
 
         if is_rank:
