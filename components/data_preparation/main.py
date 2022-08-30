@@ -70,7 +70,7 @@ if __name__ == "__main__":
         premium_data = calcPremium(weeks_to_expire=args.weeks_to_expire,
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
-                                   currency_code_list=all_currency_list,
+                                   currency_code_list=[args.currency_code],
                                    processes=args.processes).write_all(start_date='2015-01-01',end_date=dateNow())
     check_memory(logger=logger)
 
@@ -81,5 +81,5 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2015,1,1),end_date=dt.datetime.today(),lookback=10).write_all()
+                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2005,1,1),end_date=dt.datetime.today(),lookback=10).write_all()
     check_memory(logger=logger)

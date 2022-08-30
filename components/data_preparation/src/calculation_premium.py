@@ -27,7 +27,7 @@ from contextlib import closing
 
 icb_num = 6
 
-logger = sys_logger(__name__, "INFO")
+logger = sys_logger(__name__, "DEBUG")
 
 factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
 processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + models.FactorPreprocessRatio.__table__.name
