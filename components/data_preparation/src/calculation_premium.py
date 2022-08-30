@@ -126,9 +126,9 @@ class calcPremium:
                     AND ticker not like '.%%'
             ) u ON r.ticker=u.ticker
             WHERE field in {tuple(self.factor_list + self.y_col_list)} 
-                AND trading_day BETWEEN '{start_date}' AND '{end_date}
+                AND trading_day BETWEEN '{start_date}' AND '{end_date}'
         '''.replace(",)", ")")
-
+        # breakpoint()
         df = read_query(ratio_query)
         df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
 
