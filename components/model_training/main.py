@@ -8,6 +8,7 @@ from contextlib import closing
 from src.load_data import combineData, loadData
 from src.load_train_configs import loadTrainConfig
 from src.random_forest import rf_HPOT
+import os
 from utils import (
     to_slack,
     read_query,
@@ -76,6 +77,8 @@ if __name__ == "__main__":
     parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
 
+    parser.add_argument('--look_back', default=5, type=int, help='look back for loading clustered features') 
+
     parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
 
@@ -108,7 +111,7 @@ if __name__ == "__main__":
                                      sample_interval=args.sample_interval,
                                      backtest_period=args.backtest_period,
                                      restart=args.restart,
-                                     currency_code=args.currency_code).get_all_groups()
+                                     currency_code=args.currency_code,look_back=args.look_back).get_all_groups() # look_back for clustered features
 
         pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 

@@ -79,6 +79,7 @@ class loadTrainConfig(calcTestingPeriod):
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
 
         all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
+        breakpoint()
         return all_groups
 
     @property
@@ -142,6 +143,7 @@ class loadTrainConfig(calcTestingPeriod):
         query = select(tbl.currency_code.label("train_currency"), tbl.testing_period, tbl.pillar, tbl.factor_list)\
             .where(and_(*conditions))
         map_df = read_query(query)
+        breakpoint()
         map_df["testing_period"] = pd.to_datetime(map_df["testing_period"])
         map_df = map_df.loc[map_df["pillar"].str.startswith("pillar")]
 

@@ -239,7 +239,6 @@ class combineData(cleanMacros):
         df = self._download_premium()
         df = self._remove_high_missing_samples(df)
         df = self._add_macros_inputs(df)
-
         return df.sort_values(by=["group", "testing_period"])
 
     def _add_macros_inputs(self, premium):
