@@ -19,7 +19,8 @@ from utils import (
     sys_logger,
     recreate_engine,
     timestampNow,
-    check_memory
+    check_memory,
+    dateNow
 )
 from contextlib import closing
 
@@ -69,7 +70,7 @@ class calcPremium:
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
                            for x in average_days_list]
 
-    def write_all(self):
+    def write_all(self,start_date:str=None,end_date:str=None):
         """
         calculate premium for each group / factor and insert to Table [factor_processed_premium]
 
@@ -84,7 +85,7 @@ class calcPremium:
         """
 
         with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
-            ratio_df = self._download_pivot_ratios()
+            ratio_df = self._download_pivot_ratios(start_date=start_date,end_date=end_date)
             all_groups = itertools.product(self.currency_code_list, self.factor_list, self.y_col_list)
             all_groups = [tuple(e) for e in all_groups]
             prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), all_groups)
@@ -109,7 +110,7 @@ class calcPremium:
         factor_list = read_query_list(formula_query)
         return factor_list
 
-    def _download_pivot_ratios(self):
+    def _download_pivot_ratios(self,start_date:str=None,end_date:str=None):
         """
         download ratio table calculated with calculation_ratio.py and pivot
         """
@@ -125,7 +126,7 @@ class calcPremium:
                     AND ticker not like '.%%'
             ) u ON r.ticker=u.ticker
             WHERE field in {tuple(self.factor_list + self.y_col_list)} 
-                AND trading_day>='{self.start_date}'
+                AND trading_day BETWEEN '{start_date}' AND '{end_date}
         '''.replace(",)", ")")
 
         df = read_query(ratio_query)

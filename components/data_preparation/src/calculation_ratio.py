@@ -22,7 +22,7 @@ from utils import (
     timestampNow
 )
 
-logger = sys_logger(__name__, "ERROR")
+logger = sys_logger(__name__, "DEBUG")
 
 stock_data_table_tri = models.DataTri.__table__.schema + '.' + models.DataTri.__table__.name
 stock_data_table_ohlcv = models.DataOhlcv.__table__.schema + '.' + models.DataOhlcv.__table__.name
@@ -957,13 +957,13 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
         end_date = dt.datetime.now()
     if type(start_date) == type(None):
         start_date = end_date - relativedelta(months=3)
-    breakpoint()
+    # breakpoint()
     # multiprocessing
     tickers = [{e} for e in tickers]
     logger.debug(tickers)
     with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
-        breakpoint()
+        # breakpoint()
         df = pool.starmap(calc_ratio_cls.get, tickers)
     df = pd.concat([x for x in df if type(x) != type(None)], axis=0)
 

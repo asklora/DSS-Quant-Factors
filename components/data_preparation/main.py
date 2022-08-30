@@ -9,7 +9,8 @@ from utils import (
     sys_logger,
     read_query,
     models,
-    check_memory
+    check_memory,
+    dateNow
 )
 
 logger = sys_logger(__name__, "DEBUG")
@@ -70,7 +71,7 @@ if __name__ == "__main__":
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
-                                   processes=args.processes).write_all()
+                                   processes=args.processes).write_all(start_date='2015-01-01',end_date=dateNow())
     check_memory(logger=logger)
 
     if args.recalc_subpillar:
