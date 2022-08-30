@@ -784,16 +784,20 @@ class calcRatio:
 
         if self.tri_return_only:
             df = self.raw_data.get_future_return(ticker)
+            logger.debug(f"Successfully calculate future return")
         elif all([x[0] == '.' for x in ticker]):        # index
             df = self.raw_data.get_all_tri_related(ticker)
         elif all([x in self.etf_list for x in ticker]):
             df = self.raw_data.get_all_tri_related(ticker)
         else:
             df = self.raw_data.get_all(ticker)
+            logger.debug(f"Successfully get all data")
             df = self._calc_add_minus_fields(df) #'pre'
+            logger.debug(f"Successfully add and minus fields")
             df = self._calculate_keep_ratios(df) #'pre'
             df = self._calculate_ts_ratios(df) #'pre'
             df = self._calculate_divide_ratios(df) #'DIVIDE'
+            logger.debug(f"Calculate and divide ratios")
             df = self._clean_missing_ratio_records(df) #'clean-up'
 
         df = self._clean_missing_y_records(df)
@@ -953,12 +957,13 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
         end_date = dt.datetime.now()
     if type(start_date) == type(None):
         start_date = end_date - relativedelta(months=3)
-
+    breakpoint()
     # multiprocessing
     tickers = [{e} for e in tickers]
     logger.debug(tickers)
     with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
+        breakpoint()
         df = pool.starmap(calc_ratio_cls.get, tickers)
     df = pd.concat([x for x in df if type(x) != type(None)], axis=0)
 
