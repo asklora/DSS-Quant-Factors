@@ -120,9 +120,9 @@ if __name__ == "__main__":
                                      currency_code=args.currency_code,look_back=args.look_back).get_all_groups() # look_back for clustered features
         breakpoint()
         # breakpoint()
-        for all_group in all_groups: #*
-            start(raw_df=raw_df,sql_result=sql_result.copy(),*all_group)
+        # for all_group in all_groups: #*
+        #     start(raw_df=raw_df,sql_result=sql_result.copy(),*all_group)
 
-        # pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
+        pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 
 

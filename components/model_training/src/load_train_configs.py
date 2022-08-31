@@ -174,6 +174,7 @@ class loadTrainConfig(calcTestingPeriod):
         tbl = models.FactorFormulaPillarCluster
         conditions = [tbl.weeks_to_expire==self.weeks_to_expire,
                     tbl.lookback==self.look_back]
+        # breakpoint()
         query = select(tbl.currency_code.label("train_currency"), tbl.testing_period, tbl.pillar, tbl.factor_list)\
             .where(and_(*conditions))
         map_df = read_query(query)
