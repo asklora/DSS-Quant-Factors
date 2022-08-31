@@ -68,7 +68,8 @@ class calcTestingPeriod:
         if self.restart:
             first_run_date = self._restart_iteration_first_running_date
         else:
-            first_run_date = dateNow()
+            first_run_date = dateNow() #*
+            # first_run_date = backdate_by_day(1)
 
         back_by_average_days = pd.to_datetime(pd.date_range(end=first_run_date, freq=f"W-TUE", periods=1)[0])
         back_by_weeks_to_expire = pd.to_datetime(pd.date_range(end=back_by_average_days, freq=f"W-SUN",
@@ -237,6 +238,7 @@ class combineData(cleanMacros):
 
         """
         df = self._download_premium()
+        # breakpoint()
         df = self._remove_high_missing_samples(df)
         df = self._add_macros_inputs(df)
         return df.sort_values(by=["group", "testing_period"])

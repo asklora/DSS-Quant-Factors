@@ -54,6 +54,17 @@ class loadTrainConfig(calcTestingPeriod):
         self.currency_code = currency_code
         self.look_back=look_back
 
+    def _process_the_nans(self,all_groups): #*
+        # breakpoint()
+
+        nans = all_groups.loc[all_groups['factor_list'].isnull()]
+        # breakpoint()
+        for pillar, g in nans.groupby('pillar'):
+            logger.info(f"Pillar {pillar} from testing period {g['testing_period'].min()} to {g['testing_period'].max()} is found to have null factor list! This can either due to incomplete factor_formula_pillar_cluster or incomplete factor_formula_pillar_defined!")
+        all_groups = all_groups.loc[all_groups['factor_list'].notnull()]
+        breakpoint()
+        return all_groups
+
     def get_all_groups(self) -> List[tuple]:
         """
         Returns
@@ -68,8 +79,9 @@ class loadTrainConfig(calcTestingPeriod):
             + other grid search configuration (i.e. _auto_select_options) ...
         """
         all_configs_df = self.merge_groups_df()
+        # breakpoint()
         all_configs_df = self._replace_pillar_name_with_factor_list(all_configs_df)
-
+        # breakpoint()
         if self.restart:
             finish_configs_df = self._restart_finished_configs()
             diff_config_col = [x for x in finish_configs_df.columns.to_list() if x != "count"]
@@ -77,10 +89,15 @@ class loadTrainConfig(calcTestingPeriod):
             all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()].drop(columns=["count"])
 
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
-
+        # all_configs_df=all_configs_df.dropna(subset=['factor_list']) #*
+        all_configs_df=self._process_the_nans(all_configs_df)
         all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
         # breakpoint()
+        # all_groups=_process_the_nans(all_groups)
+        all_groups=self._process_the_nans(all_groups)
         return all_groups
+    
+
 
     @property
     def _defined_configs(self):
@@ -106,6 +123,7 @@ class loadTrainConfig(calcTestingPeriod):
         return defined_configs
 
     def merge_groups_df(self):
+        # breakpoint()
         _auto_select_configs = [dict(zip(self._auto_select_options.keys(), e)) for e in
                                 product(*self._auto_select_options.values())]
 
@@ -121,10 +139,12 @@ class loadTrainConfig(calcTestingPeriod):
         """
         Map pillar name to factor list by merging pillar tables & configs
         """
-
+        # breakpoint()
         cluster_pillar_df = self.__cluster_pillar_map(configs_df)
         defined_pillar_df = self.__defined_pillar_map(configs_df)
         configs_df = cluster_pillar_df.append(defined_pillar_df)
+        # breakpoint()
+        configs_df.dropna(subset=['factor_list']) #*
         return configs_df
 
     def __cluster_pillar_map(self, config_df) -> pd.DataFrame:
@@ -149,7 +169,7 @@ class loadTrainConfig(calcTestingPeriod):
 
         config_df = config_df.loc[config_df["pillar"] == "cluster"].drop(columns=["pillar"])
         config_df = config_df.merge(map_df, on=["train_currency", "testing_period"], how="left")
-
+        # breakpoint()
         return config_df
 
     def __defined_pillar_map(self, df) -> pd.DataFrame:

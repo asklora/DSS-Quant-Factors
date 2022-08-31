@@ -6,6 +6,7 @@ from src.load_eval_configs import load_latest_name_sql
 from utils import (
     sys_logger,
 )
+import os
 
 logger = sys_logger(__name__, "DEBUG")
 

@@ -42,24 +42,28 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
     """
+    try: 
+        kwargs, = args
+        sql_result.update(kwargs)
 
-    kwargs, = args
-    sql_result.update(kwargs)
+        logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
 
-    logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")
+        data = loadData(**sql_result)
+        sample_sets, neg_factor, cut_bins = data.split_all(raw_df)
+        sql_result['neg_factor'] = neg_factor
 
-    data = loadData(**sql_result)
-    sample_sets, neg_factor, cut_bins = data.split_all(raw_df)
-    sql_result['neg_factor'] = neg_factor
+        for sample_set in sample_sets:
+            hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
+            hpot_cls.train_and_write(sample_set=sample_set)
 
-    for sample_set in sample_sets:
-        hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
-        hpot_cls.train_and_write(sample_set=sample_set)
+        if not os.getenv("DEBUG").lower == "true":
+            write_args_finished(kwargs)
 
-    if not os.getenv("DEBUG").lower == "true":
-        write_args_finished(kwargs)
-
-    return True
+        return True
+    except Exception as e:
+        # logger.debug(f"During training for {sql_result['pillar']}, on testing period {sql_result['testing_period']}\n
+        #                 and factor list {sql_result['factor_list']}")
+        pass
 
 
 if __name__ == "__main__":
@@ -77,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
 
-    parser.add_argument('--look_back', default=5, type=int, help='look back for loading clustered features') 
+    parser.add_argument('--look_back', default=5, type=int, help='look back year for loading clustered features') 
 
     parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
@@ -112,7 +116,8 @@ if __name__ == "__main__":
                                      backtest_period=args.backtest_period,
                                      restart=args.restart,
                                      currency_code=args.currency_code,look_back=args.look_back).get_all_groups() # look_back for clustered features
-
+        # breakpoint()
+        # breakpoint()
         pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 
 

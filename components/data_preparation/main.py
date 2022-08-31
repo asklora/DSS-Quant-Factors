@@ -35,6 +35,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--history', action='store_true', help='Rewrite entire history')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
+    parser.add_argument('--look_back', default=5, type=int, help='lookback period for clustering factors')
 
     parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
     args = parser.parse_args()
@@ -81,5 +82,5 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2005,1,1),end_date=dt.datetime.today(),lookback=10).write_all()
+                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2010,1,1),end_date=dt.datetime.today(),lookback=args.look_back).write_all()
     check_memory(logger=logger)
