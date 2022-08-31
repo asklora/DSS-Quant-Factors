@@ -54,15 +54,29 @@ class loadTrainConfig(calcTestingPeriod):
         self.currency_code = currency_code
         self.look_back=look_back
 
-    def _process_the_nans(self,all_groups): #*
+    def _process_the_nans(self,all_groups):
+        """
+        To remove the NaN in factor_list and report the error to slack
+
+        Parameter
+        ---------
+        all_groups: dataframe with pillar and their corresponding factor_list loaded from table factor_formula_pillar_cluster and factor_formula_pillar_defined
+
+        Return
+        ------
+        all_groups: cleaned dataframe with rows where factor_list = 'NaN' removed
+        """
         # breakpoint()
 
         nans = all_groups.loc[all_groups['factor_list'].isnull()]
         # breakpoint()
         for pillar, g in nans.groupby('pillar'):
-            logger.info(f"Pillar {pillar} from testing period {g['testing_period'].min()} to {g['testing_period'].max()} is found to have null factor list! This can either due to incomplete factor_formula_pillar_cluster or incomplete factor_formula_pillar_defined!")
+            msg = f"Pillar {pillar} from testing period {g['testing_period'].min()} to {g['testing_period'].max()} is found to have null factor list! This can either due to incomplete factor_formula_pillar_cluster or incomplete factor_formula_pillar_defined!"
+            logger.info(msg)
+            report_to_slack(msg)
+        # breakpoint()
         all_groups = all_groups.loc[all_groups['factor_list'].notnull()]
-        breakpoint()
+        # breakpoint()
         return all_groups
 
     def get_all_groups(self) -> List[tuple]:
@@ -91,10 +105,10 @@ class loadTrainConfig(calcTestingPeriod):
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
         # all_configs_df=all_configs_df.dropna(subset=['factor_list']) #*
         all_configs_df=self._process_the_nans(all_configs_df)
+        # breakpoint()
         all_groups = [tuple([e]) for e in all_configs_df.to_dict("records")]
         # breakpoint()
         # all_groups=_process_the_nans(all_groups)
-        all_groups=self._process_the_nans(all_groups)
         return all_groups
     
 

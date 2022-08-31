@@ -33,6 +33,9 @@ if __name__ == "__main__":
     parser.add_argument('--recalc_subpillar', action='store_true', help='Start recalculate cluster pillar / subpillar')
     parser.add_argument('--processes', default=1, type=int, help='Multiprocessing')
 
+    parser.add_argument('--start_date', default='2015-01-01', type=str, help='start_date for calculating factor ratio, factor premium or factor subpillar')
+    parser.add_argument('--end_date', default=dateNow(), type=str, help='end date for calculating factor ratio, factor premium or factor subpillar')
+
     parser.add_argument('--history', action='store_true', help='Rewrite entire history')
     parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
     parser.add_argument('--look_back', default=5, type=int, help='lookback period for clustering factors')
@@ -45,7 +48,7 @@ if __name__ == "__main__":
         if dt.datetime.today().day > 7:
             logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
             exit(0)
-
+    breakpoint()
     if args.currency_code:                              # for debugging only
         all_currency_list = [args.currency_code]
 
@@ -58,7 +61,7 @@ if __name__ == "__main__":
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes,
-                                    start_date=dt.datetime(1998, 1, 1) if args.history else None)
+                                    start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d'))
         del calc_factor_variables_multi
         gc.collect()
 
@@ -72,7 +75,7 @@ if __name__ == "__main__":
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=[args.currency_code],
-                                   processes=args.processes).write_all(start_date='2015-01-01',end_date=dateNow())
+                                   processes=args.processes).write_all(start_date=args.start_date,end_date=args.end_date)
     check_memory(logger=logger)
 
     if args.recalc_subpillar:
@@ -82,5 +85,6 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime(2010,1,1),end_date=dt.datetime.today(),lookback=args.look_back).write_all()
+                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d'),end_date=dt.datetime.strptime(args.end_date,'%Y-%m-%d')
+                          ,lookback=args.look_back).write_all()
     check_memory(logger=logger)
