@@ -43,6 +43,7 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     run random forest on multi-processor
     """
     try: 
+        breakpoint()
         kwargs, = args
         sql_result.update(kwargs)
 
@@ -117,8 +118,11 @@ if __name__ == "__main__":
                                      backtest_period=args.backtest_period,
                                      restart=args.restart,
                                      currency_code=args.currency_code,look_back=args.look_back).get_all_groups() # look_back for clustered features
+        breakpoint()
         # breakpoint()
-        # breakpoint()
-        pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
+        for all_group in all_groups: #*
+            start(raw_df=raw_df,sql_result=sql_result.copy(),*all_group)
+
+        # pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
 
 

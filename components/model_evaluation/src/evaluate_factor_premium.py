@@ -153,7 +153,7 @@ class cleanPrediction:
         """
 
         logger.info(f'=== Download prediction history on name_sql=[{self.name_sql}] ===')
-
+        breakpoint()
         conditions = [
             models.FactorResultScore.name_sql == self.name_sql,
             models.FactorResultScore.testing_period >= self.pred_start_testing_period,

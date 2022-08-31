@@ -88,3 +88,5 @@ if __name__ == "__main__":
                           start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d').date(),end_date=dt.datetime.strptime(args.end_date,'%Y-%m-%d').date()
                           ,lookback=args.look_back).write_all()
     check_memory(logger=logger)
+
+    # how to calculate subpillar: start_date = '2010-01-01' ---> database will show start_date = '2010-01-01', with lookback = ....

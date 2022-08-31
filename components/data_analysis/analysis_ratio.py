@@ -101,9 +101,10 @@ from utils import  (
     models,
     date_minus_,
     dateNow,
-    read_query
+    read_query,
+    sys_logger
 )
-
+logger = sys_logger(__name__, "INFO")
 
 class ratio_cluster:
 
@@ -200,8 +201,12 @@ class ratio_cluster:
             # for k, v in Y.items():
             #     cop_coef[start_year][k], _ = cophenet(Z, v)
             #     print(l, k, cop_coef)
+
             coefficient ,condensed_cop_dis = cophenet(Z,pdist(np.transpose(X))) # by coefficient we mean cophenetic correlation coefficient
             cop_dis = squareform(condensed_cop_dis) # condensed_cop_dis is an 1D array , we  are converting it into top triangle of matrix
+            logger.info(f"The cophenetic correlation coefficient for currency {self.currency_code_list} with end_date {self.end_date} and lookback {self.lookback} is:{coefficient}")
+            breakpoint()
+
         # cop_coef_df = pd.DataFrame(cop_coef)
         # cop_coef_df.to_csv(f'temp.csv')
 
@@ -269,14 +274,22 @@ if __name__ == '__main__':
     #               ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
     #               png_name="usd_innovative").get()
 
-    ratio_cluster(currency_code_list=["USD"],
-                  ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
-                  png_name="usd_innovative").sample_ratio_rank()
+    # ratio_cluster(currency_code_list=["USD"],
+    #               ticker_list=["ARKF.K", "TSLA.O", "F", "GILD.O", "AAPL.O", "MA", "INTC.O", "C"],
+    #               png_name="usd_innovative").sample_ratio_rank()
 
     # ratio_cluster(currency_code_list=["USD"],
     #               ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
     #               png_name="usd_revenue").get()
     #
-    ratio_cluster(currency_code_list=["USD"],
-                  ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
-                  png_name="usd_revenue").sample_ratio_rank()
+    # ratio_cluster(currency_code_list=["USD"],
+    #               ticker_list=["AMD.O", "THC", "BA", "AAPL.O", "ETSY.O"],
+    #               png_name="usd_revenue").sample_ratio_rank()
+
+    # Quering ticker
+    query = "SELECT ticker FROM public.universe WHERE currency_code ='HKD' AND is_active=true;"
+    universe_of_usd= read_query(query)['ticker'].tolist()
+
+    ratio_cluster(currency_code_list=["HKD"],
+                  ticker_list=universe_of_usd,end_date='2022-08-10',lookback=10,
+                  png_name="usd_revenue").get()

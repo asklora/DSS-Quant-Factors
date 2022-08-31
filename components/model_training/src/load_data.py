@@ -75,7 +75,7 @@ class calcTestingPeriod:
         back_by_weeks_to_expire = pd.to_datetime(pd.date_range(end=back_by_average_days, freq=f"W-SUN",
                                                                periods=self.weeks_to_expire + 1)[0])
         period_list = pd.date_range(end=back_by_weeks_to_expire, freq=f"{self.sample_interval}W-SUN",
-                                    periods=1500//self.sample_interval)
+                                    periods=self.backtest_period+12*4/self.sample_interval) #* my reasoning is that 
 
         return period_list
 
@@ -373,7 +373,7 @@ class loadData:
             neg_factor: list of factor reverse in calculation
             cut_bins: list of threshold of cut_bins
         """
-
+        breakpoint()
         sample_df = self._filter_sample(main_df=main_df)
         sample_df, neg_factor = self._convert_sample_neg_factor(sample_df=sample_df)
 
