@@ -59,6 +59,7 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
         if not os.getenv("DEBUG").lower == "true":
             write_args_finished(kwargs)
 
+        logger.info(f"===== Markdown the name_sql for this model training result to be evaluated in model evaluation: [{sql_result['name_sql']}] =====")
         return True
     except Exception as e:
         # logger.debug(f"During training for {sql_result['pillar']}, on testing period {sql_result['testing_period']}\n

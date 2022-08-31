@@ -48,7 +48,7 @@ if __name__ == "__main__":
         if dt.datetime.today().day > 7:
             logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
             exit(0)
-    breakpoint()
+    # breakpoint()
     if args.currency_code:                              # for debugging only
         all_currency_list = [args.currency_code]
 

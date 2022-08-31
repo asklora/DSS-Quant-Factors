@@ -100,7 +100,7 @@ class calcPillarCluster:
         lookback (Int):
             number of years for sample lookback periods prior to testing_period for clustering
         """
-        breakpoint()
+        # breakpoint()
         self.period_list = self._testing_period_list(start_date, end_date, sample_interval, weeks_to_expire)
         self.weeks_to_expire = weeks_to_expire
         self.currency_code_list = currency_code_list
