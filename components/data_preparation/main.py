@@ -61,7 +61,7 @@ if __name__ == "__main__":
                                     currency_codes=all_currency_list,
                                     tri_return_only=False,
                                     processes=args.processes,
-                                    start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d'))
+                                    start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d').date())
         del calc_factor_variables_multi
         gc.collect()
 
@@ -85,6 +85,6 @@ if __name__ == "__main__":
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
-                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d'),end_date=dt.datetime.strptime(args.end_date,'%Y-%m-%d')
+                          start_date=dt.datetime(1998, 1, 1) if args.history else dt.datetime.strptime(args.start_date,'%Y-%m-%d').date(),end_date=dt.datetime.strptime(args.end_date,'%Y-%m-%d').date()
                           ,lookback=args.look_back).write_all()
     check_memory(logger=logger)
