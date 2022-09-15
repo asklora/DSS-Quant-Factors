@@ -34,4 +34,4 @@ profiles:
     kubectl:
       manifests:
         - deployment/k8s.yaml
-        - deployment/k8s_full_backtest.yaml
+        - deployment/k8s_debug_run.yaml

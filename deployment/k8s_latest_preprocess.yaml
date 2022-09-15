@@ -13,7 +13,9 @@ spec:
         image: quant-factor
         imagePullPolicy: IfNotPresent
         command:
-        - /bin/sh
+          - # TODO update this
+
+          - /bin/sh
         - -c
         - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_ratio --recalc_premium --recalc_subpillar --processes 4 --debug
         - python3 components/data_preparation/main.py --weeks_to_expire 4 --recalc_premium --recalc_subpillar --processes 4 --debug

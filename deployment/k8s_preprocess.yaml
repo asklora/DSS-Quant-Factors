@@ -12,7 +12,7 @@ spec:
       - name: quant-factors
         image: quant-factor
         imagePullPolicy: IfNotPresent
-        command:
+        command: # TODO update this
         - /bin/sh
         - -c
         - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_ratio --recalc_premium --recalc_subpillar --processes 12 --history

@@ -954,7 +954,6 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
         end_date = dt.datetime.now()
     if start_date is None:
         start_date = end_date - relativedelta(months=3)
-
     # multiprocessing
     tickers = [{e} for e in tickers]
     logger.debug(tickers)

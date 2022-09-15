@@ -14,7 +14,7 @@ spec:
       - name: quant-factors
         image: quant-factor
         imagePullPolicy: IfNotPresent
-        command:
+        command:  # TODO update this
         - /bin/sh
         - -c
         - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_select --processes 1 --debug

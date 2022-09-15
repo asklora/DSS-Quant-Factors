@@ -15,22 +15,24 @@ spec:
         image: quant-factor
         imagePullPolicy: IfNotPresent
         command:
+          - # TODO update this
         - /bin/sh
         - -c
-        - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_ratio --recalc_premium --recalc_subpillar --processes 60
-        - python3 components/data_preparation/main.py --weeks_to_expire 4 --recalc_premium --recalc_subpillar --processes 60
-        - python3 components/data_preparation/main.py --weeks_to_expire 26 --recalc_premium --recalc_subpillar --processes 60
-        - python3 components/model_training/main.py --weeks_to_expire 8 --backtest_period 21 --processes 60
-        - python3 components/model_training/main.py --weeks_to_expire 4 --backtest_period 21 --processes 60
-        - python3 components/model_training/main.py --weeks_to_expire 26 --backtest_period 21 --processes 60
-        - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select --processes 60
-        - python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select --processes 60
-        - python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select --processes 60
+        - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_ratio --processes 15 --debug
+        - python3 components/data_preparation/main.py --weeks_to_expire 8 --recalc_premium --recalc_subpillar --processes 15 --debug
+        - python3 components/data_preparation/main.py --weeks_to_expire 4 --recalc_premium --recalc_subpillar --processes 15 --debug
+        - python3 components/data_preparation/main.py --weeks_to_expire 26 --recalc_premium --recalc_subpillar --processes 15 --debug
+        - python3 components/model_training/main.py --weeks_to_expire 8 --backtest_period 21 --processes 15 --debug
+        - python3 components/model_training/main.py --weeks_to_expire 4 --backtest_period 21 --processes 15 --debug
+        - python3 components/model_training/main.py --weeks_to_expire 26 --backtest_period 21 --processes 15 --debug
+        - python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select --processes 15 --debug
+        - python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select --processes 15 --debug
+        - python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select --processes 15 --debug
         resources:
           requests:
-            memory: "60Gi"
-            cpu: "60000m"
+            memory: "15Gi"
+            cpu: "15000m"
           limits:
-            memory: "60Gi"
-            cpu: "60000m"
+            memory: "15Gi"
+            cpu: "15000m"
       restartPolicy: Never
