@@ -70,9 +70,13 @@ class loadTrainConfig(calcTestingPeriod):
 
         if self.restart:
             finish_configs_df = self._restart_finished_configs()
-            diff_config_col = [x for x in finish_configs_df.columns.to_list() if x != "count"]
-            all_configs_df = all_configs_df.merge(finish_configs_df, how="left", on=diff_config_col)
-            all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()].drop(columns=["count"])
+            diff_config_col = [x for x in finish_configs_df.columns.to_list()
+                               if x != "count"]
+            all_configs_df = all_configs_df.merge(finish_configs_df,
+                                                  how="left",
+                                                  on=diff_config_col)
+            all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()
+                                                ].drop(columns=["count"])
 
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
 

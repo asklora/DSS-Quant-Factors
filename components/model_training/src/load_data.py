@@ -70,10 +70,15 @@ class calcTestingPeriod:
         else:
             first_run_date = dateNow()
 
-        back_by_average_days = pd.to_datetime(pd.date_range(end=first_run_date, freq=f"W-TUE", periods=1)[0])
-        back_by_weeks_to_expire = pd.to_datetime(pd.date_range(end=back_by_average_days, freq=f"W-SUN",
-                                                               periods=self.weeks_to_expire + 1)[0])
-        period_list = pd.date_range(end=back_by_weeks_to_expire, freq=f"{self.sample_interval}W-SUN",
+        back_by_average_days = pd.to_datetime(pd.date_range(end=first_run_date,
+                                                            freq=f"W-TUE",
+                                                            periods=1)[0])
+        back_by_weeks_to_expire = pd.to_datetime(pd.date_range(
+            end=back_by_average_days,
+            freq=f"W-SUN",
+            periods=self.weeks_to_expire + 1)[0])
+        period_list = pd.date_range(end=back_by_weeks_to_expire,
+                                    freq=f"{self.sample_interval}W-SUN",
                                     periods=1500//self.sample_interval)
 
         return period_list

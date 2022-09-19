@@ -1,3 +1,4 @@
+import os
 import datetime as dt
 import numpy as np
 import argparse
@@ -55,8 +56,8 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
         hpot_cls = rf_HPOT(max_evals=10, sql_result=sql_result, **sql_result)
         hpot_cls.train_and_write(sample_set=sample_set)
 
-    if not os.getenv("DEBUG").lower == "true":
-        write_args_finished(kwargs)
+    # if not os.getenv("DEBUG").lower == "true":
+    #     write_args_finished(kwargs)       # TODO: restart
 
     return True
 
