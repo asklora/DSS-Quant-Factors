@@ -290,7 +290,7 @@ class combineData(cleanMacros):
         df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
         df['testing_period'] = pd.to_datetime(df['testing_period'], format='%Y-%m-%d')
 
-        df.loc[:, self.reverse_factors] *= -1
+        df.loc[:, df.filter(self.reverse_factors).columns.to_list()] *= -1
 
         return df
 
