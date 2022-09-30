@@ -290,7 +290,25 @@ class combineData(cleanMacros):
         df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
         df['testing_period'] = pd.to_datetime(df['testing_period'], format='%Y-%m-%d')
 
+        df.loc[:, self.reverse_factors] *= -1
+
         return df
+
+    @property
+    def reverse_factors(self):
+        """
+        Reverse premium list from [FactorFormulaRatios]
+        """
+        reverse_factors = read_query_list(
+            select(models.FactorFormulaRatio.name)
+            .where(and_(models.FactorFormulaRatio.is_active,
+                        not_(models.FactorFormulaRatio.smb_positive)))
+        )
+        if len(reverse_factors) == 0:
+            raise Exception("Error: "
+                            "factor_formula_ratios assume all premium SMB. "
+                            "Not reverse needed.")
+        return reverse_factors
 
     def _remove_high_missing_samples(self, df: pd.DataFrame, trh: float = 0.5) -> pd.DataFrame:
         """

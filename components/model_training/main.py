@@ -37,13 +37,16 @@ def write_args_finished(kwargs):
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-@err2slack("factor")
+@err2slack("factor", return_obj=False)
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
     """
 
     kwargs, = args
+    if not isinstance(kwargs["factor_list"], list):
+        raise Exception(f"Wrong factor list: {kwargs}")
+
     sql_result.update(kwargs)
 
     logger.debug(f"===== test on pillar: [{sql_result['pillar']}] =====")

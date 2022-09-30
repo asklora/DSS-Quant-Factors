@@ -417,8 +417,9 @@ class evalTop:
             g_score = g_score.assign(**{k: v for k, v in r.to_dict().items() if "factor" not in k})
             final_score_df_list.append(g_score)
 
-        final_score_df = pd.concat(final_score_df_list, axis=0)
-        return final_score_df
+        if len(final_score_df_list) > 0:
+            final_score_df = pd.concat(final_score_df_list, axis=0)
+            return final_score_df
 
     def __filter_sample_score_df(self, score_df: pd.DataFrame, trading_day: dt.datetime, currency_code: str,
                                  missing_penalty_pct: float = 0.9):
