@@ -144,7 +144,44 @@ class rf_HPOT:
         return params
 
     def __sample_weight(self, train_y: pd.DataFrame) -> np.array:
-        sample_weight = np.where(train_y.mean(axis=1) < 0, self.down_mkt_pct, 1 - self.down_mkt_pct)
+        """
+        Adjust sample weight to make model better reflects current market
+        1. down market
+        2. rising interest rate environment
+            - There are two rising interest rate period in US market history
+              during past 20 years:
+              a. 2004 Jun - 2007 Jun
+              b. 2015 Nov - 2019 Jul
+           Sample weight * 2 during above period.
+
+           - There are also near-0 interest rate period:
+             a. 2020 Apr - 2021 Apr (due to COVID)
+        """
+        # 1. weight more for down market sample
+        sample_weight = np.where(train_y.mean(axis=1) < 0,
+                                 self.down_mkt_pct, 1 - self.down_mkt_pct)
+        if self.sql_result["train_currency"] != "USD":
+            return sample_weight
+
+        # 2. double weight for rising interest rate period in USD
+        sample_dates = train_y.index.get_level_values("testing_period")
+        double_period = [(dt.datetime(2004, 6, 1), dt.datetime(2007, 6, 1)),
+                         (dt.datetime(2015, 11, 1), dt.datetime(2019, 7, 1))]
+        conditions = False
+        for start_date, end_date in double_period:
+            conditions = conditions | ((sample_dates >= start_date) &
+                                       (sample_dates <= end_date))
+
+        sample_weight = np.where(conditions, sample_weight*2, sample_weight)
+
+        # 3. 0 weight for extremely low interest rate period in USD
+        zero_period = [(dt.datetime(2020, 4, 1), dt.datetime(2021, 4, 1))]
+        conditions = False
+        for start_date, end_date in zero_period:
+            conditions = conditions | ((sample_dates >= start_date) &
+                                       (sample_dates <= end_date))
+        sample_weight = np.where(conditions, 0, sample_weight)
+
         return sample_weight
 
     def _regr_pred(self, regr: object, sample_set: dict):
