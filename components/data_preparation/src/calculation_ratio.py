@@ -834,18 +834,25 @@ class CalcRatio:
     """ Calculate all factors required referencing the DB ratio table """
 
     def __init__(self, start_date: dt.datetime = None,
-                 end_date: dt.datetime = None, tri_return_only: bool = False):
+                 end_date: dt.datetime = None,
+                 tri_return_only: bool = False,
+                 factor_list: List[str] = None):
         self.start_date = start_date
         self.end_date = end_date
         self.tri_return_only = tri_return_only
         self.raw_data = combineData(self.start_date, self.end_date)
+        self.factor_list = factor_list
+        if factor_list is None:
+            filters = models.FactorFormulaRatio.is_active
+        else:
+            filters = models.FactorFormulaRatio.name.in_(factor_list)
         self.formula = read_query(select(models.FactorFormulaRatio).where(
-            models.FactorFormulaRatio.is_active))
+            filters))
         self.etf_list = read_query(select(models.Universe.ticker).where(
             models.Universe.is_etf))["ticker"].to_list()
 
     # @err2slack("factor", return_obj=pd.DataFrame())
-    def get(self, *args) -> pd.DataFrame:
+    def get(self, ticker) -> pd.DataFrame:
         """
         calculate ratio for 1 ticker within 1 process for multithreading
         return df = PIT returns processed TRI data, 
@@ -854,7 +861,6 @@ class CalcRatio:
         2. DIVIDE for ratios
         3. clean up 
         """
-        ticker = args
 
         logger.debug(f'=== (n={len(ticker)}) Calculate ratio for {ticker}  ===')
 
@@ -1023,7 +1029,8 @@ def calc_factor_variables_multi(tickers: List[str] = None,
                                 start_date: dt.datetime = None,
                                 end_date: dt.datetime = None,
                                 tri_return_only: bool = False,
-                                processes: int = 1):
+                                processes: int = 1,
+                                factor_list: List[str] = None):
     """
     --recalc_ratio
     Calculate weekly ratios for all factors + all tickers with multiprocess
@@ -1062,14 +1069,19 @@ def calc_factor_variables_multi(tickers: List[str] = None,
         end_date = dt.datetime.now()
     if start_date is None:
         start_date = end_date - relativedelta(months=3)
+
     # multiprocessing
-    tickers = [{e} for e in tickers]
-    logger.debug(tickers)
-    with closing(mp.Pool(processes=processes,
-                         initializer=recreate_engine)) as pool:
-        calc_ratio_cls = CalcRatio(start_date, end_date, tri_return_only)
-        df = pool.starmap(calc_ratio_cls.get, tickers)
-    df = pd.concat([x for x in df if x is not None], axis=0)
+    # tickers = [{e} for e in tickers]
+    # logger.debug(tickers)
+    # with closing(mp.Pool(processes=processes,
+    #                      initializer=recreate_engine)) as pool:
+    calc_ratio_cls = CalcRatio(start_date,
+                               end_date,
+                               tri_return_only,
+                               factor_list)
+    df = calc_ratio_cls.get(tickers)
+    # df = pool.starmap(calc_ratio_cls.get, tickers)
+    # df = pd.concat([x for x in df if x is not None], axis=0)
 
     # save calculated ratios to DB (remove truncate -> everything update)
     df["updated"] = timestampNow()
