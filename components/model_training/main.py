@@ -30,14 +30,15 @@ def write_args_finished(kwargs):
     write finish timing to database for sqlalchemy
     """
     tbl = models.FactorFormulaTrainConfig
-    df = pd.Series(kwargs).to_frame().T.filter([x.name for x in tbl.__table__.columns])
+    df = pd.Series(kwargs).to_frame().T.filter(
+        [x.name for x in tbl.__table__.columns])
     if kwargs["pillar"][:6] == "pillar":
         df["pillar"] = "cluster"
     df = df.assign(finished=timestampNow(), id=0)
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-@err2slack("factor", return_obj=False)
+# @err2slack("factor", return_obj=False)
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -67,27 +68,33 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
 
 if __name__ == "__main__":
 
-    # --------------------------------- Parser ------------------------------------------
-
     parser = argparse.ArgumentParser()
 
     # define training periods
-    parser.add_argument('--weeks_to_expire', default=4, type=int, help='Prediction period length in weeks')
-    parser.add_argument('--backtest_period', default=14, type=int, help='Number of backtest period')
-    parser.add_argument('--sample_interval', default=4, type=int, help='Number of weeks between two backtest periods')
-    parser.add_argument('--processes', default=1, type=int, help='Number of multiprocessing threads')
+    parser.add_argument('--weeks_to_expire', default=4, type=int,
+                        help='Prediction period length in weeks')
+    parser.add_argument('--backtest_period', default=14, type=int,
+                        help='Number of backtest period')
+    parser.add_argument('--sample_interval', default=4, type=int,
+                        help='Number of weeks between two backtest periods')
+    parser.add_argument('--processes', default=1, type=int,
+                        help='Number of multiprocessing threads')
+    parser.add_argument('--restart', default=None, type=str,
+                        help='uid for to restart iteration')
+    parser.add_argument('--currency_code', default=None, type=str,
+                        help='calculate for certain currency only')
 
-    parser.add_argument('--restart', default=None, type=str, help='uid for to restart iteration')
-    parser.add_argument('--currency_code', default=None, type=str, help='calculate for certain currency only')
-
-    parser.add_argument('--debug', action='store_true', help='bypass monthly running check')
+    parser.add_argument('--debug', action='store_true',
+                        help='bypass monthly running check')
     args = parser.parse_args()
 
-    # --------------------------------------- Production / Development --------------------------------------------
+    # --------------------- Production / Development ----------------------
 
     if not ((os.getenv("DEBUG").lower() == "true") or args.debug):
         if dt.datetime.today().day > 7:
-            logger.warning('Not start: Factor model only run on the next day after first Sunday every month! ')
+            logger.warning(
+                'Not start: Factor model only run on the next day after '
+                'first Sunday every month! ')
             exit(0)
 
     # sql_result = data write to score TABLE
@@ -98,22 +105,24 @@ if __name__ == "__main__":
         sql_result['name_sql'] = args.restart
         args.weeks_to_expire = int(sql_result['name_sql'].split('_')[0][1:])
 
-    # --------------------------------- Model Training ------------------------------------------
+    # ---------------------- Model Training ------------------------------
 
-    with closing(mp.Pool(processes=args.processes, initializer=recreate_engine)) as pool:
+    with closing(mp.Pool(processes=args.processes,
+                         initializer=recreate_engine)) as pool:
 
         raw_df = combineData(weeks_to_expire=args.weeks_to_expire,
                              sample_interval=args.sample_interval,
                              backtest_period=args.backtest_period,
-                             currency_code=None,                        # raw_df should get all
+                             currency_code=None,  # raw_df should get all
                              restart=args.restart).get_raw_data()
 
         all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
                                      sample_interval=args.sample_interval,
                                      backtest_period=args.backtest_period,
                                      restart=args.restart,
-                                     currency_code=args.currency_code).get_all_groups()
+                                     currency_code=args.currency_code)\
+            .get_all_groups()
 
-        pool.starmap(partial(start, raw_df=raw_df, sql_result=sql_result.copy()), all_groups)           # training will write to DB right after training
-
-
+        pool.starmap(
+            partial(start, raw_df=raw_df, sql_result=sql_result.copy()),
+            all_groups)  # training will write to DB right after training

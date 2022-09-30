@@ -3,8 +3,8 @@ from utils import dateNow
 
 
 # def test_download_pivot_ratios():
-#     from components.data_preparation.src.calculation_premium import calcPremium
-#     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, processes=1, currency_code_list=["USD"]
+#     from components.data_preparation.src.calculation_premium import CalcPremium
+#     df = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, processes=1, currency_code_list=["USD"]
 #                      )._download_pivot_ratios()
 #
 #     assert len(df) > 0
@@ -12,9 +12,9 @@ from utils import dateNow
 #
 #
 # def test_clean_download_pivot_table():
-#     from components.data_preparation.src.calculation_premium import calcPremium
+#     from components.data_preparation.src.calculation_premium import CalcPremium
 #
-#     cls = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
+#     cls = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
 #     df = cls._download_pivot_ratios()
 #     factor_df = cls._filter_factor_df("USD", "fwd_ey", "stock_return_y_w8_d-7", ratio_df=df)
 #
@@ -23,9 +23,9 @@ from utils import dateNow
 #
 #
 # def test_filter_factor_df():
-#     from components.data_preparation.src.calculation_premium import calcPremium
+#     from components.data_preparation.src.calculation_premium import CalcPremium
 #
-#     cls = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
+#     cls = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["USD"])
 #     df = cls._download_pivot_ratios()
 #     factor_df = cls._filter_factor_df("USD", "stock_return_r1_0", "stock_return_y_w8_d-7", ratio_df=df)
 #
@@ -36,9 +36,9 @@ from utils import dateNow
 #     assert len(recent_df) >= cls.min_group_size
 #
 #
-# def test_calcPremium_single_factor():
-#     from components.data_preparation.src.calculation_premium import calcPremium
-#     df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4,
+# def test_CalcPremium_single_factor():
+#     from components.data_preparation.src.calculation_premium import CalcPremium
+#     df = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4,
 #                      currency_code_list=["EUR"], factor_list=["gross_margin"]).write_all()
 #
 #     assert len(df) > 0
@@ -48,10 +48,10 @@ from utils import dateNow
 #     assert df["testing_period"].max() == end_date
 
 
-def test_calcPremium():
-    from components.data_preparation.src.calculation_premium import calcPremium
-    df = calcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["EUR"]).write_all()
-    # df = calcPremium(weeks_to_expire=8, average_days_list=[-7, -14], weeks_to_offset=4,
+def test_CalcPremium():
+    from components.data_preparation.src.calculation_premium import CalcPremium
+    df = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["EUR"]).write_all()
+    # df = CalcPremium(weeks_to_expire=8, average_days_list=[-7, -14], weeks_to_offset=4,
     #                  currency_code_list=["EUR", "USD", "HKD", "CNY"], processes=10).write_all()
 
     assert len(df) > 0

@@ -3,8 +3,8 @@ import argparse
 import os
 import gc
 from src.calculation_ratio import calc_factor_variables_multi
-from src.calculation_premium import calcPremium
-from src.calculation_pillar_cluster import calcPillarCluster
+from src.calculation_premium import CalcPremium
+from src.calculation_pillar_cluster import CalcPillarCluster
 from utils import (
     sys_logger,
     read_query,
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     if args.recalc_premium:
         # default = update ratios for as long as possible (b/c universe changes will affect the value of premium).
         logger.info("=== Calculate premium ===")
-        premium_data = calcPremium(weeks_to_expire=args.weeks_to_expire,
+        premium_data = CalcPremium(weeks_to_expire=args.weeks_to_expire,
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(4, args.sample_interval),
                                    currency_code_list=all_currency_list,
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     if args.recalc_subpillar:
         # default = update subpillar for past 3 months
         logger.info("=== Calculate cluster pillar ===")
-        calcPillarCluster(weeks_to_expire=args.weeks_to_expire,
+        CalcPillarCluster(weeks_to_expire=args.weeks_to_expire,
                           currency_code_list=all_currency_list,
                           sample_interval=args.sample_interval,
                           processes=args.processes,
