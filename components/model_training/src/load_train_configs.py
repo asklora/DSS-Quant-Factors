@@ -19,8 +19,9 @@ from utils import (
     dateNow
 )
 from .load_data import calcTestingPeriod
+from .configs import LOGGER_LEVELS  
 
-logger = sys_logger(__name__, "DEBUG")
+logger = sys_logger(__name__, LOGGER_LEVELS.LOAD_TRAIN_CONFIGS)
 
 pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' + models.FactorFormulaPillarCluster.__table__.name
 pillar_defined_table = models.FactorFormulaPillarDefine.__table__.schema + '.' + models.FactorFormulaPillarDefine.__table__.name

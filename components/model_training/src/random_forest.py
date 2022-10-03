@@ -2,6 +2,7 @@ import datetime as dt
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import numpy as np
 import pandas as pd
+from .configs import LOGGER_LEVELS
 from hyperopt import fmin, tpe, hp, Trials
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from utils import (
@@ -15,8 +16,9 @@ from functools import partial
 from typing import Dict
 import random
 import string
+from .configs import LOGGER_LEVELS  
 
-logger = sys_logger(__name__, "DEBUG")
+logger = sys_logger(__name__, LOGGER_LEVELS.RANDOM_FOREST)
 
 result_pred_table = models.FactorResultPrediction.__tablename__
 result_score_table = models.FactorResultScore.__tablename__
@@ -163,7 +165,7 @@ class rf_HPOT:
                     self.sql_result['train_pred_std'] = sample_set[f"{i}_y_pred"].std(axis=0).mean()
                     # logger.debug(f'Y_train_pred: \n{sample_set[f"{i}_y_pred"][:5]}')
             except Exception as e:
-                print(e)
+                logger.info(f"{e}")
 
         return sample_set
 

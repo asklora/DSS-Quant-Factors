@@ -14,7 +14,9 @@ from hyperopt import fmin, tpe, hp, Trials
 from lightgbm import Dataset
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import balanced_accuracy_score
-
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_CONFIG_OPTIMIZATION)
 cls_lgbm_space = {
     'objective': 'multiclass',
     'learning_rate': hp.choice('learning_rate', [0.1]),
@@ -66,11 +68,11 @@ class HPOT:
     @staticmethod
     def top_class_precision(actual, pred):
         pred_top = pred[pred == np.max(pred)]
-        # print(np.max(pred))
+        logger.info(f"{np.max(pred)}")
         pred_top_pct = len(pred_top) / len(pred)
         actual_top = actual[(pred == np.max(pred)) & (actual == np.max(actual))]
         pred_top_precision = len(actual_top) / len(pred_top)
-        # print(np.max(actual))
+        logger.info(f"{np.max(actual)}")
         return pred_top_pct, pred_top_precision
 
     def __eval(self, space, eval_metric='logloss_valid'):
@@ -368,7 +370,7 @@ if __name__ == "__main__":
     except Exception as e:
         df = read_query(query)
         df.to_pickle(pkl_name)
-    print(df)
+    logger.info(f"{df}")
 
     df = df.sort_values(by=['_testing_period'])
 
@@ -398,12 +400,12 @@ if __name__ == "__main__":
     sql_result['class_weight'][0] = 2   # higher importance on really low iterations
 
     testing_period = np.sort(df['_testing_period'].unique())[-12:]
-    print(df.dtypes)
+    logger.info(f"{df.dtypes}")
 
     df = df.loc[df['_train_currency'] == "CNY"]  # TODO: debug CNY only
 
     for (group, pillar), g in df.groupby(['_train_currency', '_pillar']):
-        print(group, pillar)
+        logger.info(f"{group}, {pillar}")
         sql_result['currency_code'] = group
         sql_result['pillar'] = pillar
         data = load_date(g)

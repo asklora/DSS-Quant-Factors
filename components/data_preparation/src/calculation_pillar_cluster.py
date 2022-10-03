@@ -25,8 +25,8 @@ from utils import (
 from sklearn.preprocessing import scale
 from sklearn.cluster import FeatureAgglomeration
 from functools import partial
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.CALCULATION_PILLAR_CLUSTER)
 
 universe_table = models.Universe.__table__.schema + '.' + models.Universe.__table__.name
 processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + models.FactorPreprocessRatio.__table__.name

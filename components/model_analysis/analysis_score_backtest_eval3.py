@@ -6,7 +6,9 @@ from general.sql.sql_process import read_query
 import global_vars
 
 config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', '_factor_reverse', 'down_mkt_pct']
-
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_SCORE_BACKTEST_EVAL3)
 
 class eval3_factor_selection:
 
@@ -78,13 +80,13 @@ class eval3_factor_selection:
         actual = df.groupby('testing_period')['actual'].first()
         actual_s = df.groupby('testing_period')['actual_s'].first()
 
-        print(df)
+        # print(df) comment it because it is slow
 
 def actual_good_prem():
     premium = read_query(f"SELECT p.*, f.pillar FROM factor_processed_premium p "
                          f"INNER JOIN (SELECT name, pillar FROM factor_formula_ratios_prod) f ON p.field=f.name "
                          f"WHERE trading_day > '2016-01-01' and weeks_to_expire=4 and average_days=-7 ")
-    print(premium)
+    # print(premium) comment it because it is slow
 
     premium['trading_day'] = pd.to_datetime(premium['trading_day']) - pd.tseries.offsets.DateOffset(weeks=4)
     premium['year'] = premium['trading_day'].dt.year
@@ -201,7 +203,7 @@ def eval_sortino_ratio(name_sql=None,
             columns=['net_ret_ab2', 'max_ret_ab2', 'net_ret_ab2_d', 'max_ret_ab2_d'])
 
     to_excel(xls, xls_name)
-    print(df)
+    # print(df) comment it because it is slow
 
 
 def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
@@ -285,7 +287,7 @@ def eval_sortino_ratio_top(name_sql='w8_d-7_20220419172420'):
         xls[d] = final_df
 
     to_excel(xls, f'sortino_ratio_top_12_sharpe_{name_sql}')
-    print(df)
+    # print(df) comment it because it is slow
 
 if __name__ == '__main__':
     # actual_good_prem()

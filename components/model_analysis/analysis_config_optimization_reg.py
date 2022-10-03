@@ -18,6 +18,9 @@ from sklearn.linear_model import (
 from sklearn.metrics import accuracy_score
 from collections import Counter
 import gc
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_CONFIG_OPTIMIZATION_REG)
 
 # def models(self):
 #     self.model['rig_clf'] = RidgeClassifier(random_state=0).fit(X, y_cut)
@@ -32,10 +35,10 @@ def log_clf(X, y, y_cut):
     #     for t in range(8):
     model = LogisticRegression(penalty='l2', tol=.1, random_state=0, max_iter=1000, verbose=3).fit(X, y_cut)
     score = model.score(X, y_cut)
-    print(f"score: ", score)
+    logger.info(f"score: ", score)
     # exit(10)
-    print("coef: ", model.coef_)
-    print("intercept:: ", model.intercept_)
+    logger.info(f"coef: {model.coef_}")
+    logger("intercept:: ", model.intercept_)
     pred_prob = model.predict_proba(X_train)
     return pred_prob
 
@@ -43,9 +46,9 @@ def log_clf(X, y, y_cut):
 def rdg_clf(X, y, y_cut):
     model = RidgeClassifier(random_state=0).fit(X, y_cut)
     score = model.score(X, y_cut)
-    print("score: ", score)
-    print("coef: ", model.coef_)
-    print("intercept:: ", model.intercept_)
+    logger.info(f"score: {score}")
+    logger.info(f"coef: {model.coef_}")
+    logger.info(f"intercept:: {model.intercept_}")
     pred = model.predict(X_train)
     return pred
 
@@ -61,9 +64,10 @@ def lin_reg(X, y, y_cut):
     model = LinearRegression().fit(X, y)
     pred = model.predict(X)
     score = model.score(X, y)
-    print("score: ", score)
-    print("coef: ", model.coef_)
-    print("intercept:: ", model.intercept_)
+    logger.info(f"score: {score}")
+    logger.info(f"coef: {model.coef_}")
+    logger.info(f"intercept: {model.intercept_}")
+
 
     y_cut_row = pd.DataFrame(y).apply(pd.qcut, q=3, labels=False, axis=1).values
     pred_cut_row = pd.DataFrame(pred).apply(pd.qcut, q=3, labels=False, axis=1).values
@@ -182,7 +186,7 @@ def trial_accuracy(*args):
     (x1, cutoff1, std1), (x2, cutoff2, std2), (x3, cutoff3, std3), ddf = args
     ddf1 = ddf.copy()
 
-    print(x1, x2, x3)
+    logger.info(f"{x1}, {x2}, {x3}")
     score_list = {}
     for i in ['>', '<', '~']:
         if i == '>':
@@ -263,7 +267,7 @@ if __name__ == "__main__":
     except Exception as e:
         df = read_query(query)
         df.to_pickle(pkl_name)
-    print(df)
+    logger.info(f"{df}")
 
     df = df.sort_values(by=['_testing_period'])
     # df = df.dropna(how='any')
@@ -386,11 +390,11 @@ if __name__ == "__main__":
 
     # df_select1 = pd.read_excel('score_df_all3.xlsx', sheet_name='raw')
     # df_select1 = df_select1.loc[df_select1['Select by Level 0'] == "Y"]
-    # print(df_select1)
+    logger.info(f"{df_select1}")
     #
     # df_select2 = pd.read_excel('score_df_all3.xlsx', sheet_name='USD (>0.6)')
     # df_select2 = df_select2.loc[df_select2['Select by Level 0'] == "Y"]
-    # print(df_select2)
+    logger.info(f"{df_select2}")
 
     sql_result = vars(args).copy()  # data write to DB TABLE lightgbm_results
     # sql_result['name_sql2'] = input("config optimization model name_sql2: ")
@@ -399,7 +403,7 @@ if __name__ == "__main__":
     sql_result['class_weight'][0] = 2   # higher importance on really low iterations
 
     testing_period = np.sort(df['_testing_period'].unique())[-12:]
-    print(df.dtypes)
+    logger.info(f"{df.dtypes}")
 
     # df = df.loc[df['_train_currency'] == "CNY"]  # TODO: debug CNY only
 
@@ -410,7 +414,7 @@ if __name__ == "__main__":
         # if group not in ['CNY']:
         #     continue
 
-        print(group, pillar)
+        logger.info(f"{group}, {pillar}")
         sql_result['currency_code'] = group
         sql_result['pillar'] = pillar
 
@@ -473,7 +477,7 @@ if __name__ == "__main__":
     #         score_df.columns = ['first', 'level_0', 'level_0_trh', 'level_1+', 'level_1+_trh', 'level_1-', 'level_1-_trh', 'accuracy']
     #     score_df['pillar'] = pillar
     #     score_df['group'] = group
-    #     print(score_df['accuracy'].max())
+        logger.info(f"{score_df['accuracy'].max()}")
     #     score_df_list.append(score_df)
     #     gc.collect()
     #
@@ -484,18 +488,18 @@ if __name__ == "__main__":
 
     #     ddf['use_net'] = ddf['diff_stock_return_r1_0'] > -0.04
     #     score_net = accuracy_score(ddf['net_better'], ddf['use_net'])
-    #     print('net score: ', score_net)
+        logger.info(f"net score: {score_net}")
     #
     #     ddf['use_usd'] = np.where(ddf['use_net'],
     #                               ddf['diff_stock_return_r6_2'] > 0.03,
     #                               ddf['.SPX_stock_return_r6_2'] > 0.06)
     #     score_usd = accuracy_score(ddf['usd_better'], ddf['use_usd'])
-    #     print('usd score: ', score_usd)
+        logger.info(f"usd score: {score_usd}")
     #
     #     ddf['Selection'] = ddf['use_net'] * 2 + ddf['use_usd']
     #     ddf['correct'] = ddf['Best'] == ddf['Selection']
     #     score = accuracy_score(ddf['Best'], ddf['Selection'])
-    #     print('final score: ', score)
+        logger.info(f"final score: {score}")
     #
     #     ddf['Selection Return'] = ddf.apply(lambda x: x[x['Selection']], axis=1)
     #     des = ddf.describe().transpose()

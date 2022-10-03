@@ -1,5 +1,6 @@
 import datetime as dt
 import argparse
+from re import M
 from src.evaluate_factor_premium import evalFactor
 from src.evaluate_top_selection import evalTop
 from src.load_eval_configs import load_latest_name_sql
@@ -7,9 +8,8 @@ from utils import (
     sys_logger,
 )
 import os
-
-logger = sys_logger(__name__, "DEBUG")
-
+from src.configs import LOGGER_LEVELS
+logger = sys_logger(__name__,LOGGER_LEVELS.MAIN)
 
 if __name__ == "__main__":
 

@@ -24,8 +24,8 @@ from utils import (
     backdate_by_day,
     models
 )
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.LOAD_DATA)
 
 macro_data_table = models.DataMacro.__table__.schema + '.' + models.DataMacro.__table__.name
 vix_data_table = models.DataVix.__table__.schema + '.' + models.DataVix.__table__.name
@@ -76,7 +76,7 @@ class calcTestingPeriod:
                                                                periods=self.weeks_to_expire + 1)[0])
         period_list = pd.date_range(end=back_by_weeks_to_expire, freq=f"{self.sample_interval}W-SUN",
                                     periods=self.backtest_period+21*12*4/self.sample_interval) #* my reasoning is that we need 21 more years of data before backtest_period to train the model
-        breakpoint()
+        # breakpoint()
         return period_list
 
     @property
@@ -238,7 +238,7 @@ class combineData(cleanMacros):
 
         """
         df = self._download_premium()
-        breakpoint()
+        # breakpoint()
         df = self._remove_high_missing_samples(df)
         df = self._add_macros_inputs(df)
         return df.sort_values(by=["group", "testing_period"])
@@ -285,7 +285,7 @@ class combineData(cleanMacros):
 
         df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
         df['testing_period'] = pd.to_datetime(df['testing_period'], format='%Y-%m-%d')
-        breakpoint()
+        # breakpoint()
         return df
 
     def _remove_high_missing_samples(self, df: pd.DataFrame, trh: float = 0.5) -> pd.DataFrame:
@@ -373,7 +373,7 @@ class loadData:
             neg_factor: list of factor reverse in calculation
             cut_bins: list of threshold of cut_bins
         """
-        breakpoint()
+        # breakpoint()
         sample_df = self._filter_sample(main_df=main_df)
         sample_df, neg_factor = self._convert_sample_neg_factor(sample_df=sample_df)
 

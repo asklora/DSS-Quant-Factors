@@ -6,7 +6,8 @@ from dateutil.relativedelta import relativedelta
 # from global_vars import processed_ratio_table
 # from general.sql.sql_process import read_query
 import matplotlib.pyplot as plt
-
+from configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_RATIO)
 
 def stock_return_hist(currency='USD', weeks_to_expire='%%', average_days='%%', test_period=[5, 10, 20]):
     ''' analyze the distribution in [histogram] of stock return over past test_period(e.g. [5, 10, 20]) years
@@ -68,7 +69,7 @@ def stock_return_boxplot(currency='USD', weeks_to_expire='%%', average_days='%%'
     df['trading_day'] = pd.to_datetime(df['trading_day'])
     df['field'] = df['field'].str[15:]
     des = df.groupby('field').agg(['min', 'mean', 'median', 'max', 'std'])
-    print(des)
+    logger.info(f"{des}")
 
     fig, ax = plt.subplots(nrows=len(test_period), ncols=1, figsize=(10, 8 * len(test_period)))
     c = 0
@@ -188,7 +189,7 @@ class ratio_cluster:
         for l in ['average']:     # ['ward', 'average', 'complete', 'single']
             agglo = FeatureAgglomeration(n_clusters=None, distance_threshold=0, linkage=l)
             agglo.fit(X)
-            # print(Counter(agglo.labels_))
+            # logger.info(f"{Cou}"nter(agglo.labels_))
 
             # plt.plot(agglo.distances_)
             # plt.show()
@@ -200,12 +201,12 @@ class ratio_cluster:
             # cop_coef[l] = {}
             # for k, v in Y.items():
             #     cop_coef[start_year][k], _ = cophenet(Z, v)
-            #     print(l, k, cop_coef)
+            #     logger.info(f"{l, }"k, cop_coef)
 
             coefficient ,condensed_cop_dis = cophenet(Z,pdist(np.transpose(X))) # by coefficient we mean cophenetic correlation coefficient
             cop_dis = squareform(condensed_cop_dis) # condensed_cop_dis is an 1D array , we  are converting it into top triangle of matrix
             logger.info(f"The cophenetic correlation coefficient for currency {self.currency_code_list} with end_date {self.end_date} and lookback {self.lookback} is:{coefficient}")
-            breakpoint()
+            # breakpoint()
 
         # cop_coef_df = pd.DataFrame(cop_coef)
         # cop_coef_df.to_csv(f'temp.csv')

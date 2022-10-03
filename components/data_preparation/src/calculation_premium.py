@@ -4,9 +4,10 @@ from datetime import datetime
 import multiprocessing as mp
 import itertools
 from functools import partial
-
+import gc
 from typing import List
 from sqlalchemy import select, join, and_, not_
+from pandas.api.types import CategoricalDtype
 
 from utils import (
     to_slack,
@@ -23,14 +24,16 @@ from utils import (
     dateNow
 )
 from contextlib import closing
-
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.CALCULATION_PREMIUM)
 
 icb_num = 6
 
-logger = sys_logger(__name__, "DEBUG")
 
-factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + models.FactorFormulaRatio.__table__.name
-processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + models.FactorPreprocessRatio.__table__.name
+factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + \
+                         models.FactorFormulaRatio.__table__.name
+processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + \
+                         models.FactorPreprocessRatio.__table__.name
 factor_premium_table = models.FactorPreprocessPremium.__tablename__
 
 
@@ -42,8 +45,10 @@ class calcPremium:
 
     def __init__(self,
                  weeks_to_expire: int, weeks_to_offset: int = 1,
-                 average_days_list: List[int] = (-7,), currency_code_list: List[str] = None,
-                 processes: int = 1, factor_list: List[str] = ()):
+                 average_days_list: List[int] = (-7,), 
+                 currency_code_list: List[str] = None,
+                 processes: int = 1, factor_list: List[str] = (),
+                 percent_for_qcut: int = 0.2):
         """
         Parameters
         ----------
@@ -58,6 +63,8 @@ class calcPremium:
             currencies to calculate premiums (default=[USD])
         factor_list:
             factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
+        percent_for_qcut:
+            top/bottom percentage for cutting premium quantile
         """
         logger.info(f'Groups: {" -> ".join(currency_code_list)}')
         logger.info(f'Will save to DB Table [{factor_premium_table}]')
@@ -69,8 +76,9 @@ class calcPremium:
             else self._factor_list_from_formula()      # if not
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
                            for x in average_days_list]
+        self.percent_for_qcut = percent_for_qcut
 
-    def write_all(self,start_date:str=None,end_date:str=None):
+    def write_all(self, start_date: str = None, end_date: str = None):
         """
         calculate premium for each group / factor and insert to Table [factor_processed_premium]
 
@@ -84,17 +92,27 @@ class calcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
-        with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
-            ratio_df = self._download_pivot_ratios(start_date=start_date,end_date=end_date)
-            all_groups = itertools.product(self.currency_code_list, self.factor_list, self.y_col_list)
-            all_groups = [tuple(e) for e in all_groups]
-            prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), all_groups)
+        # with closing(mp.Pool(processes=self.processes,  #*
+        #                      initializer=recreate_engine)) as pool:
+        try:
+            ratio_df = self._download_pivot_ratios(start_date=start_date,
+                                                end_date=end_date)
+            all_groups = itertools.product(self.currency_code_list, 
+                                        self.factor_list, self.y_col_list)
+            all_groups = [tuple(e) for e in all_groups] 
+            # prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), #*
+            #                     all_groups) #*
+            for group in all_groups:
+                self.get_premium(ratio_df=ratio_df, *group)
+        except Exception as e:
+                logger.info(f"During running write_all for recalc_premium, we encounter the following error \n {e}.")
 
-        prem = pd.concat([x for x in prem if type(x) != type(None)], axis=0).sort_values(by=['group', 'trading_day'])
+        prem = pd.concat([x for x in prem if type(x) != type(None)], 
+                         axis=0).sort_values(by=['group', 'trading_day'])
         prem = prem.rename(columns={"trading_day": "testing_period"})
 
         prem["updated"] = timestampNow()
-        upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
+        upsert_data_to_database(data=prem, table=factor_premium_table, how="append") 
 
         to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
@@ -110,7 +128,8 @@ class calcPremium:
         factor_list = read_query_list(formula_query)
         return factor_list
 
-    def _download_pivot_ratios(self,start_date:str=None,end_date:str=None):
+    def _download_pivot_ratios(self, start_date: str = None, 
+                               end_date: str = None,):
         """
         download ratio table calculated with calculation_ratio.py and pivot
         """
@@ -128,9 +147,12 @@ class calcPremium:
             WHERE field in {tuple(self.factor_list + self.y_col_list)} 
                 AND trading_day BETWEEN '{start_date}' AND '{end_date}'
         '''.replace(",)", ")")
-        # breakpoint()
-        df = read_query(ratio_query)
-        df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+
+        df = read_query(ratio_query, 
+                        dtype={"ticker":"category","field":"category","currency_code":'category'})
+
+        df = df.pivot(index=["ticker", "trading_day", "currency_code"], 
+                      columns=["field"], values='value').reset_index()
 
         return df
 
@@ -236,16 +258,15 @@ class calcPremium:
         """
         ????????????
         """
-
         try:
             series_fillinf = series.replace([-np.inf, np.inf], np.nan)
             nonnull_count = series_fillinf.notnull().sum()
             if nonnull_count < self.min_group_size:
                 return series.map(lambda _: np.nan)
             elif nonnull_count > 65:
-                prc = [0, 0.2, 0.8, 1]
+                prc = [0, self.percent_for_qcut, 1-self.percent_for_qcut, 1]
             else:
-                prc = [0, 0.3, 0.7, 1]
+                prc = [0, self.percent_for_qcut*1.5, 1-self.percent_for_qcut*1.5, 1]
 
             q = pd.qcut(series_fillinf, prc, duplicates='drop')
 
@@ -253,7 +274,7 @@ class calcPremium:
             if n_cat == 3:
                 q.cat.categories = range(3)
             elif n_cat == 2:
-                q.cat.categories = [0, 2]
+                q.cat.categories = [F0, 2]
             else:
                 return series.map(lambda _: np.nan)
             q[series_fillinf == np.inf] = 2

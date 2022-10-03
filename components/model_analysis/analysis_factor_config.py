@@ -1,6 +1,9 @@
 import pandas as pd
 from general.sql.sql_process import read_query, read_table
 import global_vars
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_FACTOR_CONFIG)
 
 
 class main:
@@ -10,7 +13,7 @@ class main:
                  name_sql2='best 1/3 model (cluster, adj_mse, org) for each currency'):
         df = read_query(f"SELECT * FROM {global_vars.factor_config_score_table} WHERE name_sql2='{name_sql2}'")
         df['hpot_uid'] = df['uid'].str[20:-1]
-        print(df.columns.to_list())
+        logger.info(f"{df.columns.to_list()}")
 
         df = df.loc[df['currency_code'] == "CNY"]  # debug CNY only
 

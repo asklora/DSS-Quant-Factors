@@ -5,7 +5,11 @@ from general.sql.sql_process import read_query
 
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from utils import(
+    sys_logger
+)
+from configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_VOLATILITY)
 class vol_analysis:
 
     def __init__(self, ticker=None, currency=None, vol_col='vol_0_30'):

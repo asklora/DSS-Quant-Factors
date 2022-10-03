@@ -7,7 +7,9 @@ from dateutil.relativedelta import relativedelta
 import global_vars
 
 config_col = ['tree_type', 'use_pca', 'qcut_q', 'n_splits', 'valid_method', '_factor_reverse', 'down_mkt_pct']
-
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_SCORE_BACKTEST_EVAL2)
 
 class read_v2_top_excel:
 
@@ -31,13 +33,13 @@ class read_v2_top_excel:
             df_n_avg = df_top10.groupby(['weeks', 'currency_code']).apply(lambda x:
                                                                           x.nlargest(n, ['return'], keep='all')[
                                                                               'return'].mean()).unstack()
-            print(df_n_avg)
+            # print(df_n_avg) comment is because it is slow
 
     @staticmethod
     def evaluate_config_accuracy(df_top10):
         for col in config_col:
             df_config = df_top10.groupby(['weeks', 'pillar', col, 'currency_code'])['return'].mean().unstack()
-            print(df_config)
+            # print(df_config) comment is because it is slow
 
 
 class read_v2_actual_eval:
@@ -125,7 +127,7 @@ class read_v2_actual_eval:
                                                          (self.df_top10['trading_day'] == date_list[i])]
                             top_best = top_best.merge(config_best, on=config_col)
 
-                            print('---> finish', (pillar, group, date_list[i], m, n_config, n_period))
+                            logger.info('---> finish', (pillar, group, date_list[i], m, n_config, n_period))
                             if self.is_config_test:
                                 best_config_info[(pillar, group, date_list[i], m, n_config, n_period)] = top_best[
                                     ['positive_pct', 'return']].mean()
@@ -142,7 +144,7 @@ class read_v2_actual_eval:
         best_config_info = pd.DataFrame(best_config_info).transpose().reset_index().dropna(subset=['return'])
         best_config_info.columns = ['pillar', 'group', 'trading_day', 'm',
                                     'n_configs', 'n_period', 'positive_pct', 'return']
-        print(best_config_info)
+        # print(best_config_info) comment it because it is slow
 
         xlsx_df = {}
         xlsx_df['all'] = best_config_info
@@ -263,7 +265,7 @@ class top2_table_tickers_return:
                 ret_map = data.period_average(trading_day).to_dict()
                 g['new_return'] = g['tickers'].apply(lambda x: np.mean([ret_map[e] for e in x.split(', ')]))
                 df_new.append(g)
-                print(df_new)
+                # print(df_new) comment it because it is slow
 
         df_new = pd.concat(df_new, axis=0)
         df_new_agg = df_new.groupby(['currency_code', 'weeks_to_expire', 'n_top_config',
@@ -301,11 +303,11 @@ class top2_table_tickers_return:
 #     df['year'] = df['trading_day'].dt.year
 #
 #     df_4 = df.loc[df['weeks_to_expire'] == 4]
-#     print(df_4.describe())
+    # print(df_4.describe())
 #
 #     # df_year = df_4.groupby(['currency_code', 'year'])['return'].mean().unstack().reset_index()
 #     # df_year.to_csv('top2_df_year.csv')
-#     # print(df_year)
+    # print(df_year)
 #
 #     df_since8 = df.loc[df['trading_day'] > dt.datetime(2021, 8, 1, 0, 0, 0)]
 #
@@ -321,7 +323,7 @@ class top2_table_tickers_return:
 #     df = df.sort_values(by='trading_day').groupby(['ticker', 'year'])[['total_return_index']].mean()
 #     df_return = df.groupby(['ticker'])['total_return_index'].pct_change().unstack()
 #     df_return.to_csv('index_return_annual.csv')
-#     print(df_return)
+    # print(df_return)
 #
 #     exit(200)
 
@@ -376,7 +378,7 @@ class top2_table_tickers_return:
 #                                                                                else np.nan for e in x.split(', ')]))
 #                     # g['bot_type'] = bot_type
 #                     df_new.append(g)
-#                     print(df_new)
+                    # print(df_new)
 #
 #         df_new = pd.concat(df_new, axis=0)
 #         df_new_agg = df_new.groupby(['currency_code', 'weeks_to_expire', 'n_top_config', 'n_backtest_period'])[
@@ -400,7 +402,7 @@ class top2_table_tickers_return:
 #             'top2_new_return_df_agg_-7d')
 #
 #         # x = df_new_agg.groupby(['weeks_to_expire', 'currency_code', 'n_backtest_period']).mean().unstack()
-#         # print(df_new_agg.groupby(['weeks_to_expire']).mean())
+        # print(df_new_agg.groupby(['weeks_to_expire']).mean())
 
 
 if __name__ == '__main__':

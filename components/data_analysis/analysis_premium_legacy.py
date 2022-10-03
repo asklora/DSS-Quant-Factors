@@ -1,14 +1,20 @@
+from re import L
 import numpy as np
 import pandas as pd
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
-
+from utils import(
+ sys_logger
+)
+from configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_PREMIUM)
 
 def eda_missing(df, col_list):
-    print('======= Missing ========')
+    logger.info(f'======= Missing ========')
     df = df.groupby(["group"])[col_list].apply(lambda x: x.isnull().sum() / len(x)).transpose()['USD']
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-        print(df[df > 0].sort_values(ascending=False))
+        logger.info(f"{df[df > 0].sort_values(ascending=False)}")
+        pass
 
     return df
 
@@ -16,7 +22,7 @@ def eda_missing(df, col_list):
 def eda_correl(df, col_list, formula):
     ''' tests correlation of our factor '''
 
-    print('======= Pillar Correlation ========')
+    logger.info(f'======= Pillar Correlation ========')
     df_stack = pd.DataFrame(df.set_index(['trading_day', 'group']).stack()).reset_index()
     df_stack['pillar'] = df_stack['field'].map(formula.set_index('name')['pillar'].to_dict())
     df_stack_pillar = df_stack.groupby(['trading_day', 'group', 'pillar'])[0].mean().unstack(level=[-2, -1])
@@ -29,7 +35,7 @@ def eda_correl(df, col_list, formula):
     cr_pillar_df = cr_pillar_df.sort_values(by=['corr_abs'], ascending=False)
     cr_pillar_df = cr_pillar_df.drop_duplicates(subset=['group1', 'pillar1'], keep='first')
     
-    print('======= Factor Correlation ========')
+    logger.info(f'======= Factor Correlation ========')
     df = df[col_list]
     cr = df.astype(float).corr()
 
@@ -43,7 +49,8 @@ def eda_correl(df, col_list, formula):
     cr_df = cr_df.drop_duplicates(subset=['f1'], keep='first')
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-        print(cr_df.loc[cr_df['corr_abs'] > 0.2].set_index(['f1', 'f2'])['corr'])
+        logger.info(f"{cr_df.loc[cr_df['corr_abs'] > 0.2].set_index(['f1', 'f2'])['corr']}")
+        pass
 
     return cr_df, cr_pillar_df
     # # plot heatmap by pillar
@@ -60,23 +67,21 @@ def eda_correl(df, col_list, formula):
 def eda_vif(df, col_list):
     ''' Calculate VIF -> no abnormal comes to our attention beyond correlations '''
 
-    print('======= VIF ========')
+    logger.info(f'======= VIF ========')
     df = df[col_list].replace([np.inf, -np.inf], np.nan).fillna(0)
     X = add_constant(df)
     vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1])], index=X.columns)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-        print(vif.sort_values(ascending=False).head(10))
+        logger.info(f"vif.sort_values(ascending=False).head(10)")
+        pass
     return vif
 
 def sharpe_ratio(factors, col_list):
     ''' calculate the sharpe ratio '''
 
-    print('======= Sharpe Ratio ========')
+    logger.info(f'======= Sharpe Ratio ========')
     factors['trading_day'] = pd.to_datetime(factors['trading_day'])
-
-    factors['year'] = factors['trading_day'].dt.year
-    factors['month'] = factors['trading_day'].dt.month
 
     def calc(f):
         ret = f.mean(axis=0)
@@ -96,8 +101,8 @@ def sharpe_ratio(factors, col_list):
         with pd.option_context('display.max_rows', None, 'display.max_columns',
                                None):  # more options can be specified also
             df = df.iloc[:, 1:].transpose().describe().transpose()
-            print('----->', col)
-            print(df)
+            logger.info(f"'----->', {col}")
+            # print(df) # comment it because it is slow
 
     calc_by_col('group')
     calc_by_col('year')
@@ -106,7 +111,7 @@ def sharpe_ratio(factors, col_list):
 
 def plot_autocorrel(df, col_list):
     ''' plot the level of autocorrelation '''
-    print('======= Autocorrelation ========')
+    logger.info('======= Autocorrelation ========')
 
     z95 = 1.959963984540054
     z99 = 2.5758293035489004
@@ -126,17 +131,17 @@ def plot_autocorrel(df, col_list):
         return results
 
     for name, g in df.groupby(['group']):
-        print(name)
+        logger.info(f"{name}")
         r = corr_results(g)
 
         with pd.option_context('display.max_rows', None, 'display.max_columns',
                                None):  # more options can be specified also
-            print('---->', name)
-            print(r)
+            logger.info(f"'---->', {name}")
+            # print(r) comment it because it is slow
 
 
 # def test_performance(df, col_list):
-#     print('======= Performance ========')
+#     # print('======= Performance ========')
 #
 #     curr_list = ['USD']  # 'TWD','JPY','SGD'
 #     df = df.loc[df['group'].isin(curr_list)]
@@ -154,10 +159,10 @@ def plot_autocorrel(df, col_list):
 #     ddf = pd.DataFrame(new_g, index=col_list, columns=date_list).sort_values(date_list[-1], ascending=False)
 #
 #     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-#         print(ddf.iloc[:, -1].sort_values(ascending=False).head(10))
+#         # print(ddf.iloc[:, -1].sort_values(ascending=False).head(10))
 #
 #     ddf = ddf.iloc[:10, :].transpose()
-#     print(ddf)
+#     # print(ddf)
 #     plt.plot(ddf, label=list(ddf.columns))
 #     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-large')
 #     plt.tight_layout()
@@ -165,12 +170,13 @@ def plot_autocorrel(df, col_list):
 
 
 def average_absolute_mean(df, col_list):
-    print('======= Mean Absolute Premium ========')
+    logger.info('======= Mean Absolute Premium ========')
 
     df = df[col_list].abs().mean().sort_values(ascending=False)
     df = pd.DataFrame({'abs': df, 'rank': list(range(len(df)))})
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-        print(df)
+        # print(df) # comment it because it is slow
+        pass
 
     return df['abs']
 

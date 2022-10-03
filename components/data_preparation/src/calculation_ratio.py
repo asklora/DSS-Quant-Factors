@@ -21,8 +21,8 @@ from utils import (
     sys_logger,
     timestampNow
 )
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.CALCULATION_RATIO)
 
 stock_data_table_tri = models.DataTri.__table__.schema + '.' + models.DataTri.__table__.name
 stock_data_table_ohlcv = models.DataOhlcv.__table__.schema + '.' + models.DataOhlcv.__table__.name
@@ -871,7 +871,7 @@ class calcRatio:
                 logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
         return df
 
-    def _calculate_divide_ratios(self, df):
+    def                                                                                                                                                     _calculate_divide_ratios(self, df):
         """
         Data processing: divide all ratios AFTER all pre-processing
         """
@@ -882,7 +882,7 @@ class calcRatio:
             try:
                 df[r['name']] = df[r['field_num']] / df[r['field_denom']].replace(0, np.nan)
             except Exception as e:
-                logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}")
+                logger.warning(f"[Warning] Factor ratio [{r['name']}] not calculate: {e}. \n Maybe it is because the quoted field denominator or field numerator does not exist! Please check data tables or DataStream Refinitive to see if that field exists, and rerun data ingestion again!")
         return df
 
     def _clean_missing_ratio_records(self, df):
@@ -961,14 +961,30 @@ def calc_factor_variables_multi(tickers: List[str] = None, currency_codes: List[
     # multiprocessing
     tickers = [{e} for e in tickers]
     logger.debug(tickers)
-    with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool:
+    df_list = []
+    with closing(mp.Pool(processes=processes, initializer=recreate_engine)) as pool: #*
+    # for ticker in tickers:
         calc_ratio_cls = calcRatio(start_date, end_date, tri_return_only)
-        # breakpoint()
-        df = pool.starmap(calc_ratio_cls.get, tickers)
-    df = pd.concat([x for x in df if type(x) != type(None)], axis=0)
+        df = pool.starmap(calc_ratio_cls.get, tickers) #*
+        # df = calc_ratio_cls.get(ticker)
+        # df_list.append(df)
+
+    df = pd.concat([x for x in df if type(x) != type(None)], axis=0) #*
+    # df = pd.concat([x for x in df_list if type(x) != type(None)], axis=0) #*
 
     # save calculated ratios to DB (remove truncate -> everything update)
     df["updated"] = timestampNow()
-    upsert_data_to_database(df, factor_ratio_table, how="ignore")
+
+    query_universe = select(models.Universe.ticker,models.Universe.currency_code)
+    universe = read_query(query_universe)
+    df = df.merge(universe,on='ticker',how='left')
+
+    df.to_pickle('factor_processed_ratio_complete.pkl')
+
+    for name , g in df.groupby('currency_code'):
+        g=g.drop(['currency_code'],axis=1)
+        logger.info(f"Upserting dataframe for {name}")
+        upsert_data_to_database(g, factor_ratio_table, how="ignore")
+    # upsert_data_to_database(iterator_over_market(df), factor_ratio_table, how="ignore")
 
     return df

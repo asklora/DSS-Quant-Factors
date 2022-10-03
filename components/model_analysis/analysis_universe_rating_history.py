@@ -9,7 +9,9 @@ from dateutil.relativedelta import relativedelta
 from general.report.send_slack import to_slack
 from general.report.send_email import send_mail
 from general.sql.sql_process import read_query
-
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_UNIVERSE_RATING_HISTORY)
 suffixes = dt.datetime.today().strftime('%Y%m%d')
 
 def backdate_by_week_day(week=0, day=0):
@@ -54,7 +56,7 @@ def topn_ticker(n=20, DEBUG=False):
     writer.save()
 
     to_slack().file_to_slack(f'#{suffixes}_ai_score_top{n}.xlsx', 'xlsx', f'Top {n} tickers')  # send to factor_message channel
-    print(dt.datetime.today().weekday())
+    logger.info(f"{dt.datetime.today().weekday()}")
     if (dt.datetime.today().weekday() == 0) or DEBUG:  # on Monday send all TOP Picks
         subject = "Weekly Top 20 Pick (HKD & USD)"
         if DEBUG:
@@ -165,7 +167,7 @@ class score_eval:
         ''' write statistics for  '''
 
         df = df.groupby(['currency_code']).agg(['min','mean', 'median', 'max', 'std','count']).transpose()
-        print(df)
+        # print(df) comment it because it is slow
 
         writer = pd.ExcelWriter(f'#{suffixes}_describe_current.xlsx')
         df.to_excel(writer, sheet_name='Distribution Current')
@@ -251,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', help='Debug = True')
     parser.add_argument('--currency', default='HKD')
     args = parser.parse_args()
-    print(args)
+    logger.info(f"{args}")
 
     topn_ticker(n=20, DEBUG=args.debug)
     eval = score_eval(SLACK=args.slack, currency=args.currency, DEBUG=args.debug)

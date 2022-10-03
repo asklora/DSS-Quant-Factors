@@ -14,8 +14,8 @@ from utils import (
     models,
     sys_logger,
 )
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.CALCULATION_BACKTEST_SCORE)
 
 
 class scaleFundamentalScore:

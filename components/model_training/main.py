@@ -5,10 +5,12 @@ from functools import partial
 import multiprocessing as mp
 import pandas as pd
 from contextlib import closing
+from src.configs import LOGGER_LEVELS
 from src.load_data import combineData, loadData
 from src.load_train_configs import loadTrainConfig
 from src.random_forest import rf_HPOT
 import os
+from src.configs import LOGGER_LEVELS  
 from utils import (
     to_slack,
     read_query,
@@ -22,7 +24,7 @@ from utils import (
     timestampNow
 )
 
-logger = sys_logger(__name__, "DEBUG")
+logger = sys_logger(__name__, LOGGER_LEVELS.MAIN)
 
 
 def write_args_finished(kwargs):
@@ -43,7 +45,7 @@ def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     run random forest on multi-processor
     """
     try: 
-        breakpoint()
+        # breakpoint()
         kwargs, = args
         sql_result.update(kwargs)
 
@@ -118,7 +120,7 @@ if __name__ == "__main__":
                                      backtest_period=args.backtest_period,
                                      restart=args.restart,
                                      currency_code=args.currency_code,look_back=args.look_back).get_all_groups() # look_back for clustered features
-        breakpoint()
+        # breakpoint()
         # breakpoint()
         # for all_group in all_groups: #*
         #     start(raw_df=raw_df,sql_result=sql_result.copy(),*all_group)

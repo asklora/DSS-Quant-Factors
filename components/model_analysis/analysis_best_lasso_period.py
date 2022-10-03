@@ -1,4 +1,7 @@
 import numpy as np
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_BEST_LASSO_PERIOD)
 
 def find_lasso_best_period(df, x_col):
     best_best = {}

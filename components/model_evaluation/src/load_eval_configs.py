@@ -19,8 +19,8 @@ from utils import (
     err2slack,
     dateNow
 )
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.LOAD_EVAL_CONFIGS)
 
 config_eval_table = models.FactorFormulaEvalConfig.__table__.schema + '.' + models.FactorFormulaEvalConfig.__table__.name
 

@@ -4,6 +4,9 @@ from global_vars import *
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import scale
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_UNIVERSE_RATING)
 
 def get_tri_ret(start_date):
 
@@ -71,8 +74,8 @@ def check_average_score_return_by_industry():
     avg.to_csv('check_average_score_return_by_industry.csv')
 
     for name, g in avg.groupby(["currency_code"]):
-        print(name)
-        print(g)
+        # print(name) comment it because it is slow
+        # print(g) comment it because it is slow
 
 def check_avg_return_by_score_qcut():
     ''' calculate avg weekly return for weekly pick of top score '''
@@ -80,7 +83,7 @@ def check_avg_return_by_score_qcut():
     df = pd.read_csv('universe_rating_check.csv')
 
     num_col = df.select_dtypes(float).columns.to_list()
-    print(num_col)
+    # print(num_col) comment it because it is slow
 
     score_col = ['ai_score_unscaled',
         'fundamentals_extra_monthly1', 'fundamentals_extra_weekly1', 'fundamentals_momentum_monthly1',
@@ -113,8 +116,8 @@ def check_avg_return_by_score_qcut():
     plt.show()
 
     for name, g in qcut_ret_mean.groupby(["currency_code", "index"]):
-        print(name)
-        print(g)
+        # print(name) comment it because it is slow
+        # print(g) comment it because it is slow
 
 def check_rating_today(currency_code='EUR'):
     ''' check today's universe_rating for certain currency:
@@ -126,13 +129,13 @@ def check_rating_today(currency_code='EUR'):
     query = f"SELECT * FROM universe_rating " \
             f"WHERE ticker in (SELECT ticker FROM universe WHERE is_active AND currency_code='{currency_code}')"
     df = read_query(query, db_url_read).sort_values(by=['ai_score'], ascending=False)
-    print(df.head(10))
+    # print(df.head(10)) comment it because it is slow
 
     plt.hist(df['ai_score'], bins=20)
     plt.show()
 
     des = df.describe()
-    print(des)
+    # print(des) comment it because it is slow
 
 if __name__ == '__main__':
     # get_top_picks()

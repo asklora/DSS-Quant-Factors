@@ -2,7 +2,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from global_vars import *
 from general.sql.sql_process import read_query
-
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_SCORE_BACKTEST_EVAL)
 
 def download_model(weeks_to_expire='%%', average_days='%%', name_sql=None):
     ''' evaluation runtime calculated metrics '''

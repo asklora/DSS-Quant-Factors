@@ -17,12 +17,12 @@ from utils import (
     err2slack,
     recreate_engine,
     upsert_data_to_database,
-    timestampNow
+    timestampNow,
+    check_memory
 )
 from .load_eval_configs import load_eval_config
-
-logger = sys_logger(__name__, "DEBUG")
-
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.EVALUATION_FACTOR_PREMIUM)
 pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' + models.FactorFormulaPillarCluster.__table__.name
 
 
@@ -153,7 +153,7 @@ class cleanPrediction:
         """
 
         logger.info(f'=== Download prediction history on name_sql=[{self.name_sql}] ===')
-        breakpoint()
+        # breakpoint()
         conditions = [
             models.FactorResultScore.name_sql == self.name_sql,
             models.FactorResultScore.testing_period >= self.pred_start_testing_period,

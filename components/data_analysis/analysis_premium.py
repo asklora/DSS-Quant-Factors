@@ -4,7 +4,11 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 from global_vars import *
 from general.sql.sql_process import read_query
-
+from utils import (
+    sys_logger
+)
+from configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_PREMIUM)
 # TODO: convert to using new utils module
 
 def avg_premium_pillar_(group='USD', weeks_to_expire=4):
@@ -82,7 +86,8 @@ def best_premium_pillar_(group='USD', weeks_to_expire=4, average_days=7):
             plt.close()
             avg_premium[pillar].append(g_period_ret)
         avg_premium[pillar] = pd.concat(avg_premium[pillar], axis=1)
-    print(df_period_avg)
+    logger.info(f"{df_period_avg}")
+
 
 class find_reverse:
     ''' Compare predict next period +/- using
@@ -98,7 +103,7 @@ class find_reverse:
                 f"INNER JOIN {factors_formula_table} f ON p.field=f.name " \
                 f"WHERE \"group\"='{group}' AND weeks_to_expire={weeks_to_expire} AND average_days={average_days}"
         df = read_query(query, db_url_read).sort_values(by=['field', 'trading_day'])
-        print(df.describe())
+        logger.info(df.describe())
 
         steps = 10
         scores = {}
@@ -110,7 +115,7 @@ class find_reverse:
             for func in methods:
                 for n_test in range(12, 13, 12):
                     for alpha in range(3, 9, 1):
-                        print(f'---> {n}')
+                        logger.info(f'---> {n}')
                         samples = find_reverse.__split(df, n_x=n, n_test=n_test)
                         # scores[func.__name__][(n, n_test)] = func(samples)
                         scores[func.__name__][(n, alpha)] = func(samples, alpha=np.power(0.1, alpha))
@@ -122,7 +127,7 @@ class find_reverse:
             scores[k].reset_index()
 
         accuracy = pd.concat(accuracy, axis=1).unstack()
-        print(accuracy)
+        logger.info(f"accuracy")
 
     @staticmethod
     def __split(df, n_x, n_test):
@@ -139,7 +144,7 @@ class find_reverse:
             test_period = date_list[-i]
             train = df.loc[df['trading_day']<test_period].dropna(how='any')
             test = df.loc[df['trading_day']==test_period].dropna(how='any')
-            print(f'   train (n={len(train)}); tests (n={len(test)})')
+            logger.info(f'   train (n={len(train)}); tests (n={len(test)})')
             if len(test) > 0:
                 train_X, train_y = train.filter(regex='^x_'), train['value'].values
                 test_X, test_y = test.filter(regex='^x_'), test['value'].values

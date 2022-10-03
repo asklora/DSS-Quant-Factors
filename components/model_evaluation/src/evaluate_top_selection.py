@@ -21,8 +21,8 @@ from utils import (
 )
 from .calculation_backtest_score import scaleFundamentalScore
 from .load_eval_configs import load_eval_config
-
-logger = sys_logger(__name__, "DEBUG")
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.EVALUATE_TOP_SELECTION)
 
 
 class cleanEval:

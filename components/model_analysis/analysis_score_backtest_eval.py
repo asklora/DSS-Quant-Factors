@@ -1,6 +1,9 @@
 import pandas as pd
 import os
 from general.utils import to_excel
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_SCORE_BACKTEST_EVAL)
 
 def read_top_excel():
     path = os.getcwd()
@@ -10,7 +13,7 @@ def read_top_excel():
 
     df_all = []
     for f in files_xls:
-        print(f)
+        logger.info(f"{f}")
         for i in [10, 20]:
             try:
                 df = pd.read_excel(f, f"Top {i} Picks(agg)")
@@ -22,7 +25,8 @@ def read_top_excel():
                 df["uid"] = f.split('_')[-3] if ('usd' in f.split('_')[-1]) else f.split('_')[-2]
                 df_all.append(df)
             except Exception as e:
-                print(e)
+                logger.info(f"{e}")
+                pass
 
     sort_col = ['currency_code', 'weeks_to_expire', 'n_pick', 'n_config', 'since_year', 'use_usd']
     df_all = pd.concat(df_all, axis=0).sort_values(by=sort_col, ascending=False)
@@ -63,7 +67,7 @@ def read_top_excel():
         xls_sheets[f'since_year'] = r.reset_index()
 
         to_excel(xls_sheets, file_name=(f"backtest_analysis_{name}"))
-    print(df_all)
+    # print(df_all) commented because it is slow
 
 
 

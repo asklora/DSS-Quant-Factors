@@ -4,7 +4,9 @@ from functools import partial
 from general.utils import to_excel
 from results_analysis.calculation_rank import weight_qcut
 from xlsxwriter.utility import xl_rowcol_to_cell
-
+from .configs import LOGGER_LEVELS
+from utils import sys_logger
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_RANK_FACTOR_ROTATION)
 
 def excel_cformat(writer, sheet_name):
     """ for func [factor_weight] excel format factor rotation """
@@ -49,7 +51,8 @@ def factor_weight(use_max_ret, q = 1 / 3):
         pred['actual_weight'] = pred.groupby(by='uid_hpot')['actual'].transform(
             partial(weight_qcut, q_=[0., q, 1. - q, 1.]))
     except Exception as e:
-        print(e)
+        # 
+        pass
 
     if use_max_ret:
         # label prediction (if use [max_ret])

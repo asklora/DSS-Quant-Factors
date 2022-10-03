@@ -1,6 +1,9 @@
 import pandas as pd
 from global_vars import *
 from general.sql.sql_process import read_query
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_RUNTIME_EVAL)
 
 def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name_sql=None):
     ''' evaluation runtime calculated metrics '''
@@ -31,7 +34,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
         if len(unique_var) in [2, 3]:
             corr["train_pred_std"][i] = df.groupby(i)['train_pred_std'].apply(lambda x: round(sum(x < 1e-5)/len(x), 3)).to_dict()
     corr = pd.DataFrame(corr)
-    print(corr)
+    logger.info(f"{corr}")
 
     # 1.2. check iterations not done
     df1 = df.groupby(diff_config_col)['r2_valid'].count().reset_index()
@@ -55,7 +58,8 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
             try:
                 df_corr_config[i] = df_best[i].corr(df_best['net_ret'])
             except Exception as e:
-                print(e)
+                logger.info(f"{e}")
+                pass
 
         # 3. calculate average accuracy across testing_period
         df_best_avg = df_best.groupby(iter_unique_col[:-2] + diff_config_col).mean().filter(regex=f'^r2_|net_ret')
@@ -70,7 +74,7 @@ def download_model(weeks_to_expire=None, average_days=None, start_uid=None, name
 
         df_pillar = df_best_avg.merge(df_corr, left_index=True, right_index=True).reset_index()
         df_pillar['pillar'] = name
-        print(df_pillar)
+        logger.info(f"{df_pillar}")
         df_pillar_all.append(df_pillar)
 
     df_pillar_all = pd.concat(df_pillar_all, axis=0)

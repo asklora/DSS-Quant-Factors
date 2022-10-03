@@ -11,6 +11,9 @@ from general.sql.sql_process import read_query, read_table, upsert_data_to_datab
 from general.report.send_slack import to_slack
 from general.utils import to_excel
 from results_analysis.calculation_rank import rank_pred
+from utils import sys_logger
+from .configs import LOGGER_LEVELS
+logger = sys_logger(__name__, LOGGER_LEVELS.ANALYSIS_SCORE_BACKTEST)
 
 universe_currency_code = ['HKD', 'CNY', 'USD', 'EUR']
 score_col = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra", "ai_score"]
@@ -56,7 +59,7 @@ class score_scale:
                 column].transform(
                 transform_trim_outlier)
             calculate_column_score.append(column_score)
-        # print(calculate_column_score)
+        # print(calculate_column_score) comment is because it is slow
 
         return fundamentals, calculate_column_score
 
@@ -67,7 +70,7 @@ class score_scale:
             global count_neg
             count_neg += 1
             neg_factor = [x + '_score' for x in g.loc[(g['long_large'] == False), 'factor_name'].to_list()]
-            print(group, neg_factor)
+            # print(group, neg_factor) comment it because it is slow
             fundamentals.loc[(fundamentals['currency_code'] == group), neg_factor] *= -1
 
         return fundamentals
@@ -84,8 +87,9 @@ class score_scale:
                     column_score].transform(lambda x: robust_scale(x))
                 calculate_column_robust_score.append(column_robust_score)
             except Exception as e:
-                print(e)
-        # print(calculate_column_robust_score)
+                logger.info(f"{e}")
+                pass
+        logger.info(f"{calculate_column_robust_score}")
         return fundamentals, calculate_column_robust_score
 
     @staticmethod
@@ -119,7 +123,7 @@ class score_scale:
                                                                 fundamentals[column_minmax_industry]) * 10
                 minmax_column.append(column_minmax_industry)
 
-        # print(minmax_column)
+        # print(minmax_column) comment it because it is slow
         return fundamentals, minmax_column
 
     @staticmethod
@@ -130,7 +134,7 @@ class score_scale:
         fundamentals[[f"fundamentals_{name}" for name in factor_rank['pillar'].unique()]] = np.nan
 
         for (group, pillar_name), g in factor_rank.groupby(["group", "pillar"]):
-            print(f"Calculate Fundamentals [{pillar_name}] in group [{group}]")
+            logger.info(f"Calculate Fundamentals [{pillar_name}] in group [{group}]")
             sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
             score_col = [f"{x}_{y}_currency_code" for x, y in sub_g.loc[sub_g["scaler"].notnull(), ["factor_name", "scaler"]].to_numpy()]
             score_col += [x for x in sub_g.loc[sub_g["scaler"].isnull(), "factor_name"]]
@@ -151,7 +155,7 @@ class score_scale:
 
         for group, g in factor_rank.groupby("group"):
             try:
-                print(f"Calculate Fundamentals [extra] in group [{group}]")
+                # print(f"Calculate Fundamentals [extra] in group [{group}]")
                 sub_g = g.loc[(g["factor_weight"] == 2) | (g["factor_weight"].isnull())]  # use all rank=2 (best class)
                 sub_g = sub_g.loc[(g["pred_z"] >= 1) | (
                     g["pred_z"].isnull())]  # use all rank=2 (best class) and predicted factor premiums with z-value >= 1
@@ -166,13 +170,14 @@ class score_scale:
                         fundamentals.loc[fundamentals["currency_code"] == group].filter(
                             regex="^fundamentals_").mean().mean()
             except Exception as e:
-                print(e)
+                logger.info(f"{e}")
+                pass
         return fundamentals
 
     @staticmethod
     def __calc_esg(fundamentals):
         ''' Calculate ESG Value '''
-        print('Calculate ESG Value')
+        logger.info('Calculate ESG Value')
         esg_cols = ["environment_minmax_currency_code", "environment_minmax_industry", "social_minmax_currency_code",
                     "social_minmax_industry", "governance_minmax_currency_code", "governance_minmax_industry"]
         fundamentals["esg"] = fundamentals[esg_cols].mean(1)
@@ -181,7 +186,7 @@ class score_scale:
     @staticmethod
     def __calc_ai_score(fundamentals):
         ''' Calculate AI Score '''
-        print('Calculate AI Score')
+        logger.info(f'Calculate AI Score')
         ai_score_cols = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "fundamentals_extra"]
         fundamentals["ai_score"] = fundamentals[ai_score_cols].mean(1)
         return fundamentals
@@ -189,7 +194,7 @@ class score_scale:
     @staticmethod
     def __calc_ai_score2(fundamentals):
         ''' Calculate AI Score 2 '''
-        print('Calculate AI Score 2')
+        logger.info('Calculate AI Score 2')
         ai_score_cols2 = ["fundamentals_value", "fundamentals_quality", "fundamentals_momentum", "esg"]
         fundamentals["ai_score2"] = fundamentals[ai_score_cols2].mean(1)
         return fundamentals
@@ -199,7 +204,7 @@ class score_scale:
 
         global score_col
         fundamentals, calculate_column = self.fundamentals, self.calculate_column
-        print(fundamentals[score_col].describe())
+        # print(fundamentals[score_col].describe()) comment it because it is slow
         fundamentals[score_col] = fundamentals[score_col].round(1)
         return fundamentals
 
@@ -236,13 +241,13 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
 
     # if name_sql:
     try:
-        print(f"=== Get [Factor Rank] from local ===")
+        logger.info(f"=== Get [Factor Rank] from local ===")
         factor_rank = pd.read_csv(f'cached_factor_rank_{name_sql}.csv')
     except:
-        print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+        logger.info(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
         factor_rank = rank_pred(1/3, name_sql=name_sql, top_config=top_config).write_backtest_rank_(upsert_how=False)
     # else:
-    #     print("=== Get [Factor Rank] history from Backtest Table ===")
+        # print("=== Get [Factor Rank] history from Backtest Table ===")
     #     conditions = [f"True"]
     #     if currency_code:
     #         conditions.append(f"\"group\ in {tuple(currency_code)}")
@@ -250,7 +255,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     #         conditions.append(f"trading_day>='{start_date}'")
     #     factor_rank = read_query(f"SELECT * FROM {global_vars.production_factor_rank_backtest_table} "
     #                              f"WHERE {' AND '.join(conditions)}", global_vars.db_url_alibaba_prod)
-    #     print(factor_rank.dtypes)
+        # print(factor_rank.dtypes)
     #     factor_rank.to_csv('cached_factor_rank.csv', index=False)
 
     factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
@@ -259,7 +264,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     try:
         fundamentals_score = pd.read_csv('../cached_fundamental_score.csv')
     except:
-        print("=== Get [Factor Processed Ratio] history ===")
+        logger.info("=== Get [Factor Processed Ratio] history ===")
         conditions = ["r.ticker not like '.%%'"]
         if currency_code:
             conditions.append(f"currency_code in {tuple(currency_code)}")
@@ -274,7 +279,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
         fundamentals_score.to_csv('cached_fundamental_score.csv', index=False)
 
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
-    print(fundamentals_score['trading_day'].min())
+    # print(fundamentals_score['trading_day'].min())
     fundamentals_score = fundamentals_score.loc[fundamentals_score['currency_code'].isin(universe_currency_code)]
     fundamentals_score = fundamentals_score.loc[fundamentals_score['trading_day']>=dt.datetime(start_year,1,1)]
 
@@ -283,8 +288,8 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     elif use_usd:
         factor_rank = factor_rank.loc[factor_rank['group']=='USD']
 
-    print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
-    print(sorted(list(factor_rank["trading_day"].unique())))
+    # print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max()) comment it because it is slow, for debugging only
+    # print(sorted(list(factor_rank["trading_day"].unique()))) comment it because it is slow, for debugging only
 
     factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
     factor_rank = factor_rank.sort_values(by='last_update').drop_duplicates(subset=['trading_day','factor_name','group'], keep='last')
@@ -313,7 +318,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
     label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(regex='^stock_return_y_').columns.to_list()
     fundamentals = fundamentals_score[label_col+calculate_column]
     fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
-    # print(fundamentals)
+    # print(fundamentals) comment it because it is slow
 
     fundamentals = fundamentals.dropna(subset=['trading_day'], how='any')
 
@@ -336,7 +341,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
         g = fundamentals.loc[fundamentals['trading_day']==score_date].copy()
 
         # Scale original fundamental score
-        print(trading_day, score_date)
+        # print(trading_day, score_date) comment it because it is slow
         g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
                               factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
 
@@ -348,7 +353,7 @@ def test_score_history(currency_code=None, start_date='2015-01-01', name_sql=Non
 
         eval_best_all20[(score_date, f"{weeks_to_expire}_{average_days}")] = eval_best(g_score, weeks_to_expire, average_days, best_n=20).copy()
 
-    print("=== Reorganize mean return dictionary to DataFrames ===")
+    logger.info("=== Reorganize mean return dictionary to DataFrames ===")
     # 1. DataFrame for 10 group qcut - Mean Returns
     eval_qcut_df = pd.DataFrame(eval_qcut_all)
     eval_qcut_df = eval_qcut_df.stack(level=[-2, -1])
@@ -464,7 +469,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
     fundamentals_score = pd.read_csv('../cached_fundamental_score.csv')
     fundamentals_score["trading_day"] = pd.to_datetime(fundamentals_score["trading_day"])
 
-    print(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
+    logger.info(f"=== Calculate [Factor Rank] for name_sql:[{name_sql}] ===")
     # eval_table = read_query(f"SELECT * FROM factor_result_rank_backtest_eval WHERE name_sql='{name_sql}'")
     factor_rank_all = rank_pred(1/3, name_sql=name_sql, top_config=None).write_backtest_rank_(upsert_how=False)
 
@@ -477,8 +482,9 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
         try:
             factor_rank = iter["rank_df"]
 
-            print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max())
-            print(sorted(list(factor_rank["trading_day"].unique())))
+            # print(fundamentals_score["trading_day"].min(), fundamentals_score["trading_day"].max()) comment it because it is slow
+            # logger.info(f"")
+            # print(sorted(list(factor_rank["trading_day"].unique()))) comment it because it is slow
             factor_rank["trading_day"] = pd.to_datetime(factor_rank["trading_day"])
             factor_rank['trading_day'] = factor_rank['trading_day'].dt.tz_localize(None)
 
@@ -516,7 +522,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
             label_col = ['ticker', 'trading_day', 'currency_code'] + fundamentals_score.filter(regex='^stock_return_y_').columns.to_list()
             fundamentals = fundamentals_score[label_col+calculate_column]
             fundamentals = fundamentals.replace([np.inf, -np.inf], np.nan).copy()
-            # print(fundamentals)
+            # print(fundamentals) comment it because it is slow
 
             fundamentals = fundamentals.dropna(subset=['trading_day'], how='any')
 
@@ -539,7 +545,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                 g = fundamentals.loc[fundamentals['trading_day']==score_date].copy()
 
                 # Scale original fundamental score
-                print(trading_day, score_date)
+                # print(trading_day, score_date) comment it because it is slow
                 g_score = score_scale(g.copy(1), calculate_column, universe_currency_code,
                                       factor_rank_period, weeks_to_expire, factor_rank_period).score_update_scale()
 
@@ -553,7 +559,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
                 eval_best_all10[(score_date, f"{weeks_to_expire}_{average_days}")] = \
                     eval_best(g_score, weeks_to_expire, average_days, best_n=10, best_col=current_score_col).copy()
 
-            print("=== Reorganize mean return dictionary to DataFrames ===")
+            logger.info("=== Reorganize mean return dictionary to DataFrames ===")
             # 1. DataFrame for 10 group qcut - Mean Returns
             eval_qcut_df = pd.DataFrame(eval_qcut_all)
             eval_qcut_df = eval_qcut_df.stack(level=[-2, -1])
@@ -582,7 +588,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
             eval_best_df10_final = add_info_col(eval_best_df10).copy()
             top10_eval.append(eval_best_df10_final)
         except Exception as e:
-            print(e)
+            logger.info(f"{e}")
             error_iter.append(iter["info"])
 
     qcut_eval = pd.concat(qcut_eval, axis=0)
@@ -591,7 +597,7 @@ def test_score_history_v2(currency_code=None, start_date='2020-10-01', name_sql=
     to_excel({"qcut": qcut_eval,
               "top10": top10_eval,
               }, file_name=('v2_'+name_sql if name_sql else ""))
-    print(error_iter)
+    # print(error_iter) comment it because it is slow
     return True
 
 def save_description_history(df):
@@ -611,7 +617,7 @@ def eval_qcut(fundamentals, score_col, weeks_to_expire, average_days):
                 mean_ret[(name, col)] = df.dropna(subset=[col]).groupby(['qcut'])[
                     f'stock_return_y_w{weeks_to_expire}_d{average_days}'].mean().to_dict()
             except Exception as e:
-                print(e)
+                logger.info(f"{e}")
     return mean_ret
 
 def plot_topn_vs_mkt(top_n_df, weeks_to_expire, avg_days=7, fig_name='tests'):
