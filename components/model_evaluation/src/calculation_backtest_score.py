@@ -1,11 +1,12 @@
 import warnings
-
+from typing import List
 from scipy.stats import skew
 import pandas as pd
 import datetime as dt
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.preprocessing import RobustScaler, MinMaxScaler, PowerTransformer, StandardScaler
+from sklearn.preprocessing import RobustScaler, MinMaxScaler, PowerTransformer, \
+    StandardScaler
 from sklearn.pipeline import Pipeline
 from sqlalchemy import select, and_, not_, func
 
@@ -19,7 +20,6 @@ logger = sys_logger(__name__, "DEBUG")
 
 
 class scaleFundamentalScore:
-
     sample_interval = 1
 
     save_cache = False
@@ -55,17 +55,20 @@ class scaleFundamentalScore:
 
         return df
 
-    def __get_trading_day_list(self):
+    @property
+    def trading_day_list(self) -> List[str]:
         """
         Returns
         -------
-        trading_day_list: List
+        trading_day_list:
             list of Sundays since evaluation start date - now to get ratios
         """
 
-        trading_day_list = pd.date_range(self.start_date, dt.datetime.now(), freq=f'{self.sample_interval}W-SUN')
+        trading_day_list = pd.date_range(self.start_date, dt.datetime.now(),
+                                         freq=f'{self.sample_interval}W-SUN')
         trading_day_list = [x.strftime('%Y-%m-%d') for x in trading_day_list]
 
+        logger.debug(f"trading_day_list: {trading_day_list}")
         return trading_day_list
 
     def __load_cache_fundamental_score(self):
@@ -73,7 +76,8 @@ class scaleFundamentalScore:
         load saved fundamental score if use cache
         """
 
-        fundamentals_score = pd.read_pickle(f'cached_fundamental_score_{self.start_date}.pkl')
+        fundamentals_score = pd.read_pickle(
+            f'cached_fundamental_score_{self.start_date}.pkl')
         return fundamentals_score
 
     def _calc_fundamentals_score(self) -> pd.DataFrame:
@@ -81,10 +85,14 @@ class scaleFundamentalScore:
         Download ratios and convert to 0-10 scores
         """
 
+        logger.debug('download_fundamentals_score')
         df = self.__download_fundamentals_score()
 
         df = df.replace([np.inf, -np.inf], np.nan).copy()
-        adj_df = df.groupby(level=['currency_code', 'trading_day']).apply(self._scale_fundamental_scores)
+
+        logger.debug('scale_fundamental_scores')
+        adj_df = df.groupby(level=['currency_code', 'trading_day']).apply(
+            self._scale_fundamental_scores)
 
         if self.save_cache:
             adj_df.to_pickle(f'cached_fundamental_score_{self.start_date}.pkl')
@@ -103,17 +111,19 @@ class scaleFundamentalScore:
         """
 
         conditions = [
-            models.FactorPreprocessRatio.trading_day.in_(self.__get_trading_day_list()),
+            models.FactorPreprocessRatio.trading_day.in_(self.trading_day_list),
             not_(models.FactorPreprocessRatio.ticker.like(".%%")),
         ]
 
-        query = select(*models.FactorPreprocessRatio.__table__.columns, models.Universe.currency_code)\
-            .join_from(models.FactorPreprocessRatio, models.Universe)\
+        query = select(*models.FactorPreprocessRatio.__table__.columns,
+                       models.Universe.currency_code) \
+            .join_from(models.FactorPreprocessRatio, models.Universe) \
             .where(and_(*conditions))
 
         fundamentals_score = read_query(query)
-        fundamentals_score = fundamentals_score.pivot(index=["ticker", "trading_day", "currency_code"],
-                                                      columns=["field"], values="value")
+        fundamentals_score = fundamentals_score.pivot(
+            index=["ticker", "trading_day", "currency_code"],
+            columns=["field"], values="value")
 
         return fundamentals_score
 
@@ -121,14 +131,16 @@ class scaleFundamentalScore:
         """
         calculate score (i.e. scale ratio to 0-10) for single currency / pillar within same (currency, trading_day)
         """
-
+        logger.debug(f"--- {df.index}")
         return_col = df.filter(regex='^stock_return_y_').columns.to_list()
         non_return_col = [x for x in df if x not in return_col]
 
         adj_df = self.__transform_non_return_col(df[non_return_col])
 
         adj_df = adj_df.fillna(adj_df.mean(axis=1))
-        adj_df[return_col] = df[return_col]                  # return cols just keep original value for return calculation
+
+        # return cols just keep original value for return calculation
+        adj_df[return_col] = df[return_col]
 
         return adj_df
 
@@ -145,10 +157,13 @@ class scaleFundamentalScore:
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            adj_fundamentals = 10 - pipe.fit_transform(non_return_df)    # we use 10 - minmax(0, 10) because factor model is S-L
+            adj_fundamentals = 10 - pipe.fit_transform(
+                non_return_df)  # we use 10 - minmax(0, 10) because factor model is S-L
 
         # fillna for scores with average for that factor
-        adj_fundamentals = pd.DataFrame(adj_fundamentals, index=non_return_df.index, columns=non_return_df.columns)
+        adj_fundamentals = pd.DataFrame(adj_fundamentals,
+                                        index=non_return_df.index,
+                                        columns=non_return_df.columns)
 
         return adj_fundamentals
 
@@ -169,8 +184,11 @@ class TrimOutlierTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X, y=None):
         # clip for (.01 - .99)
-        X = np.apply_along_axis(lambda s: s.clip(np.nanpercentile(s, .01), np.nanpercentile(s, .99)), axis=1, arr=X)
-        power_X = PowerTransformer(method="yeo-johnson", standardize=False).fit_transform(X)
+        X = np.apply_along_axis(lambda s: s.clip(np.nanpercentile(s, .01),
+                                                 np.nanpercentile(s, .99)),
+                                axis=1, arr=X)
+        power_X = PowerTransformer(method="yeo-johnson",
+                                   standardize=False).fit_transform(X)
 
         # if skewness > 5 then do power_transform
         s = skew(X, nan_policy='omit')
@@ -178,11 +196,13 @@ class TrimOutlierTransformer(BaseEstimator, TransformerMixin):
 
         # clip be (mean +/- 2*std)
         X = np.apply_along_axis(
-            lambda x: np.clip(x, np.nanmean(X, axis=0) - self.std_trh * np.nanstd(X, axis=0),
-                                 np.nanmean(X, axis=0) + self.std_trh * np.nanstd(X, axis=0)), axis=1, arr=X)
+            lambda x: np.clip(x,
+                              np.nanmean(X, axis=0) - self.std_trh * np.nanstd(
+                                  X, axis=0),
+                              np.nanmean(X, axis=0) + self.std_trh * np.nanstd(
+                                  X, axis=0)), axis=1, arr=X)
 
         return X
-
 
 # Download: DataFrame for [factor_formula]
 # factor_formula = read_table(global_vars.factors_formula_table, global_vars.db_url_alibaba_prod)
