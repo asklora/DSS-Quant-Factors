@@ -14,6 +14,7 @@ from utils import (
     read_query,
     models,
     sys_logger,
+    read_query_list,
 )
 
 logger = sys_logger(__name__, "DEBUG")
@@ -125,13 +126,32 @@ class scaleFundamentalScore:
             index=["ticker", "trading_day", "currency_code"],
             columns=["field"], values="value")
 
+        fundamentals_score.loc[:, fundamentals_score.filter(
+            self.reverse_factors).columns.to_list()] *= -1
+
         return fundamentals_score
+
+    @property
+    def reverse_factors(self):
+        """
+        Reverse premium list from [FactorFormulaRatios]
+        """
+        reverse_factors = read_query_list(
+            select(models.FactorFormulaRatio.name)
+            .where(and_(models.FactorFormulaRatio.is_active,
+                        not_(models.FactorFormulaRatio.smb_positive)))
+        )
+        if len(reverse_factors) == 0:
+            raise Exception("Error: "
+                            "factor_formula_ratios assume all premium SMB. "
+                            "Not reverse needed.")
+        return reverse_factors
 
     def _scale_fundamental_scores(self, df) -> pd.DataFrame:
         """
         calculate score (i.e. scale ratio to 0-10) for single currency / pillar within same (currency, trading_day)
         """
-        logger.debug(f"--- {df.index}")
+        logger.debug(f"--- {df.index.levels[1]}, {df.index.levels[2]}")
         return_col = df.filter(regex='^stock_return_y_').columns.to_list()
         non_return_col = [x for x in df if x not in return_col]
 

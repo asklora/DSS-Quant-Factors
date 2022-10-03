@@ -155,29 +155,9 @@ class cleanPrediction:
 
         pred.loc[:, 'is_negative'] = pred.apply(
             lambda x: x['factor_name'] in x["neg_factor"], axis=1)
-        pred.loc[:, 'is_negative'] = np.where(
-            pred['factor_name'].isin(self.reverse_factors),
-            ~pred['is_negative'], pred['is_negative']
-        )
         pred.loc[pred['is_negative'], ["actual", "pred"]] *= -1
 
         return pred.drop(columns=["neg_factor"])
-
-    @property
-    def reverse_factors(self):
-        """
-        Reverse premium list from [FactorFormulaRatios]
-        """
-        reverse_factors = read_query_list(
-            select(models.FactorFormulaRatio.name)
-            .where(and_(models.FactorFormulaRatio.is_active,
-                        not_(models.FactorFormulaRatio.smb_positive)))
-        )
-        if len(reverse_factors) == 0:
-            raise Exception("Error: "
-                            "factor_formula_ratios assume all premium SMB. "
-                            "Not reverse needed.")
-        return reverse_factors
 
     # @err2slack("factor")
     def __download_prediction_from_db(self):
@@ -401,7 +381,7 @@ class evalFactor:
                 partial(self._rank, pred_df=pred_df, subpillar_df=subpillar_df),
                 all_groups)
 
-        eval_df = pd.concat([e for e in eval_results if type(e) != type(None)],
+        eval_df = pd.concat([e for e in eval_results if e is not None],
                             axis=0)  # df for each config evaluation results
         eval_df = eval_df.assign(name_sql=self.name_sql, updated=timestampNow())
         eval_df = self.__map_actual_factor_premium(eval_df=eval_df,
@@ -429,9 +409,8 @@ class evalFactor:
         if len(sample_df) > 0:
 
             if kwargs["eval_removed_subpillar"]:
-                sample_df = self.__map_remove_subpillar(df=sample_df,
-                                                        subpillar_df=subpillar_df,
-                                                        **kwargs)
+                sample_df = self.__map_remove_subpillar(
+                    df=sample_df, subpillar_df=subpillar_df, **kwargs)
 
             eval_df_new = self._eval_factor_all(df=sample_df, **kwargs)
 
