@@ -51,9 +51,9 @@
       "args": [
         "--recalc_premium",
         "--currency_code",
-        "CNY",
+        "USD",
         "--weeks_to_expire",
-        "26",
+        "2",
         "--start_date",
         "1998-01-01",
         "--end_date",
