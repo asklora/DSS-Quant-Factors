@@ -255,7 +255,7 @@ class cleanStockReturn:
     DataFrame for price related returns / variables
     """
 
-    stock_return_map = {4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}
+    stock_return_map = {2: [-7], 4: [-7], 8: [-7], 26: [-7, -28], 52: [-7, -28]}
     rs_vol_start_end = [[0, 30]]  # , [30, 90], [90, 182]
     drop_col = set()
     ffill_col = {'currency_code', 'market_cap', 'tri', 'close', 'volume'}
