@@ -31,9 +31,9 @@ icb_num = 6
 
 
 factors_formula_table = models.FactorFormulaRatio.__table__.schema + '.' + \
-                         models.FactorFormulaRatio.__table__.name
+    models.FactorFormulaRatio.__table__.name
 processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + \
-                         models.FactorPreprocessRatio.__table__.name
+    models.FactorPreprocessRatio.__table__.name
 factor_premium_table = models.FactorPreprocessPremium.__tablename__
 
 
@@ -45,7 +45,7 @@ class calcPremium:
 
     def __init__(self,
                  weeks_to_expire: int, weeks_to_offset: int = 1,
-                 average_days_list: List[int] = (-7,), 
+                 average_days_list: List[int] = (-7,),
                  currency_code_list: List[str] = None,
                  processes: int = 1, factor_list: List[str] = (),
                  percent_for_qcut: int = 0.2):
@@ -92,29 +92,32 @@ class calcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
-        # with closing(mp.Pool(processes=self.processes,  #*
-        #                      initializer=recreate_engine)) as pool:
-        try:
+        with closing(mp.Pool(processes=self.processes,  # *
+                             initializer=recreate_engine)) as pool:
+            # try:
             ratio_df = self._download_pivot_ratios(start_date=start_date,
-                                                end_date=end_date)
-            all_groups = itertools.product(self.currency_code_list, 
-                                        self.factor_list, self.y_col_list)
-            all_groups = [tuple(e) for e in all_groups] 
-            # prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), #*
-            #                     all_groups) #*
-            for group in all_groups:
-                self.get_premium(ratio_df=ratio_df, *group)
-        except Exception as e:
-                logger.info(f"During running write_all for recalc_premium, we encounter the following error \n {e}.")
+                                                   end_date=end_date)
+            all_groups = itertools.product(self.currency_code_list,
+                                           self.factor_list, self.y_col_list)
+            all_groups = [tuple(e) for e in all_groups]
+            prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df),
+                                all_groups)
+            # for group in all_groups:
+            #     self.get_premium(ratio_df=ratio_df, *group)
+        # except Exception as e:
+        #     logger.info(
+        #         f"During running write_all for recalc_premium, we encounter the following error \n {e}.")
 
-        prem = pd.concat([x for x in prem if type(x) != type(None)], 
+        prem = pd.concat([x for x in prem if type(x) != type(None)],
                          axis=0).sort_values(by=['group', 'trading_day'])
         prem = prem.rename(columns={"trading_day": "testing_period"})
 
         prem["updated"] = timestampNow()
-        upsert_data_to_database(data=prem, table=factor_premium_table, how="append") 
+        upsert_data_to_database(
+            data=prem, table=factor_premium_table, how="append")
 
-        to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
+        to_slack("clair").message_to_slack(
+            f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
         return prem
 
@@ -128,7 +131,7 @@ class calcPremium:
         factor_list = read_query_list(formula_query)
         return factor_list
 
-    def _download_pivot_ratios(self, start_date: str = None, 
+    def _download_pivot_ratios(self, start_date: str = None,
                                end_date: str = None,):
         """
         download ratio table calculated with calculation_ratio.py and pivot
@@ -148,10 +151,10 @@ class calcPremium:
                 AND trading_day BETWEEN '{start_date}' AND '{end_date}'
         '''.replace(",)", ")")
 
-        df = read_query(ratio_query, 
-                        dtype={"ticker":"category","field":"category","currency_code":'category'})
+        df = read_query(ratio_query,
+                        dtype={"ticker": "category", "field": "category", "currency_code": 'category'})
 
-        df = df.pivot(index=["ticker", "trading_day", "currency_code"], 
+        df = df.pivot(index=["ticker", "trading_day", "currency_code"],
                       columns=["field"], values='value').reset_index()
 
         return df
@@ -179,7 +182,8 @@ class calcPremium:
         Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only 
         """
 
-        df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
+        df = ratio_df.loc[ratio_df['currency_code'] == group,
+                          ['ticker', 'trading_day', y_col, factor]].copy()
         df = self.__clean_missing_y_row(df, y_col, group)
         df = self.__resample_df_by_interval(df)
         df = self.__clean_missing_factor_row(df, factor, group)
@@ -190,10 +194,13 @@ class calcPremium:
         return df
 
     def _qcut_factor_df(self, group, factor, y_col, df=None):
-        df['quantile_train_currency'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
+        df['quantile_train_currency'] = df.groupby(
+            ['trading_day'])[factor].transform(self.__qcut)
         df = df.dropna(subset=['quantile_train_currency']).copy()
-        df['quantile_train_currency'] = df['quantile_train_currency'].astype(int)
-        prem = df.groupby(['trading_day', 'quantile_train_currency'])[y_col].mean().unstack()
+        df['quantile_train_currency'] = df['quantile_train_currency'].astype(
+            int)
+        prem = df.groupby(['trading_day', 'quantile_train_currency'])[
+            y_col].mean().unstack()
 
         return prem
 
@@ -221,9 +228,12 @@ class calcPremium:
         Data processing: resample df (days ->weeks) for premium calculation dates every (n=weeks_to_offset) since the most recent period
         """
 
-        end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()
-        periods = (end_date - df["trading_day"].min()).days // (7*self.weeks_to_offset) + 1
-        date_list = pd.date_range(end=end_date, freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
+        end_date = pd.to_datetime(pd.date_range(
+            end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()
+        periods = (end_date - df["trading_day"].min()
+                   ).days // (7*self.weeks_to_offset) + 1
+        date_list = pd.date_range(
+            end=end_date, freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
         date_list = list(date_list)
         df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]
 
@@ -232,13 +242,15 @@ class calcPremium:
     def __clean_missing_y_row(self, df, y_col, group):
         df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
         if len(df) == 0:
-            raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
+            raise Exception(
+                f"[{y_col}] for all ticker in group '{group}' is missing")
         return df
 
     def __clean_missing_factor_row(self, df, factor, group):
         df = df.dropna(subset=[factor], how='any')
         if len(df) == 0:
-            raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
+            raise Exception(
+                f"[{factor}] for all ticker in group '{group}' is missing")
         return df
 
     def __trim_outlier(self, df, prc: float = 0):
@@ -266,7 +278,8 @@ class calcPremium:
             elif nonnull_count > 65:
                 prc = [0, self.percent_for_qcut, 1-self.percent_for_qcut, 1]
             else:
-                prc = [0, self.percent_for_qcut*1.5, 1-self.percent_for_qcut*1.5, 1]
+                prc = [0, self.percent_for_qcut*1.5,
+                       1-self.percent_for_qcut*1.5, 1]
 
             q = pd.qcut(series_fillinf, prc, duplicates='drop')
 
@@ -274,7 +287,7 @@ class calcPremium:
             if n_cat == 3:
                 q.cat.categories = range(3)
             elif n_cat == 2:
-                q.cat.categories = [F0, 2]
+                q.cat.categories = [0, 2]
             else:
                 return series.map(lambda _: np.nan)
             q[series_fillinf == np.inf] = 2
