@@ -114,7 +114,7 @@ class calcPremium:
 
         prem["updated"] = timestampNow()
         upsert_data_to_database(
-            data=prem, table=factor_premium_table, how="append")
+            data=prem, table=factor_premium_table, how="update")
 
         to_slack("clair").message_to_slack(
             f"===  FINISH [update] DB [{factor_premium_table}] ===")

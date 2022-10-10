@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--history', action='store_true',
                         help='Rewrite entire history')
-    parser.add_argument('--currency_code', default=None,
+    parser.add_argument('--currency_code', nargs='+', default=['HKD', 'CNY']
                         type=str, help='calculate for certain currency only')
     parser.add_argument('--look_back', default=5, type=int,
                         help='lookback period for clustering factors')
