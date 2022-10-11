@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import datetime as dt
+from functools import cached_property
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -290,25 +291,7 @@ class combineData(cleanMacros):
         df = df.pivot(index=['testing_period', 'group', 'average_days'], columns=['field'], values="value").reset_index()
         df['testing_period'] = pd.to_datetime(df['testing_period'], format='%Y-%m-%d')
 
-        df.loc[:, df.filter(self.reverse_factors).columns.to_list()] *= -1
-
         return df
-
-    @property
-    def reverse_factors(self):
-        """
-        Reverse premium list from [FactorFormulaRatios]
-        """
-        reverse_factors = read_query_list(
-            select(models.FactorFormulaRatio.name)
-            .where(and_(models.FactorFormulaRatio.is_active,
-                        not_(models.FactorFormulaRatio.smb_positive)))
-        )
-        if len(reverse_factors) == 0:
-            raise Exception("Error: "
-                            "factor_formula_ratios assume all premium SMB. "
-                            "Not reverse needed.")
-        return reverse_factors
 
     def _remove_high_missing_samples(self, df: pd.DataFrame, trh: float = 0.5) -> pd.DataFrame:
         """
@@ -557,6 +540,11 @@ class loadData:
         """
 
         logger.debug(self.factor_list)
+
+
+        df_y = pd.concat([
+            sample_df[self.reverse_factors]
+        ])
         df_y = sample_df[self.factor_list].copy()
 
         df_y = df_y.reset_index()
@@ -564,6 +552,31 @@ class loadData:
         df_y = df_y.set_index(["group", "testing_period"])
 
         return df_y
+
+    @cached_property
+    def reverse_factors(self):
+        """
+        Reverse premium list from [FactorFormulaRatios/Premium]
+        """
+        query = select(*models.FactorFormulaPremium.__table__.columns,
+                       models.FactorFormulaRatio.smb_positive)\
+            .join(models.FactorFormulaRatio)\
+            .where(models.FactorFormulaRatio.is_active)
+        reverse_df = read_query(query,
+                                index_cols=["ticker", "weeks_to_expire"],
+                                keep_index=True)
+        if len(reverse_df) == 0:
+            raise Exception("Error: "
+                            "factor_formula_ratios assume all premium SMB. "
+                            "Not reverse needed.")
+
+        reverse_df["reverse"] = np.where(
+            reverse_df["smb_positive"].fillna(True),
+            reverse_df["follow_heuristic"],
+            ~reverse_df["follow_heuristic"],
+        )
+
+        return reverse_df["reverse"]
 
     def __y_replace_median(self, train_org, train_cut, test_cut) -> (pd.DataFrame, pd.DataFrame):
         """

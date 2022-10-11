@@ -30,7 +30,8 @@ class loadTrainConfig(calcTestingPeriod):
 
     _auto_select_options = {
         "factor_pca": [0.4, 0],
-        "factor_reverse": [0, 1, 2],  # No reverse, reverse by average, reverse by lasso
+        # "factor_reverse": [0, 1, 2],  # No reverse, reverse by average, reverse by lasso
+        "factor_reverse": [0],
         "y_qcut": [0, 10],
         "valid_pct": [.2],
         "valid_method": [2010, 2016, 2018],
