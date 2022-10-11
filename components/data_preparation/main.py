@@ -32,7 +32,6 @@ if __name__ == "__main__":
                         type=int, help='Prediction period length in weeks')
     parser.add_argument('--sample_interval', default=4, type=int,
                         help='Number of weeks between two backtest periods')
-
     parser.add_argument('--recalc_ratio', action='store_true',
                         help='Start recalculate ratios')
     parser.add_argument('--recalc_premium', action='store_true',
@@ -45,15 +44,13 @@ if __name__ == "__main__":
                         help='top/bottom percentage for cutting premium quantile')
     parser.add_argument('--pickle', default=False, type=bool,
                         help='load factor_processed_ratio_from_pickle')
-
     parser.add_argument('--start_date', default='2015-01-01', type=str,
                         help='start_date for calculating factor ratio, factor premium or factor subpillar')
     parser.add_argument('--end_date', default=dateNow(), type=str,
                         help='end date for calculating factor ratio, factor premium or factor subpillar')
-
     parser.add_argument('--history', action='store_true',
                         help='Rewrite entire history')
-    parser.add_argument('--currency_code', nargs='+', default=['HKD', 'CNY']
+    parser.add_argument('--currency_code', nargs='+', default=['HKD', 'CNY'],
                         type=str, help='calculate for certain currency only')
     parser.add_argument('--look_back', default=5, type=int,
                         help='lookback period for clustering factors')
@@ -61,7 +58,6 @@ if __name__ == "__main__":
                         help='ticker for recalc_ratio')
     parser.add_argument('--revert_premium', default=False,
                         type=str, help='revert_premium_according_to_smb_positive')
-
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
     args = parser.parse_args()
@@ -99,7 +95,7 @@ if __name__ == "__main__":
                                    average_days_list=all_average_days,
                                    weeks_to_offset=min(
                                        4, args.sample_interval),
-                                   currency_code_list=[args.currency_code],
+                                   currency_code_list=args.currency_code,
                                    processes=args.processes, percent_for_qcut=args.qcut_for_premium).write_all(start_date=args.start_date, end_date=args.end_date)
     check_memory(logger=logger)
 

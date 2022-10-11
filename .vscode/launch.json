@@ -50,10 +50,8 @@
       "console": "integratedTerminal",
       "args": [
         "--recalc_premium",
-        "--currency_code",
-        "USD",
         "--weeks_to_expire",
-        "2",
+        "8",
         "--start_date",
         "1998-01-01",
         "--end_date",
@@ -61,7 +59,10 @@
         "--qcut_for_premium",
         "0.2",
         "--processes",
-        "8"
+        "8",
+        "--currency_code",
+        "USD",
+        "EUR"
       ],
       "env": {
         "DB_USERNAME": "quant_factor",
