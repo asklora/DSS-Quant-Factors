@@ -366,11 +366,10 @@ class cleanStockReturn:
 
         logger.debug(
             f'Stock volume using last 7 days average / 91 days average ')
-        tri[['volume']] = tri.groupby("ticker")[['volume']].rolling(7,
-                                                                    min_periods=1).mean().reset_index(
-            drop=1)
-        tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(91,
-                                                                   min_periods=1).mean().values
+        tri[['volume']] = tri.groupby("ticker")[['volume']].rolling(
+            7, min_periods=1).mean().reset_index(drop=1)
+        tri['volume_3m'] = tri.groupby("ticker")['volume'].rolling(
+            91, min_periods=1).mean().values
         tri['volume'] = tri['volume'] / tri['volume_3m']
         self.drop_col.add('volume_3m')
 
