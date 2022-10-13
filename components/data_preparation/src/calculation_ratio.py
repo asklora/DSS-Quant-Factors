@@ -389,7 +389,7 @@ class cleanStockReturn:
                                                                         min_periods=1).mean().reset_index(
                 drop=1)
             if i < 0:
-                tri[f'tri_avg_{i}d_shift'] = tri.groupby("ticker")[
+                tri[f'tri_avg_{i}d'] = tri.groupby("ticker")[
                     f'tri_avg_{i}d'].shift(i + 1)
             self.drop_col.add(f'tri_avg_{i}d')
 
