@@ -509,7 +509,15 @@ class loadData:
         elif self.factor_reverse == 2:
             neg_factor = self._factor_reverse_on_lasso(sample_df)
         elif self.factor_reverse == 3:
-            neg_factor = self._factor_reverse_with_fixed(sample_df)
+            neg_factor = self._factor_reverse_with_fixed()
+        else:
+            raise Exception(f'''
+            Wrong params for factor_reverse, got [{self.factor_reverse}].
+            0 = No reverse;
+            1 = reverse by past 5 year average;
+            2 = reverse by lasso prediction based on past 5 year data;
+            3 = reverse by fixed heuristic / exception rules.
+            ''')
 
         sample_df[neg_factor] *= -1
         return sample_df, neg_factor
