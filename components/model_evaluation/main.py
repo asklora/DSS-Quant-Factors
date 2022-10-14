@@ -1,7 +1,7 @@
 import os
 import datetime as dt
 import argparse
-from src.evaluate_factor_premium import evalFactor
+from src.evaluate_factor_premium import EvalFactor
 from src.evaluate_top_selection import evalTop
 from src.load_eval_configs import load_latest_name_sql
 from utils import (
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     # 1. update [FactorBacktestEval]
     if args.eval_factor:
-        eval_df = evalFactor(name_sql=eval_name_sql,
+        eval_df = EvalFactor(name_sql=eval_name_sql,
                              processes=args.processes).write_db()
     else:
         eval_df = None

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import datetime as dt
+from functools import cached_property
 from joblib import Parallel, delayed
 import multiprocessing as mp
 from functools import partial
@@ -27,7 +28,7 @@ logger = sys_logger(__name__, "DEBUG")
 pillar_cluster_table = models.FactorFormulaPillarCluster.__table__.schema + '.' + models.FactorFormulaPillarCluster.__table__.name
 
 
-class cleanSubpillar:
+class CleanSubpillar:
     """
     Get subpillar map: factors will not be selected together if both deemed as "good" / "bad" factors
     """
@@ -66,10 +67,7 @@ class cleanSubpillar:
         ]
         query = select(models.FactorFormulaPillarCluster).where(
             and_(*conditions))
-        subpillar = read_query(query)
-
-        subpillar['testing_period'] = pd.to_datetime(
-            subpillar['testing_period'])
+        subpillar = read_query(query, date_cols=["testing_period"])
 
         return subpillar
 
@@ -99,7 +97,7 @@ class cleanSubpillar:
         return df_new
 
 
-class cleanPrediction:
+class CleanPrediction:
     """
     Data Processing: Combine prediction and score table
     """
@@ -114,6 +112,15 @@ class cleanPrediction:
 
     def __init__(self, name_sql: str):
         self.name_sql = name_sql
+
+    @cached_property
+    def reverse_hueristic(self) -> List[str]:
+        """
+        List of factor should use BMS instead of SMB follow heuristic
+        """
+        query = select(models.FactorFormulaRatio.name).where(
+            models.FactorFormulaRatio.smb_positive is False)
+        return read_query_list(query)
 
     def get_prediction(self) -> pd.DataFrame:
         """
@@ -139,8 +146,10 @@ class cleanPrediction:
         return self._reformat_pred(pred)
 
     def _reformat_pred(self, pred):
-        pred['uid_hpot'] = pred['uid'].str[
-                           :20]  # first 20-digit uid = Hyperopt start time (i.e. same for 10 iterations)
+        """
+        first 20-digit uid = Hyperopt start time (i.e. same for 10 iterations)
+        """
+        pred['uid_hpot'] = pred['uid'].str[:20]
         pred = self.__reverse_neg_factor(pred)
 
         if self.if_combine_pillar:
@@ -156,6 +165,10 @@ class cleanPrediction:
         pred.loc[:, 'is_negative'] = pred.apply(
             lambda x: x['factor_name'] in x["neg_factor"], axis=1)
         pred.loc[pred['is_negative'], ["actual", "pred"]] *= -1
+
+        reverse_rules = pred["factor_name"].isin(self.reverse_hueristic)
+        pred.loc[reverse_rules, ["actual", "pred"]] *= -1
+        pred.loc[reverse_rules, ["factor_name"]] += "*"
 
         return pred.drop(columns=["neg_factor"])
 
@@ -206,7 +219,7 @@ class cleanPrediction:
         return pred
 
 
-class groupSummaryStats:
+class GroupSummaryStats:
     """
     Calculate good/bad factor and evaluation metrics into results (pd.Series) for each group;
 
@@ -216,7 +229,7 @@ class groupSummaryStats:
     - 1 currency_code
     - 1 weeks_to_expire
 
-    call get_stats() in groupby.apply function in evalFactor to calculate stats for all groups
+    call get_stats() in groupby.apply function in EvalFactor to calculate stats for all groups
     """
 
     def __init__(self, eval_q: float = 0.33,
@@ -271,7 +284,8 @@ class groupSummaryStats:
 
         results = pd.Series({**accu_dict, **max_select_dict, **min_select_dict,
                              "eval_q": self.eval_q,
-                             "eval_removed_subpillar": self.eval_removed_subpillar}).to_frame().T
+                             "eval_removed_subpillar":
+                                 self.eval_removed_subpillar}).to_frame().T
         results.index.name = "group_idx"
         return results
 
@@ -319,7 +333,7 @@ class groupSummaryStats:
             }
             if len(g.dropna(how="any")) > 0:
                 result_dict[f"{prefix}_factor_actual"] = \
-                g.groupby(['factor_name'])['actual'].mean().to_dict()
+                    g.groupby(['factor_name'])['actual'].mean().to_dict()
                 result_dict[f"{prefix}_ret"] = g['actual'].mean()
             return result_dict
         else:
@@ -342,23 +356,25 @@ class groupSummaryStats:
             return {}
 
 
-class evalFactor:
+class EvalFactor:
     """
     process raw prediction in result_pred_table -> models.FactorBacktestEval Table for AI Score calculation
     """
 
     save_cache = False
-    config_opt_columns = [x.name for x in
-                          models.FactorBacktestEval.config_opt_columns]
-    config_define_columns = [x.name for x in
-                             models.FactorBacktestEval.train_config_define_columns] + \
-                            [x.name for x in
-                             models.FactorBacktestEval.base_columns]
+    config_opt_columns = \
+        [x.name for x in models.FactorBacktestEval.config_opt_columns]
+    config_define_columns = \
+        [x.name for x in models.FactorBacktestEval.base_columns] + \
+        [x.name for x in models.FactorBacktestEval.train_config_define_columns]
 
     def __init__(self, name_sql: str, processes: int):
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.processes = processes
+
+        self._pred_df = None
+        self._subpillar_df = None
 
     def write_db(self):
         """
@@ -367,25 +383,21 @@ class evalFactor:
         eval_df = pd.DataFrame for [FactorBacktestEval] Table
 
         """
+        self._pred_df = CleanPrediction(name_sql=self.name_sql).get_prediction()
+        self._subpillar_df = CleanSubpillar(
+            start_date=self._pred_df["testing_period"].min(),
+            weeks_to_expire=self.weeks_to_expire).get_subpillar()
+
+        all_groups = load_eval_config(self.weeks_to_expire)
 
         with closing(mp.Pool(processes=self.processes,
                              initializer=recreate_engine)) as pool:
-            pred_df = cleanPrediction(name_sql=self.name_sql).get_prediction()
-            subpillar_df = cleanSubpillar(
-                start_date=pred_df["testing_period"].min(),
-                weeks_to_expire=self.weeks_to_expire).get_subpillar()
+            eval_results = pool.starmap(self._rank, all_groups)
 
-            all_groups = load_eval_config(self.weeks_to_expire)
-
-            eval_results = pool.starmap(
-                partial(self._rank, pred_df=pred_df, subpillar_df=subpillar_df),
-                all_groups)
-
-        eval_df = pd.concat([e for e in eval_results if e is not None],
-                            axis=0)  # df for each config evaluation results
+        # df for each config evaluation results
+        eval_df = pd.concat([e for e in eval_results if e is not None], axis=0)
         eval_df = eval_df.assign(name_sql=self.name_sql, updated=timestampNow())
-        eval_df = self.__map_actual_factor_premium(eval_df=eval_df,
-                                                   pred_df=pred_df)
+        eval_df = self.__map_actual_factor_premium(eval_df=eval_df)
 
         if self.save_cache:
             eval_df.to_pickle(f"eval_{self.name_sql}.pkl")
@@ -396,21 +408,19 @@ class evalFactor:
 
         return eval_df
 
-    def _rank(self, *args, pred_df: pd.DataFrame = None,
-              subpillar_df: pd.DataFrame = None):
+    def _rank(self, *args):
         """
         rank based on config defined by each row in pred_config table
         """
 
         kwargs, = args
 
-        sample_df = self.__filter_sample(df=pred_df, **kwargs)
+        sample_df = self.__filter_sample(df=self._pred_df, **kwargs)
 
         if len(sample_df) > 0:
-
             if kwargs["eval_removed_subpillar"]:
                 sample_df = self.__map_remove_subpillar(
-                    df=sample_df, subpillar_df=subpillar_df, **kwargs)
+                    df=sample_df, subpillar_df=self._subpillar_df, **kwargs)
 
             eval_df_new = self._eval_factor_all(df=sample_df, **kwargs)
 
@@ -439,13 +449,17 @@ class evalFactor:
         """
 
         df = df.sort_values(by=["pred"])
-        df = df.merge(subpillar_df,
-                      on=["testing_period", "currency_code", "factor_name"],
-                      how="left")
-        df["subpillar"] = df["subpillar"].fillna(df["factor_name"])
+        df["factor_name_strip"] = df["factor_name"].strip("*")
+        df = df.merge(
+            subpillar_df,
+            on=["testing_period", "currency_code", "factor_name_strip"],
+            how="left")
+        df["subpillar"] = df["subpillar"].fillna(df["factor_name_strip"])
+        df = df.drop(columns=["factor_name_strip"])
 
-        # for defined pillar to remove subpillar cross all pillar by keep top pred only
-        # N/A for cluster pillar because subpillar will always in the same pillar, which will be removed after ranking later
+        # for defined pillar to remove subpillar cross all pillar by keep top
+        # pred only; N/A for cluster pillar because subpillar will always in
+        # the same pillar, which will be removed after ranking later
         if pillar != "cluster":
             df = df.drop_duplicates(
                 subset=["subpillar", "testing_period", "currency_code"] +
@@ -454,7 +468,7 @@ class evalFactor:
 
         return df
 
-    # ------------------ Add Rank & Evaluation Metrics -------------------------
+    # ------------------ Add Rank & Evaluation Metrics ------------------------
 
     def _eval_factor_all(self, df, eval_q: float, eval_removed_subpillar: bool,
                          **kwargs):
@@ -463,7 +477,7 @@ class evalFactor:
         save backtest evaluation metrics -> backtest_eval_table
         """
 
-        summary_cls = groupSummaryStats(
+        summary_cls = GroupSummaryStats(
             eval_q=eval_q, eval_removed_subpillar=eval_removed_subpillar)
 
         df_eval = df.groupby(
@@ -472,15 +486,14 @@ class evalFactor:
 
         return df_eval.drop(columns=["group_idx"])
 
-    def __map_actual_factor_premium(self, eval_df: pd.DataFrame,
-                                    pred_df: pd.DataFrame):
+    def __map_actual_factor_premium(self, eval_df: pd.DataFrame):
         """
         map actual factor premiums to factor evaluation results
         """
 
-        df_actual = pred_df.groupby(self.config_define_columns)[
+        df_actual = self._pred_df.groupby(self.config_define_columns)[
             ['actual']].mean()
-        eval_df = eval_df.join(df_actual, on=self.config_define_columns,
-                               how='left')
+        eval_df = eval_df.join(
+            df_actual, on=self.config_define_columns, how='left')
 
         return eval_df
