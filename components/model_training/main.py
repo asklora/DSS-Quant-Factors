@@ -6,9 +6,9 @@ from functools import partial
 import multiprocessing as mp
 import pandas as pd
 from contextlib import closing
-from src.load_data import combineData, loadData
-from src.load_train_configs import loadTrainConfig
-from src.random_forest import rf_HPOT
+from .src.load_data import combineData, loadData
+from .src.load_train_configs import loadTrainConfig
+from .src.random_forest import rf_HPOT
 from utils import (
     to_slack,
     read_query,

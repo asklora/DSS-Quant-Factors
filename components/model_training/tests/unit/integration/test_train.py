@@ -25,28 +25,27 @@ from utils import (
 processes = 1
 weeks_to_expire = 8
 sample_interval = 4
-backtest_period = 13
+backtest_period = 5
 restart = False
-currency_code = ["USD"]
+currency_code = "USD"
 
 
 def test_rf_train():
+    sql_result = {"name_sql": "test"}
 
-    with closing(mp.Pool(processes=processes,
-                         initializer=recreate_engine)) as pool:
-        raw_df = combineData(weeks_to_expire=weeks_to_expire,
-                             sample_interval=sample_interval,
-                             backtest_period=backtest_period,
-                             currency_code=None,  # raw_df should get all
-                             restart=restart).get_raw_data()
+    raw_df = combineData(weeks_to_expire=weeks_to_expire,
+                         sample_interval=sample_interval,
+                         backtest_period=backtest_period,
+                         currency_code=None,  # raw_df should get all
+                         restart=restart).get_raw_data()
 
-        all_groups = loadTrainConfig(weeks_to_expire=weeks_to_expire,
-                                     sample_interval=sample_interval,
-                                     backtest_period=backtest_period,
-                                     restart=restart,
-                                     currency_code=currency_code) \
-            .get_all_groups()
+    all_groups = loadTrainConfig(weeks_to_expire=weeks_to_expire,
+                                 sample_interval=sample_interval,
+                                 backtest_period=backtest_period,
+                                 restart=restart,
+                                 currency_code=currency_code) \
+        .get_all_groups()
 
-        pool.starmap(
-            partial(start, raw_df=raw_df, sql_result=sql_result.copy()),
-            all_groups)  # training will write to DB right after training
+    # test on first group
+    start(all_groups[0][0], raw_df=raw_df, sql_result=sql_result.copy())
+

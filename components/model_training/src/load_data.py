@@ -5,7 +5,7 @@ from functools import cached_property
 import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import select, and_, not_, func
+from sqlalchemy import select, and_, not_, func, join
 from typing import List, Union, Dict
 
 from sklearn.preprocessing import StandardScaler
@@ -536,7 +536,7 @@ class loadData:
         self.factor_list = list(set(self.factor_list) &
                                 set(reverse_factors.index.tolist()))
 
-        return reverse_factors.loc[reverse_factors].index.tolist()
+        return reverse_factors.loc[~reverse_factors].index.tolist()
 
     def get_reverse_factors(self):
         """
@@ -544,9 +544,9 @@ class loadData:
         """
         query = select(*models.FactorFormulaPremium.__table__.columns,
                        models.FactorFormulaRatio.smb_positive) \
-            .join(models.FactorFormulaRatio) \
+            .join(models.FactorFormulaPremium) \
             .where(and_(models.FactorFormulaRatio.is_active,
-                        models.FactorPreprocessPremium.weeks_to_expire ==
+                        models.FactorFormulaPremium.weeks_to_expire ==
                         self.weeks_to_expire))
         reverse_df = read_query(query)
         if len(reverse_df) == 0:

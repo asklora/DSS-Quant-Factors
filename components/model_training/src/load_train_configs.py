@@ -31,7 +31,8 @@ class loadTrainConfig(calcTestingPeriod):
     _auto_select_options = {
         "factor_pca": [0.4, 0],
         # "factor_reverse": [0, 1, 2],  # No reverse, reverse by average, reverse by lasso
-        "factor_reverse": [0, 3],    # 3 = follow heuristic
+        # "factor_reverse": [0],  # 3 = follow heuristic
+        "factor_reverse": [3],    # 3 = follow heuristic
         "y_qcut": [0, 10],
         "valid_pct": [.2],
         "valid_method": [2010, 2016, 2018],
@@ -43,7 +44,7 @@ class loadTrainConfig(calcTestingPeriod):
                  weeks_to_expire: int,
                  sample_interval: int = 4,
                  backtest_period: int = 1,
-                 restart: str = None,
+                 restart: bool = None,
                  currency_code: str = None):
         super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
 
