@@ -119,7 +119,7 @@ class CleanPrediction:
         List of factor should use BMS instead of SMB follow heuristic
         """
         query = select(models.FactorFormulaRatio.name).where(
-            models.FactorFormulaRatio.smb_positive is False)
+            models.FactorFormulaRatio.smb_positive == False)
         return read_query_list(query)
 
     def get_prediction(self) -> pd.DataFrame:
@@ -449,9 +449,9 @@ class EvalFactor:
         """
 
         df = df.sort_values(by=["pred"])
-        df["factor_name_strip"] = df["factor_name"].strip("*")
+        df["factor_name_strip"] = df["factor_name"].str.strip("*")
         df = df.merge(
-            subpillar_df,
+            subpillar_df.rename(columns={"factor_name": "factor_name_strip"}),
             on=["testing_period", "currency_code", "factor_name_strip"],
             how="left")
         df["subpillar"] = df["subpillar"].fillna(df["factor_name_strip"])
