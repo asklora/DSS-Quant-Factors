@@ -1,5 +1,5 @@
 from components.model_evaluation.src.evaluate_factor_premium import EvalFactor
-from components.model_evaluation.src.evaluate_top_selection import evalTop
+from components.model_evaluation.src.evaluate_top_selection import EvalTop
 
 
 processes = 10
@@ -14,14 +14,14 @@ def test_eval():
 
 
 def test_eval_top():
-    score_df = evalTop(name_sql=eval_name_sql,
+    score_df = EvalTop(name_sql=eval_name_sql,
                        processes=processes).write_top_select_eval()
 
     assert len(score_df) > 0
 
 
 def test_eval_select():
-    select_df = evalTop(name_sql=eval_name_sql,
+    select_df = EvalTop(name_sql=eval_name_sql,
                         processes=processes).write_latest_select()
 
     assert len(select_df) > 0

@@ -64,59 +64,58 @@ def get_industry_name_map() -> Dict[str, str]:
     return industry_name_map
 
 
-class evalTop:
+class EvalTop:
     base_score = 5
     average_days = -7
 
-    eval_config_opt_columns = [x.name for x in
-                               models.FactorBacktestEval.config_opt_columns]
-    eval_config_define_columns = [x.name for x in
-                                  models.FactorBacktestEval.train_config_define_columns] + \
-                                 [x.name for x in
-                                  models.FactorBacktestEval.base_columns] + \
-                                 [x.name for x in
-                                  models.FactorBacktestEval.eval_config_define_columns]  # select evaluation factors within each group
-    top_config_define_columns = [x.name for x in
-                                 models.FactorFormulaEvalConfig.eval_top_config_columns]
+    eval_config_opt_columns = \
+        [x.name for x in models.FactorBacktestEval.config_opt_columns]
+
+    # select evaluation factors within each group
+    eval_config_define_columns = \
+        [x.name for x in models.FactorBacktestEval.train_config_define_columns] + \
+        [x.name for x in models.FactorBacktestEval.base_columns] + \
+        [x.name for x in models.FactorBacktestEval.eval_config_define_columns]
+    top_config_define_columns = \
+        [x.name for x in models.FactorFormulaEvalConfig.eval_top_config_columns]
 
     save_cache = False
 
     n_top_ticker_list = [-10, -50, 50, 10, 3]
     industry_name_map = get_industry_name_map()
 
-    def __init__(self, name_sql: str, processes: int):
+    def __init__(self, name_sql: str, processes: int,
+                 eval_df: pd.DataFrame = None):
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
         self.processes = processes
 
-    def write_top_select_eval(self, eval_df: pd.DataFrame = None):
+        logger.debug("load clean eval")
+        self._eval_df = eval_df or cleanEval(name_sql=self.name_sql).get()
+
+        logger.debug("load eval config")
+        self._all_groups = load_eval_config(self.weeks_to_expire)
+        self._score_df = None
+
+    def write_top_select_eval(self):
         """
         Used within multiprocess to
         - calculate selected factors
         - calculate backtest AI scores with factors selected
         """
 
+        logger.debug("get scaleFundamentalScore")
+        # fundamental ratio scores
+        self._score_df = scaleFundamentalScore(
+            start_date=self._eval_df["testing_period"].min()).get()
+
         with closing(mp.Pool(processes=self.processes,
                              initializer=recreate_engine)) as pool:
+            results = pool.starmap(self._select_and_score, self._all_groups)
 
-            if eval_df is None:
-                eval_df = cleanEval(name_sql=self.name_sql).get()
-
-            logger.debug("load_eval_config")
-            all_groups = load_eval_config(self.weeks_to_expire)
-
-            logger.debug("get scaleFundamentalScore")
-            # fundamental ratio scores
-            score_df = scaleFundamentalScore(
-                start_date=eval_df["testing_period"].min()).get()
-
-            results = pool.starmap(
-                partial(self._select_and_score, eval_df=eval_df,
-                        score_df=score_df), all_groups)
-
-        pillar_score_df = pd.concat(
-            [e for e in results if e is not None],
-            axis=0)  # df for all AI scores
+        # df for all AI scores
+        pillar_score_df = pd.concat([e for e in results if e is not None],
+                                    axis=0)
 
         final_score_df = self.__calculate_final_score(
             pillar_score_df).reset_index()
@@ -135,7 +134,7 @@ class evalTop:
 
         return top_eval_df, final_score_df
 
-    def write_latest_select(self, eval_df: pd.DataFrame = None):
+    def write_latest_select(self):
         """
         combine results in table [FactorBacktestEval] for different configurations
 
@@ -154,15 +153,10 @@ class evalTop:
 
         with closing(mp.Pool(processes=self.processes,
                              initializer=recreate_engine)) as pool:
-            if type(eval_df) == type(None):
-                eval_df = cleanEval(name_sql=self.name_sql).get()
+            results = pool.starmap(self._select, self._all_groups)
 
-            all_groups = load_eval_config(self.weeks_to_expire)
-            results = pool.starmap(partial(self._select, eval_df=eval_df),
-                                   all_groups)
-
-        select_df = pd.concat([e for e in results if type(e) != type(None)],
-                              axis=0)  # df for all AI scores
+        # df for all AI scores
+        select_df = pd.concat([e for e in results if e is not None], axis=0)
         select_df = select_df.loc[
             select_df["trading_day"] == max(select_df["trading_day"])]
 
@@ -182,43 +176,42 @@ class evalTop:
 
         return select_df
 
-    def _select_and_score(self, *args, eval_df: pd.DataFrame,
-                          score_df: pd.DataFrame):
+    def _select_and_score(self, kwargs):
         """
         Used within multiprocess to
         - calculate selected factors
         - calculate backtest AI scores with factors selected
         """
 
-        kwargs, = args
         logger.debug(f"select_and_score: {kwargs}")
 
-        sample_df = self.__filter_sample(df=eval_df, **kwargs)
+        sample_df = self.__filter_sample(df=self._eval_df, **kwargs)
+
+        # i.e. configuration use data not trained by current iteration
         if len(sample_df) == 0:
-            return  # i.e. configuration use data not trained by current iteration
+            return
 
         select_df = self._get_minmax_factors_df(sample_df,
                                                 **kwargs).reset_index()
         select_df = self.__convert_trading_day(select_df)
 
         # select factors + fundamental score -> final scores
-        pillar_df = self.__calculate_pillar_score(select_df, score_df=score_df,
-                                                  **kwargs)
+        pillar_df = self.__calculate_pillar_score(select_df, **kwargs)
         pillar_df = pillar_df.assign(**kwargs)
 
         return pillar_df
 
-    def _select(self, *args, eval_df: pd.DataFrame):
+    def _select(self, kwargs):
         """
         Used within multiprocess to
         - calculate selected factors only
         """
 
-        kwargs, = args
+        sample_df = self.__filter_sample(df=self._eval_df, **kwargs)
 
-        sample_df = self.__filter_sample(df=eval_df, **kwargs)
+        # i.e. configuration use data not trained by current iteration
         if len(sample_df) == 0:
-            return  # i.e. configuration use data not trained by current iteration
+            return
 
         select_df = self._get_minmax_factors_df(sample_df,
                                                 **kwargs).reset_index()
@@ -227,8 +220,8 @@ class evalTop:
 
         return select_df
 
-    def __filter_sample(self, df: pd.DataFrame, pillar: str, currency_code: str,
-                        **kwargs) -> pd.DataFrame:
+    def __filter_sample(self, df: pd.DataFrame, pillar: str,
+                        currency_code: str, **kwargs) -> pd.DataFrame:
         """
         filter eval table for sample for certain currency / pillar;
 
@@ -238,6 +231,7 @@ class evalTop:
             filter all evaluation results for samples with defined [currency_code] & [pillar]
         """
 
+        # all cluster pillar will calculate together
         if pillar != "cluster":
             sample_df = df.loc[(df["currency_code"] == currency_code) & (
                         df["pillar"] == pillar)].copy(1)
@@ -245,7 +239,7 @@ class evalTop:
             sample_df = df.loc[(df["currency_code"] == currency_code) & (
                 df["pillar"].str.startswith("pillar"))].copy(1)
             sample_df[
-                "pillar"] = pillar  # all cluster pillar will calculate together
+                "pillar"] = pillar
 
         return sample_df
 
@@ -253,9 +247,9 @@ class evalTop:
         """
         convert trading_day (date to select factor = date of fundamental scores) = testing_period + n weeks
         """
-        sample_df["trading_day"] = pd.to_datetime(sample_df["testing_period"]) + \
-                                   pd.tseries.offsets.DateOffset(
-                                       weeks=self.weeks_to_expire)
+        sample_df["trading_day"] = \
+            pd.to_datetime(sample_df["testing_period"]) + \
+            pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
         sample_df = sample_df.drop(columns=["testing_period"])
 
         return sample_df
@@ -280,18 +274,18 @@ class evalTop:
             df_agg, eval_top_metric=eval_top_metric, **kwargs)
 
         if eval_top_metric == "max_ret":
-            df_select_agg = self.__select_final_factors(df_select, "max_factor")
+            df_select_agg = self.__select_final_factor(df_select, "max_factor")
             df_select_agg = df_select_agg.assign(min_factor=np.nan,
                                                  min_factor_trh=np.nan,
                                                  min_factor_extra=np.nan)
         else:
-            df_select_max = self.__select_final_factors(df_select, "max_factor")
-            df_select_min = self.__select_final_factors(df_select, "min_factor")
+            df_select_max = self.__select_final_factor(df_select, "max_factor")
+            df_select_min = self.__select_final_factor(df_select, "min_factor")
             df_select_agg = pd.concat([df_select_max, df_select_min], axis=1)
 
         return df_select_agg
 
-    def __select_final_factors(self, df: pd.DataFrame,
+    def __select_final_factor(self, df: pd.DataFrame,
                                select_col: str) -> pd.DataFrame:
         """
         Returns
@@ -444,16 +438,22 @@ class evalTop:
         if len(results["*"]) >= n_min_select:
             return pd.Series(results)
 
-    def __calculate_pillar_score(self, df: pd.DataFrame, score_df: pd.DataFrame,
-                                 pillar: str, currency_code: str,
+    def __calculate_pillar_score(self, 
+                                 df: pd.DataFrame, 
+                                 pillar: str, 
+                                 currency_code: str,
                                  eval_top_metric: str, **kwargs):
 
         final_score_df_list = []
 
         for idx, r in df.iterrows():
-            g = self.__filter_sample_score_df(score_df=score_df,
+            # we use * to label heuristically reversed factors
+            heuristic_neg_cols = [f for x in r for f in x if ('_factor' in x)
+                                  and (f[-1] == "*")]
+            g = self.__filter_sample_score_df(score_df=self._score_df,
                                               trading_day=r["trading_day"],
-                                              currency_code=currency_code)
+                                              currency_code=currency_code,
+                                              reverse_cols=heuristic_neg_cols)
 
             if len(g) == 0:
                 continue
@@ -463,17 +463,15 @@ class evalTop:
                     g[f'{pillar}_score{suffix}'] = g[
                         r[f'max_factor{suffix}']].mean(axis=1)
                 elif eval_top_metric == "avg_ret":
-                    g[f'{pillar}_score{suffix}'] = self.base_score * 0.5 \
-                                                   + g[r[
-                        f'max_factor{suffix}']].mean(axis=1) \
-                                                   - g[r[
-                        f'min_factor{suffix}']].mean(axis=1) * 0.5
+                    g[f'{pillar}_score{suffix}'] = \
+                        self.base_score * 0.5 + \
+                        g[r[f'max_factor{suffix}']].mean(axis=1) - \
+                        g[r[f'min_factor{suffix}']].mean(axis=1) * 0.5
                 elif eval_top_metric == "net_ret":
-                    g[f'{pillar}_score{suffix}'] = self.base_score \
-                                                   + g[r[
-                        f'max_factor{suffix}']].mean(axis=1) \
-                                                   - g[r[
-                        f'min_factor{suffix}']].mean(axis=1)
+                    g[f'{pillar}_score{suffix}'] = \
+                        self.base_score + \
+                        g[r[f'max_factor{suffix}']].mean(axis=1) - \
+                        g[r[f'min_factor{suffix}']].mean(axis=1)
                 else:
                     raise Exception(
                         f"Wrong evaluation metric: {eval_top_metric}!")
@@ -494,27 +492,33 @@ class evalTop:
             return final_score_df
 
     def __filter_sample_score_df(self, score_df: pd.DataFrame,
-                                 trading_day: dt.datetime, currency_code: str,
+                                 trading_day: dt.datetime,
+                                 currency_code: str,
+                                 reverse_cols: List[str],
                                  missing_penalty_pct: float = 0.9):
         """
-        filter fundamental score table for sample for certain trading_day / currency;
+        filter fundamental score table for sample for certain
+        trading_day / currency;
 
         Parameters
         ----------
         missing_penalty_pct :
-            fillna with average for all tickers * missing_penalty_pct (default = 0.9)
+            fillna with average for all tickers * missing_penalty_pct
+            (default = 0.9)
 
         Returns
         -------
         sample_df: pd.DataFrame
-            filter all evaluation results for samples with defined [currency_code] & [trading_day]
+            filter all evaluation results for samples with defined
+            [currency_code] & [trading_day]
 
         """
-        g = score_df.loc[(score_df['trading_day'] == trading_day) & (
-                    score_df['currency_code'] == currency_code)].copy(1)
-        g['return'] = g[
-            f'stock_return_y_w{self.weeks_to_expire}_d{self.average_days}'].copy(
-            1)
+        g = score_df.loc[(score_df['trading_day'] == trading_day) &
+                         (score_df['currency_code'] == currency_code)].copy(1)
+        g[reverse_cols] = 10 - g[reverse_cols]
+
+        col = f'stock_return_y_w{self.weeks_to_expire}_d{self.average_days}'
+        g['return'] = g[col].copy(1)
         g = g.dropna(subset=["return"])
         g = g.fillna(g.mean() * missing_penalty_pct)
 

@@ -2,7 +2,7 @@ import os
 import datetime as dt
 import argparse
 from src.evaluate_factor_premium import EvalFactor
-from src.evaluate_top_selection import evalTop
+from src.evaluate_top_selection import EvalTop
 from src.load_eval_configs import load_latest_name_sql
 from utils import (
     sys_logger,
@@ -52,14 +52,15 @@ if __name__ == "__main__":
     else:
         eval_df = None
 
-    # 2. update [FactorBacktestTop]
-    if args.eval_top:
-        score_df = evalTop(name_sql=eval_name_sql,
-                           processes=args.processes).write_top_select_eval(
-            eval_df=eval_df)
+    if args.eval_top or args.eval_select:
+        cls = EvalTop(name_sql=eval_name_sql,
+                      processes=args.processes,
+                      eval_df=eval_df)
 
-    # 3. update [FactorResultSelect/History]
-    if args.eval_select:
-        select_df = evalTop(name_sql=eval_name_sql,
-                            processes=args.processes).write_latest_select(
-            eval_df=eval_df)
+        # 2. update [FactorBacktestTop]
+        if args.eval_top:
+            score_df = cls.write_top_select_eval()
+
+        # 3. update [FactorResultSelect/History]
+        if args.eval_select:
+            select_df = cls.write_latest_select()
