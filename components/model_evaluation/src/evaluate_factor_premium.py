@@ -396,7 +396,8 @@ class EvalFactor:
 
         # df for each config evaluation results
         eval_df = pd.concat([e for e in eval_results if e is not None], axis=0)
-        eval_df = eval_df.assign(name_sql=self.name_sql, updated=timestampNow())
+        eval_df = eval_df.assign(name_sql=self.name_sql,
+                                 updated=timestampNow())
         eval_df = self.__map_actual_factor_premium(eval_df=eval_df)
 
         if self.save_cache:

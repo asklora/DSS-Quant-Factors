@@ -447,9 +447,15 @@ class EvalTop:
         final_score_df_list = []
 
         for idx, r in df.iterrows():
+
             # we use * to label heuristically reversed factors
-            heuristic_neg_cols = [f for x in r for f in x if ('_factor' in x)
-                                  and (f[-1] == "*")]
+            heuristic_neg_cols = [x.strip('*')
+                                  for i in ["max_factor", "min_factor"]
+                                  if isinstance(r[i], list)
+                                  for x in r[i] if x[-1] == "*"]
+            heuristic_neg_cols = self._score_df.filter(heuristic_neg_cols)\
+                .columns.to_list()
+
             g = self.__filter_sample_score_df(score_df=self._score_df,
                                               trading_day=r["trading_day"],
                                               currency_code=currency_code,
@@ -457,6 +463,12 @@ class EvalTop:
 
             if len(g) == 0:
                 continue
+
+            # make sure all factor use raw name for ratio data
+            for i in ["max_factor", "min_factor",
+                      "max_factor_extra", "min_factor_extra"]:
+                if isinstance(r[i], list):
+                    r[i] = [x.strip('*') for x in r[i]]
 
             for suffix in ["", "_extra"]:
                 if eval_top_metric == "max_ret":
@@ -515,12 +527,13 @@ class EvalTop:
         """
         g = score_df.loc[(score_df['trading_day'] == trading_day) &
                          (score_df['currency_code'] == currency_code)].copy(1)
-        g[reverse_cols] = 10 - g[reverse_cols]
+        if len(reverse_cols) > 0:
+            g[reverse_cols] = (10 - g[reverse_cols]).values
 
         col = f'stock_return_y_w{self.weeks_to_expire}_d{self.average_days}'
         g['return'] = g[col].copy(1)
         g = g.dropna(subset=["return"])
-        g = g.fillna(g.mean() * missing_penalty_pct)
+        g = g.fillna(g.mean(numeric_only=True) * missing_penalty_pct)
 
         return g
 
