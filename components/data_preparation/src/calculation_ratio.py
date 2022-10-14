@@ -156,12 +156,16 @@ def get_tri(ticker=None, start_date=None):
     tri_start_date = (start_date - relativedelta(years=2)).strftime("%Y-%m-%d")
 
     query = text(
-        f"SELECT T.ticker, T.trading_day, currency_code, total_return_index as tri, open, high, low, close, volume, M.value as market_cap "
+        f"SELECT T.ticker, T.trading_day, currency_code, "
+        f"total_return_index as tri, open, high, low, close, volume, "
+        f"M.value as market_cap "
         f"FROM {stock_data_table_tri} T "
-        f"LEFT JOIN {stock_data_table_ohlcv} C ON (T.ticker = C.ticker) AND (T.trading_day = C.trading_day) "
+        f"LEFT JOIN {stock_data_table_ohlcv} C ON (T.ticker = C.ticker)"
+        f" AND (T.trading_day = C.trading_day) "
         f"LEFT JOIN {universe_table} U ON T.ticker = U.ticker "
         f"LEFT JOIN {latest_mktcap_data_table} M ON T.ticker = M.ticker "
-        f"WHERE T.ticker in {tuple(ticker)} AND T.trading_day>='{tri_start_date}' "
+        f"WHERE T.ticker in {tuple(ticker)} "
+        f" AND T.trading_day>='{tri_start_date}' "
         f"ORDER BY T.ticker, T.trading_day".replace(",)", ")"))
     tri = read_query(query)
 
@@ -180,8 +184,7 @@ def get_rogers_satchell(tri, list_of_start_end, days_in_year=256):
     """
 
     open_data, high_data, low_data, close_data = tri['open'].values, tri[
-        'high'].values, tri['low'].values, tri[
-                                                     'close'].values
+        'high'].values, tri['low'].values, tri['close'].values
 
     # Calculate daily volatility
     hc_ratio = np.divide(high_data, close_data)
@@ -385,9 +388,8 @@ class cleanStockReturn:
             [i for x in self.stock_return_map.values() for i in x if i != 1] + [
                 7])
         for i in avg_day_options:
-            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(abs(i),
-                                                                        min_periods=1).mean().reset_index(
-                drop=1)
+            tri[f'tri_avg_{i}d'] = tri.groupby("ticker")['tri'].rolling(
+                abs(i), min_periods=1).mean().reset_index(drop=1)
             if i < 0:
                 tri[f'tri_avg_{i}d'] = tri.groupby("ticker")[
                     f'tri_avg_{i}d'].shift(i + 1)
@@ -415,7 +417,7 @@ class cleanStockReturn:
         tri.loc[anchor_idx, 'anchor_tri'] = tri['tri']
         tri['anchor_tri'] = tri.groupby("ticker")['anchor_tri'].ffill().bfill()
         tri['market_cap'] = tri['market_cap'] / tri['anchor_tri'] * tri['tri']
-        tri['close'] = tri['close'] / tri['anchor_tri'] * tri['tri']
+        # tri['close'] = tri['close'] / tri['anchor_tri'] * tri['tri']
         self.drop_col.add('anchor_tri')
 
         return tri
