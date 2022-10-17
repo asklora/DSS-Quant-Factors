@@ -2,8 +2,8 @@ from components.model_evaluation.src.evaluate_factor_premium import EvalFactor
 from components.model_evaluation.src.evaluate_top_selection import EvalTop
 
 
-processes = 10
-eval_name_sql = 'w8_20221002025855'
+processes = 1
+eval_name_sql = 'w8_20221014145114'
 
 
 def test_eval():

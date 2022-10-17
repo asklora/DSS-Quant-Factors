@@ -91,7 +91,10 @@ class EvalTop:
         self.processes = processes
 
         logger.debug("load clean eval")
-        self._eval_df = eval_df or cleanEval(name_sql=self.name_sql).get()
+        if eval_df is None:
+            self._eval_df = cleanEval(name_sql=self.name_sql).get()
+        else:
+            self._eval_df = eval_df
 
         logger.debug("load eval config")
         self._all_groups = load_eval_config(self.weeks_to_expire)

@@ -6,9 +6,9 @@ from functools import partial
 import multiprocessing as mp
 import pandas as pd
 from contextlib import closing
-from .src.load_data import combineData, loadData
-from .src.load_train_configs import loadTrainConfig
-from .src.random_forest import rf_HPOT
+from src.load_data import combineData, loadData
+from src.load_train_configs import loadTrainConfig
+from src.random_forest import rf_HPOT
 from utils import (
     to_slack,
     read_query,
@@ -38,7 +38,7 @@ def write_args_finished(kwargs):
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-# @err2slack("factor", return_obj=False)
+@err2slack("factor", return_obj=False)
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -83,7 +83,6 @@ if __name__ == "__main__":
                         help='uid for to restart iteration')
     parser.add_argument('--currency_code', default=None, type=str,
                         help='calculate for certain currency only')
-
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
     args = parser.parse_args()

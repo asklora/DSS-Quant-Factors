@@ -418,9 +418,12 @@ class loadData:
         sample_df, neg_factor = self._convert_sample_neg_factor(
             sample_df=sample_df)
 
-        df_train_cut, df_test_cut, df_train_org, df_test_org, cut_bins = self._get_y(
-            sample_df=sample_df)
+        df_train_cut, df_test_cut, df_train_org, df_test_org, cut_bins = \
+            self._get_y(sample_df=sample_df)
         df_train_pca, df_test_pca = self._get_x(sample_df=sample_df)
+
+        if df_train_org.shape[0] == 0:
+            raise Exception("Missing training set y")
 
         gkf = self._split_valid(df_train_pca)
         sample_sets = self._get_sample_sets(
@@ -886,10 +889,10 @@ class loadData:
         sample_set = []
 
         for train_index, valid_index in gkf:
-            new_train_index = self.__remove_nan_y_from_train_index(train_index,
-                                                                   train_y)
-            new_valid_index = self.__remove_nan_y_from_train_index(valid_index,
-                                                                   train_y)
+            new_train_index = self.__remove_nan_y_from_train_index(
+                train_index, train_y)
+            new_valid_index = self.__remove_nan_y_from_train_index(
+                valid_index, train_y)
 
             df_dict = {
                 "train_x": train_x.loc[new_train_index],
@@ -914,8 +917,8 @@ class loadData:
 
         return sample_set
 
-    def __remove_nan_y_from_train_index(self, index,
-                                        train_y: pd.DataFrame) -> pd.MultiIndex:
+    def __remove_nan_y_from_train_index(
+            self, index, train_y: pd.DataFrame) -> pd.MultiIndex:
         """
         remove non-complete y sample for train_index / valid_index -> remove nan Y
         """
