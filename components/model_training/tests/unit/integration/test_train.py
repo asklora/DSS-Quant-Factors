@@ -23,26 +23,26 @@ from utils import (
 )
 
 processes = 1
-weeks_to_expire = 8
+weeks_to_expire = 1
 sample_interval = 4
-backtest_period = 5
+backtest_period = 1
 restart = False
 currency_code = "USD"
 
 
 def test_rf_train():
-    sql_result = {"name_sql": "test"}
+    sql_result = {"name_sql": "test1"}
 
     raw_df = combineData(weeks_to_expire=weeks_to_expire,
                          sample_interval=sample_interval,
                          backtest_period=backtest_period,
                          currency_code=None,  # raw_df should get all
-                         restart=restart).get_raw_data()
+                         restart='w4_20221014150807').get_raw_data()
 
     all_groups = loadTrainConfig(weeks_to_expire=weeks_to_expire,
                                  sample_interval=sample_interval,
                                  backtest_period=backtest_period,
-                                 restart=restart,
+                                 restart='w4_20221014150807',
                                  currency_code=currency_code) \
         .get_all_groups()
 

@@ -42,11 +42,19 @@ class calcTestingPeriod:
                  sample_interval: int,
                  backtest_period: int,
                  currency_code: str = None,
-                 restart: bool = None):
+                 restart: bool = None,
+                 end_date: str = None):
+        """
+
+        Args:
+            end_date:
+                Assume today's date, used for backtest only.
+        """
         self.weeks_to_expire = weeks_to_expire
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period
         self.restart = restart
+        self._end_date = end_date
         if currency_code:
             self.currency_code_list = [currency_code]
 
@@ -68,6 +76,8 @@ class calcTestingPeriod:
 
         if self.restart:
             first_run_date = self._restart_iteration_first_running_date
+        elif self._end_date is not None:
+            first_run_date = pd.to_datetime(self._end_date)
         else:
             first_run_date = dateNow()
 
@@ -93,7 +103,7 @@ class calcTestingPeriod:
             models.FactorResultScore.name_sql == self.restart)
         restart_iter_running_date = read_query_list(query)[0]
         restart_iter_running_date = pd.to_datetime(
-            restart_iter_running_date[:8], format="YYYYMMDD").date()
+            restart_iter_running_date[:8], format="%Y%m%d").date()
         return restart_iter_running_date
 
 
@@ -107,9 +117,14 @@ class cleanMacros(calcTestingPeriod):
                  sample_interval: int,
                  backtest_period: int,
                  currency_code: str = None,
-                 restart: bool = None):
-        super().__init__(weeks_to_expire, sample_interval, backtest_period,
-                         currency_code, restart)
+                 restart: bool = None,
+                 end_date: str = None):
+        super().__init__(weeks_to_expire=weeks_to_expire,
+                         sample_interval=sample_interval,
+                         backtest_period=backtest_period,
+                         currency_code=currency_code,
+                         restart=restart,
+                         end_date=end_date)
         self.period_list = self._testing_period_list
         self.weeks_to_expire = weeks_to_expire
 
@@ -242,10 +257,14 @@ class combineData(cleanMacros):
                  sample_interval: int,
                  backtest_period: int,
                  currency_code: str = None,
-                 restart: bool = None):
-
-        super().__init__(weeks_to_expire, sample_interval, backtest_period,
-                         currency_code, restart)
+                 restart: str = None,
+                 end_date: str = None):
+        super().__init__(weeks_to_expire=weeks_to_expire,
+                         sample_interval=sample_interval,
+                         backtest_period=backtest_period,
+                         currency_code=currency_code,
+                         restart=restart,
+                         end_date=end_date)
         self.weeks_to_expire = weeks_to_expire
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period

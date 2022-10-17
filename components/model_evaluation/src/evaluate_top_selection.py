@@ -84,7 +84,9 @@ class EvalTop:
     n_top_ticker_list = [-10, -50, 50, 10, 3]
     industry_name_map = get_industry_name_map()
 
-    def __init__(self, name_sql: str, processes: int,
+    def __init__(self,
+                 name_sql: str,
+                 processes: int,
                  eval_df: pd.DataFrame = None):
         self.name_sql = name_sql
         self.weeks_to_expire = int(name_sql.split('_')[0][1:])
@@ -160,8 +162,8 @@ class EvalTop:
 
         # df for all AI scores
         select_df = pd.concat([e for e in results if e is not None], axis=0)
-        select_df = select_df.loc[
-            select_df["trading_day"] == max(select_df["trading_day"])]
+        select_df = select_df.groupby(["currency_code"], as_index=False).apply(
+            lambda x: x.loc[x["trading_day"] == x["trading_day"].max()])
 
         select_df["updated"] = dt.datetime.now()
         select_df = select_df[
@@ -241,8 +243,7 @@ class EvalTop:
         else:
             sample_df = df.loc[(df["currency_code"] == currency_code) & (
                 df["pillar"].str.startswith("pillar"))].copy(1)
-            sample_df[
-                "pillar"] = pillar
+            sample_df["pillar"] = pillar
 
         return sample_df
 
@@ -591,8 +592,8 @@ class EvalTop:
             eval_n_df = eval_n_df.drop(columns=["group_idx"])
             eval_df_list.append(eval_n_df)
 
-        eval_df = pd.concat(eval_df_list,
-                            axis=0)  # concat different top (n) selection ticker results
+        # concat different top (n) selection ticker results
+        eval_df = pd.concat(eval_df_list, axis=0)
 
         return self.__clean_eval_df(eval_df)
 

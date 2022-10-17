@@ -44,9 +44,20 @@ class loadTrainConfig(calcTestingPeriod):
                  weeks_to_expire: int,
                  sample_interval: int = 4,
                  backtest_period: int = 1,
-                 restart: bool = None,
-                 currency_code: str = None):
-        super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
+                 restart: str = None,
+                 currency_code: str = None,
+                 end_date: str = None):
+        """
+        Args:
+            end_date:
+               Assume today's date, used for backtest only.
+        """
+        super().__init__(weeks_to_expire=weeks_to_expire,
+                         sample_interval=sample_interval,
+                         backtest_period=backtest_period,
+                         currency_code=currency_code,
+                         restart=restart,
+                         end_date=end_date)
 
         self.weeks_to_expire = weeks_to_expire
         self.restart = restart

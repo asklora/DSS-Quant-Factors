@@ -3,7 +3,7 @@ from components.model_evaluation.src.evaluate_top_selection import EvalTop
 
 
 processes = 1
-eval_name_sql = 'w8_20221014145114'
+eval_name_sql = 'w4_20221014150807'
 
 
 def test_eval():

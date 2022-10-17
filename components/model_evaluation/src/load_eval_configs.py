@@ -42,7 +42,9 @@ def load_eval_config(weeks_to_expire: int):
     eval_configs = eval_configs.drop(columns=["id"]).to_dict("records")
 
     if len(eval_configs) <= 0:
-        raise ValueError(f"No eval config selected from [{models.FactorFormulaEvalConfig.__tablename__}] by {__name__}")
+        raise ValueError(f"No eval config selected from "
+                         f"[{models.FactorFormulaEvalConfig.__tablename__}] "
+                         f"by {__name__}")
 
     logger.info(f"=== evaluation iteration: n={len(eval_configs)} ===")
 
