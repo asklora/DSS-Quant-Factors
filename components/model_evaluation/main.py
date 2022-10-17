@@ -19,16 +19,15 @@ if __name__ == "__main__":
                         help='Batch Name in score data for analysis')
     parser.add_argument('--weeks_to_expire', default=4, type=int,
                         help='Prediction period length in weeks')
-
     parser.add_argument('--eval_factor', action='store_true',
                         help='Factor premiums evaluation')
     parser.add_argument('--eval_top', action='store_true',
                         help='Top selection from selected factor evaluation')
     parser.add_argument('--eval_select', action='store_true',
-                        help='Use iteration selection to overwrite factor selection table')
+                        help='Use iteration selection to overwrite factor '
+                             'selection table')
     parser.add_argument('--processes', default=1, type=int,
                         help='Number of multiprocessing threads')
-
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
     args = parser.parse_args()

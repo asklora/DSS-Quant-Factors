@@ -1,7 +1,7 @@
 import datetime as dt
 import numpy as np
 import pandas as pd
-from sqlalchemy import select, text
+from sqlalchemy import select, text, delete, and_
 import multiprocessing as mp
 from contextlib import suppress
 from functools import partial
@@ -19,7 +19,8 @@ from utils import (
     to_slack,
     err2slack,
     sys_logger,
-    timestampNow
+    timestampNow,
+    execute_query
 )
 
 logger = sys_logger(__name__, "ERROR")
@@ -803,6 +804,7 @@ class combineData:
         df = self._ffill_fundamental(df)
         df = df.reindex(tri.index)
 
+        assert df.shape[0] > 0
         return df.reset_index()
 
     def _merge_data(self, tri, ws, ibes):
@@ -929,9 +931,12 @@ class CalcRatio:
 
         keep_original_mask = self.formula['field_denom'].isnull() & \
                              self.formula['field_num'].notnull()
-        logger.debug(f'Calculate keep ratio')
-        for new_name, old_name in self.formula.loc[
-            keep_original_mask, ['name', 'field_num']].to_numpy():
+        keep_formula = self.formula.loc[keep_original_mask,
+                                        ['name', 'field_num']]
+        assert len(keep_formula) > 0
+
+        logger.debug(f'Calculate keep ratio: n={len(keep_formula)}')
+        for new_name, old_name in keep_formula.to_numpy():
             try:
                 df[new_name] = df[old_name]
             except Exception as e:
@@ -943,12 +948,15 @@ class CalcRatio:
         """
         Data pre-processing: delta/growth time series (Calculate 1m change first) 
         """
+        ts_formula = self.formula.loc[
+            self.formula['field_num'] == self.formula['field_denom'],
+            ['name', 'field_denom']]
+        assert len(ts_formula) > 0
 
-        logger.debug(f'Calculate time-series ratio')
-        for r in self.formula.loc[
-            self.formula['field_num'] == self.formula['field_denom'], ['name',
-                                                                       'field_denom']].to_dict(
-                orient='records'):  # minus calculation for ratios
+        logger.debug(f'Calculate time-series ratio: n={len(ts_formula)}')
+
+        # minus calculation for ratios
+        for r in ts_formula.to_dict(orient='records'):
             try:
                 if r['name'][-2:] == 'yr':
                     df[r['name']] = df[r['field_denom']] / df[
@@ -969,11 +977,13 @@ class CalcRatio:
         """
         Data processing: divide all ratios AFTER all pre-processing
         """
+        div_formula = self.formula.dropna(subset=["field_num", "field_denom"],
+                                          how='any', axis=0).loc[
+            (self.formula['field_num'] != self.formula['field_denom'])]
+        assert len(div_formula) > 0
 
-        logger.debug(f'Calculate dividing ratios ')
-        for r in self.formula.dropna(how='any', axis=0).loc[
-            (self.formula['field_num'] != self.formula['field_denom'])].to_dict(
-                orient='records'):  # minus calculation for ratios
+        logger.debug(f'Calculate dividing ratios: n={len(div_formula)}')
+        for r in div_formula.to_dict(orient='records'):  # minus calculation for ratios
             try:
                 df[r['name']] = df[r['field_num']] / df[
                     r['field_denom']].replace(0, np.nan)
@@ -991,6 +1001,8 @@ class CalcRatio:
             self.formula['name'].to_list())
         df = df.dropna(subset=list(dropna_col), how='all')
         df = df.replace([np.inf, -np.inf], np.nan)
+        assert df.shape[0] > 0
+
         return df
 
     def _clean_missing_y_records(self, df):
@@ -1008,6 +1020,7 @@ class CalcRatio:
         df = df.filter(
             ['ticker', 'trading_day'] + y_col + self.formula['name'].to_list())
 
+        assert df.shape[0] > 0
         return df
 
     def _reformat_df(self, df):
@@ -1031,7 +1044,9 @@ def calc_factor_variables_multi(tickers: List[str] = None,
                                 end_date: dt.datetime = None,
                                 tri_return_only: bool = False,
                                 processes: int = 1,
-                                factor_list: List[str] = None):
+                                factor_list: List[str] = None,
+                                how: str = None,
+                                batchsize: int = None):
     """
     --recalc_ratio
     Calculate weekly ratios for all factors + all tickers with multiprocess
@@ -1052,6 +1067,12 @@ def calc_factor_variables_multi(tickers: List[str] = None,
         this will also force restart=True.
     processes:
         number of processes in multiprocessing.
+    factor_list:
+        list of specific factor to recalculate
+    how:
+        how to update DB Table. Should use upsert except when history = True\
+    batchsize:
+        n tickers in each batch calculation
     """
 
     # get list of active tickers to calculate ratios
@@ -1063,29 +1084,50 @@ def calc_factor_variables_multi(tickers: List[str] = None,
     ticker_query = f"SELECT ticker FROM universe " \
                    f"WHERE {' AND '.join(conditions)}".replace(",)", ")")
     logger.debug(ticker_query)
-    tickers = read_query(ticker_query)["ticker"].to_list()
+    tickers = sorted(read_query(ticker_query)["ticker"].to_list())
 
     # define start_date / end_date for AI score
     if end_date is None:
         end_date = dt.datetime.now()
     if start_date is None:
         start_date = end_date - relativedelta(months=3)
+        how = "update"
+    elif how is None:
+        how = "append"
 
-    # multiprocessing
-    # tickers = [{e} for e in tickers]
-    # logger.debug(tickers)
-    # with closing(mp.Pool(processes=processes,
-    #                      initializer=recreate_engine)) as pool:
-    calc_ratio_cls = CalcRatio(start_date,
-                               end_date,
-                               tri_return_only,
-                               factor_list)
-    df = calc_ratio_cls.get(tickers)
-    # df = pool.starmap(calc_ratio_cls.get, tickers)
-    # df = pd.concat([x for x in df if x is not None], axis=0)
+    tickers_chunk = []
+    if batchsize is not None:
+        for i in range(0, len(tickers), batchsize):
+            tickers_chunk.append(tickers[i: min(i+batchsize, len(tickers))+1])
+    else:
+        tickers_chunk = [tickers]
 
-    # save calculated ratios to DB (remove truncate -> everything update)
-    df["updated"] = timestampNow()
-    upsert_data_to_database(df, factor_ratio_table, how="ignore")
+    for current_tickers in tickers_chunk:
+        calc_ratio_cls = CalcRatio(start_date,
+                                   end_date,
+                                   tri_return_only,
+                                   factor_list)
+        df = calc_ratio_cls.get(current_tickers)
+        assert df.shape[0] > 0
+
+        # save calculated ratios to DB (remove truncate -> everything update)
+        df["updated"] = timestampNow()
+        tbl = models.FactorPreprocessRatio
+        if how == "append":
+            conditions = [
+                tbl.trading_day >= df["trading_day"].min(),
+                tbl.trading_day <= df["trading_day"].max(),
+                tbl.ticker.in_(df["ticker"].unique().tolist())
+            ]
+            if factor_list is not None:
+                conditions.append(tbl.field.in_(df["field"].unique().tolist()))
+
+            query = delete(models.FactorPreprocessRatio)\
+                .where(and_(*conditions))
+            logger.debug(f"remove before append: ({df['trading_day'].min()}, "
+                         f"{df['trading_day'].max()})")
+            execute_query(query)
+
+        upsert_data_to_database(df, factor_ratio_table, how=how)
 
     return df

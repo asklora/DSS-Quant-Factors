@@ -159,12 +159,12 @@ class CalcPremium:
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
         """
-        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only 
+        Data processing: filter complete ratio pd.DataFrame for certain Y &
+        Factor only
         """
 
-        df = ratio_df.loc[
-            ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col,
-                                                 factor]].copy()
+        df = ratio_df.loc[ratio_df['currency_code'] == group,
+                          ['ticker', 'trading_day', y_col, factor]].copy()
         df = self.__clean_missing_y_row(df, y_col, group)
         df = self.__resample_df_by_interval(df)
         df = self.__clean_missing_factor_row(df, factor, group)
@@ -187,10 +187,11 @@ class CalcPremium:
 
     def _clean_prem_df(self, group, factor, y_col, prem=None):
         """
-        premium = small group average returns - big groups  ?????????? 
-        Calculate: prem = top quantile - bottom quantile? 
-        """
+        premium = the difference of average returns for smaller factor value
+        groups and larger factor value groups
 
+        i.e. Calculate: prem = bottom quantile - top quantile
+        """
         prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
 
         static_info = {"group": group,

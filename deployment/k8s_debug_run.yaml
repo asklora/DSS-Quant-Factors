@@ -5,7 +5,7 @@ metadata:
   name: debug-run
   namespace: quant-factors
 spec:
-  backoffLimit: 1
+  backoffLimit: 0
   template:
     spec:
       containers:
@@ -16,15 +16,14 @@ spec:
               "/bin/sh",
               "-c",
               "                  
-              python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select --processes 12 --debug            &&
-              python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select --processes 12 --debug            &&
-              python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select --processes 12 --debug         
+              python3 components/data_preparation/main.py --recalc_ratio --history --debug --batchsize 300     &&
+              python3 components/data_preparation/main.py --recalc_premium --weeks_to_expire 8 --processes 12 --history --debug --currency_code USD    &&
+              python3 components/data_preparation/main.py --recalc_premium --weeks_to_expire 8 --processes 12 --history --debug --currency_code EUR    &&
+              python3 components/model_training/main.py --weeks_to_expire 8 --backtest_period 21 --processes 12 --currency_code USD                    &&
+              python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select --processes 12          
         "]
         resources:
-          requests:
-            memory: "12Gi"
-            cpu: "12000m"
           limits:
-            memory: "24Gi"
-            cpu: "24000m"
+            memory: "30Gi"
+            cpu: "12000m"
       restartPolicy: Never

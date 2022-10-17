@@ -7,19 +7,21 @@ from utils import (
     models,
     check_memory,
     backdate_by_day,
-    str_to_date
+    str_to_date,
+    get_active_universe
 )
 import pandas as pd
 
 all_currency_list = ["USD"]
-# tickers = ["AAPL.O", "TSLA.O"]
-tickers = None
+tickers = ["AAPL.O", "TSLA.O"]
+# tickers = None
 
-weeks_to_expire = 4
+weeks_to_expire = 8
 all_average_days = -7
 sample_interval = 4
 start_date = pd.to_datetime('1998-01-01')
-factor_list = ["fwd_ey", "earnings_yield"]
+factor_list = ["fa_turnover"]
+# factor_list = None
 
 
 def test_ratio():
@@ -38,7 +40,7 @@ def test_premium():
                        weeks_to_offset=4,
                        currency_code_list=all_currency_list,
                        processes=1,
-                       factor_list=["fwd_ey"]).write_all()
+                       factor_list=["fa_turnover"]).write_all()
 
     assert len(data) > 0
 
