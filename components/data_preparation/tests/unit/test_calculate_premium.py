@@ -50,9 +50,8 @@ from utils import dateNow
 
 def test_CalcPremium():
     from components.data_preparation.src.calculation_premium import CalcPremium
-    df = CalcPremium(weeks_to_expire=8, average_days_list=[-7], weeks_to_offset=4, currency_code_list=["EUR"]).write_all()
-    # df = CalcPremium(weeks_to_expire=8, average_days_list=[-7, -14], weeks_to_offset=4,
-    #                  currency_code_list=["EUR", "USD", "HKD", "CNY"], processes=10).write_all()
+    df = CalcPremium(weeks_to_expire=8, average_days_list=[-7],
+                     weeks_to_offset=4, currency_code_list=["EUR"]).write_all()
 
     assert len(df) > 0
     assert df["testing_period"].max() == pd.date_range(end=dateNow(), periods=9, freq='W-Sun')[0]
