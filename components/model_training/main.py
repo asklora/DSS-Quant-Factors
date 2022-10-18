@@ -85,6 +85,8 @@ if __name__ == "__main__":
                         help='calculate for certain currency only')
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
+    parser.add_argument('--end_date', default=None, type=str,
+                        help='assume date today when training (for debug)')
     args = parser.parse_args()
 
     # --------------------- Production / Development ----------------------
@@ -110,13 +112,15 @@ if __name__ == "__main__":
                          sample_interval=args.sample_interval,
                          backtest_period=args.backtest_period,
                          currency_code=None,  # raw_df should get all
-                         restart=args.restart).get_raw_data()
+                         restart=args.restart,
+                         end_date=args.end_date).get_raw_data()
 
     all_groups = loadTrainConfig(weeks_to_expire=args.weeks_to_expire,
                                  sample_interval=args.sample_interval,
                                  backtest_period=args.backtest_period,
                                  restart=args.restart,
-                                 currency_code=args.currency_code)\
+                                 currency_code=args.currency_code,
+                                 end_date=args.end_date)\
         .get_all_groups()
 
     with closing(mp.Pool(processes=args.processes,
