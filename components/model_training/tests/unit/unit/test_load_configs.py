@@ -22,7 +22,8 @@
 
 def test_loadTrainConfig():
     from components.model_training.src.load_train_configs import loadTrainConfig
-    lst = loadTrainConfig(weeks_to_expire=8).get_all_groups()
+    lst = loadTrainConfig(weeks_to_expire=8,
+                          currency_code="USD").get_all_groups()
 
     assert len(lst) > 0
 
@@ -30,7 +31,7 @@ def test_loadTrainConfig():
 def test_loadTrainConfig_nan_factor_list():
     from components.model_training.src.load_train_configs import loadTrainConfig
     lst = loadTrainConfig(weeks_to_expire=8,
-                          currency_code='CNY'
+                          currency_code='HKD'
                           ).get_all_groups()
 
     assert len(lst) > 0

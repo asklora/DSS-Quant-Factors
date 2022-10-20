@@ -108,10 +108,10 @@ from utils import backdate_by_day, str_to_date, dateNow
 #
 #
 # def test_calc_factor_variables_get_all():
-#     from components.data_preparation.src.calculation_ratio import calcRatio
+#     from components.data_preparation.src.calculation_ratio import CalcRatio
 #     from datetime import datetime
 #
-#     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
+#     calc_ratio_cls = CalcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
 #                                end_date=datetime.now(),
 #                                tri_return_only=False)
 #     df = calc_ratio_cls.get(('0700.HK', ))
@@ -121,10 +121,10 @@ from utils import backdate_by_day, str_to_date, dateNow
 #
 #
 # def test_calc_factor_variables_tri_return_only():
-#     from components.data_preparation.src.calculation_ratio import calcRatio
+#     from components.data_preparation.src.calculation_ratio import CalcRatio
 #     from datetime import datetime
 #
-#     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
+#     calc_ratio_cls = CalcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
 #                                end_date=datetime.now(),
 #                                tri_return_only=True)
 #     df = calc_ratio_cls.get(('0700.HK',))
@@ -135,10 +135,10 @@ from utils import backdate_by_day, str_to_date, dateNow
 #
 #
 # def test_calc_factor_variables_index():
-#     from components.data_preparation.src.calculation_ratio import calcRatio
+#     from components.data_preparation.src.calculation_ratio import CalcRatio
 #     from datetime import datetime
 #
-#     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
+#     calc_ratio_cls = CalcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
 #                                end_date=datetime.now(),
 #                                tri_return_only=False)
 #     df = calc_ratio_cls.get(('.SPX',))
@@ -150,10 +150,10 @@ from utils import backdate_by_day, str_to_date, dateNow
 #
 #
 # def test_calc_factor_variables_etf():
-#     from components.data_preparation.src.calculation_ratio import calcRatio
+#     from components.data_preparation.src.calculation_ratio import CalcRatio
 #     from datetime import datetime
 #
-#     calc_ratio_cls = calcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
+#     calc_ratio_cls = CalcRatio(start_date=datetime(2021, 1, 1, 0, 0, 0),
 #                                end_date=datetime.now(),
 #                                tri_return_only=False)
 #     df = calc_ratio_cls.get(('RODM.K',))
@@ -165,6 +165,16 @@ from utils import backdate_by_day, str_to_date, dateNow
 
 
 def test_calc_factor_variables_multi():
+    from components.data_preparation.src.calculation_ratio import calc_factor_variables_multi
+    # df = calc_factor_variables_multi(tickers=[".SPX", ".CSI300", ".SXXGR", ".HSI"], processes=4, start_date=dt.datetime(1998, 1, 1))
+    df = calc_factor_variables_multi(tickers=["PUMG.DE"], processes=1)
+    # df = calc_factor_variables_multi(currency_codes=["USD", "EUR", "CNY", "HKD"], processes=10)
+
+    assert len(df) > 0
+    assert df["trading_day"].max() == pd.date_range(end=dateNow(), periods=1, freq='W-Sun')[0]
+
+
+def test_calc_factor_variables_multi_single_():
     from components.data_preparation.src.calculation_ratio import calc_factor_variables_multi
     # df = calc_factor_variables_multi(tickers=[".SPX", ".CSI300", ".SXXGR", ".HSI"], processes=4, start_date=dt.datetime(1998, 1, 1))
     df = calc_factor_variables_multi(tickers=["PUMG.DE"], processes=1)

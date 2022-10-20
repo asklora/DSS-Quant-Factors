@@ -32,9 +32,6 @@ spec:
               python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select --processes 12         
             "]
             resources:
-              requests:
-                memory: "12Gi"
-                cpu: "12000m"
               limits:
                 memory: "24Gi"
                 cpu: "24000m"

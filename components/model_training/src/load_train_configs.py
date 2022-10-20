@@ -1,6 +1,6 @@
 import datetime as dt
 import os
-
+import numpy as np
 import pandas as pd
 from typing import List
 from itertools import product
@@ -30,10 +30,12 @@ class loadTrainConfig(calcTestingPeriod):
 
     _auto_select_options = {
         "factor_pca": [0.4, 0],
-        "factor_reverse": [0, 1, 2],  # No reverse, reverse by average, reverse by lasso
+        # "factor_reverse": [0, 1, 2],  # No reverse, reverse by average, reverse by lasso
+        # "factor_reverse": [0],  # 3 = follow heuristic
+        "factor_reverse": [3],    # 3 = follow heuristic
         "y_qcut": [0, 10],
         "valid_pct": [.2],
-        "valid_method": [2010, 2012, 2014],
+        "valid_method": [2010, 2016, 2018],
         "down_mkt_pct": [0.5, 0.7],
         "tree_type": ['rf'],
     }
@@ -43,8 +45,19 @@ class loadTrainConfig(calcTestingPeriod):
                  sample_interval: int = 4,
                  backtest_period: int = 1,
                  restart: str = None,
-                 currency_code: str = None):
-        super().__init__(weeks_to_expire, sample_interval, backtest_period, currency_code, restart)
+                 currency_code: str = None,
+                 end_date: str = None):
+        """
+        Args:
+            end_date:
+               Assume today's date, used for backtest only.
+        """
+        super().__init__(weeks_to_expire=weeks_to_expire,
+                         sample_interval=sample_interval,
+                         backtest_period=backtest_period,
+                         currency_code=currency_code,
+                         restart=restart,
+                         end_date=end_date)
 
         self.weeks_to_expire = weeks_to_expire
         self.restart = restart
@@ -75,8 +88,8 @@ class loadTrainConfig(calcTestingPeriod):
             all_configs_df = all_configs_df.merge(finish_configs_df,
                                                   how="left",
                                                   on=diff_config_col)
-            all_configs_df = all_configs_df.loc[all_configs_df['count'].isnull()
-                                                ].drop(columns=["count"])
+            all_configs_df = all_configs_df.loc[
+                all_configs_df['count'].isnull()].drop(columns=["count"])
 
         report_to_slack(f"=== rest iterations (n={len(all_configs_df)}) ===")
 
@@ -139,7 +152,8 @@ class loadTrainConfig(calcTestingPeriod):
         """
 
         tbl = models.FactorFormulaPillarCluster
-        query = select(tbl.currency_code.label("train_currency"), tbl.testing_period, tbl.pillar, tbl.factor_list)\
+        query = select(tbl.currency_code.label("train_currency"),
+                       tbl.testing_period, tbl.pillar, tbl.factor_list)\
             .where(tbl.weeks_to_expire == self.weeks_to_expire)
         map_df = read_query(query)
         map_df["testing_period"] = pd.to_datetime(map_df["testing_period"])

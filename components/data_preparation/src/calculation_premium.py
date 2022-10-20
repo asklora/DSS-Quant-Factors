@@ -23,7 +23,6 @@ from utils import (
 )
 from contextlib import closing
 
-
 icb_num = 6
 
 logger = sys_logger(__name__, "INFO")
@@ -33,15 +32,15 @@ processed_ratio_table = models.FactorPreprocessRatio.__table__.schema + '.' + mo
 factor_premium_table = models.FactorPreprocessPremium.__tablename__
 
 
-class calcPremium:
-
+class CalcPremium:
     start_date = '1998-01-01'
     trim_outlier_ = False
     min_group_size = 3  # only calculate premium for group with as least 3 tickers
 
     def __init__(self,
                  weeks_to_expire: int, weeks_to_offset: int = 1,
-                 average_days_list: List[int] = (-7,), currency_code_list: List[str] = None,
+                 average_days_list: List[int] = (-7,),
+                 currency_code_list: List[str] = None,
                  processes: int = 1, factor_list: List[str] = ()):
         """
         Parameters
@@ -65,7 +64,7 @@ class calcPremium:
         self.processes = processes
         self.currency_code_list = currency_code_list
         self.factor_list = factor_list if len(factor_list) > 0 \
-            else self._factor_list_from_formula()      # if not
+            else self._factor_list_from_formula()  # if not
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
                            for x in average_days_list]
 
@@ -83,19 +82,25 @@ class calcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
-        with closing(mp.Pool(processes=self.processes, initializer=recreate_engine)) as pool:
+        with closing(mp.Pool(processes=self.processes,
+                             initializer=recreate_engine)) as pool:
             ratio_df = self._download_pivot_ratios()
-            all_groups = itertools.product(self.currency_code_list, self.factor_list, self.y_col_list)
+            all_groups = itertools.product(self.currency_code_list,
+                                           self.factor_list, self.y_col_list)
             all_groups = [tuple(e) for e in all_groups]
-            prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df), all_groups)
+            prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df),
+                                all_groups)
 
-        prem = pd.concat([x for x in prem if type(x) != type(None)], axis=0).sort_values(by=['group', 'trading_day'])
+        prem = pd.concat([x for x in prem if type(x) != type(None)],
+                         axis=0).sort_values(by=['group', 'trading_day'])
         prem = prem.rename(columns={"trading_day": "testing_period"})
 
         prem["updated"] = timestampNow()
-        upsert_data_to_database(data=prem, table=factor_premium_table, how="update")
+        upsert_data_to_database(data=prem, table=factor_premium_table,
+                                how="update")
 
-        to_slack("clair").message_to_slack(f"===  FINISH [update] DB [{factor_premium_table}] ===")
+        to_slack("clair").message_to_slack(
+            f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
         return prem
 
@@ -129,11 +134,12 @@ class calcPremium:
         '''.replace(",)", ")")
 
         df = read_query(ratio_query)
-        df = df.pivot(index=["ticker", "trading_day", "currency_code"], columns=["field"], values='value').reset_index()
+        df = df.pivot(index=["ticker", "trading_day", "currency_code"],
+                      columns=["field"], values='value').reset_index()
 
         return df
 
-    @err2slack("factor")
+    # @err2slack("factor")
     def get_premium(self, *args, ratio_df=None):
         """
         Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
@@ -153,10 +159,12 @@ class calcPremium:
 
     def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
         """
-        Data processing: filter complete ratio pd.DataFrame for certain Y & Factor only 
+        Data processing: filter complete ratio pd.DataFrame for certain Y &
+        Factor only
         """
 
-        df = ratio_df.loc[ratio_df['currency_code'] == group, ['ticker', 'trading_day', y_col, factor]].copy()
+        df = ratio_df.loc[ratio_df['currency_code'] == group,
+                          ['ticker', 'trading_day', y_col, factor]].copy()
         df = self.__clean_missing_y_row(df, y_col, group)
         df = self.__resample_df_by_interval(df)
         df = self.__clean_missing_factor_row(df, factor, group)
@@ -167,19 +175,23 @@ class calcPremium:
         return df
 
     def _qcut_factor_df(self, group, factor, y_col, df=None):
-        df['quantile_train_currency'] = df.groupby(['trading_day'])[factor].transform(self.__qcut)
+        df['quantile_train_currency'] = df.groupby(['trading_day'])[
+            factor].transform(self.__qcut)
         df = df.dropna(subset=['quantile_train_currency']).copy()
-        df['quantile_train_currency'] = df['quantile_train_currency'].astype(int)
-        prem = df.groupby(['trading_day', 'quantile_train_currency'])[y_col].mean().unstack()
+        df['quantile_train_currency'] = df['quantile_train_currency'].astype(
+            int)
+        prem = df.groupby(['trading_day', 'quantile_train_currency'])[
+            y_col].mean().unstack()
 
         return prem
 
     def _clean_prem_df(self, group, factor, y_col, prem=None):
         """
-        premium = small group average returns - big groups  ?????????? 
-        Calculate: prem = top quantile - bottom quantile? 
-        """
+        premium = the difference of average returns for smaller factor value
+        groups and larger factor value groups
 
+        i.e. Calculate: prem = bottom quantile - top quantile
+        """
         prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
 
         static_info = {"group": group,
@@ -195,12 +207,19 @@ class calcPremium:
 
     def __resample_df_by_interval(self, df):
         """
-        Data processing: resample df (days ->weeks) for premium calculation dates every (n=weeks_to_offset) since the most recent period
+        Data processing:
+        resample df (days ->weeks) for premium calculation
+        dates every (n=weeks_to_offset) since the most recent period
         """
 
-        end_date = pd.to_datetime(pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[0]).date()
-        periods = (end_date - df["trading_day"].min()).days // (7*self.weeks_to_offset) + 1
-        date_list = pd.date_range(end=end_date, freq=f"{self.weeks_to_offset}W-SUN", periods=periods)
+        end_date = pd.to_datetime(
+            pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[
+                0]).date()
+        periods = (end_date - df["trading_day"].min()).days // (
+                    7 * self.weeks_to_offset) + 1
+        date_list = pd.date_range(end=end_date,
+                                  freq=f"{self.weeks_to_offset}W-SUN",
+                                  periods=periods)
         date_list = list(date_list)
         df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]
 
@@ -209,13 +228,15 @@ class calcPremium:
     def __clean_missing_y_row(self, df, y_col, group):
         df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
         if len(df) == 0:
-            raise Exception(f"[{y_col}] for all ticker in group '{group}' is missing")
+            raise Exception(
+                f"[{y_col}] for all ticker in group '{group}' is missing")
         return df
 
     def __clean_missing_factor_row(self, df, factor, group):
         df = df.dropna(subset=[factor], how='any')
         if len(df) == 0:
-            raise Exception(f"[{factor}] for all ticker in group '{group}' is missing")
+            raise Exception(
+                f"[{factor}] for all ticker in group '{group}' is missing")
         return df
 
     def __trim_outlier(self, df, prc: float = 0):
@@ -233,7 +254,8 @@ class calcPremium:
 
     def __qcut(self, series):
         """
-        ????????????
+        For each factor at certain period, use qcut to calculate factor premium
+        as Top 30%/20% - Bottom 30%/20%
         """
 
         try:

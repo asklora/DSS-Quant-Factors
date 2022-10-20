@@ -171,8 +171,8 @@ def test_rf_HPOT_train_and_write():
     test_y_qcut = 10
     cls = loadData(
         weeks_to_expire=8,
-        train_currency='CNY',
-        pred_currency='CNY',
+        train_currency='USD',
+        pred_currency='USD,EUR',
         testing_period=sample_testing_period,
         average_days=-7,
         factor_list=test_factor_list,
@@ -185,4 +185,3 @@ def test_rf_HPOT_train_and_write():
     sample_set, neg_factor, cut_bins = cls.split_all(main_df)
 
     hpot_cls().train_and_write(sample_set=sample_set[0])
-

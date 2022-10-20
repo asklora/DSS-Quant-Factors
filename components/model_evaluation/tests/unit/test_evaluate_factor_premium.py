@@ -29,8 +29,8 @@ import pandas as pd
 #     assert len(df) > 0
 #
 #
-# def test_evalFactor__filter_sample():
-#     from components.model_evaluation.src.evaluate_factor_premium import evalFactor, cleanPrediction, cleanSubpillar
+# def test_EvalFactor__filter_sample():
+#     from components.model_evaluation.src.evaluate_factor_premium import EvalFactor, cleanPrediction, cleanSubpillar
 #     from components.model_evaluation.src.load_eval_configs import load_eval_config
 #
 #     all_groups = load_eval_config(weeks_to_expire=8)
@@ -38,15 +38,15 @@ import pandas as pd
 #     name_sql = 'w4_20220627171813'
 #     pred_df = cleanPrediction(name_sql=name_sql).get_prediction()
 #
-#     eval_cls = evalFactor(name_sql='w4_20220627171813', processes=1, all_groups=all_groups)
-#     df = eval_cls._evalFactor__filter_sample(df=pred_df, currency_code="EUR", pillar="value")
+#     eval_cls = EvalFactor(name_sql='w4_20220627171813', processes=1, all_groups=all_groups)
+#     df = eval_cls._EvalFactor__filter_sample(df=pred_df, currency_code="EUR", pillar="value")
 #
 #     assert len(df) > 0
 #     assert len(df) < len(pred_df)
 #
 #
-# def test_evalFactor__map_remove_subpillar():
-#     from components.model_evaluation.src.evaluate_factor_premium import evalFactor, cleanPrediction, cleanSubpillar
+# def test_EvalFactor__map_remove_subpillar():
+#     from components.model_evaluation.src.evaluate_factor_premium import EvalFactor, cleanPrediction, cleanSubpillar
 #     from components.model_evaluation.src.load_eval_configs import load_eval_config
 #
 #     all_groups = load_eval_config(weeks_to_expire=8)
@@ -56,9 +56,9 @@ import pandas as pd
 #     pred_df = cleanPrediction(name_sql=name_sql).get_prediction()
 #     subpillar_df = cleanSubpillar(start_date=pred_df["testing_period"].min(), weeks_to_expire=weeks_to_expire).get_subpillar()
 #
-#     eval_cls = evalFactor(name_sql='w4_20220627171813', processes=1, all_groups=all_groups)
-#     sample_df = eval_cls._evalFactor__filter_sample(df=pred_df, currency_code="EUR", pillar="value")
-#     df = eval_cls._evalFactor__map_remove_subpillar(df=sample_df, subpillar_df=subpillar_df, pillar="value")
+#     eval_cls = EvalFactor(name_sql='w4_20220627171813', processes=1, all_groups=all_groups)
+#     sample_df = eval_cls._EvalFactor__filter_sample(df=pred_df, currency_code="EUR", pillar="value")
+#     df = eval_cls._EvalFactor__map_remove_subpillar(df=sample_df, subpillar_df=subpillar_df, pillar="value")
 #
 #     assert len(df) > 0
 #     assert "subpillar" in df.columns.to_list()
@@ -115,8 +115,8 @@ import pandas as pd
 #     assert len(results) == 6
 #
 #
-# def test_evalFactor_rank_pillar_cluster():
-#     from components.model_evaluation.src.evaluate_factor_premium import evalFactor, cleanPrediction, cleanSubpillar
+# def test_EvalFactor_rank_pillar_cluster():
+#     from components.model_evaluation.src.evaluate_factor_premium import EvalFactor, cleanPrediction, cleanSubpillar
 #     from components.model_evaluation.src.load_eval_configs import load_eval_config
 #
 #     all_groups = load_eval_config(weeks_to_expire=8)
@@ -126,15 +126,15 @@ import pandas as pd
 #     pred_df = cleanPrediction(name_sql=name_sql).get_prediction()
 #     subpillar_df = cleanSubpillar(start_date=pred_df["testing_period"].min(), weeks_to_expire=weeks_to_expire).get_subpillar()
 #
-#     eval_cls = evalFactor(name_sql='w8_20220629115419', processes=1, all_groups=all_groups)
+#     eval_cls = EvalFactor(name_sql='w8_20220629115419', processes=1, all_groups=all_groups)
 #
 #     df1 = eval_cls._rank(next(i[0] for i in all_groups if i[0]["currency_code"] == "HKD"), pred_df=pred_df, subpillar_df=subpillar_df)
 #     assert len(df1) > 0
 #     assert {"eval_q", "eval_remove_subpillar"}.issubset(set(df1.columns.to_list()))
 
 
-def test_evalFactor():
-    from components.model_evaluation.src.evaluate_factor_premium import evalFactor
-    eval_df = evalFactor(name_sql="w8_20220629115419", processes=2).write_db()
+def test_EvalFactor():
+    from components.model_evaluation.src.evaluate_factor_premium import EvalFactor
+    eval_df = EvalFactor(name_sql="w8_20220629115419", processes=2).write_db()
 
     assert len(eval_df) > 0
