@@ -23,7 +23,7 @@ logger = sys_logger(__name__, "DEBUG")
 class scaleFundamentalScore:
     sample_interval = 1
 
-    save_cache = False
+    save_cache = True
 
     def __init__(self, start_date: str = '2016-01-01'):
         self.start_date = start_date

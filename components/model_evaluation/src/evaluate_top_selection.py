@@ -79,7 +79,7 @@ class EvalTop:
     top_config_define_columns = \
         [x.name for x in models.FactorFormulaEvalConfig.eval_top_config_columns]
 
-    save_cache = False
+    save_cache = True
 
     n_top_ticker_list = [-10, -50, 50, 10, 3]
     industry_name_map = get_industry_name_map()
@@ -112,11 +112,15 @@ class EvalTop:
         logger.debug("get scaleFundamentalScore")
         # fundamental ratio scores
         self._score_df = scaleFundamentalScore(
-            start_date=self._eval_df["testing_period"].min()).get()
+            # start_date=self._eval_df["testing_period"].min()).get()
+            start_date='2022-05-01').get()
 
-        with closing(mp.Pool(processes=self.processes,
-                             initializer=recreate_engine)) as pool:
-            results = pool.starmap(self._select_and_score, self._all_groups)
+        # with closing(mp.Pool(processes=self.processes,
+        #                      initializer=recreate_engine)) as pool:
+        results = []
+        for group in self._all_groups:
+            results.append(self._select_and_score(*group))
+            # results = pool.starmap(self._select_and_score, self._all_groups)
 
         # df for all AI scores
         pillar_score_df = pd.concat([e for e in results if e is not None],
@@ -251,9 +255,11 @@ class EvalTop:
         """
         convert trading_day (date to select factor = date of fundamental scores) = testing_period + n weeks
         """
+ 
         sample_df["trading_day"] = \
             pd.to_datetime(sample_df["testing_period"]) + \
-            pd.tseries.offsets.DateOffset(weeks=self.weeks_to_expire)
+            pd.tseries.offsets.DateOffset(weeks=(self.weeks_to_expire))
+        sample_df ['trading_day'] = sample_df['trading_day'] - sample_df['average_days'].apply(lambda x: pd.Timedelta(x,unit='D'))
         sample_df = sample_df.drop(columns=["testing_period"])
 
         return sample_df
