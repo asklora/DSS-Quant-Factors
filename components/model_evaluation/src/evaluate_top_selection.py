@@ -113,7 +113,7 @@ class EvalTop:
         # fundamental ratio scores
         self._score_df = scaleFundamentalScore(
             # start_date=self._eval_df["testing_period"].min()).get()
-            start_date='2022-05-01').get()
+            start_date='2017-01-01').get()
 
         # with closing(mp.Pool(processes=self.processes,
         #                      initializer=recreate_engine)) as pool:
@@ -547,39 +547,15 @@ class EvalTop:
 
         return g
 
-    def __calculate_final_score(self, df):
+    def __calculate_quantile_return_for_each_trading_day(self, df_agg):
+        """This function takes in df_agg and calculate quantile return for each testing_period and and currency_code. Steps include:
+        1. [Quantile]
+
+        Args:
+            df_agg (pd.DataFrame): The aggregated dataframe which contains the final AI score for each ticker in each currency code for each testing period. 
         """
-        combine different pillar row and calculate final score;
-
-        calculate final scores / extra scores with average of all pillar scores;
-
-        e.g. input dataframe:
-            | value_score | momentum_score | quality_score |
-            |-------------|----------------|---------------|
-            | 2           |                |               |
-            |             | 3              |               |
-            |             |                | 4             |
-
-        output dataframe:
-            | value_score | momentum_score | quality_score | ai_score |
-            |-------------|----------------|---------------|----------|
-            | 2           | 3              | 4             | 3        |
-
-        We combine all defined training / testing configuration to combine different pillar with different configs;
-        """
-
-        groupby_col = ["ticker", "weeks_to_expire", "currency_code",
-                       "trading_day"]
-        df_agg = df.groupby(groupby_col).mean()
-        df_agg["extra_score"] = df_agg.filter(regex='_score_extra$').mean(
-            axis=1)
-        df_agg['ai_score'] = df_agg.filter(regex='_score$').mean(axis=1)
-
-   
-
-
-        quantile_without_label =df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x,q=10,labels=False))
-        quantile_with_label = df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x,q=10))
+        quantile_without_label =df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x, q=10, labels=False, duplicates='drop'))
+        quantile_with_label = df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x,q=10, duplicates='drop'))
         quantile_with_label=quantile_with_label.reset_index().drop_duplicates().set_index(['weeks_to_expire','currency_code','trading_day']).sort_index(level=['currency_code'])
         quantile_without_label=quantile_without_label.reset_index().drop_duplicates().set_index(['weeks_to_expire','currency_code','trading_day']).sort_index(level=['currency_code'])
         
@@ -613,6 +589,36 @@ class EvalTop:
         summary = summary.sort_values(['currency_code','quantiles'],ascending=[False,False])
 
         upsert_data_to_database(summary,table=models.FactorBacktestQuantile.__tablename__,how="update", set_index_pk=True)
+
+    def __calculate_final_score(self, df):
+        """
+        combine different pillar row and calculate final score;
+
+        calculate final scores / extra scores with average of all pillar scores;
+
+        e.g. input dataframe:
+            | value_score | momentum_score | quality_score |
+            |-------------|----------------|---------------|
+            | 2           |                |               |
+            |             | 3              |               |
+            |             |                | 4             |
+
+        output dataframe:
+            | value_score | momentum_score | quality_score | ai_score |
+            |-------------|----------------|---------------|----------|
+            | 2           | 3              | 4             | 3        |
+
+        We combine all defined training / testing configuration to combine different pillar with different configs;
+        """
+
+        groupby_col = ["ticker", "weeks_to_expire", "currency_code",
+                       "trading_day"]
+        df_agg = df.groupby(groupby_col).mean()
+        df_agg["extra_score"] = df_agg.filter(regex='_score_extra$').mean(
+            axis=1)
+        df_agg['ai_score'] = df_agg.filter(regex='_score$').mean(axis=1)
+        
+        self.__calculate_quantile_return_for_each_trading_day(df_agg)
 
         return df_agg
 
