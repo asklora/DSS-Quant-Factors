@@ -575,6 +575,45 @@ class EvalTop:
             axis=1)
         df_agg['ai_score'] = df_agg.filter(regex='_score$').mean(axis=1)
 
+   
+
+
+        quantile_without_label =df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x,q=10,labels=False))
+        quantile_with_label = df_agg.reset_index().set_index(['weeks_to_expire','currency_code','trading_day']).groupby(['weeks_to_expire','currency_code','trading_day'])['ai_score'].transform(lambda x : pd.qcut(x,q=10))
+        quantile_with_label=quantile_with_label.reset_index().drop_duplicates().set_index(['weeks_to_expire','currency_code','trading_day']).sort_index(level=['currency_code'])
+        quantile_without_label=quantile_without_label.reset_index().drop_duplicates().set_index(['weeks_to_expire','currency_code','trading_day']).sort_index(level=['currency_code'])
+        
+        ret = []
+        quantiles = []
+        weeks_to_expire = []
+        currency_code = []
+        trading_day=[]
+        name_sql = []
+
+        for idx in quantile_with_label.index.unique():
+            data = df_agg.reset_index()
+            data = data.loc[(data['weeks_to_expire']==idx[0])&(data['currency_code']==idx[1])&(data['trading_day']==idx[2])]
+            
+            for q in quantile_with_label.loc[(quantile_with_label.index.get_level_values(0)==idx[0])&(quantile_with_label.index.get_level_values(1)==idx[1])&(quantile_with_label.index.get_level_values(2)==idx[2])]['ai_score']:
+                
+                qtl = quantile_without_label.loc[(quantile_with_label['ai_score']==q)& \
+                (quantile_with_label.index.get_level_values(0)==idx[0])& \
+                (quantile_with_label.index.get_level_values(1)==idx[1])& \
+                (quantile_with_label.index.get_level_values(2)==idx[2])]['ai_score'].unique()[0]
+
+                retn = data.loc[data['ai_score'].between(left=q.left,right=q.right)]['return'].mean()
+                ret.append(retn)
+                name_sql.append(self.name_sql)
+                quantiles.append(qtl)
+                weeks_to_expire.append(idx[0])
+                currency_code.append(idx[1])
+                trading_day.append(idx[2])
+
+        summary = pd.DataFrame({'name_sql':name_sql,'average_return':ret,'quantiles':quantiles,'weeks_to_expire':weeks_to_expire,'currency_code':currency_code,'trading_day':trading_day})
+        summary = summary.sort_values(['currency_code','quantiles'],ascending=[False,False])
+
+        upsert_data_to_database(summary,table=models.FactorBacktestQuantile.__tablename__,how="update", set_index_pk=True)
+
         return df_agg
 
     def _final_score_eval(self, df):
