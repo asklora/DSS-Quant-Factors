@@ -148,7 +148,7 @@ class CalcPremium:
         Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
         """
 
-        logger.debug(f'=== Calculate premium for ({args}) ===')
+        logger.info(f'=== Calculate premium for ({args}) ===')
         group, factor, y_col = args
         kwargs = {"group": group,
                   "factor": factor,
