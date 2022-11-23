@@ -1,9 +1,12 @@
+import gc
+
 import numpy as np
 import pandas as pd
 from datetime import datetime
 import multiprocessing as mp
 import itertools
 from functools import partial
+from pandarallel import pandarallel
 
 from typing import List
 from sqlalchemy import select, join, and_, not_
@@ -19,7 +22,8 @@ from utils import (
     sys_logger,
     recreate_engine,
     timestampNow,
-    check_memory
+    check_memory,
+    es_logger
 )
 from contextlib import closing
 
@@ -38,10 +42,12 @@ class CalcPremium:
     min_group_size = 3  # only calculate premium for group with as least 3 tickers
 
     def __init__(self,
-                 weeks_to_expire: int, weeks_to_offset: int = 1,
+                 weeks_to_expire: int,
+                 weeks_to_offset: int = 1,
                  average_days_list: List[int] = (-7,),
                  currency_code_list: List[str] = None,
-                 processes: int = 1, factor_list: List[str] = ()):
+                 processes: int = 1,
+                 factor_list: List[str] = ()):
         """
         Parameters
         ----------
@@ -61,7 +67,6 @@ class CalcPremium:
         logger.info(f'Will save to DB Table [{factor_premium_table}]')
 
         self.weeks_to_offset = weeks_to_offset
-        self.processes = processes
         self.currency_code_list = currency_code_list
         self.factor_list = factor_list if len(factor_list) > 0 \
             else self._factor_list_from_formula()  # if not
@@ -69,6 +74,9 @@ class CalcPremium:
                            for x in average_days_list]
 
         self._ratio_df = None
+        self._current_currency_code = None
+        pandarallel.initialize(progress_bar=True,
+                               nb_workers=max(processes//2, 1))
 
     def write_all(self):
         """
@@ -84,25 +92,25 @@ class CalcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
-        self._ratio_df = self._download_pivot_ratios()
-        all_groups = itertools.product(self.currency_code_list,
-                                       self.factor_list, self.y_col_list)
-        all_groups = [tuple(e) for e in all_groups]
+        for cur in self.currency_code_list:
+            self._current_currency_code = cur
+            ratio_df = self._download_pivot_ratios()
 
-        with closing(mp.Pool(processes=self.processes,
-                             initializer=recreate_engine)) as pool:
-            prem = pool.starmap(self.get_premium, all_groups)
+            prem = ratio_df.groupby(['trading_day', 'field'])\
+                .apply(self.get_premium)
 
-        prem = pd.concat([x for x in prem if type(x) != type(None)],
-                         axis=0).sort_values(by=['group', 'trading_day'])
-        prem = prem.rename(columns={"trading_day": "testing_period"})
+            del ratio_df
+            gc.collect()
 
-        prem["updated"] = timestampNow()
-        upsert_data_to_database(data=prem, table=factor_premium_table,
-                                how="update")
+            prem = prem.rename(columns={"trading_day": "testing_period"})
 
-        to_slack("clair").message_to_slack(
-            f"===  FINISH [update] DB [{factor_premium_table}] ===")
+            prem["updated"] = timestampNow()
+            prem["group"] = cur
+            upsert_data_to_database(data=prem, table=factor_premium_table,
+                                    how="update")
+
+            to_slack("clair").message_to_slack(
+                f"===  FINISH [update] DB [{factor_premium_table}] ===")
 
         return prem
 
@@ -125,68 +133,97 @@ class CalcPremium:
 
         conditions = [
             models.Universe.is_active,
-            models.Universe.currency_code.in_(self.currency_code_list),
+            models.Universe.currency_code == self._current_currency_code,
             ~models.FactorPreprocessRatio.ticker.like('.%%'),
             models.FactorPreprocessRatio.field.in_(self.factor_list +
                                                    self.y_col_list),
             models.FactorPreprocessRatio.trading_day > self.start_date
         ]
-        select_cols = [*models.FactorPreprocessRatio.__table__.columns,
-                       models.Universe.currency_code]
-        ratio_query = select(*select_cols).join(models.Universe)\
+
+        ratio_query = select(models.FactorPreprocessRatio)\
+            .join(models.Universe)\
             .where(and_(*conditions))
 
-        df = read_query(ratio_query)
-        df = df.pivot(index=["ticker", "trading_day", "currency_code"],
-                      columns=["field"], values='value').reset_index()
+        df = read_query(ratio_query,
+                        index_cols=["ticker", "trading_day", "field"],
+                        keep_index=True)["value"].unstack("field")
+        return self.__reformat_ratios(df)
 
-        return df
+    def __reformat_ratios(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        convert ratio data to df suitable for groupby operation
+
+        Returns
+        -------
+        df: pd.DataFrame
+            Columns:
+                value:              float64, field value
+                *all stock_return_y cols:
+                                    float64, return for that period
+            Index:
+                ticker:             str, ticker
+                trading_day:        str, trading_day
+                field:              str, field for all factors (i.e. not *_y_*)
+        """
+        df_factor = df[self.factor_list].stack().rename("value").to_frame()
+        df_factor = df_factor.merge(df[self.y_col_list],
+                                    left_on=["ticker", "trading_day"],
+                                    right_index=True, how="left")
+        return df_factor
 
     # @err2slack("factor")
-    def get_premium(self, *args):
+    def get_premium(self, g: pd.DataFrame):
         """
         Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
         """
 
-        logger.info(f'=== Calculate premium for ({args}) ===')
-        group, factor, y_col = args
-        kwargs = {"group": group,
-                  "factor": factor,
-                  "y_col": y_col}
+        kwargs = {"group": self._current_currency_code,
+                  "factor": g.index.get_level_values("field")[0]}
 
-        df = self._filter_factor_df(ratio_df=self._ratio_df, **kwargs)
-        df = self._qcut_factor_df(df=df, **kwargs)
-        prem = self._clean_prem_df(prem=df, **kwargs)
+        prem_all = []
+        for y_col in g.filter(regex="stock_return_y_*").columns:
+            try:
+                kwargs["y_col"] = y_col
+                logger.info(f'=== Calculate premium for ({kwargs}) ===')
 
-        return prem
+                df = g.droplevel("field")[["value", y_col]].reset_index()
+                df = self.__resample_df_by_interval(df)
+                df = self._filter_factor_df(df=df, **kwargs)
+                df = self._qcut_factor_df(df=df, **kwargs)
+                prem = self._clean_prem_df(prem=df, **kwargs)
+                prem_all.append(prem)
+            except Exception as e:
+                es_logger.error()
 
-    def _filter_factor_df(self, group, factor, y_col, ratio_df=None):
+        return pd.concat(prem_all, axis=0)
+
+    def _filter_factor_df(self, factor, y_col, df=None):
         """
         Data processing: filter complete ratio pd.DataFrame for certain Y &
         Factor only
         """
 
-        df = ratio_df.loc[ratio_df['currency_code'] == group,
-                          ['ticker', 'trading_day', y_col, factor]].copy()
-        df = self.__clean_missing_y_row(df, y_col, group)
-        df = self.__resample_df_by_interval(df)
-        df = self.__clean_missing_factor_row(df, factor, group)
+        df = df.dropna(subset=[y_col])
+        assert len(df) > 0, f"[{y_col}] for all ticker is missing"
+
+        df = df.dropna(subset=["value"])
+        assert len(df) > 0, f"[{factor}] for all ticker is missing"
 
         if self.trim_outlier_:
             df[y_col] = self.__trim_outlier(df[y_col], prc=.05)
 
         return df
 
-    def _qcut_factor_df(self, group, factor, y_col, df=None):
+    def _qcut_factor_df(self, factor, y_col, df=None):
         """
         Calculate quantile (0, 1, 2) average return for each factor
         """
-        df['quantile'] = df.groupby(['trading_day'])[factor]\
+        df['quantile'] = df.groupby(['trading_day'])["value"]\
             .transform(self.__qcut)
         df = df.dropna(subset=['quantile']).copy()
         df['quantile'] = df['quantile'].astype(int)
-        prem = df.groupby(['trading_day', 'quantile'])[[factor, y_col]].mean()\
-            .rename(columns={factor: "ratio", y_col: "return"})\
+        prem = df.groupby(['trading_day', 'quantile'])[["value", y_col]].mean()\
+            .rename(columns={"value": "ratio", y_col: "return"})\
             .unstack("quantile")
         prem.columns = ["_".join([str(i) for i in x]) for x in prem.columns]
         prem_count = df.groupby('trading_day')[y_col].count()\
@@ -236,20 +273,6 @@ class CalcPremium:
         date_list = list(date_list)
         df = df.loc[pd.to_datetime(df["trading_day"]).isin(date_list)]
 
-        return df
-
-    def __clean_missing_y_row(self, df, y_col, group):
-        df = df.dropna(subset=['ticker', 'trading_day', y_col], how='any')
-        if len(df) == 0:
-            raise Exception(
-                f"[{y_col}] for all ticker in group '{group}' is missing")
-        return df
-
-    def __clean_missing_factor_row(self, df, factor, group):
-        df = df.dropna(subset=[factor], how='any')
-        if len(df) == 0:
-            raise Exception(
-                f"[{factor}] for all ticker in group '{group}' is missing")
         return df
 
     def __trim_outlier(self, df, prc: float = 0):

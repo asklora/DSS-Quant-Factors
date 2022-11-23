@@ -16,10 +16,14 @@ spec:
               "/bin/sh",
               "-c",
               "
-              python3 components/data_preparation/main.py --weeks_to_expire 26 
-              --recalc_premium --processes 12 --currency_code USD,EUR --debug
+              python3 components/data_preparation/main.py 
+              --weeks_to_expire 26 --sample_interval 1 
+              --recalc_premium --processes 1 --currency_code USD,EUR --debug
         "]
         resources:
+          requests:
+            memory: "30Gi"
+            cpu: "12000m"
           limits:
             memory: "30Gi"
             cpu: "12000m"

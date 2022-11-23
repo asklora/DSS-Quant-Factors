@@ -51,7 +51,8 @@ def test_CalcPremium_one_field():
     from components.data_preparation.src.calculation_premium import CalcPremium
     df = CalcPremium(weeks_to_expire=26, average_days_list=[-7],
                      weeks_to_offset=1, currency_code_list=["EUR"],
-                     factor_list=["market_cap_usd"]).write_all()
+                     factor_list=["market_cap_usd", "vol_0_30"],
+                     processes=2).write_all()
 
     assert len(df) > 0
     assert df["testing_period"].max() == pd.date_range(
