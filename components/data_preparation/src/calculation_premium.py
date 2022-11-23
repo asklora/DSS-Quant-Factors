@@ -80,7 +80,9 @@ class CalcPremium:
         self._ratio_df = None
         self._current_currency_code = None
         pandarallel.initialize(progress_bar=True,
-                               nb_workers=max(processes//2, 1))
+                               nb_workers=max(processes//2, 1),
+                               verbose=2,
+                               use_memory_fs=False)
 
     def write_all(self):
         """
