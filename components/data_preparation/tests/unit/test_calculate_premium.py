@@ -1,3 +1,4 @@
+from components.data_preparation.src.calculation_premium import CalcPremium
 import pandas as pd
 from utils import dateNow
 
@@ -48,15 +49,17 @@ from utils import dateNow
 #     assert df["testing_period"].max() == end_date
 
 def test_CalcPremium_one_field():
-    from components.data_preparation.src.calculation_premium import CalcPremium
-    df = CalcPremium(weeks_to_expire=26, average_days_list=[-7],
-                     weeks_to_offset=1, currency_code_list=["EUR"],
+    df = CalcPremium(weeks_to_expire=26,
+                     average_days_list=[-7, -28],
+                     weeks_to_offset=1,
+                     currency_code_list=["EUR"],
                      factor_list=["market_cap_usd", "vol_0_30"],
-                     processes=2).write_all()
+                     processes=2,
+                     start_date='2017-01-01',
+                     end_date='2017-03-01').write_all()
 
     assert len(df) > 0
-    assert df["testing_period"].max() == pd.date_range(
-        end=dateNow(), periods=9, freq='W-Sun')[0]
+    assert df["testing_period"].max() == pd.to_datetime('2017-02-26')
 
 
 def test_CalcPremium():

@@ -37,7 +37,6 @@ factor_premium_table = models.FactorPreprocessPremium.__tablename__
 
 
 class CalcPremium:
-    start_date = '1998-01-01'
     trim_outlier_ = False
     min_group_size = 3  # only calculate premium for group with as least 3 tickers
 
@@ -47,7 +46,9 @@ class CalcPremium:
                  average_days_list: List[int] = (-7,),
                  currency_code_list: List[str] = None,
                  processes: int = 1,
-                 factor_list: List[str] = ()):
+                 factor_list: List[str] = (),
+                 start_date: str = None,
+                 end_date: str = None):
         """
         Parameters
         ----------
@@ -61,7 +62,8 @@ class CalcPremium:
         currency_code_list:
             currencies to calculate premiums (default=[USD])
         factor_list:
-            factors to calculate premiums (default=[], i.e. calculate all active factors in Table [factors_formula_table])
+            factors to calculate premiums (default=[], i.e. calculate all
+            active factors in Table [factors_formula_table])
         """
         logger.info(f'Groups: {" -> ".join(currency_code_list)}')
         logger.info(f'Will save to DB Table [{factor_premium_table}]')
@@ -72,6 +74,8 @@ class CalcPremium:
             else self._factor_list_from_formula()  # if not
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
                            for x in average_days_list]
+        self._start_date = start_date or '1998-01-01'
+        self._end_date = end_date or backdate_by_day(1)
 
         self._ratio_df = None
         self._current_currency_code = None
@@ -92,6 +96,8 @@ class CalcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
+        prem = None
+
         for cur in self.currency_code_list:
             self._current_currency_code = cur
             ratio_df = self._download_pivot_ratios()
@@ -103,7 +109,6 @@ class CalcPremium:
             gc.collect()
 
             prem = prem.rename(columns={"trading_day": "testing_period"})
-
             prem["updated"] = timestampNow()
             prem["group"] = cur
             upsert_data_to_database(data=prem, table=factor_premium_table,
@@ -137,7 +142,8 @@ class CalcPremium:
             ~models.FactorPreprocessRatio.ticker.like('.%%'),
             models.FactorPreprocessRatio.field.in_(self.factor_list +
                                                    self.y_col_list),
-            models.FactorPreprocessRatio.trading_day > self.start_date
+            models.FactorPreprocessRatio.trading_day >= self._start_date,
+            models.FactorPreprocessRatio.trading_day <= self._end_date
         ]
 
         ratio_query = select(models.FactorPreprocessRatio)\
@@ -189,15 +195,19 @@ class CalcPremium:
                 df = g.droplevel("field")[["value", y_col]].reset_index()
                 df = self.__resample_df_by_interval(df)
                 df = self._filter_factor_df(df=df, **kwargs)
-                df = self._qcut_factor_df(df=df, **kwargs)
-                prem = self._clean_prem_df(prem=df, **kwargs)
+                prem = self._qcut_factor_df(df=df, **kwargs)
+                prem = self._clean_prem_df(df=prem, **kwargs)
                 prem_all.append(prem)
+
+                es_logger.info({"finished": True, **kwargs})
             except Exception as e:
-                es_logger.error()
+                es_logger.error({"error": "others: " + str(e), **kwargs})
+                # raise e
 
         return pd.concat(prem_all, axis=0)
 
-    def _filter_factor_df(self, factor, y_col, df=None):
+    def _filter_factor_df(self, df: pd.DataFrame, factor: str, y_col: str,
+                          **kwargs):
         """
         Data processing: filter complete ratio pd.DataFrame for certain Y &
         Factor only
@@ -214,46 +224,48 @@ class CalcPremium:
 
         return df
 
-    def _qcut_factor_df(self, factor, y_col, df=None):
+    def _qcut_factor_df(self, df: pd.DataFrame, factor: str, y_col: str,
+                        **kwargs):
         """
         Calculate quantile (0, 1, 2) average return for each factor
         """
-        df['quantile'] = df.groupby(['trading_day'])["value"]\
-            .transform(self.__qcut)
+        df[['quantile', "pct"]] = df.groupby(['trading_day'])["value"]\
+            .apply(self.__qcut)
         df = df.dropna(subset=['quantile']).copy()
         df['quantile'] = df['quantile'].astype(int)
-        prem = df.groupby(['trading_day', 'quantile'])[["value", y_col]].mean()\
+        prem = df.groupby(['trading_day', 'pct', 'quantile'])[
+            ["value", y_col]].mean()\
             .rename(columns={"value": "ratio", y_col: "return"})\
             .unstack("quantile")
         prem.columns = ["_".join([str(i) for i in x]) for x in prem.columns]
-        prem_count = df.groupby('trading_day')[y_col].count()\
+        prem_count = df.groupby(['trading_day'])[y_col].count()\
             .rename("n_sample")
-        prem = prem.join(prem_count)
+        prem = prem.reset_index("pct").join(prem_count)
 
         assert np.all(prem["ratio_0"] < prem["ratio_2"]), \
             f"[{factor}] ratio to rank class 0 must < 2."
 
         return prem
 
-    def _clean_prem_df(self, group, factor, y_col, prem=None):
+    def _clean_prem_df(self, df: pd.DataFrame, factor: str, y_col: str,
+                       **kwargs):
         """
         premium = the difference of average returns for smaller factor value
         groups and larger factor value groups
 
         i.e. Calculate: prem = bottom quantile - top quantile
         """
-        prem["value"] = (prem["return_0"] - prem["return_2"]).dropna()
+        df["value"] = (df["return_0"] - df["return_2"]).dropna()
 
-        static_info = {"group": group,
-                       "field": factor,
+        static_info = {"field": factor,
                        "weeks_to_expire": int(y_col.split('_')[-2][1:]),
                        "average_days": int(y_col.split('_')[-1][1:])}
-        prem = prem.assign(**static_info).reset_index()
+        df = df.assign(**static_info).reset_index()
 
         if self.trim_outlier_:
-            prem['field'] = 'trim_' + prem['field']
+            df['field'] = 'trim_' + df['field']
 
-        return prem
+        return df
 
     def __resample_df_by_interval(self, df):
         """
@@ -262,9 +274,8 @@ class CalcPremium:
         dates every (n=weeks_to_offset) since the most recent period
         """
 
-        end_date = pd.to_datetime(
-            pd.date_range(end=backdate_by_day(1), freq=f"W-MON", periods=1)[
-                0]).date()
+        end_date = pd.to_datetime(pd.date_range(
+            end=self._end_date, freq=f"W-MON", periods=1)[0]).date()
         periods = (end_date - df["trading_day"].min()).days // (
                     7 * self.weeks_to_offset) + 1
         date_list = pd.date_range(end=end_date,
@@ -288,7 +299,7 @@ class CalcPremium:
 
         return df
 
-    def __qcut(self, series):
+    def __qcut(self, series) -> pd.DataFrame:
         """
         For each factor at certain period, use qcut to calculate factor premium
         as Top 30%/20% - Bottom 30%/20%
@@ -315,7 +326,7 @@ class CalcPremium:
                 return series.map(lambda _: np.nan)
             q[series_fillinf == np.inf] = 2
             q[series_fillinf == -np.inf] = 0
-            return q
+            return q.rename("value").to_frame().assign(pct=prc[1])
         except ValueError as e:
             logger.debug(f'Premium not calculated: {e}')
             return series.map(lambda _: np.nan)
