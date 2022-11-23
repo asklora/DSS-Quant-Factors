@@ -204,7 +204,10 @@ class CalcPremium:
                 es_logger.error({"error": "others: " + str(e), **kwargs})
                 # raise e
 
-        return pd.concat(prem_all, axis=0)
+        if len(prem_all) > 0:
+            return pd.concat(prem_all, axis=0)
+        else:
+            return pd.DataFrame()
 
     def _filter_factor_df(self, df: pd.DataFrame, factor: str, y_col: str,
                           **kwargs):
