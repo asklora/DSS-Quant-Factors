@@ -1,5 +1,2 @@
-numpy==1.22.4
-pandas==1.4.2
-python_dateutil==2.8.2
 scikit_learn==1.1.1
-SQLAlchemy==1.4.37
+pandarallel==1.6.3

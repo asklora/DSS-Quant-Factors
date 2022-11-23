@@ -103,7 +103,7 @@ class CalcPremium:
             ratio_df = self._download_pivot_ratios()
 
             prem = ratio_df.groupby(['trading_day', 'field'])\
-                .apply(self.get_premium)
+                .parallel_apply(self.get_premium)
 
             del ratio_df
             gc.collect()

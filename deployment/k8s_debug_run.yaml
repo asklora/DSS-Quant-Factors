@@ -16,9 +16,9 @@ spec:
               "/bin/sh",
               "-c",
               "
-              python3 components/data_preparation/main.py 
-              --weeks_to_expire 26 --sample_interval 1 
-              --recalc_premium --processes 1 --currency_code USD,EUR --debug
+              python3 components/data_preparation/main.py  --weeks_to_expire 26 --sample_interval 1 --recalc_premium --processes 12 --debug &&
+              python3 components/data_preparation/main.py  --weeks_to_expire 4 --sample_interval 1 --recalc_premium --processes 12 --debug &&
+              python3 components/data_preparation/main.py  --weeks_to_expire 8 --sample_interval 1 --recalc_premium --processes 12 --debug
         "]
         resources:
           requests:
