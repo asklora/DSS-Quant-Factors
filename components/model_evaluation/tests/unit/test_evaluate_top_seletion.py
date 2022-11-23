@@ -37,6 +37,6 @@ def test_EvalTop_write_latest_select():
 
 def test_EvalTop_write_top_select_eval():
     from components.model_evaluation.src.evaluate_top_selection import EvalTop
-    select_df = EvalTop(name_sql="w8_20220630155536", processes=1).write_top_select_eval()
+    select_df = EvalTop(name_sql="w26_20221118103851", processes=1).write_top_select_eval()
 
     assert len(select_df) > 0

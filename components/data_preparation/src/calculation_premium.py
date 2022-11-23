@@ -68,6 +68,8 @@ class CalcPremium:
         self.y_col_list = [f'stock_return_y_w{weeks_to_expire}_d{x}'
                            for x in average_days_list]
 
+        self._ratio_df = None
+
     def write_all(self):
         """
         calculate premium for each group / factor and insert to Table [factor_processed_premium]
@@ -82,14 +84,14 @@ class CalcPremium:
         We match macro data according to 2022-05-08, because we assume future 7 days is unknown when prediction is available.
         """
 
+        self._ratio_df = self._download_pivot_ratios()
+        all_groups = itertools.product(self.currency_code_list,
+                                       self.factor_list, self.y_col_list)
+        all_groups = [tuple(e) for e in all_groups]
+
         with closing(mp.Pool(processes=self.processes,
                              initializer=recreate_engine)) as pool:
-            ratio_df = self._download_pivot_ratios()
-            all_groups = itertools.product(self.currency_code_list,
-                                           self.factor_list, self.y_col_list)
-            all_groups = [tuple(e) for e in all_groups]
-            prem = pool.starmap(partial(self.get_premium, ratio_df=ratio_df),
-                                all_groups)
+            prem = pool.starmap(self.get_premium, all_groups)
 
         prem = pd.concat([x for x in prem if type(x) != type(None)],
                          axis=0).sort_values(by=['group', 'trading_day'])
@@ -121,17 +123,18 @@ class CalcPremium:
 
         logger.debug(f"=== Get ratios from {processed_ratio_table} ===")
 
-        ratio_query = f'''
-            SELECT r.*, u.currency_code FROM {processed_ratio_table} r
-            INNER JOIN (
-                SELECT ticker, currency_code FROM universe
-                WHERE is_active 
-                    AND currency_code in {tuple(self.currency_code_list)}
-                    AND ticker not like '.%%'
-            ) u ON r.ticker=u.ticker
-            WHERE field in {tuple(self.factor_list + self.y_col_list)} 
-                AND trading_day>='{self.start_date}'
-        '''.replace(",)", ")")
+        conditions = [
+            models.Universe.is_active,
+            models.Universe.currency_code.in_(self.currency_code_list),
+            ~models.FactorPreprocessRatio.ticker.like('.%%'),
+            models.FactorPreprocessRatio.field.in_(self.factor_list +
+                                                   self.y_col_list),
+            models.FactorPreprocessRatio.trading_day > self.start_date
+        ]
+        select_cols = [*models.FactorPreprocessRatio.__table__.columns,
+                       models.Universe.currency_code]
+        ratio_query = select(*select_cols).join(models.Universe)\
+            .where(and_(*conditions))
 
         df = read_query(ratio_query)
         df = df.pivot(index=["ticker", "trading_day", "currency_code"],
@@ -140,7 +143,7 @@ class CalcPremium:
         return df
 
     # @err2slack("factor")
-    def get_premium(self, *args, ratio_df=None):
+    def get_premium(self, *args):
         """
         Calculate: premium for certain group and factor (e.g. EUR + roic) in 1 process
         """
@@ -151,7 +154,7 @@ class CalcPremium:
                   "factor": factor,
                   "y_col": y_col}
 
-        df = self._filter_factor_df(ratio_df=ratio_df, **kwargs)
+        df = self._filter_factor_df(ratio_df=self._ratio_df, **kwargs)
         df = self._qcut_factor_df(df=df, **kwargs)
         prem = self._clean_prem_df(prem=df, **kwargs)
 
@@ -175,13 +178,23 @@ class CalcPremium:
         return df
 
     def _qcut_factor_df(self, group, factor, y_col, df=None):
-        df['quantile_train_currency'] = df.groupby(['trading_day'])[
-            factor].transform(self.__qcut)
-        df = df.dropna(subset=['quantile_train_currency']).copy()
-        df['quantile_train_currency'] = df['quantile_train_currency'].astype(
-            int)
-        prem = df.groupby(['trading_day', 'quantile_train_currency'])[
-            y_col].mean().unstack()
+        """
+        Calculate quantile (0, 1, 2) average return for each factor
+        """
+        df['quantile'] = df.groupby(['trading_day'])[factor]\
+            .transform(self.__qcut)
+        df = df.dropna(subset=['quantile']).copy()
+        df['quantile'] = df['quantile'].astype(int)
+        prem = df.groupby(['trading_day', 'quantile'])[[factor, y_col]].mean()\
+            .rename(columns={factor: "ratio", y_col: "return"})\
+            .unstack("quantile")
+        prem.columns = ["_".join([str(i) for i in x]) for x in prem.columns]
+        prem_count = df.groupby('trading_day')[y_col].count()\
+            .rename("n_sample")
+        prem = prem.join(prem_count)
+
+        assert np.all(prem["ratio_0"] < prem["ratio_2"]), \
+            f"[{factor}] ratio to rank class 0 must < 2."
 
         return prem
 
@@ -192,13 +205,13 @@ class CalcPremium:
 
         i.e. Calculate: prem = bottom quantile - top quantile
         """
-        prem = (prem[0] - prem[2]).dropna().rename('value').reset_index()
+        prem["value"] = (prem["return_0"] - prem["return_2"]).dropna()
 
         static_info = {"group": group,
                        "field": factor,
                        "weeks_to_expire": int(y_col.split('_')[-2][1:]),
                        "average_days": int(y_col.split('_')[-1][1:])}
-        prem = prem.assign(**static_info)
+        prem = prem.assign(**static_info).reset_index()
 
         if self.trim_outlier_:
             prem['field'] = 'trim_' + prem['field']

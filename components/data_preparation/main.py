@@ -40,7 +40,7 @@ if __name__ == "__main__":
     parser.add_argument('--history', action='store_true',
                         help='Rewrite entire history')
     parser.add_argument('--currency_code', default=None, type=str,
-                        help='calculate for certain currency only')
+                        help='calculate for certain currency. separate by ","')
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
     parser.add_argument('--batchsize',  default=None, type=int,
@@ -56,7 +56,7 @@ if __name__ == "__main__":
             exit(0)
 
     if args.currency_code:  # for debugging only
-        all_currency_list = [args.currency_code]
+        all_currency_list = args.currency_code.split(",")
 
     # -------------------------- Rerun Write Premium --------------------------
 
