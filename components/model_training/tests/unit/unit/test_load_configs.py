@@ -35,3 +35,13 @@ def test_loadTrainConfig_nan_factor_list():
                           ).get_all_groups()
 
     assert len(lst) > 0
+
+
+def test_loadTrainConfig_subset_factor():
+    from components.model_training.src.load_train_configs import loadTrainConfig
+    lst = loadTrainConfig(
+        weeks_to_expire=8,
+        currency_code="USD",
+        factor_list=["vol_0_30", "earnings_yield", "fwd_ey"]).get_all_groups()
+
+    assert len(lst) > 0

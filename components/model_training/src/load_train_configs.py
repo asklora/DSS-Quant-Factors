@@ -46,11 +46,15 @@ class loadTrainConfig(calcTestingPeriod):
                  backtest_period: int = 1,
                  restart: str = None,
                  currency_code: str = None,
-                 end_date: str = None):
+                 end_date: str = None,
+                 factor_list: List[str] = None):
         """
         Args:
             end_date:
-               Assume today's date, used for backtest only.
+               Assume today's date, used for backtest only;
+            factor_list:
+                subset of factors used as feature. Default = None.
+                i.e. all factors in group (defined / cluster);
         """
         super().__init__(weeks_to_expire=weeks_to_expire,
                          sample_interval=sample_interval,
@@ -64,6 +68,7 @@ class loadTrainConfig(calcTestingPeriod):
         self.sample_interval = sample_interval
         self.backtest_period = backtest_period
         self.currency_code = currency_code
+        self.factor_list = factor_list
 
     def get_all_groups(self) -> List[tuple]:
         """
@@ -102,20 +107,22 @@ class loadTrainConfig(calcTestingPeriod):
         for production: use defined configs
         """
 
+        tbl = models.FactorFormulaTrainConfig
         conditions = [
-            models.FactorFormulaTrainConfig.weeks_to_expire == self.weeks_to_expire,
+            tbl.weeks_to_expire == self.weeks_to_expire,
         ]
         if self.currency_code:
-            conditions.append(models.FactorFormulaTrainConfig.pred_currency.like(f"%{self.currency_code}%"))
+            conditions.append(tbl.pred_currency.like(f"%{self.currency_code}%"))
         if not os.getenv("DEBUG").lower == "true":
-            conditions.append(models.FactorFormulaTrainConfig.id == 0)
+            conditions.append(tbl.id == 0)
 
-        query = select(models.FactorFormulaTrainConfig).where(and_(*conditions))
+        query = select(tbl).where(and_(*conditions))
         df = read_query(query)
         defined_configs = df.drop(columns=["finished", "id"]).to_dict("records")
 
         if len(defined_configs) <= 0:
-            raise ValueError(f"No train config selected from [{models.FactorFormulaTrainConfig.__tablename__}] by {__name__}")
+            raise ValueError(f"No train config selected from ["
+                             f"{tbl.__tablename__}] by {__name__}")
 
         return defined_configs
 
@@ -158,11 +165,28 @@ class loadTrainConfig(calcTestingPeriod):
         map_df = read_query(query)
         map_df["testing_period"] = pd.to_datetime(map_df["testing_period"])
         map_df = map_df.loc[map_df["pillar"].str.startswith("pillar")]
+        map_df = self.__filter_factor_list(map_df)
 
         config_df = config_df.loc[config_df["pillar"] == "cluster"].drop(columns=["pillar"])
         config_df = config_df.merge(map_df, on=["train_currency", "testing_period"], how="left")
-
+        config_df = config_df.dropna(subset=["factor_list"])
+        
         return config_df
+
+    def __filter_factor_list(self, map_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        filter map_df with factor_list passed as argument
+        """
+
+        if self.factor_list is not None:
+            map_df.loc[:, "factor_list"] = map_df["factor_list"]\
+                .apply(lambda x: list(set(self.factor_list) & set(x)))
+            map_df = map_df.loc[map_df["factor_list"].apply(len) > 0]
+
+            assert set(map_df["factor_list"].sum()).issubset(
+                set(self.factor_list))
+
+        return map_df
 
     def __defined_pillar_map(self, df) -> pd.DataFrame:
         """
@@ -173,10 +197,14 @@ class loadTrainConfig(calcTestingPeriod):
                 pillar:         str, value / quality / momentum
                 factor_list:    list, list of factors belongs to this pillar
         """
-        map_df = read_query(f"SELECT pillar, factor_list FROM {pillar_defined_table}")
+        map_df = read_query(f"SELECT pillar, factor_list FROM "
+                            f"{pillar_defined_table}")
+        map_df = self.__filter_factor_list(map_df)
 
         config_df = df.loc[df["pillar"] != "cluster"]
         config_df = config_df.merge(map_df, on=["pillar"], how="left")
+        config_df = config_df.dropna(subset=["factor_list"])
+
         return config_df
 
     def _restart_finished_configs(self):
