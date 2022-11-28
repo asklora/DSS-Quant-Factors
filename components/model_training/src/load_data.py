@@ -23,7 +23,9 @@ from utils import (
     read_table,
     upsert_data_to_database,
     backdate_by_day,
-    models
+    models,
+    date_plus_,
+    date_minus_
 )
 
 logger = sys_logger(__name__, "DEBUG")
@@ -387,6 +389,7 @@ class loadData:
                  factor_pca: float,
                  valid_pct: float,
                  valid_method: Union[str, int],
+                 extra_train: bool = False,
                  **kwargs):
         """
         Parameters
@@ -408,6 +411,7 @@ class loadData:
         self.factor_pca = factor_pca
         self.valid_pct = valid_pct
         self.valid_method = valid_method
+        self.extra_train = extra_train
 
         if train_currency == 'currency':
             self.train_currency = ['CNY', 'HKD', 'EUR', 'USD']
@@ -417,7 +421,7 @@ class loadData:
         self.pred_currency = pred_currency.split(',')
 
     def split_all(self, main_df) -> (
-    List[Dict[str, pd.DataFrame]], list, list):
+        List[Dict[str, pd.DataFrame]], list, list):
         """
         work through cleansing process
 
@@ -464,11 +468,7 @@ class loadData:
 
         conditions = \
             (main_df["group"].isin(self.train_currency + self.pred_currency)) & \
-            (main_df["average_days"] == self.average_days) & \
-            (main_df["testing_period"] >= (self.testing_period - relativedelta(
-                years=self.train_lookback_year))) & \
-            (main_df["testing_period"] <= (self.testing_period + relativedelta(
-                weeks=self.weeks_to_expire)))
+            (main_df["average_days"] == self.average_days)
 
         sample_df = main_df.loc[conditions].copy()
         return sample_df.drop(columns=["average_days"]).set_index(
@@ -483,10 +483,21 @@ class loadData:
         end_date = self.testing_period - \
                    relativedelta(weeks=self.weeks_to_expire)
 
-        train_df = df.loc[
-            (start_date <= df.index.get_level_values("testing_period")) &
-            (df.index.get_level_values("testing_period") <= end_date) &
-            (df.index.get_level_values("group").isin(self.train_currency))]
+        after_test_train_start = pd.to_datetime(date_plus_(
+            self.testing_period,
+            weeks=self.weeks_to_expire - self.average_days // 7))
+
+        train_range = \
+            (start_date <= df.index.get_level_values("testing_period")) & \
+            (df.index.get_level_values("testing_period") <= end_date)
+
+        if self.extra_train:
+            train_range = train_range | \
+                          (df.index.get_level_values("testing_period") >
+                           after_test_train_start)
+
+        train_df = df.loc[train_range & (df.index.get_level_values("group")
+                                         .isin(self.train_currency))]
         assert len(train_df) > 0
         return train_df
 
@@ -888,14 +899,15 @@ class loadData:
 
         valid_index = train_x.loc[
             (train_x.index.get_level_values('testing_period') >= valid_start) &
-            (train_x.index.get_level_values(
-                'testing_period') < valid_end)].index.to_list()
+            (train_x.index.get_level_values('testing_period') <
+             valid_end)].index.to_list()
 
         # half of valid sample have data leak from training sets
-        train_index = train_x.loc[(train_x.index.get_level_values(
-            'testing_period') < (valid_start - valid_len / 2)) |
-                                  (train_x.index.get_level_values(
-                                      'testing_period') >= valid_end)].index.to_list()
+        train_index = train_x.loc[
+            (train_x.index.get_level_values('testing_period') <
+             (valid_start - valid_len / 2)) |
+            (train_x.index.get_level_values('testing_period') >=
+             valid_end)].index.to_list()
         gkf = [(train_index, valid_index)]
         return gkf
 
@@ -941,6 +953,7 @@ class loadData:
         """
         remove non-complete y sample for train_index / valid_index -> remove nan Y
         """
-
-        new_index = pd.MultiIndex.from_tuples(set(index) & set(train_y.index))
+        new_index = set(index) & set(train_y.index)
+        assert len(new_index) > 0, f"Can't find index ({}, {}, {}) from [train_y]"
+        new_index = pd.MultiIndex.from_tuples()
         return new_index

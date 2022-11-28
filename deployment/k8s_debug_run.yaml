@@ -1,39 +1,8 @@
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: calc-premium
-  namespace: quant-factors
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      containers:
-      - name: quant-factors
-        image: quant-factor
-        imagePullPolicy: IfNotPresent
-        command: [
-              "/bin/sh",
-              "-c",
-              "
-              python3 components/data_preparation/main.py  --weeks_to_expire 26 --sample_interval 1 --recalc_premium --processes 12 --debug &&
-              python3 components/data_preparation/main.py  --weeks_to_expire 4 --sample_interval 1 --recalc_premium --processes 12 --debug &&
-              python3 components/data_preparation/main.py  --weeks_to_expire 8 --sample_interval 1 --recalc_premium --processes 12 --debug
-        "]
-        resources:
-          requests:
-            memory: "30Gi"
-            cpu: "12000m"
-          limits:
-            memory: "30Gi"
-            cpu: "12000m"
-      restartPolicy: Never
-
 #---
 #apiVersion: batch/v1
 #kind: Job
 #metadata:
-#  name: train-model
+#  name: calc-premium
 #  namespace: quant-factors
 #spec:
 #  backoffLimit: 0
@@ -47,13 +16,41 @@ spec:
 #              "/bin/sh",
 #              "-c",
 #              "
-#              export DEBUG=True &&
-#              python3 components/model_evaluation/main.py --weeks_to_expire 8 --eval_factor --eval_top --eval_select --processes 12  --debug                                &&
-#              python3 components/model_evaluation/main.py --weeks_to_expire 4 --eval_factor --eval_top --eval_select --processes 12  --debug                                &&
-#              python3 components/model_evaluation/main.py --weeks_to_expire 26 --eval_factor --eval_top --eval_select --processes 12  --debug
+#              python3 components/data_preparation/main.py  --weeks_to_expire 26 --sample_interval 1 --recalc_premium --processes 12 --debug &&
+#              python3 components/data_preparation/main.py  --weeks_to_expire 4 --sample_interval 1 --recalc_premium --processes 12 --debug &&
+#              python3 components/data_preparation/main.py  --weeks_to_expire 8 --sample_interval 1 --recalc_premium --processes 12 --debug
 #        "]
 #        resources:
+#          requests:
+#            memory: "30Gi"
+#            cpu: "12000m"
 #          limits:
 #            memory: "30Gi"
 #            cpu: "12000m"
 #      restartPolicy: Never
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-model
+  namespace: quant-factors
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+      - name: quant-factors
+        image: quant-factor
+        imagePullPolicy: IfNotPresent
+        command: [
+              "/bin/sh",
+              "-c",
+              "
+              python3 components/model_training/main.py --weeks_to_expire 26 --backtest_period 21 --processes 12
+        "]
+        resources:
+          limits:
+            memory: "30Gi"
+            cpu: "12000m"
+      restartPolicy: Never

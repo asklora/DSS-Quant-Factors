@@ -38,7 +38,7 @@ def write_args_finished(kwargs):
     upsert_data_to_database(data=df, table=tbl.__tablename__, how="update")
 
 
-@err2slack("factor", return_obj=False)
+# @err2slack("factor", return_obj=False)
 def start(*args, sql_result: dict = None, raw_df: pd.DataFrame = None):
     """
     run random forest on multi-processor
@@ -85,8 +85,13 @@ if __name__ == "__main__":
                         help='calculate for certain currency only')
     parser.add_argument('--debug', action='store_true',
                         help='bypass monthly running check')
+    parser.add_argument('--factor_list', action='store_true',
+                        help='subset of factors used as feature. '
+                             'Use "," to separate names.')
     parser.add_argument('--end_date', default=None, type=str,
                         help='assume date today when training (for debug)')
+    parser.add_argument('--extra_train', action='store_true',
+                        help='use after testing period for training')
     args = parser.parse_args()
 
     # --------------------- Production / Development ----------------------
@@ -100,9 +105,13 @@ if __name__ == "__main__":
 
     # sql_result = data write to score TABLE
     datetimeNow = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d%H%M%S')
-    sql_result = {"name_sql": f"w{args.weeks_to_expire}_{datetimeNow}"}
+    sql_result = {"name_sql": f"w{args.weeks_to_expire}_{datetimeNow}",
+                  "extra_train": args.extra_train}
 
-    if args.restart:
+    if args.factor_list is not None:
+        args.factor_list = [x.strip() for x in args.factor_list.split(',')]
+
+    if args.restart is not None:
         sql_result['name_sql'] = args.restart
         args.weeks_to_expire = int(sql_result['name_sql'].split('_')[0][1:])
 
@@ -120,7 +129,8 @@ if __name__ == "__main__":
                                  backtest_period=args.backtest_period,
                                  restart=args.restart,
                                  currency_code=args.currency_code,
-                                 end_date=args.end_date)\
+                                 end_date=args.end_date,
+                                 factor_list=args.factor_list)\
         .get_all_groups()
 
     with closing(mp.Pool(processes=args.processes,
